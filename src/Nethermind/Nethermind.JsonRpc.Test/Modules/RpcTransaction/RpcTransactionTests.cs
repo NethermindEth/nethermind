@@ -71,7 +71,7 @@ public class RpcTransactionTests
     }
 
     // * JSON -> IRpcTransaction (`IRpcTransaction.JsonConverter`, with a registry of [TxType => C# Type])
-    // * TODO: IRpcTransaction -> Transaction (IRpcTransaction has `.ToTransaction`)
+    // * IRpcTransaction -> Transaction (IRpcTransaction has `.ToTransaction`)
     // * Transaction -> IRpcTransaction (IRpcTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
     // * IRpcTransaction -> JSON (derived by `System.Text.JSON`)
 
