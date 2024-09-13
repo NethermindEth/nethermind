@@ -81,9 +81,8 @@ jobs:
       id: cache-dotnet
       uses: actions/cache/restore@v4
       with:
-        # nuget cache files are stored in `~/.nuget/packages/` on Linux/macOS
         path: ~/.nuget/packages/
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/Directory.Packages.props') }}
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
     - name: ${{ matrix.project }}
       id: test
       run: |
