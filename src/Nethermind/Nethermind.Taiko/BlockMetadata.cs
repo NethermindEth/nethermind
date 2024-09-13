@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
-using Nethermind.JsonRpc.Converters;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Taiko;
 

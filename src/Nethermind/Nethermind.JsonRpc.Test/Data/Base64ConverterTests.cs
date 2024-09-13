@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.JsonRpc.Converters;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Test.Data;
 
-public class Base64FieldType
+internal class Base64FieldType
 {
     [JsonConverter(typeof(Base64Converter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
