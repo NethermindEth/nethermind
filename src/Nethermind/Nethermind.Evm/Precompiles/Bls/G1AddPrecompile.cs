@@ -53,7 +53,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
                 return (inputData[..BlsParams.LenG1], true);
             }
 
-            G1 res = x.Value.add(y.Value);
+            G1 res = x.Value.Add(y.Value);
             result = (res.Encode(), true);
         }
         catch (Exception)

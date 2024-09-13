@@ -38,14 +38,14 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
         try
         {
-            GT acc = GT.one();
+            GT acc = GT.One();
             for (int i = 0; i < inputData.Length / PairSize; i++)
             {
                 int offset = i * PairSize;
                 G1? x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
                 G2? y = BlsExtensions.DecodeG2(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)]);
 
-                if ((x.HasValue && !x.Value.in_group()) || (y.HasValue && !y.Value.in_group()))
+                if ((x.HasValue && !x.Value.InGroup()) || (y.HasValue && !y.Value.InGroup()))
                 {
                     throw new Exception();
                 }
@@ -56,10 +56,10 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
                     continue;
                 }
 
-                acc.mul(new GT(y.Value, x.Value));
+                acc.Mul(new GT(y.Value, x.Value));
             }
 
-            bool verified = acc.final_exp().is_one();
+            bool verified = acc.FinalExp().IsOne();
             byte[] res = new byte[32];
             if (verified)
             {

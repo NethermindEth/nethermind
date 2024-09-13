@@ -55,7 +55,7 @@ public static class BlsExtensions
         untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[BlsParams.LenFpTrimmed..]);
 
         G1 x = new(trimmed);
-        if (!x.on_curve())
+        if (!x.OnCurve())
         {
             throw new Exception();
         }
@@ -64,13 +64,13 @@ public static class BlsExtensions
 
     public static byte[] Encode(this G1 p)
     {
-        if (p.is_inf())
+        if (p.IsInf())
         {
             return Enumerable.Repeat<byte>(0, 128).ToArray();
         }
 
         byte[] untrimmed = new byte[BlsParams.LenG1];
-        Span<byte> trimmed = p.serialize();
+        Span<byte> trimmed = p.Serialize();
         trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
         trimmed[BlsParams.LenFpTrimmed..].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
         return untrimmed;
@@ -117,7 +117,7 @@ public static class BlsExtensions
         untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 2)..]);
 
         G2 x = new(trimmed);
-        if (!x.on_curve())
+        if (!x.OnCurve())
         {
             throw new Exception();
         }
@@ -126,7 +126,7 @@ public static class BlsExtensions
 
     public static byte[] Encode(this G2 p)
     {
-        if (p.is_inf())
+        if (p.IsInf())
         {
             return Enumerable.Repeat<byte>(0, 256).ToArray();
         }

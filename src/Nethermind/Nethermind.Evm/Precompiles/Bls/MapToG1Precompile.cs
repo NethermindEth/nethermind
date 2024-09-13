@@ -42,7 +42,7 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
             {
                 throw new Exception();
             }
-            res.map_to(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray());
+            res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray());
             result = (res.Encode(), true);
         }
         catch (Exception)

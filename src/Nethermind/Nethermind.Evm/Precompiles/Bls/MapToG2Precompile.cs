@@ -43,7 +43,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
             {
                 throw new Exception();
             }
-            res.map_to(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray(), inputData[(BlsParams.LenFp + BlsParams.LenFpPad)..].ToArray());
+            res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray(), inputData[(BlsParams.LenFp + BlsParams.LenFpPad)..].ToArray());
             result = (res.Encode(), true);
         }
         catch (Exception)

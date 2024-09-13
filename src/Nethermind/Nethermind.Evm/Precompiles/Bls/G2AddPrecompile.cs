@@ -53,7 +53,7 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
                 return (inputData[..BlsParams.LenG2], true);
             }
 
-            G2 res = x.Value.add(y.Value);
+            G2 res = x.Value.Add(y.Value);
             result = (res.Encode(), true);
         }
         catch (Exception)

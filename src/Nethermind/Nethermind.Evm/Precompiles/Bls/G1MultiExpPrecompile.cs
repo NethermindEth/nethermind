@@ -64,7 +64,7 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
                     continue;
                 }
 
-                if (!p.Value.in_group())
+                if (!p.Value.InGroup())
                 {
                     return (Array.Empty<byte>(), false);
                 }
@@ -79,7 +79,7 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             }
 
             G1 res = new();
-            res.multi_mult(points.ToArray(), scalars.ToArray());
+            res.MultiMult(points.ToArray(), scalars.ToArray());
             result = (res.Encode(), true);
         }
         catch (Exception)

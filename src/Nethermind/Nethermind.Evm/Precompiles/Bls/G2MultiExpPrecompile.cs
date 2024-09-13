@@ -63,7 +63,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
                     continue;
                 }
 
-                if (!p.Value.in_group())
+                if (!p.Value.InGroup())
                 {
                     return (Array.Empty<byte>(), false);
                 }

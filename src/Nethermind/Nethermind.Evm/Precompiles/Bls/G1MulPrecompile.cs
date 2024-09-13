@@ -45,7 +45,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
-            if (!x.Value.in_group())
+            if (!x.Value.InGroup())
             {
                 throw new Exception();
             }
@@ -57,7 +57,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
-            G1 res = x.Value.mult(scalar);
+            G1 res = x.Value.Mult(scalar);
             result = (res.Encode(), true);
         }
         catch (Exception)

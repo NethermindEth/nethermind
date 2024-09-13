@@ -47,7 +47,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
-            if (!x.Value.in_group())
+            if (!x.Value.InGroup())
             {
                 throw new Exception();
             }
@@ -59,7 +59,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
-            G2 res = x.Value.mult(scalar);
+            G2 res = x.Value.Mult(scalar);
             result = (res.Encode(), true);
         }
         catch (Exception)
