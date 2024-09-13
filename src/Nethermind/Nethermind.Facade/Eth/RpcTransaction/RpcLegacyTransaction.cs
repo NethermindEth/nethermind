@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class RpcLegacyTransaction : IRpcTransaction
+public class RpcLegacyTransaction : RpcNethermindTransaction
 {
     public TxType Type { get; set; }
 
@@ -35,7 +35,7 @@ public class RpcLegacyTransaction : IRpcTransaction
     [JsonConstructor]
     public RpcLegacyTransaction() { }
 
-    public RpcLegacyTransaction(Transaction transaction)
+    public RpcLegacyTransaction(Transaction transaction) : base(transaction)
     {
         Type = transaction.Type;
         Nonce = transaction.Nonce;

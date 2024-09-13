@@ -9,7 +9,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class RpcOptimismTransaction : IRpcTransaction
+public class RpcOptimismTransaction : RpcNethermindTransaction
 {
     public TxType Type { get; set; }
 
@@ -35,7 +35,7 @@ public class RpcOptimismTransaction : IRpcTransaction
     public UInt256? DepositReceiptVersion { get; set; }
     #endregion
 
-    public RpcOptimismTransaction(Transaction transaction)
+    public RpcOptimismTransaction(Transaction transaction) : base(transaction)
     {
         Type = transaction.Type;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
