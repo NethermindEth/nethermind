@@ -18,16 +18,33 @@ namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        public class BlockProductionTransactionsExecutor : IBlockProductionTransactionsExecutor
+        public class BlockProductionTransactionsExecutor(
+            ITransactionProcessor txProcessor,
+            IWorldState stateProvider,
+            IBlockProductionTransactionPicker txPicker,
+            ILogManager logManager)
+            : IBlockProductionTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor;
-            private readonly IBlockProductionTransactionPicker _blockProductionTransactionPicker;
-            private readonly ILogger _logger;
+            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
+            private readonly ILogger _logger = logManager.GetClassLogger();
+
+            public BlockProductionTransactionsExecutor(
+                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
+                ISpecProvider specProvider,
+                ILogManager logManager)
+                : this(
+                    readOnlyTxProcessingEnv.TransactionProcessor,
+                    readOnlyTxProcessingEnv.WorldState,
+                    specProvider,
+                    logManager)
+            {
+            }
 
             public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
+                IWorldState stateProvider,
                 ISpecProvider specProvider,
-                ILogManager logManager) : this(transactionProcessor,
+                ILogManager logManager) : this(transactionProcessor, stateProvider,
                 new BlockProductionTransactionPicker(specProvider), logManager)
             {
             }
@@ -50,8 +67,8 @@ namespace Nethermind.Consensus.Processing
 
             event EventHandler<AddingTxEventArgs>? IBlockProductionTransactionsExecutor.AddingTransaction
             {
-                add => _blockProductionTransactionPicker.AddingTransaction += value;
-                remove => _blockProductionTransactionPicker.AddingTransaction -= value;
+                add => txPicker.AddingTransaction += value;
+                remove => txPicker.AddingTransaction -= value;
             }
 
             public virtual TxReceipt[] ProcessTransactions(IWorldState worldState, Block block,
@@ -84,9 +101,7 @@ namespace Nethermind.Consensus.Processing
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)
             {
-                AddingTxEventArgs args =
-                    _blockProductionTransactionPicker.CanAddTransaction(block, currentTx, transactionsInBlock,
-                        worldState);
+                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, worldState);
 
                 if (args.Action != TxAction.Add)
                 {

@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -157,19 +158,21 @@ namespace Ethereum.Test.Base
                 codeInfoRepository,
                 _logManager);
 
+            TransactionProcessor transactionProcessor = new(
+                specProvider,
+                virtualMachine,
+                codeInfoRepository,
+                _logManager);
+
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(
-                    new TransactionProcessor(
-                        specProvider,
-                        virtualMachine,
-                        codeInfoRepository,
-                        _logManager)),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
                 worldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

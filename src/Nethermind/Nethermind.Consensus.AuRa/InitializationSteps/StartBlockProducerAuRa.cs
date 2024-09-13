@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
@@ -15,10 +16,10 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -153,6 +154,7 @@ public class StartBlockProducerAuRa
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(txnProcessor),
             _api.WorldStateManager!.GlobalWorldStateProvider,
             _api.ReceiptStorage,
+            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,

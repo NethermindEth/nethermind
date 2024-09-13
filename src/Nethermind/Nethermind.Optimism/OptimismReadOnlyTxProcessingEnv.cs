@@ -24,7 +24,7 @@ public class OptimismReadOnlyTxProcessingEnv(
     specProvider,
     logManager)
 {
-    protected override TransactionProcessor CreateTransactionProcessor()
+    protected override ITransactionProcessor CreateTransactionProcessor()
     {
         ArgumentNullException.ThrowIfNull(LogManager);
 

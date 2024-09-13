@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -61,6 +62,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             worldStateProvider,
             receiptStorage,
             new BlockhashStore(specProvider),
+            new BeaconBlockRootHandler(scope.TransactionProcessor),
             logManager,
             opSpecHelper,
             contractRewriter,

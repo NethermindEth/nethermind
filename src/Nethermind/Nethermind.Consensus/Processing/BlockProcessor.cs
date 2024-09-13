@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -43,6 +44,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
     private readonly IBlockhashStore _blockhashStore;
+    IBeaconBlockRootHandler? beaconBlockRootHandler,
     private readonly IBlockCachePreWarmer? _preWarmer;
     private const int MaxUncommittedBlocks = 64;
 
@@ -77,6 +79,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         _preWarmer = preWarmer;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+    private readonly IBeaconBlockRootHandler _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -117,15 +120,24 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
+                if (notReadOnly)
+                {
+                    BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                }
+
                 using CancellationTokenSource cancellationTokenSource = new();
                 IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(suggestedBlock.Header);
                 _logger.Info($"Found the worldState to use: {worldStateToUse.StateRoot}");
                 Task? preWarmTask = suggestedBlock.Transactions.Length < 3
                     ? null
-                    : _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, worldStateToUse, cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
+                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                // Block is processed, we can cancel the prewarm task
+                if (preWarmTask is not null)
+                {
+                    preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
+                }
                 cancellationTokenSource.Cancel();
-                preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
@@ -151,7 +163,7 @@ public partial class BlockProcessor : IBlockProcessor
                 preBlockStateRoot = processedBlock.StateRoot;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
-                worldStateToUse.Reset(resizeCollections: true);
+                _stateProvider.Reset(resizeCollections: true);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -169,11 +181,13 @@ public partial class BlockProcessor : IBlockProcessor
         }
         finally
         {
-            _preWarmer?.ClearCaches();
+            preWarmer?.ClearCaches();
         }
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+    public event EventHandler<BlockEventArgs>? BlockProcessing;
 
     // TODO: revist this implementation. First, what is mean by already existing TODO to move this to branch processor
     // Second, can we move this inside the WorldStateManager? we can keep track of checkpoints as well in the world state
@@ -277,6 +291,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        StoreBeaconRoot(block, spec);
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, worldState);
         _blockhashStore.ApplyBlockhashStateChanges(block.Header, worldState);
 
@@ -311,6 +326,18 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
+    }
+
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    {
+        try
+        {
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Storing beacon block root for block {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
+        }
     }
 
     // TODO: block processor pipeline

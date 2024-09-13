@@ -189,6 +189,10 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
                 ConsumeSignal().Wait();
                 if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
             }
+            catch (TaskCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
+            }
             catch (OperationCanceledException)
             {
                 if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");

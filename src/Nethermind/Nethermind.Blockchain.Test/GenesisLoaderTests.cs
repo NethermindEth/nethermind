@@ -61,7 +61,6 @@ public class GenesisLoaderTests
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         GenesisLoader genesisLoader = new(chainSpec, specProvider, transactionProcessor);

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.AuRa;
@@ -157,6 +158,7 @@ namespace Nethermind.AuRa.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
                 worldStateProvider,
                 NullReceiptStorage.Instance,
+                new BeaconBlockRootHandler(transactionProcessor),
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(LimboLogs.Instance),

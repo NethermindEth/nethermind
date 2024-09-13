@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -31,6 +32,11 @@ namespace Nethermind.Consensus.Processing
         /// Fired when a branch is being processed.
         /// </summary>
         event EventHandler<BlocksProcessingEventArgs> BlocksProcessing;
+
+        /// <summary>
+        /// Fired when a block is being processed.
+        /// </summary>
+        event EventHandler<BlockEventArgs> BlockProcessing;
 
         /// <summary>
         /// Fired after a block has been processed.

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -303,6 +304,7 @@ namespace Nethermind.Synchronization.Test
                 worldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
+                new BeaconBlockRootHandler(txProcessor),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -326,6 +328,7 @@ namespace Nethermind.Synchronization.Test
                 devWorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(specProvider),
+                new BeaconBlockRootHandler(devTxProcessor),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
@@ -42,6 +43,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             blockTransactionsExecutor,
             worldStateProvider,
             receiptStorage,
+            beaconBlockRootHandler,
             logManager,
             blockTree,
             withdrawalProcessor,

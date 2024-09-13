@@ -12,7 +12,7 @@ using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateTransactionProcessor(
+public sealed class SimulateTransactionProcessor(
     ISpecProvider? specProvider,
     IVirtualMachine? virtualMachine,
     ICodeInfoRepository? codeInfoRepository,

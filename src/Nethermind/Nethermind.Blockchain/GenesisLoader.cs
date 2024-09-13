@@ -14,27 +14,17 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Blockchain
 {
-    public class GenesisLoader
+    public class GenesisLoader(
+        ChainSpec chainSpec,
+        ISpecProvider specProvider,
+        ITransactionProcessor transactionProcessor)
     {
-        private readonly ChainSpec _chainSpec;
-        private readonly ISpecProvider _specProvider;
-        private readonly ITransactionProcessor _transactionProcessor;
-        private readonly BeaconBlockRootHandler _beaconBlockRootHandler;
-
-        public GenesisLoader(
-            ChainSpec chainSpec,
-            ISpecProvider specProvider,
-            ITransactionProcessor transactionProcessor)
-        {
-            _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _beaconBlockRootHandler = new BeaconBlockRootHandler();
-        }
+        private readonly ChainSpec _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
 
         public Block Load(IWorldState worldState)
         {

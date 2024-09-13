@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -78,6 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 worldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(specProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
                 LimboLogs.Instance);
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);

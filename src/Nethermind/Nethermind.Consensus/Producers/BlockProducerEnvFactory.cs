@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -136,7 +137,8 @@ namespace Nethermind.Consensus.Producers
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
-            ILogManager logManager, IBlocksConfig blocksConfig) =>
+            ILogManager logManager,
+            IBlocksConfig blocksConfig) =>
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(processingEnv.TransactionProcessor),
@@ -144,6 +146,7 @@ namespace Nethermind.Consensus.Producers
                 processingEnv.WorldStateProvider,
                 receiptStorage,
                 new BlockhashStore(_specProvider),
+                new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(logManager)));
 

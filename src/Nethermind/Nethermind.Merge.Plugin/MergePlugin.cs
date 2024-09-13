@@ -49,7 +49,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
     private IPeerRefresher _peerRefresher = null!;
 
-    private ManualBlockFinalizationManager _blockFinalizationManager = null!;
+    protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
     public virtual string Name => "Merge";
@@ -259,14 +259,18 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-
-            _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+            _api.FinalizationManager = InitializeMergeFinilizationManager();
 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
         }
 
         return Task.CompletedTask;
+    }
+
+    protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
+    {
+        return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
     }
 
     public Task InitRpcModules()
@@ -280,6 +284,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
             if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
             if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+            if (_api.TxPool is null) throw new ArgumentNullException(nameof(_api.TxPool));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
@@ -319,7 +324,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
@@ -354,6 +359,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+                new GetBlobsHandler(_api.TxPool),
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);

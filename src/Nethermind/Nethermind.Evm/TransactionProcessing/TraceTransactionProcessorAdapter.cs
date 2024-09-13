@@ -7,16 +7,10 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class TraceTransactionProcessorAdapter : ITransactionProcessorAdapter
+    public class TraceTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
+        : ITransactionProcessorAdapter
     {
-        private readonly ITransactionProcessor _transactionProcessor;
-
-        public TraceTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
-        {
-            _transactionProcessor = transactionProcessor;
-        }
-
         public TransactionResult Execute(IWorldState worldState, Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
-            _transactionProcessor.Trace(worldState, transaction, in blkCtx, txTracer);
+            transactionProcessor.Trace(worldState, transaction, in blkCtx, txTracer);
     }
 }

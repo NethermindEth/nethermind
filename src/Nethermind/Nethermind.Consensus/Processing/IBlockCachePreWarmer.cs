@@ -14,4 +14,5 @@ public interface IBlockCachePreWarmer
     Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, IWorldState? worldState,
         CancellationToken cancellationToken = default);
     void ClearCaches();
+    Task ClearCachesInBackground();
 }

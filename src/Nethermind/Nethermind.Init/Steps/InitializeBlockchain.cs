@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -14,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
@@ -125,6 +127,21 @@ namespace Nethermind.Init.Steps
             setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
             _api.DisposeStack.Push(backgroundTaskScheduler);
 
+            ICensorshipDetectorConfig censorshipDetectorConfig = _api.Config<ICensorshipDetectorConfig>();
+            if (censorshipDetectorConfig.Enabled)
+            {
+                CensorshipDetector censorshipDetector = new(
+                    _api.BlockTree!,
+                    txPool,
+                    CreateTxPoolTxComparer(),
+                    mainBlockProcessor,
+                    _api.LogManager,
+                    censorshipDetectorConfig
+                );
+                setApi.CensorshipDetector = censorshipDetector;
+                _api.DisposeStack.Push(censorshipDetector);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -219,6 +236,7 @@ namespace Nethermind.Init.Steps
                 _api.WorldStateManager.GlobalWorldStateProvider,
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.SpecProvider!),
+                new BeaconBlockRootHandler(_api.TransactionProcessor),
                 _api.LogManager,
                 preWarmer: preWarmer
             );

@@ -49,6 +49,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public void ClearCaches() => worldStateManager?.ClearCache();
 
+    public Task ClearCachesInBackground() => targetWorldState?.ClearCachesInBackground() ?? Task.CompletedTask;
+
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;

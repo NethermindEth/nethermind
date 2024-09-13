@@ -16,7 +16,7 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : IBlobTxStorage
 {
-    private static readonly TxDecoder _txDecoder = new();
+    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
