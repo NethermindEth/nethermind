@@ -40,4 +40,21 @@ public interface IRpcTransaction
             JsonSerializer.Serialize(writer, value, value.GetType(), options);
         }
     }
+
+    public class TransactionConverter : ITransactionConverter<IRpcTransaction>
+    {
+        private readonly ITransactionConverter<IRpcTransaction>?[] _converters = new ITransactionConverter<IRpcTransaction>?[Transaction.MaxTxType + 1];
+
+        public TransactionConverter RegisterConverter(TxType txType, ITransactionConverter<IRpcTransaction> converter)
+        {
+            _converters[(byte)txType] = converter;
+            return this;
+        }
+
+        public IRpcTransaction FromTransaction(Transaction tx)
+        {
+            var converter = _converters[(byte)tx.Type] ?? throw new ArgumentException("No converter for transaction type");
+            return converter.FromTransaction(tx);
+        }
+    }
 }

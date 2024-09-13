@@ -24,10 +24,10 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public new static readonly IRpcTransactionConverter Converter = new ConverterImpl();
+    public new static readonly ITransactionConverter<RpcBlobTransaction> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IRpcTransactionConverter
+    private class ConverterImpl : ITransactionConverter<RpcBlobTransaction>
     {
-        public IRpcTransaction FromTransaction(Transaction transaction) => new RpcBlobTransaction(transaction);
+        public RpcBlobTransaction FromTransaction(Transaction transaction) => new(transaction);
     }
 }

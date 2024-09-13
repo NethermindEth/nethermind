@@ -51,10 +51,10 @@ public class RpcLegacyTransaction : IRpcTransaction
         V = transaction.Signature?.V ?? 0;
     }
 
-    public static readonly IRpcTransactionConverter Converter = new ConverterImpl();
+    public static readonly ITransactionConverter<RpcLegacyTransaction> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IRpcTransactionConverter
+    private class ConverterImpl : ITransactionConverter<RpcLegacyTransaction>
     {
-        public IRpcTransaction FromTransaction(Transaction tx) => new RpcLegacyTransaction(tx);
+        public RpcLegacyTransaction FromTransaction(Transaction tx) => new(tx);
     }
 }

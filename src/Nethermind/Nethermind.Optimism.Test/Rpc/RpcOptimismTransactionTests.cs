@@ -20,7 +20,7 @@ public class RpcOptimismTransactionTests
             .RegisterTransactionType(TxType.DepositTx, typeof(RpcOptimismTransaction))
     ]);
 
-    private readonly IRpcTransactionConverter _converter = new ComposeTransactionConverter()
+    private readonly ITransactionConverter<IRpcTransaction> _converter = new IRpcTransaction.TransactionConverter()
         .RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter);
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);

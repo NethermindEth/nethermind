@@ -49,15 +49,15 @@ public class RpcOptimismTransaction : IRpcTransaction
 
         // TODO: Handle extra data
         // DepositReceiptVersion = receipt?.DepositReceiptVersion;
-        
+
         // NOTE: According to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79 `nonce == 0`
         // Nonce = receipt?.DepositNonce;
     }
 
-    public static readonly IRpcTransactionConverter Converter = new ConverterImpl();
+    public static readonly ITransactionConverter<RpcOptimismTransaction> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IRpcTransactionConverter
+    private class ConverterImpl : ITransactionConverter<RpcOptimismTransaction>
     {
-        public IRpcTransaction FromTransaction(Transaction tx) => new RpcOptimismTransaction(tx);
+        public RpcOptimismTransaction FromTransaction(Transaction transaction) => new(transaction);
     }
 }

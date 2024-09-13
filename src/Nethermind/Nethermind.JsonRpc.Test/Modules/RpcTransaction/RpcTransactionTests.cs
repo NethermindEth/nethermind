@@ -21,7 +21,7 @@ public class RpcTransactionTests
             .RegisterTransactionType(TxType.Blob, typeof(RpcBlobTransaction))
     ]);
 
-    private readonly IRpcTransactionConverter _rpcConverter = new ComposeTransactionConverter()
+    private readonly ITransactionConverter<IRpcTransaction> _converter = new IRpcTransaction.TransactionConverter()
         .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
         .RegisterConverter(TxType.AccessList, RpcAccessListTransaction.Converter)
         .RegisterConverter(TxType.EIP1559, RpcEIP1559Transaction.Converter)
@@ -44,7 +44,7 @@ public class RpcTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
-        IRpcTransaction rpcTransaction = _rpcConverter.FromTransaction(transaction);
+        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
@@ -77,7 +77,7 @@ public class RpcTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void RpcTransaction_JSON_roundtrip(Transaction tx)
     {
-        IRpcTransaction rpcTx = _rpcConverter.FromTransaction(tx);
+        IRpcTransaction rpcTx = _converter.FromTransaction(tx);
         string serialized = _serializer.Serialize(rpcTx);
         IRpcTransaction deserialized = _serializer.Deserialize<IRpcTransaction>(serialized);
 

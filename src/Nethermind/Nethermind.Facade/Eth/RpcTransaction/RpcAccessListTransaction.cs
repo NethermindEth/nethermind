@@ -38,10 +38,10 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         V = transaction.Signature?.RecoveryId;
     }
 
-    public new static readonly IRpcTransactionConverter Converter = new ConverterImpl();
+    public new static readonly ITransactionConverter<RpcAccessListTransaction> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IRpcTransactionConverter
+    private class ConverterImpl : ITransactionConverter<RpcAccessListTransaction>
     {
-        public IRpcTransaction FromTransaction(Transaction transaction) => new RpcAccessListTransaction(transaction);
+        public RpcAccessListTransaction FromTransaction(Transaction transaction) => new(transaction);
     }
 }

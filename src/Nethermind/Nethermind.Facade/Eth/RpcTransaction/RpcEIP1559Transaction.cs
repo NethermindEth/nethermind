@@ -29,10 +29,10 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
         GasPrice = transaction.GasPrice;
     }
 
-    public new static readonly IRpcTransactionConverter Converter = new ConverterImpl();
+    public new static readonly ITransactionConverter<RpcEIP1559Transaction> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IRpcTransactionConverter
+    private class ConverterImpl : ITransactionConverter<RpcEIP1559Transaction>
     {
-        public IRpcTransaction FromTransaction(Transaction transaction) => new RpcEIP1559Transaction(transaction);
+        public RpcEIP1559Transaction FromTransaction(Transaction transaction) => new(transaction);
     }
 }
