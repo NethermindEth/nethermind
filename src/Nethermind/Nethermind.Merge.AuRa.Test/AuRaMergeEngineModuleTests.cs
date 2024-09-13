@@ -61,17 +61,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0xeb7146faceb5d2974ae7198a55335071b88083972d5f16a031b53b0928d8475b",
-        "0x372f0b6751b91568f2bf642e51731557893f9879074cbbdf005ff31d5cd6a035",
-        "0xc784a9383eecff180a5fa06ec0a8956beefce39ae529d077e4fb47a8adf935bc",
-        "0x7f9dace0b66620a2")]
+        "0xe97d919a17fa5011ff3a08ffb07657ed9e1aaf5ff649888e5d7f605006caf598",
+        "0xdd9be69fe6ed616f44d53576f430c1c7720ed0e7bff59478539a4a43dbb3bf1f",
+        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
+        "0x3c6a8926870bdeff")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
-        "0x310f4c8c949eb758faa4497e293bb18ef27a465af16553e5fc03752d3be19cc3",
-        "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f",
+        "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
+        "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
         "0xcdd08163eccae523")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
