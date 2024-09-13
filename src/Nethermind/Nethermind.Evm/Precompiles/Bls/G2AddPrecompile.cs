@@ -38,22 +38,22 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
         try
         {
-            G2? x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2]);
-            G2? y = BlsExtensions.DecodeG2(inputData[BlsParams.LenG2..]);
+            G2 x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2].Span, out bool xInfinity);
+            G2 y = BlsExtensions.DecodeG2(inputData[BlsParams.LenG2..].Span, out bool yInfinity);
 
-            if (!x.HasValue)
+            if (xInfinity)
             {
                 // x == inf
                 return (inputData[BlsParams.LenG2..], true);
             }
 
-            if (!y.HasValue)
+            if (yInfinity)
             {
                 // y == inf
                 return (inputData[..BlsParams.LenG2], true);
             }
 
-            G2 res = x.Value.Add(y.Value);
+            G2 res = x.Add(y);
             result = (res.Encode(), true);
         }
         catch (Exception)

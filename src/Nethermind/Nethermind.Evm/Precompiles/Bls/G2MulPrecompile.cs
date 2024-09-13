@@ -39,7 +39,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
         try
         {
-            G2? x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2]);
+            G2 x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2].Span, out bool xInfinity);
 
             if (!x.HasValue)
             {

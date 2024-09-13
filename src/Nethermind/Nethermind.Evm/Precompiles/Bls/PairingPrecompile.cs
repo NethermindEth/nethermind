@@ -42,21 +42,21 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             for (int i = 0; i < inputData.Length / PairSize; i++)
             {
                 int offset = i * PairSize;
-                G1? x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
-                G2? y = BlsExtensions.DecodeG2(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)]);
+                G1 x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)].Span, out bool xInfinity);
+                G2 y = BlsExtensions.DecodeG2(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)].Span, out bool yInfinity);
 
-                if ((x.HasValue && !x.Value.InGroup()) || (y.HasValue && !y.Value.InGroup()))
+                if ((!xInfinity && !x.InGroup()) || (!yInfinity && !y.InGroup()))
                 {
                     throw new Exception();
                 }
 
                 // x == inf || y == inf -> e(x, y) = 1
-                if (!x.HasValue || !y.HasValue)
+                if (xInfinity || yInfinity)
                 {
                     continue;
                 }
 
-                acc.Mul(new GT(y.Value, x.Value));
+                acc.Mul(new GT(y, x));
             }
 
             bool verified = acc.FinalExp().IsOne();

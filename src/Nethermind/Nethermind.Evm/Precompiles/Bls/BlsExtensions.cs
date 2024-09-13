@@ -23,36 +23,30 @@ public static class BlsParams
 
 public static class BlsExtensions
 {
-    public static G1? DecodeG1(in ReadOnlyMemory<byte> untrimmed)
+    public static G1 DecodeG1(ReadOnlySpan<byte> untrimmed, out bool isInfinity)
     {
         if (untrimmed.Length != BlsParams.LenG1)
         {
             throw new Exception();
         }
 
-        if (!ValidFp(untrimmed.Span[..BlsParams.LenFp]) || !ValidFp(untrimmed.Span[BlsParams.LenFp..]))
+        if (!ValidFp(untrimmed[..BlsParams.LenFp]) || !ValidFp(untrimmed[BlsParams.LenFp..]))
         {
             throw new Exception();
         }
 
-        bool isInfinity = true;
-        for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
-        {
-            if (untrimmed.Span[BlsParams.LenFpPad + i] != 0 || untrimmed.Span[BlsParams.LenFp + BlsParams.LenFpPad + i] != 0)
-            {
-                isInfinity = false;
-                break;
-            }
-        }
+        ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFpTrimmed];
+        ReadOnlySpan<byte> fp1 = untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..];
+        isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
 
         if (isInfinity)
         {
-            return null;
+            return new();
         }
 
-        byte[] trimmed = new byte[BlsParams.LenG1Trimmed];
-        untrimmed[BlsParams.LenFpPad..BlsParams.LenFp].CopyTo(trimmed);
-        untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[BlsParams.LenFpTrimmed..]);
+        Span<byte> trimmed = new byte[BlsParams.LenG1Trimmed];
+        fp0.CopyTo(trimmed);
+        fp1.CopyTo(trimmed[BlsParams.LenFpTrimmed..]);
 
         G1 x = new(trimmed);
         if (!x.OnCurve())
@@ -76,45 +70,38 @@ public static class BlsExtensions
         return untrimmed;
     }
 
-    public static G2? DecodeG2(in ReadOnlyMemory<byte> untrimmed)
+    public static G2 DecodeG2(ReadOnlySpan<byte> untrimmed, out bool isInfinity)
     {
         if (untrimmed.Length != BlsParams.LenG2)
         {
             throw new Exception();
         }
 
-        if (!ValidFp(untrimmed.Span[..BlsParams.LenFp]) ||
-            !ValidFp(untrimmed.Span[BlsParams.LenFp..(2 * BlsParams.LenFp)]) ||
-            !ValidFp(untrimmed.Span[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)]) ||
-            !ValidFp(untrimmed.Span[(3 * BlsParams.LenFp)..]))
+        ReadOnlySpan<byte> fp0 = untrimmed[..BlsParams.LenFp];
+        ReadOnlySpan<byte> fp1 = untrimmed[BlsParams.LenFp..(2 * BlsParams.LenFp)];
+        ReadOnlySpan<byte> fp2 = untrimmed[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)];
+        ReadOnlySpan<byte> fp3 = untrimmed[(3 * BlsParams.LenFp)..];
+
+        if (!ValidFp(fp0) || !ValidFp(fp1) || !ValidFp(fp2) || !ValidFp(fp3))
         {
             throw new Exception();
         }
 
-        bool isInfinity = true;
-        for (int i = 0; i < BlsParams.LenFpTrimmed; i++)
-        {
-            if (untrimmed.Span[BlsParams.LenFpPad + i] != 0 ||
-                untrimmed.Span[BlsParams.LenFp + BlsParams.LenFpPad + i] != 0 ||
-                untrimmed.Span[(2 * BlsParams.LenFp) + BlsParams.LenFpPad + i] != 0 ||
-                untrimmed.Span[(3 * BlsParams.LenFp) + BlsParams.LenFpPad + i] != 0
-                )
-            {
-                isInfinity = false;
-                break;
-            }
-        }
-
+        isInfinity = !fp0.ContainsAnyExcept((byte)0)
+            && !fp1.ContainsAnyExcept((byte)0)
+            && !fp2.ContainsAnyExcept((byte)0)
+            && !fp3.ContainsAnyExcept((byte)0);
+        
         if (isInfinity)
         {
-            return null;
+            return new();
         }
 
-        byte[] trimmed = new byte[BlsParams.LenG2Trimmed];
-        untrimmed[BlsParams.LenFpPad..BlsParams.LenFp].CopyTo(trimmed.AsMemory()[BlsParams.LenFpTrimmed..]);
-        untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory());
-        untrimmed[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 3)..]);
-        untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 2)..]);
+        Span<byte> trimmed = new byte[BlsParams.LenG2Trimmed];
+        fp0.CopyTo(trimmed[BlsParams.LenFpTrimmed..]);
+        fp1.CopyTo(trimmed);
+        fp2.CopyTo(trimmed[(BlsParams.LenFpTrimmed * 3)..]);
+        fp3.CopyTo(trimmed[(BlsParams.LenFpTrimmed * 2)..]);
 
         G2 x = new(trimmed);
         if (!x.OnCurve())
