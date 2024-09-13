@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -28,7 +29,8 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     [JsonConstructor]
     public RpcAccessListTransaction() { }
 
-    public RpcAccessListTransaction(Transaction transaction) : base(transaction)
+    public RpcAccessListTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+        : base(transaction, txIndex, blockHash, blockNumber)
     {
         AccessList = RpcAccessList.FromAccessList(transaction.AccessList);
         ChainId = transaction.ChainId
@@ -42,6 +44,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
 
     private class ConverterImpl : ITransactionConverter<RpcAccessListTransaction>
     {
-        public RpcAccessListTransaction FromTransaction(Transaction transaction) => new(transaction);
+        public RpcAccessListTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
     }
 }

@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -18,7 +19,8 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
     [JsonConstructor]
     public RpcBlobTransaction() { }
 
-    public RpcBlobTransaction(Transaction transaction) : base(transaction)
+    public RpcBlobTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
+        : base(transaction, txIndex, blockHash, blockNumber)
     {
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
@@ -28,6 +30,7 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
 
     private class ConverterImpl : ITransactionConverter<RpcBlobTransaction>
     {
-        public RpcBlobTransaction FromTransaction(Transaction transaction) => new(transaction);
+        public RpcBlobTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
     }
 }

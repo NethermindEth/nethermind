@@ -35,8 +35,12 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
     public UInt256? DepositReceiptVersion { get; set; }
     #endregion
 
-    public RpcOptimismTransaction(Transaction transaction) : base(transaction)
+    public RpcOptimismTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
+        : base(transaction, txIndex, blockHash, blockNumber)
     {
+        // NOTE: According to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79 `nonce == 0`
+        // Nonce = receipt?.DepositNonce;
+
         Type = transaction.Type;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
         From = transaction.SenderAddress ?? Address.SystemUser;
@@ -47,17 +51,14 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         IsSystemTx = transaction.IsOPSystemTransaction ? true : null;
         Input = transaction.Data?.ToArray() ?? [];
 
-        // TODO: Handle extra data
-        // DepositReceiptVersion = receipt?.DepositReceiptVersion;
-
-        // NOTE: According to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79 `nonce == 0`
-        // Nonce = receipt?.DepositNonce;
+        DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
     public static readonly ITransactionConverter<RpcOptimismTransaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcOptimismTransaction>
     {
-        public RpcOptimismTransaction FromTransaction(Transaction transaction) => new(transaction);
+        public RpcOptimismTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
     }
 }

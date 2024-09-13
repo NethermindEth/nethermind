@@ -28,8 +28,11 @@ public abstract class RpcNethermindTransaction : IRpcTransaction
     [JsonConstructor]
     public RpcNethermindTransaction() { }
 
-    public RpcNethermindTransaction(Transaction transaction)
+    public RpcNethermindTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
     {
         Hash = transaction.Hash;
+        TransactionIndex = txIndex;
+        BlockHash = blockHash;
+        BlockNumber = blockNumber;
     }
 }

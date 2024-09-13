@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -35,7 +36,8 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     [JsonConstructor]
     public RpcLegacyTransaction() { }
 
-    public RpcLegacyTransaction(Transaction transaction) : base(transaction)
+    public RpcLegacyTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+        : base(transaction, txIndex, blockHash, blockNumber)
     {
         Type = transaction.Type;
         Nonce = transaction.Nonce;
@@ -55,6 +57,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
 
     private class ConverterImpl : ITransactionConverter<RpcLegacyTransaction>
     {
-        public RpcLegacyTransaction FromTransaction(Transaction tx) => new(tx);
+        public RpcLegacyTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
     }
 }

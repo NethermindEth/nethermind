@@ -66,6 +66,8 @@ public class RpcTransactionTests
             default:
                 throw new ArgumentOutOfRangeException();
         }
+
+        // TODO: Test that implementors satisfy the schema for the base `RpcNethermindTransaction`
     }
 
     // * JSON -> IRpcTransaction (`IRpcTransaction.JsonConverter`, with a registry of [TxType => C# Type])

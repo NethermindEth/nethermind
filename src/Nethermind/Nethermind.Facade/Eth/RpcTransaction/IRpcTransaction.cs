@@ -53,7 +53,7 @@ public interface IRpcTransaction
             return this;
         }
 
-        public IRpcTransaction FromTransaction(Transaction tx)
+        public IRpcTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         {
             var converter = _converters[(byte)tx.Type] ?? throw new ArgumentException("No converter for transaction type");
             return converter.FromTransaction(tx);

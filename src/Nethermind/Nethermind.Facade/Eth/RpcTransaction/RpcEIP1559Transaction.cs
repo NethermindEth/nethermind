@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -22,17 +23,21 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
     [JsonConstructor]
     public RpcEIP1559Transaction() { }
 
-    public RpcEIP1559Transaction(Transaction transaction) : base(transaction)
+    public RpcEIP1559Transaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
+        : base(transaction, txIndex, blockHash, blockNumber)
     {
-        MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
         MaxFeePerGas = transaction.MaxFeePerGas;
-        GasPrice = transaction.GasPrice;
+        MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
+        GasPrice = baseFee is not null
+                ? transaction.CalculateEffectiveGasPrice(eip1559Enabled: true, baseFee.Value)
+                : transaction.MaxFeePerGas;
     }
 
     public new static readonly ITransactionConverter<RpcEIP1559Transaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcEIP1559Transaction>
     {
-        public RpcEIP1559Transaction FromTransaction(Transaction transaction) => new(transaction);
+        public RpcEIP1559Transaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
     }
 }
