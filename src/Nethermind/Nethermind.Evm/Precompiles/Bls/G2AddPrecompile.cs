@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -15,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 {
-    public static G2AddPrecompile Instance = new G2AddPrecompile();
+    public static readonly G2AddPrecompile Instance = new();
 
     private G2AddPrecompile()
     {

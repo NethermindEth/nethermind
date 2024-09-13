@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -18,7 +17,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
 {
-    public static G1MultiExpPrecompile Instance = new G1MultiExpPrecompile();
+    public static readonly G1MultiExpPrecompile Instance = new();
 
     private G1MultiExpPrecompile()
     {

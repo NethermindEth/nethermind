@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
@@ -15,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 {
-    public static G1MulPrecompile Instance = new G1MulPrecompile();
+    public static readonly G1MulPrecompile Instance = new();
 
     private G1MulPrecompile()
     {

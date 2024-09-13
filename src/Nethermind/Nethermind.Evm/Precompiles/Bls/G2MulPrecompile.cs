@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -16,7 +15,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 {
-    public static G2MulPrecompile Instance = new G2MulPrecompile();
+    public static readonly G2MulPrecompile Instance = new();
 
     private G2MulPrecompile()
     {

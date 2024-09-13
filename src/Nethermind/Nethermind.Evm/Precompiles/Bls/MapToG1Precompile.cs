@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
@@ -14,7 +13,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 {
-    public static MapToG1Precompile Instance = new MapToG1Precompile();
+    public static readonly MapToG1Precompile Instance = new MapToG1Precompile();
 
     private MapToG1Precompile()
     {

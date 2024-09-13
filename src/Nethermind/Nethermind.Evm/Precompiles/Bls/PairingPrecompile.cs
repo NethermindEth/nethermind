@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -18,12 +17,11 @@ namespace Nethermind.Evm.Precompiles.Bls;
 public class PairingPrecompile : IPrecompile<PairingPrecompile>
 {
     private const int PairSize = 384;
+    public static readonly PairingPrecompile Instance = new();
 
     private PairingPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0x11);
-
-    public static PairingPrecompile Instance = new PairingPrecompile();
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
 

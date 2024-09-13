@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 {
-    public static G1AddPrecompile Instance = new G1AddPrecompile();
+    public static readonly G1AddPrecompile Instance = new();
 
     private G1AddPrecompile()
     {
