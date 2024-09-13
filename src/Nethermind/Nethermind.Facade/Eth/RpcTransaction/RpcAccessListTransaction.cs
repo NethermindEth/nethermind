@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -23,6 +24,9 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     /// This field is <b>DEPRECATED</b> and all use of it should migrate to <c>yParity</c>.
     /// </summary>
     public new UInt256? V { get; set; }
+
+    [JsonConstructor]
+    public RpcAccessListTransaction() { }
 
     public RpcAccessListTransaction(Transaction transaction) : base(transaction)
     {

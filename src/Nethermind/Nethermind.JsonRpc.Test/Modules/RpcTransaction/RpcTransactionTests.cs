@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -12,7 +13,13 @@ namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
 public class RpcTransactionTests
 {
-    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
+    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([
+        new IRpcTransaction.JsonConverter()
+            .RegisterTransactionType(TxType.Legacy, typeof(RpcLegacyTransaction))
+            .RegisterTransactionType(TxType.AccessList, typeof(RpcAccessListTransaction))
+            .RegisterTransactionType(TxType.EIP1559, typeof(RpcEIP1559Transaction))
+            .RegisterTransactionType(TxType.Blob, typeof(RpcBlobTransaction))
+    ]);
 
     private readonly IRpcTransactionConverter _converter = new ComposeTransactionConverter()
         .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
@@ -59,5 +66,14 @@ public class RpcTransactionTests
             default:
                 throw new ArgumentOutOfRangeException();
         }
+    }
+
+    [TestCaseSource(nameof(Transactions))]
+    public void RPC_JSON_Roundtrip_same_type(Transaction tx) {
+        IRpcTransaction rpcTx = _converter.FromTransaction(tx, new TxReceipt());
+        string serialized = _serializer.Serialize(rpcTx);
+        IRpcTransaction deserialized = _serializer.Deserialize<IRpcTransaction>(serialized);
+
+        rpcTx.GetType().Should().Be(deserialized.GetType());
     }
 }

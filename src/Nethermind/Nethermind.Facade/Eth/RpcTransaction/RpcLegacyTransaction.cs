@@ -32,6 +32,9 @@ public class RpcLegacyTransaction : IRpcTransaction
     public UInt256 R { get; set; }
     public UInt256 S { get; set; }
 
+    [JsonConstructor]
+    public RpcLegacyTransaction() { }
+
     public RpcLegacyTransaction(Transaction transaction)
     {
         Type = transaction.Type;

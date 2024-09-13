@@ -18,6 +18,9 @@ public record RpcAccessList
 {
     private readonly List<Item> _items;
 
+    [JsonConstructor]
+    public RpcAccessList() { }
+
     private RpcAccessList(List<Item> items)
     {
         _items = items;
@@ -29,6 +32,9 @@ public record RpcAccessList
 
         [JsonConverter(typeof(StorageCellIndexConverter))]
         public IEnumerable<UInt256> StorageKeys { get; set; }
+
+        [JsonConstructor]
+        public Item() { }
 
         public Item(Address address, List<UInt256> storageKeys)
         {

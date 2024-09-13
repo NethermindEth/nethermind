@@ -15,7 +15,10 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class RpcOptimismTransactionTests
 {
-    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([IRpcTransaction.JsonConverter]);
+    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([
+        new IRpcTransaction.JsonConverter()
+            .RegisterTransactionType(TxType.DepositTx, typeof(RpcOptimismTransaction))
+    ]);
 
     private readonly IRpcTransactionConverter _converter = new ComposeTransactionConverter()
         .RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter);

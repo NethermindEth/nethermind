@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -17,6 +18,9 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
     /// This field is <b>DEPRECATED</b>, please transition to using <c>effectiveGasPrice</c> in the receipt object going forward.
     /// </summary>
     public new UInt256 GasPrice { get; set; }
+
+    [JsonConstructor]
+    public RpcEIP1559Transaction() { }
 
     public RpcEIP1559Transaction(Transaction transaction) : base(transaction)
     {
