@@ -132,7 +132,7 @@ public static class BlsExtensions
         }
 
         byte[] untrimmed = new byte[BlsParams.LenG2];
-        Span<byte> trimmed = p.serialize();
+        Span<byte> trimmed = p.Serialize();
         trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
         trimmed[BlsParams.LenFpTrimmed..(2 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
         trimmed[(2 * BlsParams.LenFpTrimmed)..(3 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
