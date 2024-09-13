@@ -8,11 +8,11 @@ namespace Nethermind.Shutter;
 
 public interface IShutterEon
 {
-    public Info? GetCurrentEonInfo();
+    Info? GetCurrentEonInfo();
 
-    public void Update(BlockHeader header);
+    void Update(BlockHeader header);
 
-    public readonly struct Info
+    readonly struct Info
     {
         public ulong Eon { get; init; }
         public byte[] Key { get; init; }

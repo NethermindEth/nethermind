@@ -95,7 +95,7 @@ public class ShutterApi : IShutterApi
         InitP2P(_cfg, logManager);
     }
 
-    public void StartP2P(CancellationTokenSource? cancellationTokenSource = null)
+    public Task StartP2P(CancellationTokenSource? cancellationTokenSource = null)
         => P2P!.Start(cancellationTokenSource);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)

@@ -111,7 +111,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
             );
 
-            _shutterApi.StartP2P(_cts);
+            _ = _shutterApi.StartP2P(_cts);
         }
 
         return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));

@@ -10,7 +10,7 @@ public interface IShutterKeyValidator
 {
     ValidatedKeys? ValidateKeys(Dto.DecryptionKeys decryptionKeys);
 
-    public struct ValidatedKeys
+    struct ValidatedKeys
     {
         public ulong Slot;
         public ulong Eon;

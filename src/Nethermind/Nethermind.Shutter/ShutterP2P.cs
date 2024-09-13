@@ -21,12 +21,14 @@ using Google.Protobuf;
 
 namespace Nethermind.Shutter;
 
-public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : IShutterP2P
+public class ShutterP2P : IShutterP2P
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger;
+    private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
-    private PubsubRouter? _router;
-    private ServiceProvider? _serviceProvider;
+    private readonly PubsubRouter _router;
+    private readonly ILocalPeer _peer; 
+    private readonly ServiceProvider _serviceProvider;
     private CancellationTokenSource? _cts;
     private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
 
@@ -34,9 +36,10 @@ public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : 
 
     public event EventHandler<IShutterP2P.KeysReceivedArgs>? KeysReceived;
 
-
-    public void Start(CancellationTokenSource? cts = null)
+    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager)
     {
+        _logger = logManager.GetClassLogger();
+        _cfg = shutterConfig;
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
@@ -64,11 +67,9 @@ public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : 
             // )
             .BuildServiceProvider();
 
-        IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + shutterConfig.P2PPort);
-        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {peer.Address}");
-        _router = _serviceProvider.GetService<PubsubRouter>()!;
-
+        IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
+        _peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
+        _router = _serviceProvider!.GetService<PubsubRouter>()!;
         ITopic topic = _router.Subscribe("decryptionKeys");
 
         topic.OnMessage += (byte[] msg) =>
@@ -76,14 +77,19 @@ public class ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager) : 
             _msgQueue.Writer.TryWrite(msg);
             if (_logger.IsTrace) _logger.Trace("Received Shutter P2P message.");
         };
+    }
 
+    public Task Start(CancellationTokenSource? cts = null)
+    {
         MyProto proto = new();
         _cts = cts ?? new();
-        _ = _router.RunAsync(peer, proto, token: _cts.Token);
+        _ = _router!.RunAsync(_peer, proto, token: _cts.Token);
         proto.SetupFinished().GetAwaiter().GetResult();
-        ConnectToPeers(proto, shutterConfig.KeyperP2PAddresses!);
+        ConnectToPeers(proto, _cfg.KeyperP2PAddresses!);
 
-        Task.Run(async () =>
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
+
+        return Task.Run(async () =>
         {
             long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
             while (true)

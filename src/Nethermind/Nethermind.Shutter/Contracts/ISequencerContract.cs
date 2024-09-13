@@ -10,9 +10,9 @@ namespace Nethermind.Shutter.Contracts;
 
 public interface ISequencerContract
 {
-    public AbiEncodingInfo TransactionSubmittedAbi { get; }
+    AbiEncodingInfo TransactionSubmittedAbi { get; }
 
-    public struct TransactionSubmitted
+    struct TransactionSubmitted
     {
         public ulong Eon;
         public ulong TxIndex;
