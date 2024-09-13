@@ -16,28 +16,31 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockValidationTransactionsExecutor : BlockValidationTransactionsExecutor
+public class SimulateBlockValidationTransactionsExecutor(
+    ITransactionProcessor transactionProcessor,
+    IWorldState stateProvider,
+    bool validate,
+    UInt256? blobBaseFeeOverride)
+    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
-    public SimulateBlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
-    {
-    }
-
-    public SimulateBlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
-    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index,
-        BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-    {
-    }
+    protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
+        blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
 
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index,
         BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
-        processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+        if (!validate)
+        {
+            processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
+        }
+
         base.ProcessTransaction(in blkCtx, currentTx, index, receiptsTracer, processingOptions);
     }
 }

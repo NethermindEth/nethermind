@@ -93,7 +93,8 @@ namespace Nethermind.Consensus.Processing
             if (recoverFromEcdsa == 0)
                 return;
 
-            bool useSignatureChainId = !_specProvider.GetSpec(block.Header).ValidateChainId;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (recoverFromEcdsa > 3)
             {
                 // Recover ecdsa in Parallel

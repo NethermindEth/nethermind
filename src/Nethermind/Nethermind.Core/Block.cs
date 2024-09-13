@@ -172,6 +172,7 @@ public class Block
     {
         Full,
         FullHashAndNumber,
+        FullHashNumberAndExtraData,
         HashNumberAndTx,
         HashNumberDiffAndTx,
         Short

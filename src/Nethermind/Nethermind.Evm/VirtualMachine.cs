@@ -336,7 +336,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
                             ReadOnlyMemory<byte> code = callResult.Output;
-                            codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec, state.Env.IsSystemEnv);
+                            codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
 
