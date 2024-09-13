@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
-using System.Linq;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Requests;
 
@@ -36,9 +35,9 @@ public class DepositsProcessor : IDepositsProcessor
                             {
                                 Pubkey = (byte[])result[0],
                                 WithdrawalCredentials = (byte[])result[1],
-                                Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
+                                Amount = BitConverter.ToUInt64((byte[])result[2], 0),
                                 Signature = (byte[])result[3],
-                                Index = ((byte[])result[4]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
+                                Index = BitConverter.ToUInt64((byte[])result[4], 0)
                             };
 
                             yield return newDeposit;

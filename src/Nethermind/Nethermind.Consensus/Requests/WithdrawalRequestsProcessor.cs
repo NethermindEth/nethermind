@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -29,7 +30,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;
-        if (!state.AccountExists(eip7002Account)) // not needed anymore?
+        if (!state.AccountExists(eip7002Account))
             yield break;
 
         CallOutputTracer tracer = new();
@@ -58,7 +59,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
             request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
             request.ValidatorPubkey = span.Slice(20, 48).ToArray();
-            request.Amount = BitConverter.ToUInt64(span.Slice(68, 8).ToArray().Reverse().ToArray()); // ToDo Optimize
+            request.Amount = BinaryPrimitives.ReadUInt64BigEndian(span.Slice(68, 8));
 
             yield return request;
         }

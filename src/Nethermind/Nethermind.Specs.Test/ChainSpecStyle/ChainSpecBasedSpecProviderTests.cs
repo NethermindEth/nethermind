@@ -737,7 +737,6 @@ public class ChainSpecBasedSpecProviderTests
             r.MaximumUncleCount = 2;
             r.WithdrawalTimestamp = ulong.MaxValue;
             r.Eip4844TransitionTimestamp = ulong.MaxValue;
-            r.AuRaSystemCalls = false;
         });
 
         TestTransitions((ForkActivation)1L, r =>

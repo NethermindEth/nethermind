@@ -26,7 +26,6 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
 
         using ArrayPoolList<ConsensusRequest> requestsList = new(receipts.Length * 2);
 
-        // Process deposits
         requestsList.AddRange(_depositsProcessor.ProcessDeposits(block, receipts, spec));
         requestsList.AddRange(_withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state, block));
 
