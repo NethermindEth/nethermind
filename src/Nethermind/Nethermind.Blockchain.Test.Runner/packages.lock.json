@@ -1,0 +1,974 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "Castle.Core": {
+        "type": "Transitive",
+        "resolved": "5.1.1",
+        "contentHash": "rpYtIczkzGpf+EkZgDr9CClTdemhsrwA/W5hMoPjLkRFnXzH44zDLoovXeKtmxb1ykXK9aJVODSpiJml8CTw2g==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "6.0.0"
+        }
+      },
+      "FSharp.Core": {
+        "type": "Transitive",
+        "resolved": "6.0.2",
+        "contentHash": "8GZqv6buY71KQlWT+cl2eMi+aNX9xQ61RgI3Pzv9zPxPOX6tWCLRrBj0MYQ3h871r2RhiHUl7f0AXUD/POr8eA=="
+      },
+      "Grpc.Core": {
+        "type": "Transitive",
+        "resolved": "2.46.6",
+        "contentHash": "ZoRg3KmOJ2urTF4+u3H0b1Yv10xzz2Y/flFWS2tnRmj8dbKLeiJaSRqu4LOBD3ova90evqLkVZ85kUkC4JT4lw==",
+        "dependencies": {
+          "Grpc.Core.Api": "2.46.6",
+          "System.Memory": "4.5.3"
+        }
+      },
+      "Grpc.Core.Api": {
+        "type": "Transitive",
+        "resolved": "2.46.6",
+        "contentHash": "Z7HJGqJYyKb53qfp1jf0wRDYs3sxOnkAFxXAW6q52LLmX/zxzjtFLI9eaWO5UC0weiWjn4iT1FzR+tj9qYZAMg==",
+        "dependencies": {
+          "System.Memory": "4.5.3"
+        }
+      },
+      "MathNet.Numerics": {
+        "type": "Transitive",
+        "resolved": "5.0.0",
+        "contentHash": "pg1W2VwaEQMAiTpGK840hZgzavnqjlCMTVSbtVCXVyT+7AX4mc1o89SPv4TBlAjhgCOo9c1Y+jZ5m3ti2YgGgA=="
+      },
+      "Microsoft.AspNetCore.Cryptography.Internal": {
+        "type": "Transitive",
+        "resolved": "8.0.7",
+        "contentHash": "XM72mRfCtpLzpphLFdHARrWRTLgdG4D8CTBM7XoReAKp0kjb8K9voRHK6qhb+9HFNP8fpu2+lIBfqekgDc8d3A=="
+      },
+      "Microsoft.AspNetCore.DataProtection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.7",
+        "contentHash": "jjN/JjxsVASAevkTOEXNA4/7pieAJFsUF+/SMpIi+JG25eTOXxpUhs/rXrBas+/nuaZuHIth0TZiqon/dKqmNA=="
+      },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Transitive",
+        "resolved": "6.0.0",
+        "contentHash": "UcSjPsst+DfAdJGVDsu346FX0ci0ah+lw3WRtn18NUwEqRt70HaOQ7lI72vy3+1LxtqI3T5GWwV39rQSrCzAeg=="
+      },
+      "Microsoft.ClearScript.Core": {
+        "type": "Transitive",
+        "resolved": "7.4.5",
+        "contentHash": "CIZCty2L4mXy1xg77IbNPqsz2pS0ZsFVJZ5YolPB4j62xzvDuCFU/MKnTnKve67FGIWaB9w4LVV7YUEFmjEwzw=="
+      },
+      "Microsoft.ClearScript.V8.ICUData": {
+        "type": "Transitive",
+        "resolved": "7.4.5",
+        "contentHash": "Ji6av4T2xtqZYp5Gm0MPxvez5V6s4NF/wflD8a49A/KOI3kJyPHcmL3xCRuhuHo24NbfQX6+f0YbTdwhd5VSvw=="
+      },
+      "Microsoft.CodeCoverage": {
+        "type": "Transitive",
+        "resolved": "17.10.0",
+        "contentHash": "yC7oSlnR54XO5kOuHlVOKtxomNNN1BWXX8lK1G2jaPXT9sUok7kCOoA4Pgs0qyFaCtMrNsprztYMeoEGqCm4uA=="
+      },
+      "Microsoft.Extensions.Configuration.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "3lE/iLSutpgX1CC0NOW70FJoGARRHbyKmG7dc0klnUZ9Dd9hS6N/POPWhKhMLCEuNN5nXEY5agmlFtH562vqhQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "8.0.0"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "V8S3bsm50ig6JSyrbcJJ8bW2b9QLGouz+G1miK3UTaOWmMtFwNNNzUf4AleyDWUmTrWMLNnFSLEQtxmxgNQnNQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "fGLiCRLMYd00JYpClraLjJTNKLmMJPnqxMaiRzEBIIvevlzxz33mXy39Lkd48hu1G+N21S7QpaO5ZzKsI6FRuA=="
+      },
+      "Microsoft.Extensions.Diagnostics.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "JHYCQG7HmugNYUhOl368g+NMxYE/N/AiclCYRNlgCY9eVyiBkOHMwK4x60RYMxv9EL3+rmj1mqHvdCiPpC+D4Q==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
+          "Microsoft.Extensions.Options": "8.0.0",
+          "System.Diagnostics.DiagnosticSource": "8.0.0"
+        }
+      },
+      "Microsoft.Extensions.FileProviders.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "ZbaMlhJlpisjuWbvXr4LdAst/1XxH3vZ6A0BsgTphZ2L4PGuxRLz7Jr/S7mkAAnOn78Vu0fKhEgNF5JO3zfjqQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "8.0.0"
+        }
+      },
+      "Microsoft.Extensions.Hosting.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "AG7HWwVRdCHlaA++1oKDxLsXIBxmDpMPb3VoyOoAghEWnkUvEAdYQUwnV4jJbAaa/nMYNiEh5ByoLauZBEiovg==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "8.0.0",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
+          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.0",
+          "Microsoft.Extensions.FileProviders.Abstractions": "8.0.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.0"
+        }
+      },
+      "Microsoft.Extensions.Http": {
+        "type": "Transitive",
+        "resolved": "3.1.0",
+        "contentHash": "DLigdcV0nYaT6/ly0rnfP80BnXq8NNd/h8/SkfY39uio7Bd9LauVntp6RcRh1Kj23N+uf80GgL7Win6P3BCtoQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "3.1.0",
+          "Microsoft.Extensions.Logging": "3.1.0",
+          "Microsoft.Extensions.Options": "3.1.0"
+        }
+      },
+      "Microsoft.Extensions.Options": {
+        "type": "Transitive",
+        "resolved": "8.0.2",
+        "contentHash": "dWGKvhFybsaZpGmzkGCbNNwBD1rVlWzrZKANLW/CcbFJpCEceMCGzT7zZwHOGBCbwM0SzBuceMj5HN1LKV1QqA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
+          "Microsoft.Extensions.Primitives": "8.0.0"
+        }
+      },
+      "Microsoft.Extensions.Primitives": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "bXJEZrW9ny8vjMF1JV253WeLhpEVzFo1lyaZu1vQ4ZxWUlVvknZ/+ftFgVheLubb4eZPSwwxBeqS1JkCOjxd8g=="
+      },
+      "Microsoft.IdentityModel.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "OtlIWcyX01olfdevPKZdIPfBEvbcioDyBiE/Z2lHsopsMD7twcKtlN9kMevHmI5IIPhFpfwCIiR6qHQz1WHUIw=="
+      },
+      "Microsoft.IdentityModel.Logging": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "UCPF2exZqBXe7v/6sGNiM6zCQOUXXQ9+v5VTb9gPB8ZSUPnX53BxlN78v2jsbIvK9Dq4GovQxo23x8JgWvm/Qg==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Abstractions": "8.0.1"
+        }
+      },
+      "Microsoft.IdentityModel.Tokens": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "kDimB6Dkd3nkW2oZPDkMkVHfQt3IDqO5gL0oa8WVy3OP4uE8Ij+8TXnqg9TOd9ufjsY3IDiGz7pCUbnfL18tjg==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Logging": "8.0.1"
+        }
+      },
+      "Microsoft.NETCore.Platforms": {
+        "type": "Transitive",
+        "resolved": "1.1.0",
+        "contentHash": "kz0PEW2lhqygehI/d6XsPCQzD7ff7gUJaVGPVETX611eadGsA3A877GdSlU0LRVMCTH/+P3o2iDTak+S08V2+A=="
+      },
+      "Microsoft.TestPlatform.ObjectModel": {
+        "type": "Transitive",
+        "resolved": "17.10.0",
+        "contentHash": "KkwhjQevuDj0aBRoPLY6OLAhGqbPUEBuKLbaCs0kUVw29qiOYncdORd4mLVJbn9vGZ7/iFGQ/+AoJl0Tu5Umdg==",
+        "dependencies": {
+          "System.Reflection.Metadata": "1.6.0"
+        }
+      },
+      "Microsoft.TestPlatform.TestHost": {
+        "type": "Transitive",
+        "resolved": "17.10.0",
+        "contentHash": "LWpMdfqhHvcUkeMCvNYJO8QlPLlYz9XPPb+ZbaXIKhdmjAV0wqTSrTiW5FLaf7RRZT50AQADDOYMOe0HxDxNgA==",
+        "dependencies": {
+          "Microsoft.TestPlatform.ObjectModel": "17.10.0",
+          "Newtonsoft.Json": "13.0.1"
+        }
+      },
+      "Nethermind.DotNetty.Codecs": {
+        "type": "Transitive",
+        "resolved": "1.0.1",
+        "contentHash": "cs9Yi4Xy8TnxY04C1jdCQHd/Jh9yg/mZReVOLAORcJA1HbKRSUW9N3pIwsGrz1OeBQDvYs9dTryslSZpl8483Q==",
+        "dependencies": {
+          "Nethermind.DotNetty.Buffers": "1.0.1",
+          "Nethermind.DotNetty.Common": "1.0.1",
+          "Nethermind.DotNetty.Transport": "1.0.1",
+          "System.Collections.Immutable": "1.5.0"
+        }
+      },
+      "Nethermind.DotNetty.Common": {
+        "type": "Transitive",
+        "resolved": "1.0.1",
+        "contentHash": "6K/oHFa7VTAo3oX0imtmKKZTZqmNGVicho8r0vIf5bgEY52Piagyip44cAUxF+ERS5LwWz8oUvL4PCGALUtNQA==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging": "5.0.0",
+          "System.Runtime.CompilerServices.Unsafe": "5.0.0"
+        }
+      },
+      "NETStandard.Library": {
+        "type": "Transitive",
+        "resolved": "2.0.0",
+        "contentHash": "7jnbRU+L08FXKMxqUflxEXtVymWvNOrS8yHgu9s6EM8Anr6T/wIX4nZ08j/u3Asz+tCufp3YVwFSEvFTPYmBPA==",
+        "dependencies": {
+          "Microsoft.NETCore.Platforms": "1.1.0"
+        }
+      },
+      "Newtonsoft.Json": {
+        "type": "Transitive",
+        "resolved": "13.0.1",
+        "contentHash": "ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A=="
+      },
+      "Polly.Core": {
+        "type": "Transitive",
+        "resolved": "8.4.1",
+        "contentHash": "bg4kE7mFwXc6FJ8NLknTgVgLAMlbToWC7vpdqAITv8lPzKpp9v7aWJPc04GRoZQaJhVY/tdr8K2/VW2aTmaA1Q=="
+      },
+      "prometheus-net": {
+        "type": "Transitive",
+        "resolved": "8.2.1",
+        "contentHash": "3wVgdEPOCBF752s2xps5T+VH+c9mJK8S8GKEDg49084P6JZMumTZI5Te6aJ9MQpX0sx7om6JOnBpIi7ZBmmiDQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Http": "3.1.0",
+          "Microsoft.Extensions.ObjectPool": "7.0.0"
+        }
+      },
+      "System.Collections.Immutable": {
+        "type": "Transitive",
+        "resolved": "1.5.0",
+        "contentHash": "EXKiDFsChZW0RjrZ4FYHu9aW6+P4MCgEDCklsVseRfhoO0F+dXeMSsMRAlVXIo06kGJ/zv+2w1a2uc2+kxxSaQ=="
+      },
+      "System.Diagnostics.DiagnosticSource": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "c9xLpVz6PL9lp/djOWtk5KPDZq3cSYpmXoJQY524EOtuFl5z9ZtsotpsyrDW40U1DRnQSYvcPKEUV0X//u6gkQ=="
+      },
+      "System.Diagnostics.EventLog": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "fdYxcRjQqTTacKId/2IECojlDSFvp7LP5N78+0z/xH7v/Tuw5ZAxu23Y6PTCRinqyu2ePx+Gn1098NC6jM6d+A=="
+      },
+      "System.Formats.Asn1": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "AJukBuLoe3QeAF+mfaRKQb2dgyrvt340iMBHYv+VdBzCUM06IxGlvl0o/uPOS7lHnXPN6u8fFRHSHudx5aTi8w=="
+      },
+      "System.Memory": {
+        "type": "Transitive",
+        "resolved": "4.5.3",
+        "contentHash": "3oDzvc/zzetpTKWMShs1AADwZjQ/36HnsufHRPcOjyRAAMLDlu2iD33MBI2opxnezcVUtXyqDXXjoFMOU9c7SA=="
+      },
+      "System.Reflection.Metadata": {
+        "type": "Transitive",
+        "resolved": "1.6.0",
+        "contentHash": "COC1aiAJjCoA5GBF+QKL2uLqEBew4JsCkQmoHKbN3TlOZKa2fKLz5CpiRQKDz0RsAOEGsVKqOD5bomsXq/4STQ=="
+      },
+      "System.Runtime.CompilerServices.Unsafe": {
+        "type": "Transitive",
+        "resolved": "5.0.0",
+        "contentHash": "ZD9TMpsmYJLrxbbmdvhwt9YEgG5WntEnZ/d1eH8JBX9LBp+Ju8BSBhUGbZMNVHHomWo2KVImJhTDl2hIgw/6MA=="
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "ULmp3xoOwNYjOYp4JZ2NK/6NdTgiN1GQXzVVN1njQ7LOZ0d0B9vyMnhyqbIi9Qw4JXj1JgCsitkTShboHRx7Eg==",
+        "dependencies": {
+          "System.Formats.Asn1": "8.0.0"
+        }
+      },
+      "System.Security.Cryptography.Xml": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "hqu2ztecOf3BYg5q1R7QcyliX9L7r3mfsWtaRitAxcezH8hyZMB7zCmhi186hsUZXk1KxsAHXwyPEW+xvUED6g==",
+        "dependencies": {
+          "System.Security.Cryptography.Pkcs": "8.0.0"
+        }
+      },
+      "TestableIO.System.IO.Abstractions": {
+        "type": "Transitive",
+        "resolved": "21.0.29",
+        "contentHash": "3TtSs2i0m0QqpAI4EzR1vZXQuHNw5grBy0rDKqMkWi6ySEZ+yhN9HACgIyEq7gDXPLrtQI18ud/OtI0qVhP8Mg=="
+      },
+      "ethereum.test.base": {
+        "type": "Project",
+        "dependencies": {
+          "NUnit": "[3.14.0, )",
+          "NUnit3TestAdapter": "[4.5.0, )",
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Consensus": "[1.29.0-unstable, )",
+          "Nethermind.Consensus.Ethash": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Core.Test": "[1.29.0-unstable, )",
+          "Nethermind.Evm": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.abi": {
+        "type": "Project",
+        "dependencies": {
+          "MathNet.Numerics.FSharp": "[5.0.0, )",
+          "Nethermind.Core": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.api": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Facade": "[1.29.0-unstable, )",
+          "Nethermind.Grpc": "[1.29.0-unstable, )",
+          "Nethermind.JsonRpc": "[1.29.0-unstable, )",
+          "Nethermind.Monitoring": "[1.29.0-unstable, )",
+          "Nethermind.Network": "[1.29.0-unstable, )",
+          "Nethermind.Sockets": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.blockchain": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Abi": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Db": "[1.29.0-unstable, )",
+          "Nethermind.Evm": "[1.29.0-unstable, )",
+          "Nethermind.Network.Stats": "[1.29.0-unstable, )",
+          "Nethermind.Specs": "[1.29.0-unstable, )",
+          "Nethermind.State": "[1.29.0-unstable, )",
+          "Nethermind.TxPool": "[1.29.0-unstable, )",
+          "Polly": "[8.4.1, )"
+        }
+      },
+      "nethermind.config": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "NonBlocking": "[2.1.2, )",
+          "System.Configuration.ConfigurationManager": "[8.0.0, )"
+        }
+      },
+      "nethermind.consensus": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Evm": "[1.29.0-unstable, )",
+          "Nethermind.TxPool": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.consensus.ethash": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.29.0-unstable, )",
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Consensus": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "Nethermind.Specs": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.core": {
+        "type": "Project",
+        "dependencies": {
+          "FastEnum": "[1.8.0, )",
+          "Microsoft.Extensions.ObjectPool": "[8.0.7, )",
+          "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
+          "Microsoft.IdentityModel.JsonWebTokens": "[8.0.1, )",
+          "Nethermind.Crypto.SecP256k1": "[1.2.2, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )",
+          "Nethermind.Numerics.Int256": "[1.2.0, )",
+          "TestableIO.System.IO.Abstractions.Wrappers": "[21.0.29, )"
+        }
+      },
+      "nethermind.core.test": {
+        "type": "Project",
+        "dependencies": {
+          "FluentAssertions": "[6.12.0, )",
+          "Microsoft.NET.Test.Sdk": "[17.10.0, )",
+          "NSubstitute": "[5.1.0, )",
+          "NUnit": "[3.14.0, )",
+          "NUnit3TestAdapter": "[4.5.0, )",
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Facade": "[1.29.0-unstable, )",
+          "Nethermind.Specs.Test": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.crypto": {
+        "type": "Project",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "[2.4.0, )",
+          "Ckzg.Bindings": "[1.0.2.855, )",
+          "Microsoft.AspNetCore.DataProtection": "[8.0.7, )",
+          "Microsoft.AspNetCore.DataProtection.Extensions": "[8.0.7, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "System.Security.Cryptography.ProtectedData": "[8.0.0, )"
+        }
+      },
+      "nethermind.db": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.evm": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.ClearScript.V8.Native.linux-arm64": "[7.4.5, )",
+          "Microsoft.ClearScript.V8.Native.linux-x64": "[7.4.5, )",
+          "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.4.5, )",
+          "Microsoft.ClearScript.V8.Native.osx-x64": "[7.4.5, )",
+          "Microsoft.ClearScript.V8.Native.win-x64": "[7.4.5, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Crypto.Pairings": "[1.1.1, )",
+          "Nethermind.Gmp": "[1.0.1, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "Nethermind.Specs": "[1.29.0-unstable, )",
+          "Nethermind.State": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.facade": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Consensus": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Synchronization": "[1.29.0-unstable, )",
+          "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.grpc": {
+        "type": "Project",
+        "dependencies": {
+          "Google.Protobuf": "[3.27.2, )",
+          "Google.Protobuf.Tools": "[3.27.2, )",
+          "Grpc": "[2.46.6, )",
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Json": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.jsonrpc": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Abi": "[1.29.0-unstable, )",
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Consensus": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Evm": "[1.29.0-unstable, )",
+          "Nethermind.Facade": "[1.29.0-unstable, )",
+          "Nethermind.Network": "[1.29.0-unstable, )",
+          "Nethermind.Sockets": "[1.29.0-unstable, )",
+          "Nethermind.Synchronization": "[1.29.0-unstable, )",
+          "Nethermind.Wallet": "[1.29.0-unstable, )",
+          "System.Linq.Async": "[6.0.1, )"
+        }
+      },
+      "nethermind.keystore": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Json": "[1.29.0-unstable, )",
+          "SCrypt": "[2.0.0.2, )"
+        }
+      },
+      "nethermind.logging": {
+        "type": "Project"
+      },
+      "nethermind.logging.nlog": {
+        "type": "Project",
+        "dependencies": {
+          "NLog": "[5.3.2, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.monitoring": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )",
+          "prometheus-net.AspNetCore": "[8.2.1, )"
+        }
+      },
+      "nethermind.network": {
+        "type": "Project",
+        "dependencies": {
+          "Crc32.NET": "[1.2.0, )",
+          "Nethermind.Blockchain": "[1.29.0-unstable, )",
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.DotNetty.Handlers": "[1.0.1, )",
+          "Nethermind.Network.Contract": "[1.29.0-unstable, )",
+          "Nethermind.Network.Stats": "[1.29.0-unstable, )",
+          "Nethermind.Synchronization": "[1.29.0-unstable, )",
+          "Snappier": "[1.1.6, )"
+        }
+      },
+      "nethermind.network.contract": {
+        "type": "Project"
+      },
+      "nethermind.network.stats": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.serialization.json": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.ClearScript.V8": "[7.4.5, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "System.IO.Pipelines": "[8.0.0, )"
+        }
+      },
+      "nethermind.serialization.rlp": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.DotNetty.Buffers": "[1.0.1, )"
+        }
+      },
+      "nethermind.sockets": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Json": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.specs": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Json": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.specs.test": {
+        "type": "Project",
+        "dependencies": {
+          "FluentAssertions": "[6.12.0, )",
+          "Microsoft.NET.Test.Sdk": "[17.10.0, )",
+          "NSubstitute": "[5.1.0, )",
+          "NUnit": "[3.14.0, )",
+          "NUnit3TestAdapter": "[4.5.0, )",
+          "Nethermind.Specs": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.state": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Db": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "Nethermind.Trie": "[1.29.0-unstable, )"
+        }
+      },
+      "nethermind.synchronization": {
+        "type": "Project",
+        "dependencies": {
+          "ConcurrentHashSet": "[1.3.0, )",
+          "Nethermind.Consensus": "[1.29.0-unstable, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )",
+          "Nethermind.Network.Contract": "[1.29.0-unstable, )",
+          "Nethermind.Trie": "[1.29.0-unstable, )",
+          "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.trie": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Db": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.txpool": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[1.29.0-unstable, )",
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.Crypto": "[1.29.0-unstable, )",
+          "Nethermind.Db": "[1.29.0-unstable, )",
+          "NonBlocking": "[2.1.2, )"
+        }
+      },
+      "nethermind.wallet": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )",
+          "Nethermind.KeyStore": "[1.29.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.29.0-unstable, )",
+          "Nethermind.TxPool": "[1.29.0-unstable, )"
+        }
+      },
+      "BouncyCastle.Cryptography": {
+        "type": "CentralTransitive",
+        "requested": "[2.4.0, )",
+        "resolved": "2.4.0",
+        "contentHash": "SwXsAV3sMvAU/Nn31pbjhWurYSjJ+/giI/0n6tCrYoupEK34iIHCuk3STAd9fx8yudM85KkLSVdn951vTng/vQ=="
+      },
+      "Ckzg.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.2.855, )",
+        "resolved": "1.0.2.855",
+        "contentHash": "W0H6KibpOxUN+mFIROsJgjh5rcPKaAqILvn3HAxn0ehJTTfcNTXrB07WR3R2iJayswRlMCfBdLDK4aJDc7+4Ug=="
+      },
+      "ConcurrentHashSet": {
+        "type": "CentralTransitive",
+        "requested": "[1.3.0, )",
+        "resolved": "1.3.0",
+        "contentHash": "a30gfk4WDn2f7sOisXpko+CrQ7s5nL1ZWk4afnRwwRQHWPRrRSZpzn5Dz2YWpJtS90NJqkytQ/MkzHq4QYTIbg=="
+      },
+      "Crc32.NET": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "wNW/huzolu8MNKUnwCVKxjfAlCFpeI8AZVfF46iAWJ1+P6bTU1AZct7VAkDDEjgeeTJCVTkGZaD6jSd/fOiUkA==",
+        "dependencies": {
+          "NETStandard.Library": "2.0.0"
+        }
+      },
+      "FastEnum": {
+        "type": "CentralTransitive",
+        "requested": "[1.8.0, )",
+        "resolved": "1.8.0",
+        "contentHash": "cBVeGWLPPHyrVcJKpANXtw0CbVyb1Ltr7Lqc/HE/WktAgxKpVD3mFMbLT4IAa5cuM5oKv2zPt6ovT7AhZf4zsg=="
+      },
+      "FluentAssertions": {
+        "type": "CentralTransitive",
+        "requested": "[6.12.0, )",
+        "resolved": "6.12.0",
+        "contentHash": "ZXhHT2YwP9lajrwSKbLlFqsmCCvFJMoRSK9t7sImfnCyd0OB3MhgxdoMcVqxbq1iyxD6mD2fiackWmBb7ayiXQ==",
+        "dependencies": {
+          "System.Configuration.ConfigurationManager": "4.4.0"
+        }
+      },
+      "Google.Protobuf": {
+        "type": "CentralTransitive",
+        "requested": "[3.27.2, )",
+        "resolved": "3.27.2",
+        "contentHash": "0wdgA3LO9mBS477jieBFs4pU1sWhVtwv/P+i9nAEiFDQyUA7PPHDBbJL1CeqYtV18jLiq9og4n7wSVCO171OBg=="
+      },
+      "Google.Protobuf.Tools": {
+        "type": "CentralTransitive",
+        "requested": "[3.27.2, )",
+        "resolved": "3.27.2",
+        "contentHash": "T4/hN7t+FKc2HVB7eU8EkDzgepZFgdZWSy/Ro249FFHuOHczCu8MRzEsFUEurTlYX+SWva8dWnSJUGJmkqZ8Uw=="
+      },
+      "Grpc": {
+        "type": "CentralTransitive",
+        "requested": "[2.46.6, )",
+        "resolved": "2.46.6",
+        "contentHash": "vpC39vgCxbVBnsn8boeQv2aGIdEFqQMnjsoDvyYfr6tC93Fe9KqNG1mAiF6KLzJTwk6aiWHGNYE2EqmDUzk5ng==",
+        "dependencies": {
+          "Grpc.Core": "2.46.6"
+        }
+      },
+      "MathNet.Numerics.FSharp": {
+        "type": "CentralTransitive",
+        "requested": "[5.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "lKYhd68fReW5odX/q+Uzxw3357Duq3zmvkYvnZVqqcc2r/EmrYGDoOdUGuHnhfr8yj9V34js5gQH/7IWcxZJxg==",
+        "dependencies": {
+          "FSharp.Core": "6.0.2",
+          "MathNet.Numerics": "5.0.0"
+        }
+      },
+      "Microsoft.AspNetCore.DataProtection": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.7, )",
+        "resolved": "8.0.7",
+        "contentHash": "QiELST20nMlTyl1aP48zHZOzqC4VFqbs7kFaEW5aFgaI036s0rGfLj+LFjkG/vSn5XTf2TF+PQ5TNaQRZH2uHg==",
+        "dependencies": {
+          "Microsoft.AspNetCore.Cryptography.Internal": "8.0.7",
+          "Microsoft.AspNetCore.DataProtection.Abstractions": "8.0.7",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Hosting.Abstractions": "8.0.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.1",
+          "Microsoft.Extensions.Options": "8.0.2",
+          "System.Security.Cryptography.Xml": "8.0.1"
+        }
+      },
+      "Microsoft.AspNetCore.DataProtection.Extensions": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.7, )",
+        "resolved": "8.0.7",
+        "contentHash": "VaSJEvCGq1/eZNLV2qAX1YukHAAosXd3Q8qLfMOC25IJGa2lkCYEPNO9RO4Jd8T56DvA7aDpwfehWEIyuMZzXg==",
+        "dependencies": {
+          "Microsoft.AspNetCore.DataProtection": "8.0.7",
+          "Microsoft.Extensions.DependencyInjection": "8.0.0"
+        }
+      },
+      "Microsoft.ClearScript.V8": {
+        "type": "CentralTransitive",
+        "requested": "[7.4.5, )",
+        "resolved": "7.4.5",
+        "contentHash": "/czu8ho8xEiiLF806QP6Iwgp0aN5QE1B/MsXnIIMxiaM/KccD8AfSsM68lVuyW+boGqjF7zjoSlUKs/ERUoLOQ==",
+        "dependencies": {
+          "Microsoft.ClearScript.Core": "7.4.5",
+          "Microsoft.ClearScript.V8.ICUData": "7.4.5",
+          "Newtonsoft.Json": "13.0.1"
+        }
+      },
+      "Microsoft.ClearScript.V8.Native.linux-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.4.5, )",
+        "resolved": "7.4.5",
+        "contentHash": "xeFdm0e9PefkZ89Omvd7lYmqgjuW0kIV3OYkwyLqcY4SHk9n79YjG5OPhWCHXcBGOU8eEmKyXgHY0i5nmpGmKA=="
+      },
+      "Microsoft.ClearScript.V8.Native.linux-x64": {
+        "type": "CentralTransitive",
+        "requested": "[7.4.5, )",
+        "resolved": "7.4.5",
+        "contentHash": "upzvb1bN1DCXE3fK+7Vt/pfZ/ejYI7X/t2/JOYf0p4HjvCexDkebeIBJ96alPPBMqDwqRCZy0N80/wYFwwDKgA=="
+      },
+      "Microsoft.ClearScript.V8.Native.osx-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.4.5, )",
+        "resolved": "7.4.5",
+        "contentHash": "aMLV59l21gUYk6okvTrM3TozG7oZqagPtvjIKkZUuwWPyYiCmmGnzDx4pkwhHxsR8uNfqdAU5gcpPp8CGdd23g=="
+      },
+      "Microsoft.ClearScript.V8.Native.osx-x64": {
+        "type": "CentralTransitive",
+        "requested": "[7.4.5, )",
+        "resolved": "7.4.5",
+        "contentHash": "J7Jzhb4RJ8mOUsPRNCQTbGtH5oOm7BuP9OhQiNMX0XJCczsCZq0fZkgkGcUVnz02+gvR4ucaVy2WjtO40GL6YA=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-x64": {
+        "type": "CentralTransitive",
+        "requested": "[7.4.5, )",
+        "resolved": "7.4.5",
+        "contentHash": "LvsaJoVgcf09FJ6mZ6SIptdeuwmy42s1N2sMVO3Wqp+HAta7PPksxVh8cGelrGQmmW1C5hT1Jzc6ykxrzU4Adg=="
+      },
+      "Microsoft.Extensions.Logging": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.0, )",
+        "resolved": "5.0.0",
+        "contentHash": "MgOwK6tPzB6YNH21wssJcw/2MKwee8b2gI7SllYfn6rvTpIrVvVS5HAjSU2vqSku1fwqRvWP0MdIi14qjd93Aw==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "5.0.0",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "5.0.0",
+          "Microsoft.Extensions.Logging.Abstractions": "5.0.0",
+          "Microsoft.Extensions.Options": "5.0.0"
+        }
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.1, )",
+        "resolved": "8.0.1",
+        "contentHash": "RIFgaqoaINxkM2KTOw72dmilDmTrYA0ns2KW4lDz4gZ2+o6IQ894CzmdL3StM2oh7QQq44nCWiqKqc4qUI9Jmg==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.1"
+        }
+      },
+      "Microsoft.Extensions.ObjectPool": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.7, )",
+        "resolved": "8.0.7",
+        "contentHash": "2yLweyqmpuuFSRo+I3sLHMxmnAgNcI537kBJiyv49U2ZEqo00jZcG8lrnD8uCiOJp9IklYyTZULtbsXoFVzsjQ=="
+      },
+      "Microsoft.IdentityModel.JsonWebTokens": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.1, )",
+        "resolved": "8.0.1",
+        "contentHash": "s6++gF9x0rQApQzOBbSyp4jUaAlwm+DroKfL8gdOHxs83k8SJfUXhuc46rDB3rNXBQ1MVRxqKUrqFhO/M0E97g==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Tokens": "8.0.1"
+        }
+      },
+      "Microsoft.IO.RecyclableMemoryStream": {
+        "type": "CentralTransitive",
+        "requested": "[3.0.1, )",
+        "resolved": "3.0.1",
+        "contentHash": "s/s20YTVY9r9TPfTrN5g8zPF1YhwxyqO6PxUkrYTGI2B+OGPe9AdajWZrLhFqXIvqIW23fnUE4+ztrUWNU1+9g=="
+      },
+      "Microsoft.NET.Test.Sdk": {
+        "type": "CentralTransitive",
+        "requested": "[17.10.0, )",
+        "resolved": "17.10.0",
+        "contentHash": "0/2HeACkaHEYU3wc83YlcD2Fi4LMtECJjqrtvw0lPi9DCEa35zSPt1j4fuvM8NagjDqJuh1Ja35WcRtn1Um6/A==",
+        "dependencies": {
+          "Microsoft.CodeCoverage": "17.10.0",
+          "Microsoft.TestPlatform.TestHost": "17.10.0"
+        }
+      },
+      "Nethermind.Crypto.Pairings": {
+        "type": "CentralTransitive",
+        "requested": "[1.1.1, )",
+        "resolved": "1.1.1",
+        "contentHash": "MC4R2oMOjqap0K9DzUDCrcCnyXvmhL2VmQCngiS11p1MBAJtlK7nG69ResD79Bb7/abc5YMj3wDcPvnD+OhQbg=="
+      },
+      "Nethermind.Crypto.SecP256k1": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.2, )",
+        "resolved": "1.2.2",
+        "contentHash": "jxD3Ak39ojJ5uDV15YV/Zex8H6XsRyoIRALEHlIE8H3Rz7FIb1r0o39QC3u2noG/xmnaxQ/CCaGNdUfhUxinag=="
+      },
+      "Nethermind.DotNetty.Buffers": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.1, )",
+        "resolved": "1.0.1",
+        "contentHash": "IgZ1ZBYp8mC2BNtrWhnjLHkNMV947QrHJDsMhj0/T7JsFJetg/IgsmvmPYuqBDrajM2S7fst9+t4y3+cY6kgWw==",
+        "dependencies": {
+          "Nethermind.DotNetty.Common": "1.0.1",
+          "System.Runtime.CompilerServices.Unsafe": "5.0.0"
+        }
+      },
+      "Nethermind.DotNetty.Handlers": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.1, )",
+        "resolved": "1.0.1",
+        "contentHash": "E8iL2yKltBWUJnRzvG5hRGHQun8CWUaxGf5sa0b2Uvr2lI94mdLXk+0+R2TDEcehE1V+ayS/LC2a4/tuemh0bQ==",
+        "dependencies": {
+          "Nethermind.DotNetty.Buffers": "1.0.1",
+          "Nethermind.DotNetty.Codecs": "1.0.1",
+          "Nethermind.DotNetty.Common": "1.0.1",
+          "Nethermind.DotNetty.Transport": "1.0.1"
+        }
+      },
+      "Nethermind.DotNetty.Transport": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.1, )",
+        "resolved": "1.0.1",
+        "contentHash": "N9uvpzG1cENIPZ/VPFZJOYIaNu7r972S6uUllVhjOQKdKlMuJGWHwx1xWe9XFOaRWqnYYp0msEE/L6G6AeaT4g==",
+        "dependencies": {
+          "Nethermind.DotNetty.Buffers": "1.0.1",
+          "Nethermind.DotNetty.Common": "1.0.1"
+        }
+      },
+      "Nethermind.Gmp": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.1, )",
+        "resolved": "1.0.1",
+        "contentHash": "6GZ5OX6D7lXjGjYSVi+1eXAX41bMGohJxArM02/nn3bq3niv357EsQeQIuaQay5XcqipFntUidYFjzOk3cyLbQ=="
+      },
+      "Nethermind.Numerics.Int256": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "8wEQoVt1VMbzg9zaoRJnjeZBBqHz1fVQ9Q2g0WJ7Bm38iv6ZBG8jqN8W+h/eWuAV5J6cPdKgnvhZtfl7MCfkxA=="
+      },
+      "NLog": {
+        "type": "CentralTransitive",
+        "requested": "[5.3.2, )",
+        "resolved": "5.3.2",
+        "contentHash": "cQRQZuDMjSyMe9EQBnI9v55YAMMz8GAfFd6fFJ6tc/kXnG7Hze8p1I8MgvWSBG6E36wA8vSxRrlm8uSIG+SENg=="
+      },
+      "NonBlocking": {
+        "type": "CentralTransitive",
+        "requested": "[2.1.2, )",
+        "resolved": "2.1.2",
+        "contentHash": "yTP24PcuFmUw1RxQgYmIMxvpAJ1ciT/zv8Sb7OZHTuM/x9Tupz+DvEqeu9HykSYmI3/bGuy1ZZ7k/rZgfuIAuw==",
+        "dependencies": {
+          "System.Runtime.CompilerServices.Unsafe": "4.3.0"
+        }
+      },
+      "NSubstitute": {
+        "type": "CentralTransitive",
+        "requested": "[5.1.0, )",
+        "resolved": "5.1.0",
+        "contentHash": "ZCqOP3Kpp2ea7QcLyjMU4wzE+0wmrMN35PQMsdPOHYc2IrvjmusG9hICOiqiOTPKN0gJon6wyCn6ZuGHdNs9hQ==",
+        "dependencies": {
+          "Castle.Core": "5.1.1"
+        }
+      },
+      "NUnit": {
+        "type": "CentralTransitive",
+        "requested": "[3.14.0, )",
+        "resolved": "3.14.0",
+        "contentHash": "R7iPwD7kbOaP3o2zldWJbWeMQAvDKD0uld27QvA3PAALl1unl7x0v2J7eGiJOYjimV/BuGT4VJmr45RjS7z4LA==",
+        "dependencies": {
+          "NETStandard.Library": "2.0.0"
+        }
+      },
+      "NUnit3TestAdapter": {
+        "type": "CentralTransitive",
+        "requested": "[4.5.0, )",
+        "resolved": "4.5.0",
+        "contentHash": "s8JpqTe9bI2f49Pfr3dFRfoVSuFQyraTj68c3XXjIS/MRGvvkLnrg6RLqnTjdShX+AdFUCCU/4Xex58AdUfs6A=="
+      },
+      "Polly": {
+        "type": "CentralTransitive",
+        "requested": "[8.4.1, )",
+        "resolved": "8.4.1",
+        "contentHash": "kBxql53peR0bjxeEuuY114GD2rmC0tkUwE1xuKUlnd74ULEsGu3OwcLH56KkwxBPUbOysPa7stT9SJ6pKGTzlg==",
+        "dependencies": {
+          "Polly.Core": "8.4.1"
+        }
+      },
+      "prometheus-net.AspNetCore": {
+        "type": "CentralTransitive",
+        "requested": "[8.2.1, )",
+        "resolved": "8.2.1",
+        "contentHash": "/4TfTvbwIDqpaKTiWvEsjUywiHYF9zZvGZF5sK15avoDsUO/WPQbKsF8TiMaesuphdFQPK2z52P0zk6j26V0rQ==",
+        "dependencies": {
+          "prometheus-net": "8.2.1"
+        }
+      },
+      "SCrypt": {
+        "type": "CentralTransitive",
+        "requested": "[2.0.0.2, )",
+        "resolved": "2.0.0.2",
+        "contentHash": "ZSDp3iPpXw4KW+e1yKQbarn1byN8aP+B0FNy0oMPC+htu6XVxqr1ezeSfG4kmRWG4VUu1RT0Zp3HzkH6inrIIw=="
+      },
+      "Snappier": {
+        "type": "CentralTransitive",
+        "requested": "[1.1.6, )",
+        "resolved": "1.1.6",
+        "contentHash": "aLJu7Q0mVk0e9QwjJLEh70tXQ0Url8fHITrHXwqF+eq7N20jGMOhkmTXUUjpPim+rCm0I4fARcVBRzJPSipN+w=="
+      },
+      "System.Configuration.ConfigurationManager": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.0, )",
+        "resolved": "8.0.0",
+        "contentHash": "JlYi9XVvIREURRUlGMr1F6vOFLk7YSY4p1vHo4kX3tQ0AGrjqlRWHDi66ImHhy6qwXBG3BJ6Y1QlYQ+Qz6Xgww==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "8.0.0",
+          "System.Security.Cryptography.ProtectedData": "8.0.0"
+        }
+      },
+      "System.IO.Pipelines": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.0, )",
+        "resolved": "8.0.0",
+        "contentHash": "FHNOatmUq0sqJOkTx+UF/9YK1f180cnW5FVqnQMvYUN0elp6wFzbtPSiqbo1/ru8ICp43JM1i7kKkk6GsNGHlA=="
+      },
+      "System.Linq.Async": {
+        "type": "CentralTransitive",
+        "requested": "[6.0.1, )",
+        "resolved": "6.0.1",
+        "contentHash": "0YhHcaroWpQ9UCot3Pizah7ryAzQhNvobLMSxeDIGmnXfkQn8u5owvpOH0K6EVB+z9L7u6Cc4W17Br/+jyttEQ==",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "6.0.0"
+        }
+      },
+      "System.Security.Cryptography.ProtectedData": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.0, )",
+        "resolved": "8.0.0",
+        "contentHash": "+TUFINV2q2ifyXauQXRwy4CiBhqvDEDZeVJU7qfxya4aRYOKzVBpN+4acx25VcPB9ywUN6C0n8drWl110PhZEg=="
+      },
+      "TestableIO.System.IO.Abstractions.Wrappers": {
+        "type": "CentralTransitive",
+        "requested": "[21.0.29, )",
+        "resolved": "21.0.29",
+        "contentHash": "bm1stQx3rGV2qBW2xAAvl8ODVGNVkiAkqNsE+LsKfhMamBUa07IgsgMc9X/zBHc5yfAJOqJIUArQ56DDgwGyYA==",
+        "dependencies": {
+          "TestableIO.System.IO.Abstractions": "21.0.29"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "Microsoft.IdentityModel.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "OtlIWcyX01olfdevPKZdIPfBEvbcioDyBiE/Z2lHsopsMD7twcKtlN9kMevHmI5IIPhFpfwCIiR6qHQz1WHUIw=="
+      },
+      "Microsoft.IdentityModel.Logging": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "UCPF2exZqBXe7v/6sGNiM6zCQOUXXQ9+v5VTb9gPB8ZSUPnX53BxlN78v2jsbIvK9Dq4GovQxo23x8JgWvm/Qg==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Abstractions": "8.0.1"
+        }
+      },
+      "Microsoft.IdentityModel.Tokens": {
+        "type": "Transitive",
+        "resolved": "8.0.1",
+        "contentHash": "kDimB6Dkd3nkW2oZPDkMkVHfQt3IDqO5gL0oa8WVy3OP4uE8Ij+8TXnqg9TOd9ufjsY3IDiGz7pCUbnfL18tjg==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Logging": "8.0.1"
+        }
+      },
+      "TestableIO.System.IO.Abstractions": {
+        "type": "Transitive",
+        "resolved": "21.0.29",
+        "contentHash": "3TtSs2i0m0QqpAI4EzR1vZXQuHNw5grBy0rDKqMkWi6ySEZ+yhN9HACgIyEq7gDXPLrtQI18ud/OtI0qVhP8Mg=="
+      },
+      "nethermind.core": {
+        "type": "Project",
+        "dependencies": {
+          "FastEnum": "[1.8.0, )",
+          "Microsoft.Extensions.ObjectPool": "[8.0.7, )",
+          "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
+          "Microsoft.IdentityModel.JsonWebTokens": "[8.0.1, )",
+          "Nethermind.Crypto.SecP256k1": "[1.2.2, )",
+          "Nethermind.Logging": "[1.29.0-unstable, )",
+          "Nethermind.Numerics.Int256": "[1.2.0, )",
+          "TestableIO.System.IO.Abstractions.Wrappers": "[21.0.29, )"
+        }
+      },
+      "nethermind.logging": {
+        "type": "Project"
+      },
+      "nethermind.serialization.ssz": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[1.29.0-unstable, )"
+        }
+      },
+      "FastEnum": {
+        "type": "CentralTransitive",
+        "requested": "[1.8.0, )",
+        "resolved": "1.8.0",
+        "contentHash": "cBVeGWLPPHyrVcJKpANXtw0CbVyb1Ltr7Lqc/HE/WktAgxKpVD3mFMbLT4IAa5cuM5oKv2zPt6ovT7AhZf4zsg=="
+      },
+      "Microsoft.Extensions.ObjectPool": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.7, )",
+        "resolved": "8.0.7",
+        "contentHash": "2yLweyqmpuuFSRo+I3sLHMxmnAgNcI537kBJiyv49U2ZEqo00jZcG8lrnD8uCiOJp9IklYyTZULtbsXoFVzsjQ=="
+      },
+      "Microsoft.IdentityModel.JsonWebTokens": {
+        "type": "CentralTransitive",
+        "requested": "[8.0.1, )",
+        "resolved": "8.0.1",
+        "contentHash": "s6++gF9x0rQApQzOBbSyp4jUaAlwm+DroKfL8gdOHxs83k8SJfUXhuc46rDB3rNXBQ1MVRxqKUrqFhO/M0E97g==",
+        "dependencies": {
+          "Microsoft.IdentityModel.Tokens": "8.0.1"
+        }
+      },
+      "Microsoft.IO.RecyclableMemoryStream": {
+        "type": "CentralTransitive",
+        "requested": "[3.0.1, )",
+        "resolved": "3.0.1",
+        "contentHash": "s/s20YTVY9r9TPfTrN5g8zPF1YhwxyqO6PxUkrYTGI2B+OGPe9AdajWZrLhFqXIvqIW23fnUE4+ztrUWNU1+9g=="
+      },
+      "Nethermind.Crypto.SecP256k1": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.2, )",
+        "resolved": "1.2.2",
+        "contentHash": "jxD3Ak39ojJ5uDV15YV/Zex8H6XsRyoIRALEHlIE8H3Rz7FIb1r0o39QC3u2noG/xmnaxQ/CCaGNdUfhUxinag=="
+      },
+      "Nethermind.Numerics.Int256": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "8wEQoVt1VMbzg9zaoRJnjeZBBqHz1fVQ9Q2g0WJ7Bm38iv6ZBG8jqN8W+h/eWuAV5J6cPdKgnvhZtfl7MCfkxA=="
+      },
+      "TestableIO.System.IO.Abstractions.Wrappers": {
+        "type": "CentralTransitive",
+        "requested": "[21.0.29, )",
+        "resolved": "21.0.29",
+        "contentHash": "bm1stQx3rGV2qBW2xAAvl8ODVGNVkiAkqNsE+LsKfhMamBUa07IgsgMc9X/zBHc5yfAJOqJIUArQ56DDgwGyYA==",
+        "dependencies": {
+          "TestableIO.System.IO.Abstractions": "21.0.29"
+        }
+      }
+    }
+  }
+}

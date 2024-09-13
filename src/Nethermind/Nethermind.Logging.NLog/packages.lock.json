@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "NLog": {
+        "type": "Direct",
+        "requested": "[5.3.2, )",
+        "resolved": "5.3.2",
+        "contentHash": "cQRQZuDMjSyMe9EQBnI9v55YAMMz8GAfFd6fFJ6tc/kXnG7Hze8p1I8MgvWSBG6E36wA8vSxRrlm8uSIG+SENg=="
+      },
+      "nethermind.logging": {
+        "type": "Project"
+      }
+    }
+  }
+}
