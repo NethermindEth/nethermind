@@ -29,9 +29,9 @@ public interface IExecutionWitness
     /// <returns></returns>
     bool AccessForGasBeneficiary(Address gasBeneficiary);
 
-    bool AccessForCodeOpCodes(Address caller, ref long gasAvailable);
+    bool AccessAccountData(Address caller, ref long gasAvailable);
     bool AccessForBalanceOpCode(Address address, ref long gasAvailable);
-    bool AccessForCodeHash(Address address, ref long gasAvailable);
+    bool AccessCodeHash(Address address, ref long gasAvailable);
 
     /// <summary>
     ///     When SLOAD and SSTORE opcodes are called with a given address
@@ -60,14 +60,6 @@ public interface IExecutionWitness
 
     bool AccessForAbsentAccount(Address address, ref long gasAvailable);
 
-    /// <summary>
-    ///     When you have to access the complete account
-    /// </summary>
-    /// <param name="address"></param>
-    /// <param name="gasAvailable"></param>
-    /// <param name="isWrite"></param>
-    /// <returns></returns>
-    bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false);
     bool AccessAccountForWithdrawal(Address address);
     bool AccessForBlockhashInsertionWitness(Address address, UInt256 key);
 

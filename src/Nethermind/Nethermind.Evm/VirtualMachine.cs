@@ -635,6 +635,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (spec.IsVerkleTreeEipEnabled)
         {
             bool isAddressPreCompile = address.IsPrecompile(spec);
+            bool isSystemContract = address.IsSystemContract(spec);
             switch (opCode)
             {
                 case Instruction.BALANCE:
@@ -654,7 +655,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!isAddressPreCompile)
                         {
                             var gasBefore = gasAvailable;
-                            result = vmState.Env.Witness.AccessForCodeOpCodes(address, ref gasAvailable);
+                            result = vmState.Env.Witness.AccessAccountData(address, ref gasAvailable);
                             witnessGasCharged = gasBefore != gasAvailable;
                         }
 
@@ -662,12 +663,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.EXTCODEHASH:
                     {
-                        if (!isAddressPreCompile)
+                        if (!isAddressPreCompile && !isSystemContract)
                         {
                             var gasBefore = gasAvailable;
-                            result = vmState.Env.Witness.AccessForCodeHash(address, ref gasAvailable);
+                            result = vmState.Env.Witness.AccessCodeHash(address, ref gasAvailable);
                             witnessGasCharged = gasBefore != gasAvailable;
-
                         }
                         else
                         {
@@ -2468,7 +2468,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!codeSource.IsPrecompile(spec))
         {
             var gasBefore = gasAvailable;
-            if (!vmState.Env.Witness.AccessForCodeOpCodes(codeSource, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (!vmState.Env.Witness.AccessAccountData(codeSource, ref gasAvailable)) return EvmExceptionType.OutOfGas;
             if (gasBefore == gasAvailable && !UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable))
                 return EvmExceptionType.OutOfGas;
         }

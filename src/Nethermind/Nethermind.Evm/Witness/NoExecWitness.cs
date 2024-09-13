@@ -19,11 +19,11 @@ public class NoExecWitness : IExecutionWitness
 
     public bool AccessForGasBeneficiary(Address gasBeneficiary) => true;
 
-    public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable) => true;
+    public bool AccessAccountData(Address caller, ref long gasAvailable) => true;
 
     public bool AccessForBalanceOpCode(Address address, ref long gasAvailable) => true;
 
-    public bool AccessForCodeHash(Address address, ref long gasAvailable) => true;
+    public bool AccessCodeHash(Address address, ref long gasAvailable) => true;
 
     public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable) => true;
     public bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable) => true;
