@@ -313,8 +313,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         FireProcessingQueueEmpty();
 
         bool gcTimerSet = true;
-        // GC every 2 minutes if block processing idle
-        _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
+        SwitchOnBackgroundGC();
         bool fireGC = false;
         long countToGC = 0L;
         foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
@@ -322,7 +321,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (gcTimerSet)
             {
                 // Have block, switch off background GC timer
-                _gcTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                SwitchOffBackgroundGC();
             }
             int queueCount = _blockQueue.Count;
             if (!fireGC && queueCount > BlocksBacklogTriggeringManualGC)
@@ -381,8 +380,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 // No blocks, switch on background GC timer
                 gcTimerSet = true;
-                // GC every 2 minutes if block processing idle
-                _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
+                SwitchOnBackgroundGC();
             }
             if (fireGC)
             {
@@ -401,6 +399,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
     }
+
+    private void SwitchOnBackgroundGC()
+        // GC every 2 minutes if block processing idle
+        => _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
+
+    private void SwitchOffBackgroundGC()
+        => _gcTimer.Change(Timeout.Infinite, Timeout.Infinite);
 
     private async Task PerformFullGCAsync()
     {
