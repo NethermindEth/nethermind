@@ -65,7 +65,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
     private readonly Timer _gcTimer;
-    private int _isPerformingGC = 0;    
+    private int _isPerformingGC = 0;
     private bool _isNextGcBlocking = false;
     private bool _isNextGcCompacting = false;
 
