@@ -22,5 +22,14 @@ jobs:
           submodules: ${{ matrix.solution == 'EthereumTests' }}
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
+      - name: Cache dotnet packages
+        id: cache-dotnet
+        uses: actions/cache@v4
+        with:
+          # nuget cache files are stored in `~/.nuget/packages/` on Linux/macOS
+          path: ~/.nuget/packages/
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
       - name: Build ${{ matrix.solution }}.sln
         run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
