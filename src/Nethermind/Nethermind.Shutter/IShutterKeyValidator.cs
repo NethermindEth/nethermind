@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Shutter;
 
@@ -15,6 +16,6 @@ public interface IShutterKeyValidator
         public ulong Slot;
         public ulong Eon;
         public ulong TxPointer;
-        public List<(byte[] IdentityPreimage, byte[] Key)> Keys;
+        public EnumerableWithCount<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> Keys;
     }
 }

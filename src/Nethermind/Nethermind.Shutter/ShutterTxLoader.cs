@@ -58,7 +58,7 @@ public class ShutterTxLoader(
 
         if (_logger.IsDebug && decrypted is not null) _logger.Debug($"Decrypted Shutter transactions:{Environment.NewLine}{string.Join(Environment.NewLine, decrypted.Value.Transactions.Select(tx => tx.ToShortString()))}");
 
-        Transaction[] filtered = decrypted is null ? [] : FilterTransactions(decrypted.Value.Transactions, parentHeader).ToArray();
+        Transaction[] filtered = decrypted is null ? [] : FilterTransactions(decrypted.Value.Transactions, parentHeader);
 
         ShutterTransactions shutterTransactions = new()
         {
@@ -73,7 +73,7 @@ public class ShutterTxLoader(
         return shutterTransactions;
     }
 
-    public void LoadFromReceipts(Block head, TxReceipt[] receipts, ulong eon)
+    public void LoadFromReceipts(Block? head, TxReceipt[] receipts, ulong eon)
     {
         lock (_events)
         {
@@ -85,10 +85,10 @@ public class ShutterTxLoader(
         }
     }
 
-    private ParallelQuery<Transaction> FilterTransactions(ParallelQuery<Transaction> transactions, BlockHeader parentHeader)
-        => transactions.Where(tx => _txFilter.IsAllowed(tx, parentHeader) == TxPool.AcceptTxResult.Accepted);
+    private Transaction[] FilterTransactions(IEnumerable<Transaction> transactions, BlockHeader parentHeader)
+        => transactions.Where(tx => _txFilter.IsAllowed(tx, parentHeader) == TxPool.AcceptTxResult.Accepted).ToArray();
 
-    private DecryptedTransactions? DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, List<(byte[], byte[])> decryptionKeys)
+    private DecryptedTransactions? DecryptSequencedTransactions(ArrayPoolList<SequencedTransaction> sequencedTransactions, EnumerableWithCount<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeys)
     {
         int txCount = sequencedTransactions.Count;
         int keyCount = decryptionKeys.Count;
@@ -109,18 +109,23 @@ public class ShutterTxLoader(
         using ArrayPoolList<SequencedTransaction> sortedIndexes = sequencedTransactions.ToPooledList();
         sortedIndexes.Sort((a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
 
-        ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
+        using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
         foreach (SequencedTransaction index in sortedIndexes)
         {
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
 
-        ParallelQuery<Transaction> decryptedTransactions = sequencedTransactions
+        using var decryptionKeysList = new ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)>(decryptionKeys.Count, decryptionKeys);
+
+        ArrayPoolList<Transaction> decryptedTransactions = sequencedTransactions
             .AsParallel()
             .AsOrdered()
-            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeys[sortedKeyIndexes[i]]))
-            .OfType<Transaction>();
+            // ReSharper disable AccessToDisposedClosure
+            .Select((tx, i) => DecryptSequencedTransaction(tx, decryptionKeysList[sortedKeyIndexes[i]]))
+            // ReSharper restore AccessToDisposedClosure
+            .OfType<Transaction>()
+            .ToPooledList(sequencedTransactions.Count);
 
         return new()
         {
@@ -129,13 +134,13 @@ public class ShutterTxLoader(
         };
     }
 
-    private Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (byte[] IdentityPreimage, byte[] Key) decryptionKey)
+    private Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key) decryptionKey)
     {
         try
         {
             ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
-            G1 key = new(decryptionKey.Key);
-            G1 identity = ShutterCrypto.ComputeIdentity(decryptionKey.IdentityPreimage.AsSpan());
+            G1 key = new(decryptionKey.Key.Span);
+            G1 identity = ShutterCrypto.ComputeIdentity(decryptionKey.IdentityPreimage.Span);
 
             if (!identity.IsEqual(new(sequencedTransaction.Identity.AsSpan())))
             {
@@ -252,12 +257,13 @@ public class ShutterTxLoader(
 
     private readonly struct DecryptedTransactions : IDisposable
     {
-        public ParallelQuery<Transaction> Transactions { get; init; }
+        public ArrayPoolList<Transaction> Transactions { get; init; }
         public ArrayPoolList<int> SortedKeyIndexes { get; init; }
 
         public void Dispose()
         {
             SortedKeyIndexes.Dispose();
+            Transactions.Dispose();
         }
     }
 }

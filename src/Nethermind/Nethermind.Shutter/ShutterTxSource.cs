@@ -40,7 +40,7 @@ public class ShutterTxSource(
         ulong buildingSlot;
         try
         {
-            (buildingSlot, long offset) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
+            (buildingSlot, _) = shutterTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
         }
         catch (ShutterTime.ShutterSlotCalulationException e)
         {
