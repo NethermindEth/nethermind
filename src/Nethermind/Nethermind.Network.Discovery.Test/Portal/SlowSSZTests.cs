@@ -16,12 +16,13 @@ namespace Nethermind.Network.Discovery.Test.Portal;
 public class SlowSSZTests
 {
 
-    public static IEnumerable<(string, object)> TestVectors()
+    public static IEnumerable<(string, MessageUnion)> TestVectors()
     {
         {
             var customPayload = SlowSSZ.Serialize(UInt256.MaxValue - 1);
             var pingMessage = new MessageUnion()
             {
+                Selector = MessageType.Ping,
                 Ping = new Ping()
                 {
                     EnrSeq = 1,
@@ -36,6 +37,7 @@ public class SlowSSZTests
             var customPayload = SlowSSZ.Serialize(UInt256.MaxValue / 2);
             var pongMessage = new MessageUnion()
             {
+                Selector = MessageType.Pong,
                 Pong = new Pong()
                 {
                     EnrSeq = 1,
@@ -49,6 +51,7 @@ public class SlowSSZTests
         {
             var findNeighbourMessage = new MessageUnion()
             {
+                Selector = MessageType.FindNodes,
                 FindNodes = new FindNodes()
                 {
                     Distances = [256, 255]
@@ -61,6 +64,7 @@ public class SlowSSZTests
         {
             var nodeResponseMessage = new MessageUnion()
             {
+                Selector = MessageType.Nodes,
                 Nodes = new Nodes()
                 {
                     Total = 1,
@@ -75,6 +79,7 @@ public class SlowSSZTests
 
             var nodeResponseMessage = new MessageUnion()
             {
+                Selector = MessageType.Nodes,
                 Nodes = new Nodes()
                 {
                     Total = 1,
@@ -92,20 +97,23 @@ public class SlowSSZTests
             // Note: not part of test vector. This is specific to history network.
             var findContentMessage = new MessageUnion()
             {
+                Selector = MessageType.FindContent,
                 FindContent = new FindContent()
                 {
-                    ContentKey = new ContentKey { Data = Bytes.FromHexString("706f7274616c") }
+                    ContentKey = new ContentKey { Data = Bytes.FromHexString("706f7274616c0000000000000000000000000000000000000000000000000000") }
                 }
             };
 
-            yield return ("0404000000706f7274616c", findContentMessage);
+            yield return ("0404000000706f7274616c0000000000000000000000000000000000000000000000000000", findContentMessage);
         }
 
         {
             var contentResponse = new MessageUnion()
             {
+                Selector = MessageType.Content,
                 Content = new Content()
                 {
+                    Selector = ContentType.ConnectionId,
                     ConnectionId = 0x0201 // little endian here.. I guess.
                 }
             };
@@ -116,8 +124,10 @@ public class SlowSSZTests
         {
             var contentResponse = new MessageUnion()
             {
+                Selector = MessageType.Content,
                 Content = new Content()
                 {
+                    Selector = ContentType.Payload,
                     Payload = Bytes.FromHexString("7468652063616b652069732061206c6965"),
                 }
             };
@@ -128,8 +138,10 @@ public class SlowSSZTests
         {
             var contentResponse = new MessageUnion()
             {
+                Selector = MessageType.Content,
                 Content = new Content()
                 {
+                    Selector = ContentType.Enrs,
                     Enrs = [
                         new Discovery.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QBzimRxkmT18hMKaAL3IcZF1UcfTMPyi3Q1pxwZZbcZVRI8DC5infUAB_UauARLOJtYTxaagKoGmIjzQxO2qUygBgmlkgnY0iXNlY3AyNTZrMaEDymNMrg1JrLQB2KTGtv6MVbcNEVv0AHacwUAPMljNMTg") },
                         new Discovery.Portal.Messages.Enr { Data = RlpEncodeEnr("enr:-HW4QNfxw543Ypf4HXKXdYxkyzfcxcO-6p9X986WldfVpnVTQX1xlTnWrktEWUbeTZnmgOuAY_KUhbVV1Ft98WoYUBMBgmlkgnY0iXNlY3AyNTZrMaEDDiy3QkHAxPyOgWbxp5oF1bDdlYE6dLCUUp8xfVw50jU") },
@@ -143,18 +155,20 @@ public class SlowSSZTests
         {
             var offerRequest = new MessageUnion()
             {
+                Selector = MessageType.Offer,
                 Offer = new Offer()
                 {
-                    ContentKeys = [new ContentKey { Data = Bytes.FromHexString("010203") }]
+                    ContentKeys = [new ContentKey { Data = Bytes.FromHexString("0102010201020102010201020102010201020102010201020102010201020102") }]
                 }
             };
 
-            yield return ("060400000004000000010203", offerRequest);
+            yield return ("0604000000040000000102010201020102010201020102010201020102010201020102010201020102", offerRequest);
         }
 
         {
             var acceptResponse = new MessageUnion()
             {
+                Selector = MessageType.Accept,
                 Accept = new Accept()
                 {
                     ConnectionId = 0x0201,
@@ -167,15 +181,25 @@ public class SlowSSZTests
     }
 
     [TestCaseSource(nameof(TestVectors))]
-    public void TestSSZEncoding((string, object) test)
+    public void TestSSZEncoding((string, MessageUnion) test)
     {
-        (string Encoding, object Object) = test;
+        (string Encoding, MessageUnion Object) = test;
 
-        // TODO: what specific object?
-        //Serialization.SszEncoding.Encode(Object);
+        var serializedValue = Serialization.SszEncoding.Encode(Object);
 
-        var serializedValue = SlowSSZ.Serialize(Object);
         serializedValue.ToHexString().Should().BeEquivalentTo(Encoding);
+    }
+
+    [TestCaseSource(nameof(TestVectors))]
+    public void TestSSZEncoding_Roundtrip((string, MessageUnion) test)
+    {
+        (string Encoding, MessageUnion Object) = test;
+
+        var encoded = Serialization.SszEncoding.Encode(Object);
+        Serialization.SszEncoding.Decode(encoded, out MessageUnion decoded);
+        var encodedAgain = Serialization.SszEncoding.Encode(decoded);
+
+        encodedAgain.ToHexString().Should().BeEquivalentTo(encoded.ToHexString());
     }
 
     [TestCaseSource(nameof(TestVectors))]
