@@ -72,7 +72,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
     void WarmUp(AccessList? accessList);
     void WarmUp(Address address);
-    void WarmUp(StorageCell address);
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>
