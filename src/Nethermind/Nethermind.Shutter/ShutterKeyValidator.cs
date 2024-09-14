@@ -89,7 +89,7 @@ public class ShutterKeyValidator(
             G1 dk, identity;
             try
             {
-                dk = new(key.Key_.ToArray());
+                dk = new(key.Key_.Span);
                 identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
             }
             catch (Bls.Exception e)

@@ -169,6 +169,8 @@ public static class ShutterCrypto
     public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity) =>
         GT.FinalVerify(new(decryptionKey, G2.Generator()), new(identity, eonPublicKey));
 
+    private static readonly Ecdsa _ecdsa = new();
+
     public static bool CheckSlotDecryptionIdentitiesSignature(
         ulong instanceId,
         ulong eon,
@@ -178,8 +180,7 @@ public static class ShutterCrypto
         ReadOnlySpan<byte> signatureBytes,
         Address keyperAddress)
     {
-        Hash256 hash = GenerateHash(instanceId, eon, slot, txPointer, identityPreimages);
-        Ecdsa ecdsa = new();
+        ValueHash256 hash = GenerateHash(instanceId, eon, slot, txPointer, identityPreimages);
 
         // check recovery_id
         if (signatureBytes[64] > 3)
@@ -189,7 +190,7 @@ public static class ShutterCrypto
 
         Signature signature = new(signatureBytes[..64], signatureBytes[64]);
 
-        PublicKey? expectedPubkey = ecdsa.RecoverPublicKey(signature, hash);
+        PublicKey? expectedPubkey = _ecdsa.RecoverPublicKey(signature, hash);
 
         return expectedPubkey is not null && keyperAddress == expectedPubkey.Address;
     }
@@ -197,9 +198,9 @@ public static class ShutterCrypto
     public static bool CheckValidatorRegistrySignature(ReadOnlySpan<byte> pkBytes, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
     {
         BlsSigner.Signature sig = new(sigBytes);
-        Hash256 h = Keccak.Compute(msgBytes);
+        ValueHash256 h = ValueKeccak.Compute(msgBytes);
 
-        return BlsSigner.Verify(new(pkBytes), sig, h.BytesToArray());
+        return BlsSigner.Verify(new(pkBytes), sig, h.Bytes);
     }
 
     public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, ReadOnlySpan<byte> sigma)
@@ -287,7 +288,7 @@ public static class ShutterCrypto
         Hash3(preimage, out res);
     }
 
-    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
+    internal static ValueHash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
     {
         Ssz.SlotDecryptionIdentites container = new()
         {
@@ -307,15 +308,15 @@ public static class ShutterCrypto
         byte[] preimage = new byte[bytes.Length + 1];
         preimage[0] = 0x3;
         bytes.CopyTo(preimage.AsSpan()[1..]);
-        Span<byte> hash = Keccak.Compute(preimage).Bytes;
+        ReadOnlySpan<byte> hash = ValueKeccak.Compute(preimage).Bytes;
         UInt256.Mod(new UInt256(hash, true), BlsSubgroupOrder, out res);
     }
 
-    private static Span<byte> Hash4(ReadOnlySpan<byte> bytes)
+    private static ReadOnlySpan<byte> Hash4(ReadOnlySpan<byte> bytes)
     {
         byte[] preimage = new byte[bytes.Length + 1];
         preimage[0] = 0x4;
         bytes.CopyTo(preimage.AsSpan()[1..]);
-        return Keccak.Compute(preimage).Bytes;
+        return ValueKeccak.Compute(preimage).Bytes;
     }
 }
