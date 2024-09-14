@@ -6,6 +6,7 @@ using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Consensus;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
@@ -29,7 +30,7 @@ public class GCKeeper
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         size ??= _defaultSize;
-        if (_gcStrategy.CanStartNoGCRegion())
+        if (GCScheduler.MarkGCPaused() && _gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
@@ -87,6 +88,7 @@ public class GCKeeper
 
         public void Dispose()
         {
+            GCScheduler.MarkGCResumed();
             if (_failCause == FailCause.None)
             {
                 if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
@@ -147,6 +149,8 @@ public class GCKeeper
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
+                if (!GCScheduler.MarkGCPaused()) return;
+
                 ulong forcedGcCount = Interlocked.Increment(ref _forcedGcCount);
                 int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
@@ -168,6 +172,7 @@ public class GCKeeper
                 System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
 
                 MallocHelper.Instance.MallocTrim((uint)1.MiB());
+                GCScheduler.MarkGCResumed();
             }
         }
     }

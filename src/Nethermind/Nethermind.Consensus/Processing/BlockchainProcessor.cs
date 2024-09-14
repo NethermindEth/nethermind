@@ -58,16 +58,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private Task? _recoveryTask;
     private Task? _processorTask;
     private DateTime _lastProcessedBlock;
-    private Task _lastGcTask = Task.CompletedTask;
 
     private int _currentRecoveryQueueSize;
     private const int MaxBlocksDuringFastSyncTransition = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
-    private readonly Timer _gcTimer;
-    private int _isPerformingGC = 0;
-    private bool _isNextGcBlocking = false;
-    private bool _isNextGcCompacting = false;
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
 
@@ -99,7 +94,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
         _stats = new ProcessingStats(_logger);
-        _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -303,40 +297,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void RunProcessingLoop()
     {
-        const int BlocksBacklogTriggeringManualGC = 4;
-        const int MaxBlocksWithoutGC = 250;
-        const int MinSecondsBetweenForcedGC = 120;
-        Stopwatch stopwatch = new();
-
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
         FireProcessingQueueEmpty();
 
-        bool gcTimerSet = true;
-        SwitchOnBackgroundGC();
-        bool fireGC = false;
-        long countToGC = 0L;
+        GCScheduler.Instance.SwitchOnBackgroundGC(0);
         foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
         {
-            if (gcTimerSet)
-            {
-                // Have block, switch off background GC timer
-                SwitchOffBackgroundGC();
-            }
-            int queueCount = _blockQueue.Count;
-            if (!fireGC && queueCount > BlocksBacklogTriggeringManualGC)
-            {
-                // Long chains in archive sync don't force GC and don't call MallocTrim;
-                // so we trigger it manually
-                fireGC = true;
-                countToGC = MaxBlocksWithoutGC;
-                stopwatch.Restart();
-            }
-            else if (queueCount == 0)
-            {
-                // Nothing remaining in the queue, so we can stop forcing GC
-                fireGC = false;
-            }
+            // Have block, switch off background GC timer
+            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Count);
 
             try
             {
@@ -376,83 +345,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
 
-            if (_blockQueue.Count == 0)
-            {
-                // No blocks, switch on background GC timer
-                gcTimerSet = true;
-                SwitchOnBackgroundGC();
-            }
-            if (fireGC)
-            {
-                countToGC--;
-                if (countToGC <= 0 && stopwatch.Elapsed.TotalSeconds > MinSecondsBetweenForcedGC)
-                {
-                    fireGC = false;
-                    stopwatch.Reset();
-                    if (_lastGcTask.IsCompleted)
-                    {
-                        _lastGcTask = PerformFullGCAsync();
-                    }
-                }
-            }
+            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
-    }
-
-    private void SwitchOnBackgroundGC()
-        // GC every 2 minutes if block processing idle
-        => _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
-
-    private void SwitchOffBackgroundGC()
-        => _gcTimer.Change(Timeout.Infinite, Timeout.Infinite);
-
-    private async Task PerformFullGCAsync()
-    {
-        // Flip to ThreadPool to avoid blocking the main processing thread
-        await Task.Yield();
-
-        PerformFullGC();
-    }
-
-    private void PerformFullGC()
-    {
-        if (Interlocked.CompareExchange(ref _isPerformingGC, 1, 0) == 1)
-        {
-            // Skip if another GC is in progress
-            return;
-        }
-
-        // Compacting GC every other cycle of blocking GC
-        bool compacting = _isNextGcBlocking && _isNextGcCompacting;
-        if (_logger.IsDebug) _logger.Debug($"Performing Full GC, blocking: {_isNextGcBlocking} compacting:{compacting}");
-
-        int generation = 1;
-        GCCollectionMode mode = GCCollectionMode.Forced;
-        if (compacting)
-        {
-            // Collect all generations
-            generation = GC.MaxGeneration;
-            // Compact large object heap
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            // Release memory back to the OS
-            mode = GCCollectionMode.Aggressive;
-        }
-
-        GC.Collect(generation, mode, blocking: _isNextGcBlocking, compacting: compacting);
-
-        if (_isNextGcBlocking)
-        {
-            // Switch compacting every other cycle of blocking GC
-            _isNextGcCompacting = !_isNextGcCompacting;
-        }
-        _isNextGcBlocking = !_isNextGcBlocking;
-
-        // Trim native memory
-        MallocHelper.Instance.MallocTrim((uint)1.MiB());
-
-        // Mark GC as finished
-        Volatile.Write(ref _isPerformingGC, 0);
     }
 
     private void FireProcessingQueueEmpty()
