@@ -43,9 +43,9 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
         return (eip4788ContractAddress, builder.Build());
     }
 
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState worldState)
     {
-        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, IWorldState worldState, includeStorageCells: false);
+        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
         if (toAddress is not null)
         {

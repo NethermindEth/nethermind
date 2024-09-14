@@ -117,16 +117,16 @@ public partial class BlockProcessor(
                 {
                     using CancellationTokenSource cancellationTokenSource = new();
                     (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
+                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, worldStateToUse, cancellationTokenSource.Token);
 
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
                     cancellationTokenSource.Cancel();
                 }
                 else
                 {
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
                 }
 
                 processedBlocks[i] = processedBlock;
