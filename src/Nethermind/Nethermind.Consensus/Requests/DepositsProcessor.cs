@@ -17,33 +17,30 @@ public class DepositsProcessor : IDepositsProcessor
 
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
-        if (spec.DepositsEnabled)
+        if (!spec.DepositsEnabled)
+            yield break;
+        for (int i = 0; i < receipts.Length; i++)
         {
-            for (int i = 0; i < receipts.Length; i++)
+            LogEntry[]? logEntries = receipts[i].Logs;
+            if (logEntries is null)
+                continue;
+            for (int index = 0; index < logEntries.Length; index++)
             {
-                LogEntry[]? logEntries = receipts[i].Logs;
-                if (logEntries is not null)
+                LogEntry log = logEntries[index];
+                if (log.LoggersAddress != spec.DepositContractAddress)
+                    continue;
+                var result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
+
+                var newDeposit = new Deposit()
                 {
-                    for (int index = 0; index < logEntries.Length; index++)
-                    {
-                        LogEntry log = logEntries[index];
-                        if (log.LoggersAddress == spec.DepositContractAddress)
-                        {
-                            var result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
+                    Pubkey = (byte[])result[0],
+                    WithdrawalCredentials = (byte[])result[1],
+                    Amount = BitConverter.ToUInt64((byte[])result[2], 0),
+                    Signature = (byte[])result[3],
+                    Index = BitConverter.ToUInt64((byte[])result[4], 0)
+                };
 
-                            var newDeposit = new Deposit()
-                            {
-                                Pubkey = (byte[])result[0],
-                                WithdrawalCredentials = (byte[])result[1],
-                                Amount = BitConverter.ToUInt64((byte[])result[2], 0),
-                                Signature = (byte[])result[3],
-                                Index = BitConverter.ToUInt64((byte[])result[4], 0)
-                            };
-
-                            yield return newDeposit;
-                        }
-                    }
-                }
+                yield return newDeposit;
             }
         }
     }
