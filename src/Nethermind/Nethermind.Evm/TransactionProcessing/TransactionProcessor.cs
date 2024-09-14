@@ -35,7 +35,6 @@ namespace Nethermind.Evm.TransactionProcessing
         protected EthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
-        protected IWorldState WorldState { get; }
         protected IVirtualMachine VirtualMachine { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
@@ -293,7 +292,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             bool deleteCallerAccount = false;
             Address? sender = tx.SenderAddress;
-            if (sender is null || !WorldState.AccountExists(sender))
+            if (sender is null || !worldState.AccountExists(sender))
             {
                 bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
                 bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -419,9 +418,9 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual void DecrementNonce(Transaction tx)
+        protected virtual void DecrementNonce(IWorldState worldState, Transaction tx)
         {
-            WorldState.DecrementNonce(tx.SenderAddress!);
+            worldState.DecrementNonce(tx.SenderAddress!);
         }
 
         protected ExecutionEnvironment BuildExecutionEnvironment(
@@ -482,7 +481,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Snapshot snapshot = worldState.TakeSnapshot();
 
-            PayValue(tx, spec, opts);
+            PayValue(worldState, tx, spec, opts);
 
             try
             {
@@ -583,9 +582,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += spentGas;
         }
 
-        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
+        protected virtual void PayValue(IWorldState worldState, Transaction tx, IReleaseSpec spec,
+            ExecutionOptions opts)
         {
-            WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
+            worldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
         protected virtual void PayFees(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)

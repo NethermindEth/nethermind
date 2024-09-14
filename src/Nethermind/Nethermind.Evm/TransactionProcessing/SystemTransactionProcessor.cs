@@ -34,7 +34,7 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
     {
         if (_isAura && !blCtx.Header.IsGenesis)
         {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            worldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         }
 
         return base.Execute(worldState, tx, in blCtx, tracer, !opts.HasFlag(ExecutionOptions.NoValidation)
@@ -49,22 +49,22 @@ public sealed class SystemTransactionProcessor : TransactionProcessorBase
 
     protected override TransactionResult IncrementNonce(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
-    protected override void DecrementNonce(Transaction tx) { }
+    protected override void DecrementNonce(IWorldState worldState, Transaction tx) { }
 
     protected override void PayFees(IWorldState worldState, Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode) { }
 
-    protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
+    protected override void PayValue(IWorldState worldState, Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {
         if (opts.HasFlag((ExecutionOptions)OriginalValidate))
         {
-            base.PayValue(tx, spec, opts);
+            base.PayValue(worldState, tx, spec, opts);
         }
     }
 
     protected override bool RecoverSenderIfNeeded(IWorldState worldState, Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
-        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !WorldState.AccountExists(sender)))
+        return (sender is null || (spec.IsEip158IgnoredAccount(sender) && !worldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(worldState, tx, spec, opts, in effectiveGasPrice);
     }
 }
