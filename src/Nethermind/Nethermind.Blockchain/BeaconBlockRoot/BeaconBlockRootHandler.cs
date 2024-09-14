@@ -15,7 +15,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 {
     private const long GasLimit = 30_000_000L;
 
-    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec)
+    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
     {
         BlockHeader? header = block.Header;
         bool canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
@@ -26,18 +26,25 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
             spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress :
             null;
 
-        return (eip4788ContractAddress,
-            eip4788ContractAddress is null ?
-                null :
-                new AccessList.Builder()
-                    .AddAddress(eip4788ContractAddress)
-                    .AddStorage(block.Timestamp % 8191)
-                    .Build());
+        if (eip4788ContractAddress is null)
+        {
+            return (null, null);
+        }
+
+        var builder = new AccessList.Builder()
+            .AddAddress(eip4788ContractAddress);
+
+        if (includeStorageCells)
+        {
+            builder.AddStorage(block.Timestamp % 8191);
+        }
+
+        return (eip4788ContractAddress, builder.Build());
     }
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
-        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec);
+        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
         if (toAddress is not null)
         {

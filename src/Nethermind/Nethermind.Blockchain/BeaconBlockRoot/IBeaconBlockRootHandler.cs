@@ -8,6 +8,6 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec);
+    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
 }
