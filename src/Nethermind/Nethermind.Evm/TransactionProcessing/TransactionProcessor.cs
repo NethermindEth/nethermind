@@ -101,10 +101,10 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult Execute(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(worldState, transaction, in blCtx, txTracer, ExecutionOptions.Commit);
+            ExecuteCore(worldState, transaction, in blCtx, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(worldState, transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
+            ExecuteCore(worldState, transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
 
         private TransactionResult ExecuteCore(IWorldState worldState, Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
