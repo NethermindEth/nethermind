@@ -55,12 +55,13 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
         int count = result.Length / sizeOfClass;
         for (int i = 0; i < count; ++i)
         {
-            WithdrawalRequest request = new();
-            Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
-            request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
-            request.ValidatorPubkey = span.Slice(20, 48).ToArray();
-            request.Amount = BinaryPrimitives.ReadUInt64BigEndian(span.Slice(68, 8));
-
+            Memory<byte> memory = result.AsMemory(i * sizeOfClass, sizeOfClass);
+            WithdrawalRequest request = new()
+            {
+                SourceAddress = new Address(memory.Slice(0, 20).AsArray()),
+                ValidatorPubkey = memory.Slice(20, 48),
+                Amount = BinaryPrimitives.ReadUInt64BigEndian(memory.Slice(68, 8).Span)
+            };
             yield return request;
         }
     }

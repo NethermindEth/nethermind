@@ -68,19 +68,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             public int GetBodyLength(BlockBody b)
             {
-                if (b.Withdrawals is not null)
-                {
-                    if (b.Requests is not null)
-                    {
-                        return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
-                               Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals)) +
-                               Rlp.LengthOfSequence(GetRequestsLength(b.Requests));
-                    }
-                    return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
-                           Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
-                }
                 return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
-                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
+                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles))
+                       + (b.Withdrawals is not null
+                           ? Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals))
+                           : 0)
+                       + (b.Requests is not null
+                           ? Rlp.LengthOfSequence(GetRequestsLength(b.Requests))
+                           : 0);
             }
 
             private int GetTxLength(Transaction[] transactions)

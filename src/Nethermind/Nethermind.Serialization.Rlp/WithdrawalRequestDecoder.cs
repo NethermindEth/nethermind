@@ -21,12 +21,12 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int _ = rlpStream.ReadSequenceLength();
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] ValidatorPubkey = rlpStream.DecodeByteArray();
+        byte[] validatorPubkey = rlpStream.DecodeByteArray();
         ulong amount = rlpStream.DecodeULong();
         return new WithdrawalRequest()
         {
             SourceAddress = sourceAddress,
-            ValidatorPubkey = ValidatorPubkey,
+            ValidatorPubkey = validatorPubkey,
             Amount = amount
         };
     }
@@ -36,12 +36,12 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int _ = decoderContext.ReadSequenceLength();
         Address sourceAddress = decoderContext.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] ValidatorPubkey = decoderContext.DecodeByteArray();
+        byte[] validatorPubkey = decoderContext.DecodeByteArray();
         ulong amount = decoderContext.DecodeULong();
         return new WithdrawalRequest()
         {
             SourceAddress = sourceAddress,
-            ValidatorPubkey = ValidatorPubkey,
+            ValidatorPubkey = validatorPubkey,
             Amount = amount
         };
     }

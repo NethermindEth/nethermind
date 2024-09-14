@@ -5,7 +5,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices.Marshalling;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 

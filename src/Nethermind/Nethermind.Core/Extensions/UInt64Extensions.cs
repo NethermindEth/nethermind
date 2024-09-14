@@ -22,7 +22,7 @@ public static class UInt64Extensions
 
         for (int i = 0; i < length; i++)
         {
-            value += (ulong)bytes[length - 1 - i] << 8 * i;
+            value = (value << 8) | bytes[i];
         }
 
         return value;

@@ -29,15 +29,15 @@ public class DepositsProcessor : IDepositsProcessor
                 LogEntry log = logEntries[index];
                 if (log.LoggersAddress != spec.DepositContractAddress)
                     continue;
-                var result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
+                var result = (byte[][])abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
 
                 var newDeposit = new Deposit()
                 {
-                    Pubkey = (byte[])result[0],
-                    WithdrawalCredentials = (byte[])result[1],
-                    Amount = BitConverter.ToUInt64((byte[])result[2], 0),
-                    Signature = (byte[])result[3],
-                    Index = BitConverter.ToUInt64((byte[])result[4], 0)
+                    Pubkey = result[0],
+                    WithdrawalCredentials = result[1],
+                    Amount = BitConverter.ToUInt64(result[2], 0),
+                    Signature = result[3],
+                    Index = BitConverter.ToUInt64(result[4], 0)
                 };
 
                 yield return newDeposit;
