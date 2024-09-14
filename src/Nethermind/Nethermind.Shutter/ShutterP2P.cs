@@ -27,7 +27,7 @@ public class ShutterP2P : IShutterP2P
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
     private readonly PubsubRouter _router;
-    private readonly ILocalPeer _peer; 
+    private readonly ILocalPeer _peer;
     private readonly ServiceProvider _serviceProvider;
     private CancellationTokenSource? _cts;
     private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);

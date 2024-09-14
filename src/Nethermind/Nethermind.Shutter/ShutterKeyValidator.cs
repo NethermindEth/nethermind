@@ -143,5 +143,5 @@ public class ShutterKeyValidator(
 
     private static EnumerableWithCount<(ReadOnlyMemory<byte>, ReadOnlyMemory<byte>)> ExtractKeys(in Dto.DecryptionKeys decryptionKeys)
         // remove placeholder
-        => new (decryptionKeys.Keys.Skip(1).Select(x => (x.Identity.Memory, x.Key_.Memory)), decryptionKeys.Keys.Count - 1);
+        => new(decryptionKeys.Keys.Skip(1).Select(x => (x.Identity.Memory, x.Key_.Memory)), decryptionKeys.Keys.Count - 1);
 }
