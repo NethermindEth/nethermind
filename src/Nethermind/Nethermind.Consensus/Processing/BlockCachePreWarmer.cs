@@ -15,6 +15,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -24,7 +25,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
-    public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, Address? beaconRootsAddress, CancellationToken cancellationToken = default)
+    public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, AccessList? systemTxAccessList, CancellationToken cancellationToken = default)
     {
         if (targetWorldState is not null)
         {
@@ -40,9 +41,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
                 ThreadPool.UnsafeQueueUserWorkItem(
-                    new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, beaconRootsAddress, this), preferLocal: false);
+                    new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, systemTxAccessList, this), preferLocal: false);
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, beaconRootsAddress, parallelOptions, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, parallelOptions, cancellationToken));
             }
         }
 
@@ -56,7 +57,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public Task ClearCachesInBackground() => targetWorldState?.ClearCachesInBackground() ?? Task.CompletedTask;
 
-    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, Address? beaconRootsAddress, ParallelOptions parallelOptions, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
@@ -148,14 +149,14 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         });
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, Address? beaconRootsAddress, BlockCachePreWarmer preWarmer)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, AccessList? systemTxAccessList, BlockCachePreWarmer preWarmer)
         : IThreadPoolWorkItem
     {
         private readonly ParallelOptions ParallelOptions = parallelOptions;
         private readonly Block Block = block;
         private readonly Hash256 StateRoot = stateRoot;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly Address? BeaconRootsAddress = beaconRootsAddress;
+        private readonly AccessList? SystemTxAccessList = systemTxAccessList;
 
         void IThreadPoolWorkItem.Execute()
         {
@@ -179,12 +180,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
-            // Warm up BeaconRootsAddress first as is first used
-            if (BeaconRootsAddress is not null)
+            if (SystemTxAccessList is not null)
             {
-                scope.WorldState.WarmUp(BeaconRootsAddress);
-                // Contract accesses this storage cell
-                scope.WorldState.WarmUp(new StorageCell(BeaconRootsAddress, block.Timestamp % 8191));
+                scope.WorldState.WarmUp(SystemTxAccessList);
             }
 
             int progress = 0;

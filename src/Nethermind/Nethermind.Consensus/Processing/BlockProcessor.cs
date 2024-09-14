@@ -18,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -107,17 +108,30 @@ public partial class BlockProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                using CancellationTokenSource cancellationTokenSource = new();
-                Task? preWarmTask = suggestedBlock.Transactions.Length < 3
-                    ? null
-                    : preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, _beaconBlockRootHandler.BeaconRootsAddress(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header)), cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
-                // Block is processed, we can cancel the prewarm task
-                if (preWarmTask is not null)
+                Block processedBlock;
+                TxReceipt[] receipts;
+
+                Task? preWarmTask = null;
+                bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
+                if (!skipPrewarming)
                 {
-                    preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
+                    using CancellationTokenSource cancellationTokenSource = new();
+                    (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
+                    preWarmTask = preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, accessList, cancellationTokenSource.Token);
+
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    // Block is processed, we can cancel the prewarm task
+                    if (preWarmTask is not null)
+                    {
+                        preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
+                    }
+                    cancellationTokenSource.Cancel();
                 }
-                cancellationTokenSource.Cancel();
+                else
+                {
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                }
+
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing

@@ -15,34 +15,42 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 {
     private const long GasLimit = 30_000_000L;
 
-    public Address? BeaconRootsAddress(Block block, IReleaseSpec spec)
+    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec)
     {
         BlockHeader? header = block.Header;
-        var canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
+        bool canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
                                   && !header.IsGenesis
                                   && header.ParentBeaconBlockRoot is not null;
-        return !canInsertBeaconRoot ? null : spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
+
+        Address? eip4788ContractAddress = canInsertBeaconRoot ?
+            spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress :
+            null;
+
+        return (eip4788ContractAddress,
+            eip4788ContractAddress is null ?
+                null :
+                new AccessList.Builder()
+                    .AddAddress(eip4788ContractAddress)
+                    .AddStorage(block.Timestamp % 8191)
+                    .Build());
     }
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
-        BlockHeader? header = block.Header;
-        var canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
-                                  && !header.IsGenesis
-                                  && header.ParentBeaconBlockRoot is not null;
+        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec);
 
-        if (canInsertBeaconRoot)
+        if (toAddress is not null)
         {
-            Address beaconRootsAddress = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
+            BlockHeader? header = block.Header;
             Transaction transaction = new()
             {
                 Value = UInt256.Zero,
                 Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
-                To = beaconRootsAddress,
+                To = toAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = GasLimit,
                 GasPrice = UInt256.Zero,
-                AccessList = new AccessList.Builder().AddAddress(beaconRootsAddress).Build()
+                AccessList = accessList
             };
 
             transaction.Hash = transaction.CalculateHash();
