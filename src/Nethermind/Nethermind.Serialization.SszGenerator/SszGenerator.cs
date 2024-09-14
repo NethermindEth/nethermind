@@ -162,7 +162,7 @@ public partial class SszEncoding
                 return result;
             }))}
 {Whitespace}
-{Shift(2, variables.Select((m, i) => (m.Type.IsStruct ? "" : $"if (container.{m.Name} is not null) ") + $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), container.{m.Name});"))}
+{Shift(2, variables.Select((m, i) => (m.Type.IsStruct ? "" : $"if (container.{m.Name} is not null) ") + $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1}), container.{m.Name}{(m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"))}
     }}
 {Whitespace}
     public static void Encode(Span<byte> data, ICollection<{decl.Name}>? container)
@@ -351,7 +351,7 @@ public partial class SszEncoding
         }}
 {Whitespace}
         switch(container.Selector) {{
-{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), container.{m.Name});"
+{Shift(3, decl.UnionMembers.Select(m => $"case {decl.Selector!.Type.Name}.{m.Name}: {(m.IsVariable ? $"{(m.HandledByStd ? "SszLib.Encode" : "Encode")}(data.Slice(1), container.{m.Name}{(m.Kind == Kind.BitList ? $", {m.Limit}" : "")});"
                                                 : m.HandledByStd ? $"SszLib.Encode(data.Slice(1), container.{m.Name});"
                                                                  : $"Encode(data.Slice(1), container.{m.Name});")} break;"))}
         }};
