@@ -90,7 +90,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult CallAndRestore(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(worldState, transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
+            ExecuteCore(worldState, transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
 
         public TransactionResult BuildUp(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {

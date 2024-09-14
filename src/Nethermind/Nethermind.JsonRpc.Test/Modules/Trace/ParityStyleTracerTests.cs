@@ -59,12 +59,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 .TestObject;
 
             IDbProvider dbProvider = new DbProvider();
+            MemDb stateDb = new();
+            MemDb codeDb = new();
+            dbProvider.RegisterDb(DbNames.State, stateDb);
+            dbProvider.RegisterDb(DbNames.Code, codeDb);
 
             ITrieStore trieStore = new TrieStore(dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
-            _stateReader = new StateReader(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
 
             var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
 
+            _stateReader = worldStateProvider.GetGlobalStateReader();
             BlockhashProvider blockhashProvider = new(_blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
