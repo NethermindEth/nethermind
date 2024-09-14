@@ -14,7 +14,7 @@ public partial class Ssz
         public ulong Eon;
         public ulong Slot;
         public ulong TxPointer;
-        public List<byte[]> IdentityPreimages;
+        public IEnumerable<ReadOnlyMemory<byte>> IdentityPreimages;
     }
 
     private const int VarOffsetSize = sizeof(uint);

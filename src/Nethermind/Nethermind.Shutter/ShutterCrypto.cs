@@ -174,7 +174,7 @@ public static class ShutterCrypto
         ulong eon,
         ulong slot,
         ulong txPointer,
-        List<byte[]> identityPreimages,
+        IEnumerable<ReadOnlyMemory<byte>> identityPreimages,
         ReadOnlySpan<byte> signatureBytes,
         Address keyperAddress)
     {
@@ -287,7 +287,7 @@ public static class ShutterCrypto
         Hash3(preimage, out res);
     }
 
-    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, List<byte[]> identityPreimages)
+    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
     {
         Ssz.SlotDecryptionIdentites container = new()
         {

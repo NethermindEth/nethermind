@@ -17,6 +17,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using System.IO;
 using Nethermind.Abi;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.Shutter;
 

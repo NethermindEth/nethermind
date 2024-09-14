@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.State;
 using Nethermind.Shutter.Config;
 using Nethermind.Blockchain.Find;
+using Nethermind.Facade.Find;
 using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
 
 namespace Nethermind.Shutter.Test;

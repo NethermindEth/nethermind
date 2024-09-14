@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Find;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.State;

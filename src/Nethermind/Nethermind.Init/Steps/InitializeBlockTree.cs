@@ -15,6 +15,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Find;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 

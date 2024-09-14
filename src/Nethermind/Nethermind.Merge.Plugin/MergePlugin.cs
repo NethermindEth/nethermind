@@ -300,21 +300,19 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             }
             Thread.Sleep(5000);
 
-            IBlockImprovementContextFactory? improvementContextFactory = _api.BlockImprovementContextFactory;
-            if (improvementContextFactory is null)
+            IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
                 if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
                 {
-                    improvementContextFactory = new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
                 }
-                else
-                {
-                    DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
-                    IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
-                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
-                    improvementContextFactory = boostBlockImprovementContextFactory;
-                }
+
+                DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
+                IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
+                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
             }
+
+            IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
 
             PayloadPreparationService payloadPreparationService = new(
                 _postMergeBlockProducer,

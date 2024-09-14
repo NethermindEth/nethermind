@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using Google.Protobuf;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Shutter;
 
@@ -106,7 +107,7 @@ public class ShutterKeyValidator(
 
         int signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.Count;
 
-        if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
+        if (decryptionKeys.Gnosis.SignerIndices.ContainsDuplicates(signerIndicesCount))
         {
             if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: incorrect number of signer indices.");
             return false;
@@ -124,7 +125,7 @@ public class ShutterKeyValidator(
             return false;
         }
 
-        var identityPreimages = decryptionKeys.Keys.Select(key => key.Identity.ToArray()).ToList();
+        IEnumerable<ReadOnlyMemory<byte>> identityPreimages = decryptionKeys.Keys.Select(key => key.Identity.Memory);
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
