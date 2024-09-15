@@ -19,6 +19,10 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
+using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Int256;
+using Newtonsoft.Json;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -30,8 +34,10 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
     private readonly BlockDecoder _blockDecoder;
+    private readonly IBlockFinder _blockFinder;
+    private readonly IStateReader _stateReader;
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
+    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider, IBlockFinder blockFinder, IStateReader stateReader)
     {
         _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -39,6 +45,8 @@ public class DebugRpcModule : IDebugRpcModule
         _logger = logManager.GetClassLogger();
         _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         _blockDecoder = new BlockDecoder();
+        _blockFinder = blockFinder;
+        _stateReader = stateReader;
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -84,6 +92,45 @@ public class DebugRpcModule : IDebugRpcModule
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+    public ResultWrapper<IEnumerable<GethLikeTxTrace>> debug_traceCallMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
+    {
+        blockParameter ??= BlockParameter.Latest;
+        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
+        if (headerSearch.IsError)
+        {
+            return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail(headerSearch);
+        }
+
+        if (!_stateReader.HasStateForBlock(headerSearch.Object))
+        {
+            return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"No state available for block {headerSearch.Object.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
+
+        Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
+        Transaction[] txs = new Transaction[calls.Length];
+        for (int i = 0; i < calls.Length; i++)
+        {
+            calls[i].Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
+            Transaction tx = calls[i].Transaction.ToTransaction();
+            tx.Hash = new Hash256(new UInt256((ulong)i).ToBigEndian());
+            txs[i] = tx;
+        }
+
+        Block block = new(headerSearch.Object!, txs, Enumerable.Empty<BlockHeader>());
+
+        IReadOnlyCollection<GethLikeTxTrace> traces = _debugBridge.GetBlockTrace(blockParameter, cancellationToken);
+
+        if (traces is null)
+        {
+            return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"Failed to trace block transactions for input txns: {JsonConvert.SerializeObject(calls)}", ErrorCodes.ResourceNotFound);
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceCallMany)} with input transactions: {JsonConvert.SerializeObject(calls)} returned the result: {traces}");
+        return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Success(traces);
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
@@ -377,5 +424,36 @@ public class DebugRpcModule : IDebugRpcModule
     {
         IEnumerable<BadBlock> badBlocks = _debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, _specProvider, _blockDecoder));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+    }
+
+    private SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter)
+    {
+        SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
+        if (headerSearch.IsError)
+        {
+            return headerSearch;
+        }
+
+        BlockHeader header = headerSearch.Object;
+        if (header!.IsGenesis)
+        {
+            UInt256 baseFee = header.BaseFeePerGas;
+            header = new BlockHeader(
+                header.Hash!,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                header.Difficulty,
+                header.Number + 1,
+                header.GasLimit,
+                header.Timestamp + 1,
+                header.ExtraData,
+                header.BlobGasUsed,
+                header.ExcessBlobGas);
+
+            header.TotalDifficulty = 2 * header.Difficulty;
+            header.BaseFeePerGas = baseFee;
+        }
+
+        return new SearchResult<BlockHeader>(header);
     }
 }
