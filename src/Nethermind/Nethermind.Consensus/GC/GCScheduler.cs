@@ -6,8 +6,6 @@ using System.Diagnostics;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 
 namespace Nethermind.Consensus;
 
@@ -30,7 +28,7 @@ public sealed class GCScheduler
 
     public static GCScheduler Instance { get; } = new GCScheduler();
 
-    public GCScheduler()
+    private GCScheduler()
     {
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
     }
@@ -51,13 +49,9 @@ public sealed class GCScheduler
             }
         }
 
-        if (queueCount > 0)
+        if (queueCount > 0 || _gcTimerSet)
         {
             // Don't switch on if still processing blocks
-        }
-
-        if (_gcTimerSet)
-        {
             return;
         }
         _gcTimerSet = true;
@@ -130,7 +124,10 @@ public sealed class GCScheduler
             mode = GCCollectionMode.Aggressive;
         }
 
-        GC.Collect(generation, mode, blocking: _isNextGcBlocking, compacting: compacting);
+        if (!GCCollect(generation, mode, blocking: _isNextGcBlocking, compacting: compacting))
+        {
+            return;
+        }
 
         if (_isNextGcBlocking)
         {
@@ -138,11 +135,22 @@ public sealed class GCScheduler
             _isNextGcCompacting = !_isNextGcCompacting;
         }
         _isNextGcBlocking = !_isNextGcBlocking;
+    }
 
-        // Trim native memory
-        MallocHelper.Instance.MallocTrim((uint)1.MiB());
+    public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting)
+    {
+        if (!MarkGCPaused())
+        {
+            // Skip if another GC is in progress
+            return false;
+        }
+
+        _countToGC = MaxBlocksWithoutGC;
+        System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
 
         // Mark GC as finished
-        Volatile.Write(ref _isPerformingGC, 0);
+        MarkGCResumed();
+
+        return true;
     }
 }

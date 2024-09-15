@@ -149,8 +149,6 @@ public class GCKeeper
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
             {
-                if (!GCScheduler.MarkGCPaused()) return;
-
                 ulong forcedGcCount = Interlocked.Increment(ref _forcedGcCount);
                 int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
@@ -169,10 +167,7 @@ public class GCKeeper
                     GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 }
 
-                System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
-
-                MallocHelper.Instance.MallocTrim((uint)1.MiB());
-                GCScheduler.MarkGCResumed();
+                GCScheduler.Instance.GCCollect((int)generation, mode, blocking: true, compacting: compacting > 0);
             }
         }
     }
