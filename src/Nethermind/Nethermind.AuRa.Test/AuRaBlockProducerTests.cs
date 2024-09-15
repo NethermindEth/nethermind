@@ -74,7 +74,7 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
-                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
+                WorldStateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
                 WorldStateProvider.GetGlobalStateReader().HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
                 WorldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(StateProvider);
                 InitProducer();
