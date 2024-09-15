@@ -189,7 +189,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                     callResult = ExecutePrecompile(currentState, spec);
 
-                    if (!callResult.PrecompileSuccess.Value)
+                    if (callResult.IsException || !callResult.PrecompileSuccess.Value)
                     {
                         if (currentState.IsPrecompile && currentState.IsTopLevel)
                         {
@@ -578,8 +578,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
         {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
+            return CallResult.OutOfGasException;
         }
 
         state.GasAvailable = gasAvailable;
