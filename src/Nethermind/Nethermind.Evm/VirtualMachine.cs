@@ -1266,7 +1266,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             {
                                 programCounter++;
                                 // Add gas cost for POP
-                                gasAvailable -= GasCostOf.VeryLow;
+                                gasAvailable -= GasCostOf.Base;
                                 break;
                             }
                             // code.length is zero
