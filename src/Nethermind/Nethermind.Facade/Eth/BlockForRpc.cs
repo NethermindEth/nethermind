@@ -76,7 +76,6 @@ public class BlockForRpc
         Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
-        TotalDifficulty = block.TotalDifficulty ?? 0;
         Transactions = includeFullTransactionData ? block.Transactions.Select((t, idx) => new TransactionForRpc(block.Hash, block.Number, idx, t, block.BaseFeePerGas)).ToArray() : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
         TransactionsRoot = block.TxRoot;
         Uncles = block.Uncles.Select(o => o.Hash);
@@ -118,7 +117,6 @@ public class BlockForRpc
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
-    public UInt256 TotalDifficulty { get; set; }
     public UInt256 Timestamp { get; set; }
 
     public UInt256? BaseFeePerGas { get; set; }
