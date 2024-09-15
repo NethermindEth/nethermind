@@ -28,7 +28,7 @@ public sealed class GCScheduler
     private long _countToGC = 0L;
     private Stopwatch _stopwatch = new();
 
-    public static GCScheduler Instance => new GCScheduler();
+    public static GCScheduler Instance { get; } = new GCScheduler();
 
     public GCScheduler()
     {
