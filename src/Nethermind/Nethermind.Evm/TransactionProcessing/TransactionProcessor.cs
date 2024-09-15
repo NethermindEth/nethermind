@@ -526,7 +526,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (substate.ShouldRevert || substate.IsError)
                 {
-                    goto Fail;
+                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                        WorldState.Restore(snapshot);
                 }
                 else
                 {
@@ -571,15 +572,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice);
                 goto Complete;
-            Fail:
-                if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                WorldState.Restore(snapshot);
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
             {
                 if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
-                WorldState.Restore(snapshot);
             }
+        Fail:
+            if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+            WorldState.Restore(snapshot);
 
         Complete:
             if (!opts.HasFlag(ExecutionOptions.NoValidation))
