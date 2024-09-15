@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -58,7 +57,7 @@ public partial class BlockProcessor(
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private const int MaxUncommittedBlocks = 64;
-    private readonly Func<Task, Task> _clearCaches = _ => preWarmer.ClearCachesInBackground();
+    private readonly Action<Task> _clearCaches = _ => preWarmer.ClearCaches();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -121,7 +120,7 @@ public partial class BlockProcessor(
 
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
-                    preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
+                    preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
                     cancellationTokenSource.Cancel();
                 }
                 else
@@ -168,11 +167,8 @@ public partial class BlockProcessor(
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
-            throw;
-        }
-        finally
-        {
             preWarmer?.ClearCaches();
+            throw;
         }
     }
 

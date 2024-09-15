@@ -31,7 +31,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (targetWorldState.ClearCache())
             {
-                if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
+                if (_logger.IsDebug) _logger.Debug("Caches are not empty. Clearing them.");
             }
 
             var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
@@ -54,8 +54,6 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     private static bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
     public void ClearCaches() => targetWorldState?.ClearCache();
-
-    public Task ClearCachesInBackground() => targetWorldState?.ClearCachesInBackground() ?? Task.CompletedTask;
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, CancellationToken cancellationToken)
     {
