@@ -527,7 +527,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (substate.ShouldRevert || substate.IsError)
                 {
                     if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                        WorldState.Restore(snapshot);
+                    WorldState.Restore(snapshot);
                 }
                 else
                 {
