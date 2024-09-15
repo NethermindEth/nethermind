@@ -103,12 +103,6 @@ public sealed class GCScheduler
 
     private void PerformFullGC()
     {
-        if (!MarkGCPaused())
-        {
-            // Skip if another GC is in progress
-            return;
-        }
-
         // Compacting GC every other cycle of blocking GC
         bool compacting = _isNextGcBlocking && _isNextGcCompacting;
 
