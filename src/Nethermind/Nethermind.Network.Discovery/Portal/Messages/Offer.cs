@@ -12,9 +12,9 @@ public class Offer
     public ContentKey[] ContentKeys { get; set; } = Array.Empty<ContentKey>();
 }
 
-[SszSerializable]
+[SszSerializable(isCollectionItself: true)]
 public class ContentKey
 {
-    [SszVector(32)]
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    [SszList(32)]
+    public byte[] Data { get; set; } = [];
 }

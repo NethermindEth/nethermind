@@ -14,9 +14,7 @@ public class Nodes
     public Enr[] Enrs { get; set; } = null!;
 }
 
-
-
-[SszSerializable]
+[SszSerializable(isCollectionItself: true)]
 public class Enr
 {
     [SszList(1024)]

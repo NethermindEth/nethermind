@@ -100,11 +100,11 @@ public class SlowSSZTests
                 Selector = MessageType.FindContent,
                 FindContent = new FindContent()
                 {
-                    ContentKey = new ContentKey { Data = Bytes.FromHexString("706f7274616c0000000000000000000000000000000000000000000000000000") }
+                    ContentKey = new ContentKey { Data = Bytes.FromHexString("706f7274616c") }
                 }
             };
 
-            yield return ("0404000000706f7274616c0000000000000000000000000000000000000000000000000000", findContentMessage);
+            yield return ("0404000000706f7274616c", findContentMessage);
         }
 
         {
@@ -158,11 +158,11 @@ public class SlowSSZTests
                 Selector = MessageType.Offer,
                 Offer = new Offer()
                 {
-                    ContentKeys = [new ContentKey { Data = Bytes.FromHexString("0102010201020102010201020102010201020102010201020102010201020102") }]
+                    ContentKeys = [new ContentKey { Data = Bytes.FromHexString("010203") }]
                 }
             };
 
-            yield return ("0604000000040000000102010201020102010201020102010201020102010201020102010201020102", offerRequest);
+            yield return ("060400000004000000010203", offerRequest);
         }
 
         {
