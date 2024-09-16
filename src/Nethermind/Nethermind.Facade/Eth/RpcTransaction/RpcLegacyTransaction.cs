@@ -18,6 +18,8 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
+    public Address? From { get; set; }
+
     public long Gas { get; set; }
 
     public UInt256 Value { get; set; }
@@ -72,9 +74,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             Data = Input,
             GasPrice = GasPrice,
             ChainId = ChainId,
-
-            // TODO: Get `From`
-            // SenderAddress = From,
+            SenderAddress = From,
         };
     }
 
@@ -90,9 +90,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             Data = Input,
             GasPrice = GasPrice, // Default is `20.GWei()` but field is not nullable.
             ChainId = chainId,
-
-            // TODO: Get `From`
-            // tx.SenderAddress = From
+            SenderAddress = From
         };
     }
 
