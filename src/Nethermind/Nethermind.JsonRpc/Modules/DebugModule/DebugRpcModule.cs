@@ -125,7 +125,7 @@ public class DebugRpcModule : IDebugRpcModule
             return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"Failed to trace block transactions for input txns: {JsonConvert.SerializeObject(calls)}", ErrorCodes.ResourceNotFound);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceCallMany)} with input transactions: {JsonConvert.SerializeObject(calls)} returned the result: {traces}");
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceCallMany)} with input transactions: {calls} returned the result: {traces}");
         return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Success(traces);
     }
 

@@ -397,6 +397,109 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void Debug_traceCallMany_test()
+    {
+        GethTxTraceEntry entry = new();
+
+        entry.Storage = new Dictionary<string, string>
+        {
+            {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+            {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+        };
+
+        entry.Memory = new string[]
+        {
+            "5".PadLeft(64, '0'),
+            "6".PadLeft(64, '0')
+        };
+        entry.Stack = new string[] { };
+        entry.Opcode = "STOP";
+        entry.Gas = 22000;
+        entry.GasCost = 1;
+        entry.Depth = 1;
+
+        var traces = new List<GethLikeTxTrace>();
+        traces.Add(new GethLikeTxTrace()
+        {
+            ReturnValue = Bytes.FromHexString("a2"),
+            Entries = new List<GethTxTraceEntry>(),
+        });
+        traces[0].Entries.Add(entry);
+
+
+        GethTraceOptions gtOptions = new();
+
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
+        TransactionForRpc txForRpc = new(transaction);
+        TransactionForRpcWithTraceTypes transactionForRpcWithTraceTypes = new();
+        transactionForRpcWithTraceTypes.Transaction = txForRpc;
+        transactionForRpcWithTraceTypes.TraceTypes = new string[1];
+
+        BlockHeader blockHeader = new BlockHeader(
+            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"),
+            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"),
+            new Address("0xfffffffffffffffffffffffffffffffffffffffe"),
+            1000000,
+            123456,
+            8000000,
+            1694890200,
+            new byte[] { 0x54, 0x65, 0x73, 0x74, 0x45, 0x78, 0x74, 0x72, 0x61, 0x44, 0x61, 0x74, 0x61 },
+            500000,
+            100000,
+            new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")
+        );
+
+        debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(traces);
+        debugBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        debugBridge.SearchBlockHeaderForTraceCall(Arg.Any<BlockParameter>()).Returns(new JsonRpc.Modules.SearchResult<BlockHeader>(blockHeader));
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        ResultWrapper<IEnumerable<GethLikeTxTrace>> debug_traceCallMany_output = rpcModule.debug_traceCallMany(new TransactionForRpcWithTraceTypes[] { transactionForRpcWithTraceTypes }, null);
+        
+        
+        var expected = ResultWrapper<IEnumerable<GethLikeTxTrace>>.Success(
+        new List<GethLikeTxTrace>()
+        {
+             new GethLikeTxTrace()
+             {
+                Failed = false,
+                Entries = new List<GethTxTraceEntry>()
+                {
+                        new GethTxTraceEntry()
+                        {
+                            Gas = 22000,
+                            GasCost = 1,
+                            Depth = 1,
+                            Memory = new string[]
+                            {
+                                "0000000000000000000000000000000000000000000000000000000000000005",
+                                "0000000000000000000000000000000000000000000000000000000000000006"
+                            },
+                            Opcode = "STOP",
+                            ProgramCounter = 0,
+                            Stack = Array.Empty<string>(),
+                            Storage = new Dictionary<string, string>()
+                            {
+                                {
+                                    "0000000000000000000000000000000000000000000000000000000000000001",
+                                    "0000000000000000000000000000000000000000000000000000000000000002"
+                                },
+                                {
+                                    "0000000000000000000000000000000000000000000000000000000000000003",
+                                    "0000000000000000000000000000000000000000000000000000000000000004"
+                                },
+                            }
+                        }
+                },
+                Gas = 0,
+                ReturnValue = new byte[] { 162 }
+             }
+        });
+
+        debug_traceCallMany_output.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
     public async Task Migrate_receipts()
     {
         debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
