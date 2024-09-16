@@ -234,7 +234,7 @@ public static class ShutterCrypto
         => G2.Generator().Mult(r.ToLittleEndian());
 
     private static Span<byte> HashBytesToBlock(scoped ReadOnlySpan<byte> bytes)
-        => ValueKeccak.Compute(bytes).BytesAsSpan;
+        => Keccak.Compute(bytes).Bytes;
 
     private static void UnpadAndJoin(ref Span<byte> blocks)
     {
