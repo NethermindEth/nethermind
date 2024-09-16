@@ -21,7 +21,7 @@ public class RpcOptimismTransactionTests
     ]);
 
     private readonly IFromTransaction<IRpcTransaction> _converter = new IRpcTransaction.TransactionConverter()
-        .RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter);
+        .RegisterConverter(TxType.DepositTx, new RpcOptimismTransaction.Converter());
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
     public static readonly Transaction[] Transactions = [

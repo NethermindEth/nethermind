@@ -9,6 +9,9 @@ using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Optimism.Rpc;
 
+/// <Remarks>
+/// Defined in https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
+/// </Remarks>
 public class RpcOptimismTransaction : RpcNethermindTransaction
 {
     public TxType Type { get; set; }
@@ -24,9 +27,9 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
 
     public UInt256 Value { get; set; }
 
-    public long Gas { get; set; }
+    public ulong Gas { get; set; }
 
-    public bool? IsSystemTx { get; set; }
+    public bool IsSystemTx { get; set; }
 
     public byte[] Input { get; set; }
 
@@ -47,18 +50,42 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         To = transaction.To;
         Mint = transaction.Mint;
         Value = transaction.Value;
-        Gas = transaction.GasLimit;
-        IsSystemTx = transaction.IsOPSystemTransaction ? true : null;
+        // TODO: Unsafe cast
+        Gas = (ulong)transaction.GasLimit;
+        IsSystemTx = transaction.IsOPSystemTransaction;
         Input = transaction.Data?.ToArray() ?? [];
 
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public static readonly IFromTransaction<RpcOptimismTransaction> Converter = new ConverterImpl();
-
-    private class ConverterImpl : IFromTransaction<RpcOptimismTransaction>
+    public class Converter : IToTransaction<RpcOptimismTransaction>, IFromTransaction<RpcOptimismTransaction>
     {
         public RpcOptimismTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
+
+        public Transaction ToTransaction(RpcOptimismTransaction rpcTx)
+        {
+            return new Transaction()
+            {
+                Type = rpcTx.Type,
+                SourceHash = rpcTx.SourceHash,
+                SenderAddress = rpcTx.From,
+                To = rpcTx.To,
+                Mint = rpcTx.Mint ?? 0,
+                Value = rpcTx.Value,
+                GasPrice = rpcTx.Gas,
+                // TODO: Unsafe cast
+                GasLimit = (long)rpcTx.Gas,
+                IsOPSystemTransaction = rpcTx.IsSystemTx,
+                Data = rpcTx.Input
+            };
+        }
+
+        public Transaction ToTransactionWithDefaults(RpcOptimismTransaction rpcTx, ulong chainId)
+        {
+            var tx = ToTransaction(rpcTx);
+            tx.ChainId = chainId;
+            return tx;
+        }
     }
 }
