@@ -40,6 +40,12 @@ namespace Nethermind.Core.Collections
 
             using var handle = dictionary.AcquireLock();
 
+            // Recheck under lock
+            if (dictionary is null || dictionary.IsEmpty)
+            {
+                return false;
+            }
+
             ClearCache<TKey, TValue>.Clear(dictionary);
             return true;
         }
