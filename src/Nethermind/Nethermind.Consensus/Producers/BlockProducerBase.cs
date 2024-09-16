@@ -130,7 +130,6 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
-            IWorldState? worldStateToUse = WorldStateProvider.GetGlobalWorldState(parent);
             if (TrySetState(parent))
             {
                 Block block = PrepareBlock(parent, payloadAttributes);
