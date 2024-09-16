@@ -20,7 +20,7 @@ namespace Nethermind.Optimism;
 /// Not thread safe.
 /// </summary>
 public class OptimismReadOnlyChainProcessingEnv(
-    ReadOnlyTxProcessingEnv txEnv,
+    IReadOnlyTxProcessingScope scope,
     IBlockValidator blockValidator,
     IBlockPreprocessorStep recoveryStep,
     IRewardCalculator rewardCalculator,
@@ -33,7 +33,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor? withdrawalProcessor,
     IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : ReadOnlyChainProcessingEnv(
-    txEnv,
+    scope,
     blockValidator,
     recoveryStep,
     rewardCalculator,
@@ -45,7 +45,7 @@ public class OptimismReadOnlyChainProcessingEnv(
     blockTransactionsExecutor)
 {
 
-    protected override IBlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv scope,
+    protected override IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,

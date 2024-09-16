@@ -44,7 +44,7 @@ public class OptimismTraceModuleFactory(
     protected override ReadOnlyTxProcessingEnv CreateTxProcessingEnv() =>
         new OptimismReadOnlyTxProcessingEnv(_worldStateManager, _blockTree, _specProvider, _logManager, l1CostHelper, opSpecHelper);
 
-    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, ReadOnlyTxProcessingEnv scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
+    protected override ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new OptimismReadOnlyChainProcessingEnv(
                 scope,
                 Always.Valid,
                 _recoveryStep,
