@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithMaxFeePerBlobGas(UInt256 maxFeePerBlobGas)
+        public TransactionBuilder<T> WithMaxFeePerBlobGas(UInt256? maxFeePerBlobGas)
         {
             TestObjectInternal.MaxFeePerBlobGas = maxFeePerBlobGas;
             return this;
