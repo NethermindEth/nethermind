@@ -3,12 +3,11 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool
 {
     public interface ITxValidator
     {
-        bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, [NotNullWhen(false)] out string? error);
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec);
     }
 }

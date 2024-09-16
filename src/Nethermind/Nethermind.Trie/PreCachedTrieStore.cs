@@ -88,7 +88,7 @@ public class PreCachedTrieStore : ITrieStore
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }
 
-public class NodeKey : IEquatable<NodeKey>
+public readonly struct NodeKey : IEquatable<NodeKey>
 {
     public readonly Hash256? Address;
     public readonly TreePath Path;
@@ -108,8 +108,8 @@ public class NodeKey : IEquatable<NodeKey>
         Hash = hash;
     }
 
-    public bool Equals(NodeKey? other) =>
-        other is not null && Address == other.Address && Path.Equals(in other.Path) && Hash.Equals(other.Hash);
+    public bool Equals(NodeKey other) =>
+        Address == other.Address && Path.Equals(in other.Path) && Hash.Equals(other.Hash);
 
     public override bool Equals(object? obj) => obj is NodeKey key && Equals(key);
 

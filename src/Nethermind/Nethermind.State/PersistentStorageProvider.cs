@@ -103,7 +103,7 @@ namespace Nethermind.State
                 {
                     if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
-                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
+                        return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
                     }
                 }
             }
@@ -111,7 +111,7 @@ namespace Nethermind.State
             return value;
         }
 
-
+        private HashSet<AddressAsKey>? _tempToUpdateRoots;
         /// <summary>
         /// Called by Commit
         /// Used for persistent storage specific logic
@@ -126,12 +126,12 @@ namespace Nethermind.State
             {
                 return;
             }
-            if (_changes[currentPosition] is null)
+            if (_changes[currentPosition].IsNull)
             {
                 throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
             }
 
-            HashSet<Address> toUpdateRoots = new();
+            HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
 
             bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
@@ -201,7 +201,7 @@ namespace Nethermind.State
                 }
             }
 
-            foreach (Address address in toUpdateRoots)
+            foreach (AddressAsKey address in toUpdateRoots)
             {
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
@@ -214,6 +214,7 @@ namespace Nethermind.State
                     _storages.Remove(address);
                 }
             }
+            toUpdateRoots.Clear();
 
             base.CommitCore(tracer);
             _originalValues.Clear();
@@ -287,7 +288,7 @@ namespace Nethermind.State
             }
         }
 
-        private void SaveToTree(HashSet<Address> toUpdateRoots, Change change)
+        private void SaveToTree(HashSet<AddressAsKey> toUpdateRoots, Change change)
         {
             if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
                 initialValue.AsSpan().SequenceEqual(change.Value))

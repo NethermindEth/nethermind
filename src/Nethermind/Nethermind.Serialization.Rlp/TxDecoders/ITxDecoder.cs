@@ -6,7 +6,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-interface ITxDecoder
+public interface ITxDecoder
 {
     public TxType Type { get; }
 

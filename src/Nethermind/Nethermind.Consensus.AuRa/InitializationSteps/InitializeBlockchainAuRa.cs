@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -106,6 +107,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
             worldState,
             _api.ReceiptStorage!,
+            new BeaconBlockRootHandler(_api.TransactionProcessor!),
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,

@@ -202,7 +202,7 @@ namespace Nethermind.Core.Specs
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
+        bool IsEip158IgnoredAccount(Address address) => false;
 
         /// <summary>
         /// BaseFee opcode

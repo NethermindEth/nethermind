@@ -6,15 +6,17 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -299,8 +301,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         FireProcessingQueueEmpty();
 
+        GCScheduler.Instance.SwitchOnBackgroundGC(0);
         foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
         {
+            // Have block, switch off background GC timer
+            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Count);
+
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -338,6 +344,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
+
+            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
