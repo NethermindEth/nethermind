@@ -56,9 +56,9 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
             G2 res = x.Add(y);
             result = (res.Encode(), true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = ([], false);
+            return IPrecompile.Failure;
         }
 
         return result;

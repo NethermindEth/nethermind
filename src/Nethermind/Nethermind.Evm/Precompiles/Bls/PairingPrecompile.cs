@@ -68,9 +68,9 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
             result = (res, true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = ([], false);
+            return IPrecompile.Failure;
         }
 
         return result;

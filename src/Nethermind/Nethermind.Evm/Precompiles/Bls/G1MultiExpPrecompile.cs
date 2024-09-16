@@ -82,9 +82,9 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             res.MultiMult(points.ToArray(), scalars.ToArray());
             result = (res.Encode(), true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = ([], false);
+            return IPrecompile.Failure;
         }
 
         return result;

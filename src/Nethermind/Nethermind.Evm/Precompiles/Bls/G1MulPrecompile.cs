@@ -60,9 +60,9 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
             G1 res = x.Mult(scalar);
             result = (res.Encode(), true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = ([], false);
+            return IPrecompile.Failure;
         }
 
         return result;

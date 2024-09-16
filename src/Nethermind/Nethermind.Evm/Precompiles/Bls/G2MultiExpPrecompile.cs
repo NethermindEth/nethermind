@@ -51,7 +51,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             for (int i = 0; i < inputData.Length / ItemSize; i++)
             {
                 int offset = i * ItemSize;
-                G2? p = BlsExtensions.DecodeG2(inputData[offset..(offset + BlsParams.LenG2)]);
+                G2? p = BlsExtensions.DecodeG2(inputData[offset..(offset + BlsParams.LenG2)].Span, out bool xInfinity);
                 if (!p.HasValue)
                 {
                     continue;
@@ -78,12 +78,12 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             }
 
             G2 res = new();
-            res.multi_mult(points.ToArray(), scalars.ToArray());
+            res.MultiMult(points.ToArray(), scalars.ToArray());
             result = (res.Encode(), true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
         return result;

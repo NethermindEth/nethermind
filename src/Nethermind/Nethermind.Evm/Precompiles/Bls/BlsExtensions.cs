@@ -23,16 +23,17 @@ public static class BlsParams
 
 public static class BlsExtensions
 {
+    public class BlsPrecompileException(string message, Exception? innerException = null) : Exception(message, innerException);
     public static G1 DecodeG1(ReadOnlySpan<byte> untrimmed, out bool isInfinity)
     {
         if (untrimmed.Length != BlsParams.LenG1)
         {
-            throw new Exception();
+            throw new BlsPrecompileException("G1 point was wrong size.");
         }
 
         if (!ValidFp(untrimmed[..BlsParams.LenFp]) || !ValidFp(untrimmed[BlsParams.LenFp..]))
         {
-            throw new Exception();
+            throw new BlsPrecompileException("Field point was invalid.");
         }
 
         ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFpTrimmed];
@@ -51,7 +52,7 @@ public static class BlsExtensions
         G1 x = new(trimmed);
         if (!x.OnCurve())
         {
-            throw new Exception();
+            throw new BlsPrecompileException("G1 point not on curve.");
         }
         return x;
     }
@@ -91,7 +92,7 @@ public static class BlsExtensions
             && !fp1.ContainsAnyExcept((byte)0)
             && !fp2.ContainsAnyExcept((byte)0)
             && !fp3.ContainsAnyExcept((byte)0);
-        
+
         if (isInfinity)
         {
             return new();

@@ -46,9 +46,9 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
             res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray(), inputData[(BlsParams.LenFp + BlsParams.LenFpPad)..].ToArray());
             result = (res.Encode(), true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = ([], false);
+            return IPrecompile.Failure;
         }
 
         return result;

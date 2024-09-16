@@ -30,24 +30,23 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = BlsParams.LenG2 + BlsParams.LenFr;
+
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
         try
         {
             G2 x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2].Span, out bool xInfinity);
 
-            if (!x.HasValue)
+            if (xInfinity)
             {
                 // x == inf
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
-            if (!x.Value.InGroup())
+            if (!x.InGroup())
             {
                 throw new Exception();
             }
@@ -59,14 +58,12 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
-            G2 res = x.Value.Mult(scalar);
-            result = (res.Encode(), true);
+            G2 res = x.Mult(scalar);
+            return (res.Encode(), true);
         }
-        catch (Exception)
+        catch (BlsExtensions.BlsPrecompileException)
         {
-            result = ([], false);
+            return IPrecompile.Failure;
         }
-
-        return result;
     }
 }
