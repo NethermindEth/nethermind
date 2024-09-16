@@ -77,10 +77,16 @@ public class RpcGenericTransaction
         }
 
         public Transaction ToTransaction(RpcGenericTransaction tx)
-            => _converters[(byte)tx.Type!]!.ToTransaction(tx);
+        {
+            var converter = _converters[(byte)tx.Type] ?? throw new ArgumentException("No converter for transaction type");
+            return converter.ToTransaction(tx);
+        }
 
         public Transaction ToTransactionWithDefaults(RpcGenericTransaction tx)
-            => _converters[(byte)tx.Type!]!.ToTransactionWithDefaults(tx);
+        {
+            var converter = _converters[(byte)tx.Type] ?? throw new ArgumentException("No converter for transaction type");
+            return converter.ToTransactionWithDefaults(tx);
+        }
     }
 }
 
