@@ -7,11 +7,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class PortalHistoryNetwork: IPortalContentNetwork.Store
+public class PortalHistoryNetwork: IPortalContentNetwork.Store, IPortalHistoryNetwork
 {
     private readonly IPortalContentNetwork _contentNetwork;
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
@@ -64,10 +65,75 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store
         return true;
     }
 
+    public void AddEnr(IEnr enr)
+    {
+        throw new NotImplementedException();
+    }
+
+    public IEnr GetEnr(ValueHash256 nodeId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void DeleteEnr(ValueHash256 nodeId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<IEnr> LookupEnr(ValueHash256 nodeId, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<Pong> Ping(IEnr enr, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<IEnr[]> FindNodes(IEnr enr, ushort[] distances, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<FindContentResult> FindContent(IEnr enr, string contentKey, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<string> Offer(IEnr enr, string contentKey, string contentValue, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<IEnr[]> LookupKNodes(ValueHash256 nodeId, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<RecursiveFindContentResult> LookupContent(byte[] contentKey, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<TraceRecursiveFindContentResult> TraceLookupContent(byte[] contentKey, CancellationToken token)
+    {
+        throw new NotImplementedException();
+    }
+
     public void Store(byte[] contentKey, byte[] content)
     {
         // Note: Just testing
         _logger.Info($"Got content {contentKey.ToHexString()} of size {content.Length} from portal network");
+    }
+
+    public byte[] LocalContent(byte[] contentKey)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<int> Gossip(byte[] contentKey, byte[] contentValue, CancellationToken token)
+    {
+        throw new NotImplementedException();
     }
 
     private async Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token)

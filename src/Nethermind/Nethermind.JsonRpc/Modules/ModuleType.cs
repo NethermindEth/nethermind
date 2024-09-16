@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Health = nameof(Health);
         public const string AccountAbstraction = nameof(AccountAbstraction);
         public const string Rpc = nameof(Rpc);
+        public const string PortalHistory = nameof(PortalHistory);
 
         public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
         {
@@ -60,6 +61,7 @@ namespace Nethermind.JsonRpc.Modules
             Health,
             AccountAbstraction,
             Rpc,
+            PortalHistory,
         };
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()

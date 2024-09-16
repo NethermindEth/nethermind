@@ -3,10 +3,10 @@
 
 using Nethermind.Int256;
 
-namespace Nethermind.JsonRpc.Modules.Portal;
+namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 
 public class PingResult
 {
-    public int EnrReq { get; set; }
+    public ulong EnrSeq { get; set; }
     public UInt256 DataRadius { get; set; }
 }

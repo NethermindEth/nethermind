@@ -3,10 +3,10 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.JsonRpc.Modules.Portal;
+namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 
 public class RoutingTableInfoResult
 {
     public ValueHash256 LocalNodeId { get; set; }
-    public ValueHash256[][] Buckets { get; set; }
+    public ValueHash256[][] Buckets { get; set; } = Array.Empty<ValueHash256[]>();
 }

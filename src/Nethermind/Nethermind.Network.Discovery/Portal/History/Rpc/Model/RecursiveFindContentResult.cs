@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.JsonRpc.Modules.Portal;
+namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 
 public class RecursiveFindContentResult
 {
-    public string Content { get; set; }
+    public string Content { get; set; } = null!;
     public bool UtpTransfer { get; set; }
 }

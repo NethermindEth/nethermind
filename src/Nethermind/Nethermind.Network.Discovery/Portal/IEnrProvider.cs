@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -11,6 +12,8 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 public interface IEnrProvider
 {
+    IEnr Decode(string enrHex) => Decode(Hex.Decode(enrHex));
+
     IEnr Decode(byte[] enrBytes);
 
     IEnr SelfEnr { get; }
