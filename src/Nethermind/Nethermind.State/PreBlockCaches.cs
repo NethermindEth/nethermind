@@ -20,7 +20,6 @@ public class PreBlockCaches
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<bool>[] _clearCaches;
-    private readonly Action _clearAllCaches;
 
     private readonly ConcurrentDictionary<StorageCell, byte[]> _storageCache = new(LockPartitions, InitialCapacity);
     private readonly ConcurrentDictionary<AddressAsKey, Account> _stateCache = new(LockPartitions, InitialCapacity);
@@ -36,16 +35,12 @@ public class PreBlockCaches
             _rlpCache.NoResizeClear,
             _precompileCache.NoResizeClear
         ];
-
-        _clearAllCaches = () => ClearImmediate();
     }
 
     public ConcurrentDictionary<StorageCell, byte[]> StorageCache => _storageCache;
     public ConcurrentDictionary<AddressAsKey, Account> StateCache => _stateCache;
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache => _precompileCache;
-
-    public Task ClearCachesInBackground() => Task.Run(_clearAllCaches);
 
     public bool ClearImmediate()
     {
