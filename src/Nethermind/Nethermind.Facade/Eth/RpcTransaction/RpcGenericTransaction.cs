@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -76,37 +77,11 @@ public class RpcGenericTransaction
             return this;
         }
 
-        public Transaction ToTransaction(RpcGenericTransaction t)
-        {
-            if (t.Type == null)
-                throw new ArgumentException("Transaction type is not set.");
-
-            byte txType = (byte)t.Type;
-
-            if (txType < 0 || txType > Transaction.MaxTxType)
-                throw new ArgumentException($"Transaction type is out of range: {t.Type}");
-
-            if (_converters[txType] == null)
-                throw new ArgumentException($"Transaction type {t.Type} is not supported.");
-
-            return _converters[txType].ToTransaction(t);
-        }
+        public Transaction ToTransaction(RpcGenericTransaction tx)
+            => _converters[(byte)tx.Type!]!.ToTransaction(tx);
 
         public Transaction ToTransactionWithDefaults(RpcGenericTransaction tx, ulong chainId)
-        {
-            if (tx.Type == null)
-                throw new ArgumentException("Transaction type is not set.");
-
-            byte txType = (byte)tx.Type;
-
-            if (txType < 0 || txType > Transaction.MaxTxType)
-                throw new ArgumentException($"Transaction type is out of range: {tx.Type}");
-
-            if (_converters[txType] == null)
-                throw new ArgumentException($"Transaction type {tx.Type} is not supported.");
-
-            return _converters[txType].ToTransactionWithDefaults(tx, chainId);
-        }
+            => _converters[(byte)tx.Type!]!.ToTransactionWithDefaults(tx, chainId);
     }
 }
 
