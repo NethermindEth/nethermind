@@ -11,14 +11,10 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
 
-public class RequestsTrie : PatriciaTrie<ConsensusRequest>
+public class RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    : PatriciaTrie<ConsensusRequest>(requests, canBuildProof, bufferPool)
 {
     private static readonly ConsensusRequestDecoder _codec = new();
-
-    public RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
-        : base(requests, canBuildProof, bufferPool)
-    {
-    }
 
     protected override void Initialize(ConsensusRequest[] requests)
     {
