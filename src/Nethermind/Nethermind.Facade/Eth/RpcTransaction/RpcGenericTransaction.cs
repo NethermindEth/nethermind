@@ -109,3 +109,20 @@ public class RpcGenericTransaction
         }
     }
 }
+
+public static class RpcGenericTransactionExtensions
+{
+    public static readonly RpcGenericTransaction.Converter GlobalConverter = new RpcGenericTransaction.Converter()
+        .RegisterConverter(TxType.Legacy, new RpcLegacyTransaction.Converter())
+        .RegisterConverter(TxType.AccessList, new RpcAccessListTransaction.Converter())
+        .RegisterConverter(TxType.EIP1559, new RpcEIP1559Transaction.Converter())
+        .RegisterConverter(TxType.Blob, new RpcBlobTransaction.Converter());
+
+    /// <remarks>
+    /// Intended to be used until proper DI is implemented.
+    /// </remarks>
+    public static Transaction ToTransaction(this RpcGenericTransaction rpcTransaction)
+    {
+        return GlobalConverter.ToTransaction(rpcTransaction);
+    }
+}
