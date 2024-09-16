@@ -94,7 +94,162 @@ public partial class SszGenerator : IIncrementalGenerator
             List<SszProperty> variables = decl.Members.Where(m => m.IsVariable).ToList();
             int encodeOffsetIndex = 0, encodeStaticOffset = 0;
             int offsetIndex = 0, offset = 0;
-            string result = FixWhitespace(decl.Kind == Kind.Container ? $@"using Nethermind.Merkleization;
+            string result = FixWhitespace(decl.IsSszListItself ?
+$@"using Nethermind.Merkleization;
+using System.Collections.Generic;
+using System.Linq;
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{Whitespace}
+using SszLib = Nethermind.Serialization.Ssz.Ssz;
+{Whitespace}
+namespace Nethermind.Serialization;
+{Whitespace}
+public partial class SszEncoding
+{{
+    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return 0;
+        }")}
+{Whitespace}
+        return {DynamicLength(decl, variables[0])};
+    }}
+{Whitespace}
+    public static int GetLength(ICollection<{decl.Name}>? container)
+    {{
+        if(container is null)
+        {{
+            return 0;
+        }}
+{Whitespace}
+        int length = container.Count * {SszType.PointerLength};
+        foreach({decl.Name} item in container)
+        {{
+            length += GetLength(item);
+        }}
+{Whitespace}
+        return length;
+    }}
+{Whitespace}
+    public static ReadOnlySpan<byte> Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return [];
+        }")}
+        Span<byte> buf = new byte[GetLength(container)];
+        Encode(buf, container);
+        return buf;
+    }}
+{Whitespace}
+    public static void Encode(Span<byte> data, {decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return;
+        }")}
+{Whitespace}
+        if (container.{variables[0].Name} is not null) {(variables[0].HandledByStd ? "SszLib.Encode" : "Encode")}(data, container.{variables[0].Name});
+    }}
+{Whitespace}
+    public static void Encode(Span<byte> data, ICollection<{decl.Name}>? container)
+    {{
+        if(container is null) return;
+{Whitespace}
+        int offset = container.Count * {(SszType.PointerLength)};
+        int itemOffset = 0;
+{Whitespace}
+        foreach({decl.Name} item in container)
+        {{
+            SszLib.Encode(data.Slice(itemOffset, {(SszType.PointerLength)}), offset);
+            itemOffset += {(SszType.PointerLength)};
+            int length = GetLength(item);
+            Encode(data.Slice(offset, length), item);
+            offset += length;
+        }}
+    }}
+{Whitespace}
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
+    {{
+        container = new();
+{Whitespace}
+        if (data.Length > 0) {{ {(variables[0].HandledByStd ? "SszLib.Decode" : "Decode")}(data, out {(variables[0].HandledByStd ? $"ReadOnlySpan<{variables[0].Type.Name}>" : $"{variables[0].Type.Name}[]")} {VarName(variables[0].Name)}); container.{variables[0].Name} = [ ..{VarName(variables[0].Name)}]; }}
+    }}
+{Whitespace}
+    public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
+    {{
+        if(data.Length is 0)
+        {{
+            container = [];
+            return;
+        }}
+{Whitespace}
+        {(decl.IsVariable ? $@"SszLib.Decode(data.Slice(0, 4), out int firstOffset);
+        int length = firstOffset / {SszType.PointerLength}" : $"int length = data.Length / {decl.StaticLength}")};
+        container = new {decl.Name}[length];
+{Whitespace}
+        {(decl.IsVariable ? @$"int index = 0;
+        int offset = firstOffset;
+        for(int nextOffsetIndex = {SszType.PointerLength}; index < length - 1; index++, nextOffsetIndex += {SszType.PointerLength})
+        {{
+            SszLib.Decode(data.Slice(nextOffsetIndex, {SszType.PointerLength}), out int nextOffset);
+            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            offset = nextOffset;
+        }}
+{Whitespace}
+        Decode(data.Slice(offset), out container[index]);" : @$"int offset = 0;
+        for(int index = 0; index < length; index++)
+        {{
+            Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
+            offset += {decl.StaticLength};
+        }}")}
+    }}
+{Whitespace}
+    public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
+    {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            root = 0;
+            return;
+        }")}
+        Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));
+        {(variables[0].HandledByStd ? $"merkleizer.Feed(container.{variables[0].Name}, {variables[0].Limit});" : $"MerkleizeList(container.{variables[0].Name}, {variables[0].Limit}, out UInt256 {VarName(variables[0].Name)}Root); merkleizer.Feed({VarName(variables[0].Name)}Root);")}
+        merkleizer.CalculateRoot(out root);
+    }}
+{Whitespace}
+    public static void MerkleizeVector(IList<{decl.Name}>? container, out UInt256 root)
+    {{
+        if(container is null)
+        {{
+            root = 0;
+            return;
+        }}
+{Whitespace}
+        UInt256[] subRoots = new UInt256[container.Count];
+        for(int i = 0; i < container.Count; i++)
+        {{
+            Merkleize(container[i], out subRoots[i]);
+        }}
+{Whitespace}
+        Merkle.Ize(out root, subRoots);
+    }}
+{Whitespace}
+    public static void MerkleizeList(IList<{decl.Name}>? container, ulong limit, out UInt256 root)
+    {{
+        if(container is null || container.Count is 0)
+        {{
+            root = 0;
+            Merkle.MixIn(ref root, (int)limit);
+            return;
+        }}
+{Whitespace}
+        MerkleizeVector(container, out root);
+        Merkle.MixIn(ref root, container.Count);
+    }}
+}}
+" :
+decl.Kind == Kind.Container ? $@"using Nethermind.Merkleization;
 using System.Collections.Generic;
 using System.Linq;
 {string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
