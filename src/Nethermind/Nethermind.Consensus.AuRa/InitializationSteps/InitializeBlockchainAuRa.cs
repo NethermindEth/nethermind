@@ -148,6 +148,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
+                _api.WorldStateManager!.GlobalWorldStateProvider,
                 chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
@@ -194,7 +195,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
         ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
-        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, _auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.WorldStateManager!.GlobalWorldStateProvider, _api.LogManager);
+        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, _auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
         _api.RewardCalculatorSource = new AuRaRewardCalculator.AuRaRewardCalculatorSource(_api.ChainSpec.AuRa, _api.AbiEncoder);
         _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, _auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
     }

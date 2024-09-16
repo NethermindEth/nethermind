@@ -31,6 +31,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly Cache _cache;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
+        private readonly IWorldStateProvider _worldStateProvider;
         private readonly ILogger _logger;
 
         public ReportingContractBasedValidator(
@@ -43,6 +44,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             Cache cache,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
+            IWorldStateProvider worldStateProvider,
             ILogManager logManager)
         {
             _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
@@ -53,19 +55,18 @@ namespace Nethermind.Consensus.AuRa.Validators
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, gasPriceOracle);
             _persistentReports = cache.PersistentReports;
+            _worldStateProvider = worldStateProvider;
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private IReportingValidatorContract ValidatorContract { get; }
 
-        public void ReportMalicious(Address validator, long blockNumber, byte[] proof,
-            IReportingValidator.MaliciousCause cause, IWorldState worldState)
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
-            Report(ReportType.Malicious, validator, blockNumber, proof, cause, (validator1, blockNumber1, proof1) => CreateReportMaliciousTransaction(validator1, blockNumber1, proof1, worldState));
+            Report(ReportType.Malicious, validator, blockNumber, proof, cause, (validator1, blockNumber1, proof1) => CreateReportMaliciousTransaction(validator1, blockNumber1, proof1));
         }
 
-        private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof,
-            IWorldState worldState)
+        private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
         {
             if (!Validators.Contains(validator))
             {
@@ -81,15 +82,13 @@ namespace Nethermind.Consensus.AuRa.Validators
                 _sentReportsInBlock = blockNumber;
             }
 
-            return CreateReportMaliciousTransactionCore(persistentReport, worldState);
+            return CreateReportMaliciousTransactionCore(persistentReport);
         }
 
-        private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport,
-            IWorldState worldState)
+        private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
         {
             var transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
-            // TODO: just this getting nonce here is complicating a lot of things
-            transaction.Nonce = worldState.GetNonce(ValidatorContract.NodeAddress);
+            transaction.Nonce = _worldStateProvider.GetGlobalWorldState(persistentReport.BlockNumber).GetNonce(ValidatorContract.NodeAddress);
             return transaction;
         }
 
@@ -208,22 +207,20 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] Validators => _contractValidator.Validators;
 
-        public void OnBlockProcessingStart(Block block, IWorldState worldState,
-            ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            _contractValidator.OnBlockProcessingStart(block, worldState, options);
+            _contractValidator.OnBlockProcessingStart(block, options);
         }
 
-        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
-            ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            _contractValidator.OnBlockProcessingEnd(block, receipts, worldState, options);
+            _contractValidator.OnBlockProcessingEnd(block, receipts, options);
             if (!_contractValidator.ForSealing)
             {
                 var parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 if (parentHeader is not null)
                 {
-                    ResendPersistedReports(parentHeader, worldState);
+                    ResendPersistedReports(parentHeader);
                 }
             }
         }

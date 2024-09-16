@@ -31,6 +31,7 @@ namespace Nethermind.AuRa.Test.Contract
         private ITransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IWorldState _stateProvider;
+        private IWorldStateProvider _worldStateProvider;
 
         [SetUp]
         public void SetUp()
@@ -39,10 +40,10 @@ namespace Nethermind.AuRa.Test.Contract
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _stateProvider = Substitute.For<IWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
-            IWorldStateProvider worldStateProvider = Substitute.For<IWorldStateProvider>();
-            worldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(_stateProvider);
+            _worldStateProvider = Substitute.For<IWorldStateProvider>();
+            _worldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(_stateProvider);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, worldStateProvider));
+            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _worldStateProvider));
         }
 
         [Test]
@@ -54,6 +55,7 @@ namespace Nethermind.AuRa.Test.Contract
                     AbiEncoder.Instance,
                     null,
                     _readOnlyTxProcessorSource,
+                    _worldStateProvider,
                     new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
         }
@@ -79,9 +81,10 @@ namespace Nethermind.AuRa.Test.Contract
                 AbiEncoder.Instance,
                 _contractAddress,
                 _readOnlyTxProcessorSource,
+                _worldStateProvider,
                 new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
 
-            contract.FinalizeChange(_block.Header, _stateProvider);
+            contract.FinalizeChange(_block.Header);
 
             _transactionProcessor.Received().Execute(
                 Arg.Any<IWorldState>(),

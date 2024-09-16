@@ -94,7 +94,7 @@ public class ContractBasedValidatorTests
             .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
             .Returns(_finalizeChangeData.TransactionData);
 
-        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _readOnlyTxProcessorSource, worldStateProvider, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
     }
 
     [TearDown]
@@ -139,7 +139,7 @@ public class ContractBasedValidatorTests
         _block.Header.Beneficiary = initialValidator;
         ContractBasedValidator validator = new(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
 
-        validator.OnBlockProcessingStart(_block, _stateProvider);
+        validator.OnBlockProcessingStart(_block);
 
         _stateProvider.Received(1).CreateAccount(Address.SystemUser, UInt256.Zero);
         _stateProvider.Received(1).Commit(Homestead.Instance);
@@ -183,7 +183,7 @@ public class ContractBasedValidatorTests
             validator.Validators = new[] { TestItem.AddressD };
         }
 
-        validator.OnBlockProcessingStart(block, _stateProvider);
+        validator.OnBlockProcessingStart(block);
 
         // getValidators should have been called
         _transactionProcessor.Received()
@@ -525,9 +525,9 @@ public class ContractBasedValidatorTests
 
             _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
-            Action preProcess = () => validator.OnBlockProcessingStart(_block, _stateProvider);
+            Action preProcess = () => validator.OnBlockProcessingStart(_block);
             preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
-            validator.OnBlockProcessingEnd(_block, txReceipts, _stateProvider);
+            validator.OnBlockProcessingEnd(_block, txReceipts);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
             _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
@@ -591,7 +591,7 @@ public class ContractBasedValidatorTests
 
         _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns(lastLevelFinalized);
 
-        validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None), _stateProvider);
+        validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
 
         PendingValidators pendingValidators = null;
         if (expectedBlockValidators.HasValue)

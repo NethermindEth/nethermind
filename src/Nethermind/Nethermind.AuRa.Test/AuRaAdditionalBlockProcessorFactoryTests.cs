@@ -47,7 +47,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<ISpecProvider>(),
 
                 Substitute.For<IGasPriceOracle>(),
-                new ReportingContractBasedValidator.Cache(), long.MaxValue);
+                new ReportingContractBasedValidator.Cache(),
+                Substitute.For<IWorldStateProvider>(),long.MaxValue);
 
             AuRaParameters.Validator validator = new()
             {

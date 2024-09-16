@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private void ResendPersistedReports(BlockHeader blockHeader, IWorldState worldState)
+        private void ResendPersistedReports(BlockHeader blockHeader)
         {
             var blockNumber = blockHeader.Number;
             if (!IsPosdao(blockNumber))
@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         try
                         {
-                            SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport, worldState));
+                            SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
                         }
                         catch (AbiException e)
                         {

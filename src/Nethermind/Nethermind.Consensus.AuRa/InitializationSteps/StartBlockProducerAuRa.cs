@@ -135,6 +135,7 @@ public class StartBlockProducerAuRa
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
+                _api.WorldStateManager!.GlobalWorldStateProvider,
                 chainSpecAuRa.PosdaoTransition,
                 true)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);

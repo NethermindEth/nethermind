@@ -8,8 +8,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public interface IReportingValidator
     {
-        void ReportMalicious(Address validator, long blockNumber, byte[] proof, MaliciousCause cause,
-            IWorldState worldState);
+        void ReportMalicious(Address validator, long blockNumber, byte[] proof, MaliciousCause cause);
         void ReportBenign(Address validator, long blockNumber, BenignCause cause);
         void TryReportSkipped(BlockHeader header, BlockHeader parent);
 

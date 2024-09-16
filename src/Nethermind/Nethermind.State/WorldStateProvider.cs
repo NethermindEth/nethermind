@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -47,6 +48,12 @@ public class WorldStateProvider : ReadOnlyWorldStateProvider
     public override IWorldState GetGlobalWorldState(BlockHeader header)
     {
         // TODO: return corresponding worldState depending on header
+        return WorldState;
+    }
+
+    public override IWorldState GetGlobalWorldState(UInt256 blockNumber)
+    {
+        // TODO: return corresponding worldState depending on blockNumber
         return WorldState;
     }
 

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -29,6 +30,8 @@ public class ReadOnlyWorldStateProvider : IWorldStateProvider
     }
 
     public virtual IWorldState GetGlobalWorldState(BlockHeader header) => throw new InvalidOperationException("world state is not supported");
+
+    public virtual IWorldState GetGlobalWorldState(UInt256 blockNumber) => throw new InvalidOperationException("world state is not supported");
 
     public IStateReader GetGlobalStateReader()
     {

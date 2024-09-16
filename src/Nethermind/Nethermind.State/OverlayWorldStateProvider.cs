@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -26,6 +27,12 @@ public class OverlayWorldStateProvider : IWorldStateProvider
     }
     public IWorldState GetGlobalWorldState(BlockHeader header)
     {
+        return WorldState;
+    }
+
+    public IWorldState GetGlobalWorldState(UInt256 blockNumber)
+    {
+        // TODO: return corresponding worldState depending on blockNumber
         return WorldState;
     }
 

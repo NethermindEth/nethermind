@@ -38,6 +38,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
+        private readonly IWorldStateProvider _worldStateProvider;
 
         public AuRaValidatorFactory(IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
@@ -54,6 +55,7 @@ namespace Nethermind.Consensus.AuRa
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
             ReportingContractBasedValidator.Cache reportingValidatorCache,
+            IWorldStateProvider worldStateProvider,
             long posdaoTransition, bool forSealing = false)
         {
             _abiEncoder = abiEncoder;
@@ -73,11 +75,12 @@ namespace Nethermind.Consensus.AuRa
             _gasPriceOracle = gasPriceOracle;
             _forSealing = forSealing;
             _specProvider = specProvider;
+            _worldStateProvider = worldStateProvider;
         }
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
-            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _readOnlyTxProcessorSource, _signer);
+            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _readOnlyTxProcessorSource, _worldStateProvider, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
 
             var validSealerStrategy = new ValidSealerStrategy();
@@ -121,6 +124,7 @@ namespace Nethermind.Consensus.AuRa
                         _reportingValidatorCache,
                         _specProvider,
                         _gasPriceOracle,
+                        _worldStateProvider,
                         _logManager),
 
                 AuRaParameters.ValidatorType.Multi =>

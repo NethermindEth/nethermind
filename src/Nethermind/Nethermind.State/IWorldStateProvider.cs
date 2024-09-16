@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -11,6 +12,8 @@ namespace Nethermind.State;
 public interface IWorldStateProvider
 {
     public IWorldState GetGlobalWorldState(BlockHeader header);
+
+    public IWorldState GetGlobalWorldState(UInt256 blockNumber);
 
     public IStateReader GetGlobalStateReader();
 

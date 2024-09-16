@@ -83,9 +83,9 @@ namespace Nethermind.Consensus.AuRa
         {
             ValidateAuRa(block);
             _contractRewriter?.RewriteContracts(block.Number, worldState, _specProvider.GetSpec(block.Header));
-            AuRaValidator.OnBlockProcessingStart(block, worldState, options);
+            AuRaValidator.OnBlockProcessingStart(block, options);
             TxReceipt[] receipts = base.ProcessBlock(worldState, block, blockTracer, options);
-            AuRaValidator.OnBlockProcessingEnd(block, receipts, worldState, options);
+            AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
@@ -179,11 +179,9 @@ namespace Nethermind.Consensus.AuRa
         private class NullAuRaValidator : IAuRaValidator
         {
             public Address[] Validators => Array.Empty<Address>();
-            public void OnBlockProcessingStart(Block block, IWorldState worldState,
-                ProcessingOptions options = ProcessingOptions.None)
+            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
             { }
-            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, IWorldState worldState,
-                ProcessingOptions options = ProcessingOptions.None)
+            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
             { }
         }
     }
