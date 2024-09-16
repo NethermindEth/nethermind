@@ -534,7 +534,7 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_CreateTxInSetCodeFalse()
+    public void IsWellFormed_CreateTxInSetCode_ReturnsFalse()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(TxType.SetCode)
