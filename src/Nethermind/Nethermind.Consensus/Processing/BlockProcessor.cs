@@ -126,6 +126,8 @@ public partial class BlockProcessor(
                 }
                 else
                 {
+                    // Even though we skip prewarming we still need to ensure the caches are cleared
+                    preWarmer?.ClearCaches();
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
