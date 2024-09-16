@@ -5,6 +5,7 @@ using System;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
