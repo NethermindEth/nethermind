@@ -143,4 +143,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Specify concurrent request per peer for syncing.", DefaultValue = "2", HiddenFromDocs = true)]
+    int AllocationSlots { get; set; }
 }

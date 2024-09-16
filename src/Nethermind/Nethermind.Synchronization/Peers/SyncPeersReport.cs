@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -74,7 +75,7 @@ namespace Nethermind.Synchronization.Peers
                 if (_logger.IsDebug)
                 {
                     var header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
-                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
+                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(p => p.HasAnyAllocation), header));
                 }
             }
         }
@@ -107,7 +108,7 @@ namespace Nethermind.Synchronization.Peers
                 PeersContextCounts sleepingContexts = new();
                 foreach (PeerInfo peerInfo in peers)
                 {
-                    CountContexts(peerInfo.AllocatedContexts, ref activeContexts);
+                    CountContextDict(peerInfo.AvailableAllocationSlots, ref activeContexts);
                     CountContexts(peerInfo.SleepingContexts, ref sleepingContexts);
                 }
 
@@ -136,6 +137,24 @@ namespace Nethermind.Synchronization.Peers
                 contextCounts.Blocks += contexts.HasFlag(AllocationContexts.Blocks) ? 1 : 0;
                 contextCounts.State += contexts.HasFlag(AllocationContexts.State) ? 1 : 0;
                 contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
+            }
+
+            static void CountContextDict(Dictionary<AllocationContexts, int> availableSlots, ref PeersContextCounts contextCounts)
+            {
+                contextCounts.Total++;
+
+                if (!availableSlots.Any(kv => kv.Value > 0))
+                {
+                    contextCounts.None++;
+                    return;
+                }
+
+                contextCounts.Headers += availableSlots[AllocationContexts.Headers];
+                contextCounts.Bodies += availableSlots[AllocationContexts.Bodies];
+                contextCounts.Receipts += availableSlots[AllocationContexts.Receipts];
+                contextCounts.Blocks += availableSlots[AllocationContexts.Blocks];
+                contextCounts.State += availableSlots[AllocationContexts.State];
+                contextCounts.Snap += availableSlots[AllocationContexts.Snap];
             }
         }
 
