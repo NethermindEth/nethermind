@@ -41,8 +41,7 @@ public class DebugModuleTests
     private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
     private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
     private readonly MemDb _blocksDb = new();
-    private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
-    private readonly IStateReader _stateReader = Substitute.For<IStateReader>();
+
 
     [Test]
     public async Task Get_from_db()
