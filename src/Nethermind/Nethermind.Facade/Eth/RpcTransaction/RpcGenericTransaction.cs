@@ -53,6 +53,19 @@ public class RpcGenericTransaction
 
     public UInt256? ChainId { get; set; }
 
+    // TODO: `Gas` is set as default to to `long.MaxValue` here but to `90_000` in `ToTransactionWithDefaults`
+    public void EnsureDefaults(long? gasCap)
+    {
+        if (gasCap is null || gasCap == 0)
+            gasCap = long.MaxValue;
+
+        Gas = Gas is null || Gas == 0
+            ? gasCap
+            : Math.Min(gasCap.Value, Gas.Value);
+
+        From ??= Address.SystemUser;
+    }
+
     public class TransactionConverter : IToTransaction<RpcGenericTransaction>
     {
         private readonly IToTransaction<RpcGenericTransaction>?[] _converters = new IToTransaction<RpcGenericTransaction>?[Transaction.MaxTxType + 1];
