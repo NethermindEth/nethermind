@@ -58,7 +58,9 @@ namespace Nethermind.Init.Steps
             IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             IStateReader stateReader = setApi.StateReader!;
-            ITxPool txPool = _api.TxPool = CreateTxPool();
+            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            CodeInfoRepository codeInfoRepository = new(_api.SpecProvider!.ChainId, preBlockCaches?.PrecompileCache);
+            ITxPool txPool = _api.TxPool = CreateTxPool(_api.WorldState!, codeInfoRepository);
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
@@ -67,8 +69,6 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
             _api.TransactionProcessor = CreateTransactionProcessor(codeInfoRepository, virtualMachine);
 
