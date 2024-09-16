@@ -66,11 +66,11 @@ public class RpcGenericTransaction
         From ??= Address.SystemUser;
     }
 
-    public class TransactionConverter : IToTransaction<RpcGenericTransaction>
+    public class Converter : IToTransaction<RpcGenericTransaction>
     {
         private readonly IToTransaction<RpcGenericTransaction>?[] _converters = new IToTransaction<RpcGenericTransaction>?[Transaction.MaxTxType + 1];
 
-        public TransactionConverter RegisterConverter(TxType txType, IToTransaction<RpcGenericTransaction> converter)
+        public Converter RegisterConverter(TxType txType, IToTransaction<RpcGenericTransaction> converter)
         {
             _converters[(byte)txType] = converter;
             return this;
