@@ -92,9 +92,6 @@ public static class RpcEIP1559TransactionTests
         json.GetProperty("maxPriorityFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("maxFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("gasPrice").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        // Suprising inconsistency in `FluentAssertions` where `AllSatisfy` fails on empty collections.
-        // This requires wrapping the assertion in a condition.
-        // See: https://github.com/fluentassertions/fluentassertions/discussions/2143#discussioncomment-9677309
         var accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
