@@ -10,8 +10,8 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 // General flows:
 // * JSON -> RpcGenericTransaction (derived by `System.Text.JSON`)
-// * RpcGenericTransaction -> Transaction (RpcGenericTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
-// * Transaction -> IRpcTransaction (IRpcTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
+// * RpcGenericTransaction -> Transaction (RpcGenericTransaction.TransactionConverter with a registry of [TxType => IToTransaction<RpcGenericTransaction>])
+// * Transaction -> IRpcTransaction (IRpcTransaction.TransactionConverter with a registry of [TxType => IFromTransaction<IRpcTransaction>])
 // * IRpcTransaction -> JSON (derived by `System.Text.JSON`)
 
 public interface IRpcTransaction
