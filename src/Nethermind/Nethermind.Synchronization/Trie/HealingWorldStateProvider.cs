@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -12,7 +13,8 @@ namespace Nethermind.Synchronization.Trie;
 
 public class HealingWorldStateProvider : ReadOnlyWorldStateProvider
 {
-    private HealingWorldState _worldState { get; }
+    private HealingWorldState WorldState { get; }
+    private Hash256 OriginalStateRoot { get; set; }
 
     public HealingWorldStateProvider(
         ITrieStore preCachedTrieStore,
@@ -21,7 +23,7 @@ public class HealingWorldStateProvider : ReadOnlyWorldStateProvider
         ILogManager logManager,
         PreBlockCaches? preBlockCaches = null) : base(dbProvider, trieStore.AsReadOnly(), logManager)
     {
-        _worldState = new HealingWorldState(
+        WorldState = new HealingWorldState(
             preCachedTrieStore,
             dbProvider.CodeDb,
             logManager,
@@ -33,16 +35,28 @@ public class HealingWorldStateProvider : ReadOnlyWorldStateProvider
     public override IWorldState GetGlobalWorldState(BlockHeader header)
     {
         // TODO: return corresponding worldState depending on header
-        return _worldState;
+        return WorldState;
     }
 
     public override IWorldState GetWorldState()
     {
-        return _worldState;
+        return WorldState;
     }
 
     public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
     {
-        _worldState.InitializeNetwork(recovery);
+        WorldState.InitializeNetwork(recovery);
+    }
+
+    public override void SetStateRoot(Hash256 stateRoot)
+    {
+        OriginalStateRoot = WorldState.StateRoot;
+        WorldState.StateRoot = stateRoot;
+    }
+
+    public override void Reset()
+    {
+        WorldState.StateRoot = OriginalStateRoot;
+        WorldState.Reset();
     }
 }

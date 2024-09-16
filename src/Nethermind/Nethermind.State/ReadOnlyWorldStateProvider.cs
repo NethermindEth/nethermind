@@ -30,7 +30,7 @@ public class ReadOnlyWorldStateProvider : IWorldStateProvider
 
     public virtual IWorldState GetGlobalWorldState(BlockHeader header) => throw new InvalidOperationException("world state is not supported");
 
-    public virtual IStateReader GetGlobalStateReader()
+    public IStateReader GetGlobalStateReader()
     {
         return _stateReader;
     }
@@ -46,4 +46,8 @@ public class ReadOnlyWorldStateProvider : IWorldStateProvider
     {
         _stateReader.RunTreeVisitor(treeVisitor, stateRoot, visitingOptions);
     }
+
+    public virtual void SetStateRoot(Hash256 stateRoot) => throw new InvalidOperationException("world state is not supported");
+
+    public virtual void Reset() => throw new InvalidOperationException("world state is not supported");
 }

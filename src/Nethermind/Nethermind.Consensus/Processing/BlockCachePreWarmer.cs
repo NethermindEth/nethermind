@@ -90,11 +90,11 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                     int i = 0;
                     try
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot, block.Header);
+                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                         // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
                         // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
                         i = Interlocked.Increment(ref progress) - 1;
-                        scope.WorldState.WarmUp(block.Withdrawals[i].Address);
+                        scope.WorldStateProvider.GetGlobalWorldState(block.Header).WarmUp(block.Withdrawals[i].Address);
                     }
                     catch (Exception ex)
                     {
@@ -129,12 +129,13 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
                 tx = block.Transactions[i];
                 tx.CopyTo(systemTransaction);
-                using IReadOnlyTxProcessingScope scope = env.Build(stateRoot, block.Header);
+                using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(block.Header);
                 if (spec.UseTxAccessLists)
                 {
-                    scope.WorldState.WarmUp(tx.AccessList); // eip-2930
+                    worldState.WarmUp(tx.AccessList); // eip-2930
                 }
-                TransactionResult result = scope.TransactionProcessor.Trace(scope.WorldState, systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+                TransactionResult result = scope.TransactionProcessor.Trace(worldState, systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                 if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
             }
             catch (Exception ex)
@@ -163,7 +164,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
             try
             {
-                using IReadOnlyTxProcessingScope scope = env.Build(StateRoot, Block.Header);
+                using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
                 WarmupAddresses(ParallelOptions, Block, scope);
             }
             catch (Exception ex)
@@ -180,9 +181,10 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
+            IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(block.Header);
             if (SystemTxAccessList is not null)
             {
-                scope.WorldState.WarmUp(SystemTxAccessList);
+                worldState.WarmUp(SystemTxAccessList);
             }
 
             int progress = 0;
@@ -199,12 +201,12 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                     Address? sender = tx.SenderAddress;
                     if (sender is not null)
                     {
-                        scope.WorldState.WarmUp(sender);
+                        worldState.WarmUp(sender);
                     }
                     Address to = tx.To;
                     if (to is not null)
                     {
-                        scope.WorldState.WarmUp(to);
+                        worldState.WarmUp(to);
                     }
                 }
                 catch (Exception ex)

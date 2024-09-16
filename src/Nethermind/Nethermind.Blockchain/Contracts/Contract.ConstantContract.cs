@@ -6,6 +6,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Contracts
 {
@@ -83,7 +84,7 @@ namespace Nethermind.Blockchain.Contracts
                 lock (_readOnlyTxProcessorSource)
                 {
                     using IReadOnlyTxProcessingScope? scope =
-                        _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader), callInfo.ParentHeader);
+                        _readOnlyTxProcessorSource.Build(GetState(callInfo.ParentHeader));
                     return CallRaw(callInfo, scope);
                 }
             }
@@ -91,9 +92,10 @@ namespace Nethermind.Blockchain.Contracts
             protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
             {
                 Transaction? transaction = GenerateTransaction(callInfo);
-                if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
+                IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(callInfo.ParentHeader);
+                if (_contract.ContractAddress is not null && worldState.IsContract(_contract.ContractAddress))
                 {
-                    var result = _contract.CallCore(scope.TransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, scope.WorldState, true);
+                    var result = _contract.CallCore(scope.TransactionProcessor, callInfo.ParentHeader, callInfo.FunctionName, transaction, worldState, true);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
                 }
                 else if (callInfo.MissingContractResult is not null)

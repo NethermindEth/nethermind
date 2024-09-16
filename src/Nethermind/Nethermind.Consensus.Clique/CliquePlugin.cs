@@ -102,17 +102,17 @@ namespace Nethermind.Consensus.Clique
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
-
+            IReadOnlyTxProcessingScope scope = producerEnv.Build(Keccak.EmptyTreeHash);
 
             BlockProcessor producerProcessor = new(
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(producerEnv.TransactionProcessor),
-                producerEnv.WorldStateProvider,
+                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope.TransactionProcessor),
+                scope.WorldStateProvider,
                 NullReceiptStorage.Instance,
                 new BlockhashStore(getFromApi.SpecProvider),
-                new BeaconBlockRootHandler(producerEnv.TransactionProcessor),
+                new BeaconBlockRootHandler(scope.TransactionProcessor),
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(getFromApi.LogManager)));
 
@@ -145,7 +145,7 @@ namespace Nethermind.Consensus.Clique
             CliqueBlockProducer blockProducer = new(
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
-                producerEnv.WorldStateProvider,
+                scope.WorldStateProvider,
                 getFromApi.Timestamper,
                 getFromApi.CryptoRandom,
                 _snapshotManager!,

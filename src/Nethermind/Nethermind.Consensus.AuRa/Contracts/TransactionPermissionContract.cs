@@ -113,7 +113,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 if (callInfo is PermissionCallInfo transactionPermissionCallInfo)
                 {
-                    transactionPermissionCallInfo.ToIsContract = scope.WorldState.IsContract(transactionPermissionCallInfo.To);
+                    transactionPermissionCallInfo.ToIsContract = scope.WorldStateProvider
+                        .GetGlobalWorldState(callInfo.ParentHeader).IsContract(transactionPermissionCallInfo.To);
                 }
 
                 return base.CallRaw(callInfo, scope);

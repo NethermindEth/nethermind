@@ -9,5 +9,5 @@ namespace Nethermind.Evm.TransactionProcessing;
 public interface IReadOnlyTxProcessingScope : IDisposable
 {
     ITransactionProcessor TransactionProcessor { get; }
-    IWorldState WorldState { get; }
+    IWorldStateProvider WorldStateProvider { get; }
 }

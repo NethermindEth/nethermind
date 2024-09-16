@@ -185,7 +185,8 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!, header);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
+            IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(header);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -196,7 +197,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(scope.WorldState, tx, header, estimateGasTracer, errorMargin, cancellationToken);
+            long estimate = gasEstimator.Estimate(worldState, tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
             {
@@ -252,7 +253,8 @@ namespace Nethermind.Facade
             transaction.SenderAddress ??= Address.SystemUser;
 
             Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot, blockHeader);
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot);
+            IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(blockHeader);
 
             if (transaction.Nonce == 0)
             {
@@ -294,7 +296,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(scope.WorldState, transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(worldState, transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()

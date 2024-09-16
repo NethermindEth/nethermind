@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
 
-        public ReadOnlyChainProcessingEnv(ReadOnlyTxProcessingEnv scope,
+        public ReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Processing
             ChainProcessor = new OneTimeChainProcessor(_blockProcessingQueue);
         }
 
-        protected virtual IBlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv scope,
+        protected virtual IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,

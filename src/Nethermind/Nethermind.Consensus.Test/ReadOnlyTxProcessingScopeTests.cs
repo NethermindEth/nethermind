@@ -15,14 +15,14 @@ public class ReadOnlyTxProcessingScopeTests
     [Test]
     public void Test_WhenDispose_ThenStateRootWillRevert()
     {
+        IWorldStateProvider worldStateProvider = Substitute.For<IWorldStateProvider>();
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IWorldState>(),
-            TestItem.KeccakB
+            worldStateProvider
         );
 
         env.Dispose();
 
-        env.WorldState.Received().StateRoot = TestItem.KeccakB;
+        worldStateProvider.Received().Reset();
     }
 }

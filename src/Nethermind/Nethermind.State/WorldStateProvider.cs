@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -11,7 +12,8 @@ namespace Nethermind.State;
 
 public class WorldStateProvider : ReadOnlyWorldStateProvider
 {
-    private IWorldState _worldState { get; set; }
+    private IWorldState WorldState { get; set; }
+    private Hash256 OriginalStateRoot { get; set; }
 
     public WorldStateProvider(
         ITrieStore preCachedTrieStore,
@@ -20,7 +22,7 @@ public class WorldStateProvider : ReadOnlyWorldStateProvider
         ILogManager logManager,
         PreBlockCaches? preBlockCaches = null) : base(dbProvider, trieStore.AsReadOnly(), logManager)
     {
-        _worldState = new WorldState(
+        WorldState = new WorldState(
             preCachedTrieStore,
             dbProvider.CodeDb,
             logManager,
@@ -45,11 +47,23 @@ public class WorldStateProvider : ReadOnlyWorldStateProvider
     public override IWorldState GetGlobalWorldState(BlockHeader header)
     {
         // TODO: return corresponding worldState depending on header
-        return _worldState;
+        return WorldState;
     }
 
     public override IWorldState GetWorldState()
     {
-        return _worldState;
+        return WorldState;
+    }
+
+    public override void SetStateRoot(Hash256 stateRoot)
+    {
+        OriginalStateRoot = WorldState.StateRoot;
+        WorldState.StateRoot = stateRoot;
+    }
+
+    public override void Reset()
+    {
+        WorldState.StateRoot = OriginalStateRoot;
+        WorldState.Reset();
     }
 }

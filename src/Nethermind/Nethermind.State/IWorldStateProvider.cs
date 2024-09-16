@@ -21,4 +21,8 @@ public interface IWorldStateProvider
     bool HasStateForRoot(Hash256 stateRoot);
 
     void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
+
+    void SetStateRoot(Hash256 stateRoot);
+
+    void Reset();
 }

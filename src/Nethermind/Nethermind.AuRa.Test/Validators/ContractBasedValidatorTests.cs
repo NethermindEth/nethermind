@@ -79,8 +79,11 @@ public class ContractBasedValidatorTests
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
+        IWorldStateProvider worldStateProvider = Substitute.For<IWorldStateProvider>();
+        worldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(_stateProvider);
+
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>(), Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, worldStateProvider));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices.JavaScript;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Consensus;
@@ -38,8 +39,10 @@ namespace Nethermind.AuRa.Test.Contract
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _stateProvider = Substitute.For<IWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
+            IWorldStateProvider worldStateProvider = Substitute.For<IWorldStateProvider>();
+            worldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(_stateProvider);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA, _block.Header).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, worldStateProvider));
         }
 
         [Test]
