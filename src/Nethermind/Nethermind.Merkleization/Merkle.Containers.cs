@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
-using System.Collections.Generic;
 using Nethermind.Int256;
-using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization
 {
@@ -70,6 +67,7 @@ namespace Nethermind.Merkleization
 
     public static partial class Merkle
     {
+
 
         //public static void Ize(out UInt256 root, BlsPublicKey container)
         //{
