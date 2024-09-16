@@ -39,4 +39,6 @@ public interface IDebugBridge
     public IEnumerable<Block> GetBadBlocks();
     TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
     Transaction? GetTransactionFromHash(Hash256 hash);
+    public SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter);
+    public bool HasStateForBlock(BlockHeader header);
 }

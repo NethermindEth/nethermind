@@ -34,10 +34,8 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
     private readonly BlockDecoder _blockDecoder;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IStateReader _stateReader;
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider, IBlockFinder blockFinder, IStateReader stateReader)
+    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
     {
         _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -45,8 +43,6 @@ public class DebugRpcModule : IDebugRpcModule
         _logger = logManager.GetClassLogger();
         _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         _blockDecoder = new BlockDecoder();
-        _blockFinder = blockFinder;
-        _stateReader = stateReader;
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -99,13 +95,13 @@ public class DebugRpcModule : IDebugRpcModule
         using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-        SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
+        SearchResult<BlockHeader> headerSearch = _debugBridge.SearchBlockHeaderForTraceCall(blockParameter);
         if (headerSearch.IsError)
         {
             return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail(headerSearch);
         }
 
-        if (!_stateReader.HasStateForBlock(headerSearch.Object))
+        if (!_debugBridge.HasStateForBlock(headerSearch.Object))
         {
             return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"No state available for block {headerSearch.Object.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
         }
@@ -424,36 +420,5 @@ public class DebugRpcModule : IDebugRpcModule
     {
         IEnumerable<BadBlock> badBlocks = _debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, _specProvider, _blockDecoder));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
-    }
-
-    private SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter)
-    {
-        SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
-        if (headerSearch.IsError)
-        {
-            return headerSearch;
-        }
-
-        BlockHeader header = headerSearch.Object;
-        if (header!.IsGenesis)
-        {
-            UInt256 baseFee = header.BaseFeePerGas;
-            header = new BlockHeader(
-                header.Hash!,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                header.Difficulty,
-                header.Number + 1,
-                header.GasLimit,
-                header.Timestamp + 1,
-                header.ExtraData,
-                header.BlobGasUsed,
-                header.ExcessBlobGas);
-
-            header.TotalDifficulty = 2 * header.Difficulty;
-            header.BaseFeePerGas = baseFee;
-        }
-
-        return new SearchResult<BlockHeader>(header);
     }
 }

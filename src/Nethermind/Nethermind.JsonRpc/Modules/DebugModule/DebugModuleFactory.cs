@@ -42,7 +42,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger _logger;
-    private readonly IBlockFinder _blockFinder;
     private readonly IStateReader _stateReader;
 
     public DebugModuleFactory(
@@ -80,7 +79,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logManager.GetClassLogger();
-        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     }
 
@@ -127,8 +125,9 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _receiptsMigration,
             _specProvider,
             _syncModeSelector,
-            _badBlockStore);
+            _badBlockStore,
+            _stateReader);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider, _blockFinder, _stateReader);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
     }
 }
