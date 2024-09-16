@@ -323,7 +323,7 @@ public static class ShutterCrypto
         Span<byte> preimage = stackalloc byte[bytes.Length + 1];
         preimage[0] = 0x4;
         bytes.CopyTo(preimage[1..]);
-        return ValueKeccak.Compute(preimage).Bytes;
+        return Keccak.Compute(preimage).Bytes;
     }
 
     private readonly struct SlotDecryptionIdentites
