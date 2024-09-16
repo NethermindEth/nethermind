@@ -14,7 +14,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// <para>JSON -> <see cref="RpcGenericTransaction"></see> (derived by <c>System.Text.JSON</c>)</para>
 /// <para><see cref="RpcGenericTransaction"/> -> <see cref="Transaction"/> (<see cref="RpcGenericTransaction.Converter"/> with a registry of [<see cref="TxType"/> => <see cref="IToTransaction{T}"/>)</para>
 /// Output:
-/// <para><see cref="Transaction"/> -> <see cref="IRpcTransaction"/> (<see cref="IRpcTransaction.TransactionConverter"/> with a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
+/// <para><see cref="Transaction"/> -> <see cref="IRpcTransaction"/> (<see cref="TransactionConverter"/> with a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
 /// <para><see cref="IRpcTransaction"/> -> JSON (derived by <c>System.Text.JSON</c>.)</para>
 /// </remarks>
 public interface IRpcTransaction
