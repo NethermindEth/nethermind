@@ -1159,6 +1159,28 @@ public partial class EthRpcModuleTests
         Assert.That(rpcTx.Gas, Is.EqualTo(long.MaxValue), "Gas must be set to max if gasCap is null or 0");
     }
 
+    [TestCase(null)]
+    [TestCase(0)]
+    public static void ToTransactionWithDefaults_and_EnsureDefaults_same_GasLimit(long? gasCap)
+    {
+        long toTransactionWitDefaultsGasLimit;
+        {
+            var rpcTx = new TransactionForRpc();
+            Transaction tx = rpcTx.ToTransactionWithDefaults();
+            toTransactionWitDefaultsGasLimit = tx.GasLimit;
+        }
+
+        long ensureDefaultsGasLimit;
+        {
+            var rpcTx = new TransactionForRpc();
+            rpcTx.EnsureDefaults(gasCap);
+            var tx = rpcTx.ToTransaction();
+            ensureDefaultsGasLimit = tx.GasLimit;
+        }
+
+        toTransactionWitDefaultsGasLimit.Should().Be(ensureDefaultsGasLimit);
+    }
+
     [Test]
     public async Task eth_getBlockByNumber_should_return_withdrawals_correctly()
     {
