@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Facade.Eth.RpcTransaction;
+namespace Nethermind.Facade.Eth;
 
 public interface IFromTransaction<out T>
 {

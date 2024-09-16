@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Facade.Eth.RpcTransaction;
+namespace Nethermind.Facade.Eth;
 
 // TODO: We might want to lift this to `Core`
 public interface IToTransaction<in T>
