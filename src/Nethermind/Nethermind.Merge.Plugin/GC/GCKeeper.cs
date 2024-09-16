@@ -30,7 +30,8 @@ public class GCKeeper
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         size ??= _defaultSize;
-        if (GCScheduler.MarkGCPaused() && _gcStrategy.CanStartNoGCRegion())
+        bool pausedGCScheduler = GCScheduler.MarkGCPaused();
+        if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
@@ -55,10 +56,10 @@ public class GCKeeper
                 if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
             }
 
-            return new NoGCRegion(this, failCause, size, _logger);
+            return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
         }
 
-        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
     }
 
     private enum FailCause
@@ -77,18 +78,23 @@ public class GCKeeper
         private readonly FailCause _failCause;
         private readonly long? _size;
         private readonly ILogger _logger;
+        private readonly bool _pausedGCScheduler;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, bool pausedGCScheduler, ILogger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;
             _size = size;
+            _pausedGCScheduler = pausedGCScheduler;
             _logger = logger;
         }
 
         public void Dispose()
         {
-            GCScheduler.MarkGCResumed();
+            if (_pausedGCScheduler)
+            {
+                GCScheduler.MarkGCResumed();
+            }
             if (_failCause == FailCause.None)
             {
                 if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)

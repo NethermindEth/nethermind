@@ -11,13 +11,15 @@ namespace Nethermind.Consensus;
 
 public sealed class GCScheduler
 {
+    private const int CanPerformGC = 0;
+    private const int GCNotAllowed = 1;
     // Thresholds and limits for triggering garbage collection
     private const int BlocksBacklogTriggeringManualGC = 4;
     private const int MaxBlocksWithoutGC = 250;
     private const int MinSecondsBetweenForcedGC = 120;
 
-    // Flag indicating if a garbage collection is currently in progress
-    private static int _isPerformingGC = 0;
+    // Flag indicating if a garbage collection is currently in progress or disallowed
+    private static int _canPerformGC = CanPerformGC;
 
     // Timer for scheduling periodic garbage collections when idle
     private readonly Timer _gcTimer;
@@ -61,14 +63,12 @@ public sealed class GCScheduler
         }
 
         // Avoid setting the timer if there are items in the queue or timer is already set
-        if (queueCount > 0 || _gcTimerSet)
+        if (queueCount <= 0 && !_gcTimerSet)
         {
-            // Don't switch on if still processing blocks
-            return;
+            _gcTimerSet = true;
+            // Schedule GC every 2 minutes when idle
+            _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
         }
-        _gcTimerSet = true;
-        // Schedule GC every 2 minutes when idle
-        _gcTimer.Change(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
     }
 
     /// <summary>
@@ -91,13 +91,12 @@ public sealed class GCScheduler
             _fireGC = false;
         }
 
-        if (!_gcTimerSet)
+        if (_gcTimerSet)
         {
-            return;
+            // Stop the GC timer as the system is no longer idle
+            _gcTimerSet = false;
+            _gcTimer.Change(Timeout.Infinite, Timeout.Infinite);
         }
-        // Stop the GC timer as the system is no longer idle
-        _gcTimerSet = false;
-        _gcTimer.Change(Timeout.Infinite, Timeout.Infinite);
     }
 
     /// <summary>
@@ -117,7 +116,7 @@ public sealed class GCScheduler
     /// <returns>True if marking succeeded; false if a GC is already in progress.</returns>
     public static bool MarkGCPaused()
     {
-        return Interlocked.CompareExchange(ref _isPerformingGC, 1, 0) == 0;
+        return Interlocked.CompareExchange(ref _canPerformGC, GCNotAllowed, CanPerformGC) == CanPerformGC;
     }
 
     /// <summary>
@@ -125,7 +124,7 @@ public sealed class GCScheduler
     /// </summary>
     public static void MarkGCResumed()
     {
-        Volatile.Write(ref _isPerformingGC, 0);
+        Volatile.Write(ref _canPerformGC, CanPerformGC);
     }
 
     /// <summary>
@@ -150,18 +149,16 @@ public sealed class GCScheduler
         }
 
         // Attempt to perform garbage collection
-        if (!GCCollect(generation, mode, blocking: _isNextGcBlocking, compacting: compacting))
+        if (GCCollect(generation, mode, blocking: _isNextGcBlocking, compacting: compacting))
         {
-            return;
+            if (_isNextGcBlocking)
+            {
+                // Toggle compacting mode for the next blocking GC
+                _isNextGcCompacting = !_isNextGcCompacting;
+            }
+            // Alternate between blocking and non-blocking GCs
+            _isNextGcBlocking = !_isNextGcBlocking;
         }
-
-        if (_isNextGcBlocking)
-        {
-            // Toggle compacting mode for the next blocking GC
-            _isNextGcCompacting = !_isNextGcCompacting;
-        }
-        // Alternate between blocking and non-blocking GCs
-        _isNextGcBlocking = !_isNextGcBlocking;
     }
 
     /// <summary>
