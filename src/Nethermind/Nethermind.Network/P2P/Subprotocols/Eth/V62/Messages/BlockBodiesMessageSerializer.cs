@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder();
+        private readonly BlockBodyDecoder _blockBodyDecoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
@@ -66,37 +66,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 return Rlp.LengthOfSequence(GetBodyLength(item));
             }
 
-            public int GetBodyLength(BlockBody b)
-            {
-                return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
-                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles))
-                       + (b.Withdrawals is not null
-                           ? Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals))
-                           : 0)
-                       + (b.Requests is not null
-                           ? Rlp.LengthOfSequence(GetRequestsLength(b.Requests))
-                           : 0);
-            }
+            public int GetBodyLength(BlockBody b) =>
+                Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                Rlp.LengthOfSequence(GetUnclesLength(b.Uncles))
+                + (b.Withdrawals is not null ? Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals)) : 0)
+                + (b.Requests is not null ? Rlp.LengthOfSequence(GetRequestsLength(b.Requests)) : 0);
 
-            private int GetTxLength(Transaction[] transactions)
-            {
-                return transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
-            }
+            private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
 
-            private int GetUnclesLength(BlockHeader[] headers)
-            {
-                return headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
-            }
+            private int GetUnclesLength(BlockHeader[] headers) => headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
 
-            private int GetWithdrawalsLength(Withdrawal[] withdrawals)
-            {
-                return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
-            }
+            private int GetWithdrawalsLength(Withdrawal[] withdrawals) => withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
 
-            private int GetRequestsLength(ConsensusRequest[] requests)
-            {
-                return requests.Sum(t => _requestsDecoder.GetLength(t, RlpBehaviors.None));
-            }
+            private int GetRequestsLength(ConsensusRequest[] requests) => requests.Sum(t => _requestsDecoder.GetLength(t, RlpBehaviors.None));
 
             public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             {

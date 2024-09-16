@@ -23,7 +23,7 @@ public class ConsensusRequestsProcessorMock : IConsensusRequestsProcessor
         TestItem.WithdrawalRequestB
     ];
 
-    public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
+    public void ProcessRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (block.IsGenesis)
             return;

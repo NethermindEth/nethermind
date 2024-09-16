@@ -12,36 +12,44 @@ namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
-    private AbiSignature depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    AbiEncoder abiEncoder = new();
+    private readonly AbiSignature _depositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (!spec.DepositsEnabled)
+        {
             yield break;
+        }
+
         for (int i = 0; i < receipts.Length; i++)
         {
             LogEntry[]? logEntries = receipts[i].Logs;
-            if (logEntries is null)
-                continue;
-            for (int index = 0; index < logEntries.Length; index++)
+            if (logEntries is not null)
             {
-                LogEntry log = logEntries[index];
-                if (log.LoggersAddress != spec.DepositContractAddress)
-                    continue;
-                object[] result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
-
-                var newDeposit = new Deposit()
+                for (var j = 0; j < logEntries.Length; j++)
                 {
-                    Pubkey = (byte[])result[0],
-                    WithdrawalCredentials = (byte[])result[1],
-                    Amount = BitConverter.ToUInt64((byte[])result[2], 0),
-                    Signature = (byte[])result[3],
-                    Index = BitConverter.ToUInt64((byte[])result[4], 0)
-                };
-
-                yield return newDeposit;
+                    LogEntry log = logEntries[j];
+                    if (log.LoggersAddress == spec.DepositContractAddress)
+                    {
+                        yield return DecodeDeposit(log);
+                    }
+                }
             }
+        }
+
+        Deposit DecodeDeposit(LogEntry log)
+        {
+            object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, _depositEventAbi, log.Data);
+
+            return new Deposit
+            {
+                Pubkey = (byte[])result[0],
+                WithdrawalCredentials = (byte[])result[1],
+                Amount = BitConverter.ToUInt64((byte[])result[2], 0),
+                Signature = (byte[])result[3],
+                Index = BitConverter.ToUInt64((byte[])result[4], 0)
+            };
         }
     }
 }

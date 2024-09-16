@@ -159,7 +159,7 @@ public class TxCertifierFilterTests
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
                 TxProcessor,
-                null,
+                auRaValidator: null,
                 preWarmer: CreateBlockCachePreWarmer());
         }
 

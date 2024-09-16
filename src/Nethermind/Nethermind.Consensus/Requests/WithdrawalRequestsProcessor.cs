@@ -23,19 +23,37 @@ namespace Nethermind.Consensus.Requests;
 public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProcessor) : IWithdrawalRequestsProcessor
 {
     private const long GasLimit = 30_000_000L;
+    private const int SizeOfClass = 20 + 48 + 8;
 
-    public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
+    public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(Block block, IWorldState state, IReleaseSpec spec)
     {
-        if (!spec.IsEip7002Enabled)
+        if (!spec.IsEip7002Enabled || !state.AccountExists(spec.Eip7002ContractAddress))
+        {
             yield break;
+        }
 
-        Address eip7002Account = spec.Eip7002ContractAddress;
-        if (!state.AccountExists(eip7002Account))
-            yield break;
+        byte[]? result = ExecuteTransaction(block, spec);
+        if (result?.Length > 0)
+        {
+            int count = result.Length / SizeOfClass;
+            for (int i = 0; i < count; ++i)
+            {
+                Memory<byte> memory = result.AsMemory(i * SizeOfClass, SizeOfClass);
+                WithdrawalRequest request = new()
+                {
+                    SourceAddress = new Address(memory.Slice(0, 20).AsArray()),
+                    ValidatorPubkey = memory.Slice(20, 48),
+                    Amount = BinaryPrimitives.ReadUInt64BigEndian(memory.Slice(68, 8).Span)
+                };
+                yield return request;
+            }
+        }
+    }
 
+    private byte[]? ExecuteTransaction(Block block, IReleaseSpec spec)
+    {
         CallOutputTracer tracer = new();
-
-        Transaction? transaction = new()
+        Transaction transaction = new()
         {
             Value = UInt256.Zero,
             Data = Array.Empty<byte>(),
@@ -47,22 +65,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
         transaction.Hash = transaction.CalculateHash();
 
         transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
-        var result = tracer.ReturnValue;
-        if (result == null || result.Length == 0)
-            yield break;
 
-        int sizeOfClass = 20 + 48 + 8;
-        int count = result.Length / sizeOfClass;
-        for (int i = 0; i < count; ++i)
-        {
-            Memory<byte> memory = result.AsMemory(i * sizeOfClass, sizeOfClass);
-            WithdrawalRequest request = new()
-            {
-                SourceAddress = new Address(memory.Slice(0, 20).AsArray()),
-                ValidatorPubkey = memory.Slice(20, 48),
-                Amount = BinaryPrimitives.ReadUInt64BigEndian(memory.Slice(68, 8).Span)
-            };
-            yield return request;
-        }
+        return tracer.ReturnValue;
     }
 }
