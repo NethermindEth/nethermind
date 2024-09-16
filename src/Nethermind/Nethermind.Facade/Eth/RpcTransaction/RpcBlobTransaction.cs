@@ -40,6 +40,14 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
         return tx;
     }
 
+    public override Transaction ToTransactionWitDefaults(ulong chainId)
+    {
+        var tx = base.ToTransactionWitDefaults(chainId);
+        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+        tx.BlobVersionedHashes = BlobVersionedHashes;
+        return tx;
+    }
+
     public new static readonly ITransactionConverter<RpcBlobTransaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcBlobTransaction>

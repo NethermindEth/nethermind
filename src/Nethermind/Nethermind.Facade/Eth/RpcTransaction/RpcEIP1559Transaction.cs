@@ -41,6 +41,14 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
         return tx;
     }
 
+    public override Transaction ToTransactionWitDefaults(ulong chainId)
+    {
+        var tx = base.ToTransactionWitDefaults(chainId);
+        tx.DecodedMaxFeePerGas = MaxFeePerGas;
+        tx.GasPrice = MaxPriorityFeePerGas;
+        return tx;
+    }
+
     public new static readonly ITransactionConverter<RpcEIP1559Transaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcEIP1559Transaction>

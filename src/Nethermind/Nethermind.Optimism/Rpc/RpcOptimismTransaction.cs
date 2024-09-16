@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -67,6 +68,25 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
             GasLimit = Gas,
             IsOPSystemTransaction = IsSystemTx ?? false,
             Data = Input,
+        };
+    }
+
+    public override Transaction ToTransactionWitDefaults(ulong chainId)
+    {
+        return new Transaction
+        {
+            Type = Type,
+            SourceHash = SourceHash,
+            SenderAddress = From,
+            To = To,
+            Mint = Mint ?? 0,
+            Value = Value,
+            GasLimit = Gas, // Default is `90000` but field is not nullable.
+            IsOPSystemTransaction = IsSystemTx ?? false,
+            Data = Input,
+
+            GasPrice = 20.GWei(),
+            ChainId = chainId,
         };
     }
 

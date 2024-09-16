@@ -47,6 +47,13 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         return tx;
     }
 
+    public override Transaction ToTransactionWitDefaults(ulong chainId)
+    {
+        var tx = base.ToTransactionWitDefaults(chainId);
+        tx.AccessList = AccessList?.ToAccessList();
+        return tx;
+    }
+
     public new static readonly ITransactionConverter<RpcAccessListTransaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcAccessListTransaction>
