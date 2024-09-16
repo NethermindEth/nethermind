@@ -125,6 +125,7 @@ public partial class BlockProcessor(
                 }
                 else
                 {
+                    preWarmer?.ClearCaches();
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
