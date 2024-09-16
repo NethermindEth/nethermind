@@ -15,9 +15,9 @@ public interface IFromTransaction<out T>
 
 public readonly struct TransactionConverterExtraData
 {
-    public Hash256? BlockHash { get; }
-    public long? BlockNumber { get; }
-    public int? TxIndex { get; }
-    public UInt256? BaseFee { get; }
-    public TxReceipt Receipt { get; }
+    public Hash256? BlockHash { get; init; }
+    public long? BlockNumber { get; init; }
+    public int? TxIndex { get; init; }
+    public UInt256? BaseFee { get; init; }
+    public TxReceipt Receipt { get; init; }
 }
