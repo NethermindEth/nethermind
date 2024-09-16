@@ -37,7 +37,7 @@ public static class ShutterCrypto
 
     public static G1 ComputeIdentity(ReadOnlySpan<byte> identityPrefix, Address sender)
     {
-        Span<byte> preimage = new byte[52];
+        Span<byte> preimage = stackalloc byte[52];
         identityPrefix.CopyTo(preimage);
         sender.Bytes.CopyTo(preimage[32..]);
         return ComputeIdentity(preimage);
@@ -132,18 +132,18 @@ public static class ShutterCrypto
     }
 
     // Hash1 in spec
-    public static G1 ComputeIdentity(ReadOnlySpan<byte> bytes)
+    public static G1 ComputeIdentity(scoped ReadOnlySpan<byte> bytes)
     {
-        byte[] preimage = new byte[bytes.Length + 1];
+        Span<byte> preimage = stackalloc byte[bytes.Length + 1];
         preimage[0] = 0x1;
-        bytes.CopyTo(preimage.AsSpan()[1..]);
+        bytes.CopyTo(preimage[1..]);
 
         return G1.Generator().HashTo(preimage, DST);
     }
 
     public static Span<byte> Hash2(GT p)
     {
-        Span<byte> preimage = new byte[577];
+        Span<byte> preimage = stackalloc byte[577];
         preimage[0] = 0x2;
         p.FinalExp().ToBendian().CopyTo(preimage[1..]);
         return HashBytesToBlock(preimage);
@@ -234,8 +234,8 @@ public static class ShutterCrypto
     private static G2 ComputeC1(UInt256 r)
         => G2.Generator().Mult(r.ToLittleEndian());
 
-    private static Span<byte> HashBytesToBlock(ReadOnlySpan<byte> bytes)
-        => Keccak.Compute(bytes).Bytes;
+    private static Span<byte> HashBytesToBlock(scoped ReadOnlySpan<byte> bytes)
+        => ValueKeccak.Compute(bytes).BytesAsSpan;
 
     private static void UnpadAndJoin(ref Span<byte> blocks)
     {
@@ -305,18 +305,18 @@ public static class ShutterCrypto
 
     private static void Hash3(ReadOnlySpan<byte> bytes, out UInt256 res)
     {
-        byte[] preimage = new byte[bytes.Length + 1];
+        Span<byte> preimage = stackalloc byte[bytes.Length + 1];
         preimage[0] = 0x3;
-        bytes.CopyTo(preimage.AsSpan()[1..]);
+        bytes.CopyTo(preimage[1..]);
         ReadOnlySpan<byte> hash = ValueKeccak.Compute(preimage).Bytes;
         UInt256.Mod(new UInt256(hash, true), BlsSubgroupOrder, out res);
     }
 
     private static ReadOnlySpan<byte> Hash4(ReadOnlySpan<byte> bytes)
     {
-        byte[] preimage = new byte[bytes.Length + 1];
+        Span<byte> preimage = stackalloc byte[bytes.Length + 1];
         preimage[0] = 0x4;
-        bytes.CopyTo(preimage.AsSpan()[1..]);
+        bytes.CopyTo(preimage[1..]);
         return ValueKeccak.Compute(preimage).Bytes;
     }
 }
