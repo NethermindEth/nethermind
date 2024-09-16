@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -80,11 +79,14 @@ public class RpcGenericTransaction
         public Transaction ToTransaction(RpcGenericTransaction tx)
             => _converters[(byte)tx.Type!]!.ToTransaction(tx);
 
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction tx, ulong chainId)
-            => _converters[(byte)tx.Type!]!.ToTransactionWithDefaults(tx, chainId);
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction tx)
+            => _converters[(byte)tx.Type!]!.ToTransactionWithDefaults(tx);
     }
 }
 
+/// <remarks>
+/// Intended to be used until proper DI is implemented.
+/// </remarks>
 public static class RpcGenericTransactionExtensions
 {
     public static readonly RpcGenericTransaction.Converter GlobalConverter = new RpcGenericTransaction.Converter()
@@ -93,11 +95,19 @@ public static class RpcGenericTransactionExtensions
         .RegisterConverter(TxType.EIP1559, new RpcEIP1559Transaction.Converter())
         .RegisterConverter(TxType.Blob, new RpcBlobTransaction.Converter());
 
-    /// <remarks>
-    /// Intended to be used until proper DI is implemented.
-    /// </remarks>
-    public static Transaction ToTransaction(this RpcGenericTransaction rpcTransaction)
+    public static Transaction ToTransaction(this RpcGenericTransaction rpcTransaction, ulong? chainId = null)
     {
-        return GlobalConverter.ToTransaction(rpcTransaction);
+        var tx = GlobalConverter.ToTransaction(rpcTransaction);
+        if (chainId.HasValue)
+            tx.ChainId = chainId.Value;
+        return tx;
+    }
+
+    public static Transaction ToTransactionWithDefaults(this RpcGenericTransaction rpcTransaction, ulong? chainId = null)
+    {
+        var tx = GlobalConverter.ToTransactionWithDefaults(rpcTransaction);
+        if (chainId.HasValue)
+            tx.ChainId = chainId.Value;
+        return tx;
     }
 }
