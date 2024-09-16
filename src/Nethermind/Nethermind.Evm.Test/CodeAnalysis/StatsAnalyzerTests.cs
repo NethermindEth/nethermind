@@ -7,7 +7,7 @@ using System.Linq;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test.CodeAnalysis
+namespace Nethermind.Evm.Test.CodeAnalysis.Stats
 {
     [TestFixture]
     public class StatsAnalyzerTests

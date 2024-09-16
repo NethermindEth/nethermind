@@ -1,4 +1,3 @@
-
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -7,15 +6,62 @@ using System.Threading;
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
 
+
+    public class CMSketchBuilder
+    {
+
+        private int? _sketchBuckets = null;
+        private double? _sketchError = null;
+        private int? _sketchNumberOfHashFunctions = null;
+        private double? _confidence = null;
+
+        public CMSketch Build()
+        {
+            if ((_sketchBuckets.HasValue && _sketchNumberOfHashFunctions.HasValue))
+                return new CMSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
+            if (_confidence.HasValue && _sketchError.HasValue)
+                return new CMSketch(_sketchError.Value, _confidence.Value);
+
+            throw new InvalidOperationException("Either sketch buckets and hash functions must be set or error and probability of error must be set.");
+        }
+
+        public CMSketchBuilder SetBuckets(int buckets)
+        {
+            _sketchBuckets = buckets;
+            return this;
+        }
+
+        public CMSketchBuilder SetHashFunctions(int numberOfHashFunctions)
+        {
+            _sketchNumberOfHashFunctions = numberOfHashFunctions;
+            return this;
+        }
+
+        public CMSketchBuilder SetMinConfidence(double probability)
+        {
+            _confidence = probability;
+            return this;
+        }
+
+        public CMSketchBuilder SetMaxError(double error)
+        {
+            _sketchError = error;
+            return this;
+        }
+
+    }
+
+
+
     public class CMSketch
     {
 
-        public double errorPerItem => _errorPerItem;
+        public double errorPerItem => error * (double)_seen;
 
         public readonly double error;
-        public readonly double probabilityOneMinusDelta;
+        public readonly double confidence;
 
-        private double _errorPerItem;
+        private ulong _seen = 0;
         private ulong[] _sketch;
         private Int64[] _seeds;
 
@@ -24,19 +70,19 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
 
         // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= 1 - (2 ^ (-numberOfHashFunctions))
-        // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= oneMinusDelta
-        // To maximize accuracy minimize maxError and maximize oneMinusDelta
-        public CMSketch(double maxError, double oneMinusDelta) : this((int)Math.Ceiling(Math.Log2(1.0d / (1.0d - oneMinusDelta))), (int)Math.Ceiling((2.0d / maxError)))
+        // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= confidence
+        // To maximize accuracy minimize maxError and maximize confidence
+        public CMSketch(double maxError, double confidence) : this((int)Math.Ceiling(Math.Log2(1.0d / (1.0d - confidence))), (int)Math.Ceiling((2.0d / maxError)))
         {
             Debug.Assert(error <= maxError, $" expected sketch error to be initialized to at most {maxError} found {error}");
-            Debug.Assert(probabilityOneMinusDelta >= oneMinusDelta, $" expected sketch probabilityOneMinusDelta to be at least {oneMinusDelta} found {probabilityOneMinusDelta}");
+            Debug.Assert(this.confidence >= confidence, $" expected sketch confidence to be at least {confidence} found {confidence}");
         }
 
 
         public CMSketch(int numberOfhashFunctions, int numberOfBuckets)
         {
-            probabilityOneMinusDelta = 1 - Math.Pow(0.5d, numberOfhashFunctions);
-            _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
+            confidence = 1.0d - Math.Pow(0.5d, numberOfhashFunctions);
+            _sketch = new ulong[numberOfhashFunctions * numberOfBuckets];
             buckets = numberOfBuckets;
             error = 2.0d / (double)numberOfBuckets;
             hashFunctions = numberOfhashFunctions;
@@ -54,6 +100,8 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public void Update(ulong item)
         {
+
+            _seen++;
             for (int hasher = 0; hasher < hashFunctions; hasher++)
                 Increment(item, hasher);
         }
@@ -73,7 +121,6 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private ulong Increment(ulong item, int hasher)
         {
-            _errorPerItem += error;
             return Interlocked.Increment(ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)buckets)]);
         }
 
@@ -89,6 +136,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public ulong UpdateAndQuery(ulong item)
         {
+            _seen++;
             var minCount = ulong.MaxValue;
             for (int hasher = 0; hasher < hashFunctions; hasher++)
                 minCount = Math.Min(minCount, Increment(item, hasher));
@@ -99,6 +147,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
             CMSketch cms = new CMSketch((ulong[])_sketch.Clone(), (Int64[])_seeds.Clone(), hashFunctions, buckets);
             _sketch = new ulong[buckets * hashFunctions];
+            _seeds = GenerateSeed(hashFunctions);
             return cms;
         }
 
