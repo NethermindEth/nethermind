@@ -30,7 +30,6 @@ namespace Nethermind.Specs.Forks
             // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
             Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
             DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
-            AuRaSystemCalls = false;
         }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());

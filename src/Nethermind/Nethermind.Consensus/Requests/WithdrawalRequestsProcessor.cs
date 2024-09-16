@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
@@ -12,7 +13,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
-using System.Buffers.Binary;
 
 namespace Nethermind.Consensus.Requests;
 
@@ -27,7 +27,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;
-        if (!state.AccountExists(eip7002Account)) // not needed anymore?
+        if (!state.AccountExists(eip7002Account))
             yield break;
 
         CallOutputTracer tracer = new();
