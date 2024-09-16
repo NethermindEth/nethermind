@@ -85,14 +85,15 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _specProvider,
             _logManager);
 
+        IReadOnlyTxProcessingScope scope = txEnv.Build(Keccak.EmptyTreeHash);
 
-        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
+        ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(scope.TransactionProcessor);
         BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter);
         ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-            txEnv,
+            scope,
             _blockValidator,
             _recoveryStep,
-            _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
+            _rewardCalculatorSource.Get(scope.TransactionProcessor),
             _receiptStorage,
             _specProvider,
             _blockTree,
@@ -102,7 +103,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
-            txEnv.WorldStateProvider,
+            scope.WorldStateProvider,
             _receiptStorage,
             _blockTree,
             _badBlockStore,
