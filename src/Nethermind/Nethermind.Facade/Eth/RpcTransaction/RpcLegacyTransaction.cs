@@ -85,10 +85,10 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             Type = Type,
             Nonce = Nonce, // TODO: here pick the last nonce?
             To = To,
-            GasLimit = Gas, // ?? 90000,
+            GasLimit = Gas, // Default is `90000`, but field is not nullable.
             Value = Value,
             Data = Input,
-            GasPrice = GasPrice, // ?? 20.GWei(),
+            GasPrice = GasPrice, // Default is `20.GWei()` but field is not nullable.
             ChainId = chainId,
 
             // TODO: Get `From`
