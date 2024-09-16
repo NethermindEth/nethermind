@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,7 +21,8 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
 
     public Address? From { get; set; }
 
-    public long Gas { get; set; }
+    // TODO: The spec says that `Gas` is required in all transactions, yet we have it as nullable.
+    public long? Gas { get; set; }
 
     public UInt256 Value { get; set; }
 
@@ -69,12 +71,12 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             Type = Type,
             Nonce = Nonce,
             To = To,
-            GasLimit = Gas,
+            GasLimit = Gas ?? 0,
             Value = Value,
             Data = Input,
             GasPrice = GasPrice,
             ChainId = ChainId,
-            SenderAddress = From,
+            SenderAddress = From ?? Address.SystemUser,
         };
     }
 
@@ -85,13 +87,26 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             Type = Type,
             Nonce = Nonce, // TODO: here pick the last nonce?
             To = To,
-            GasLimit = Gas, // Default is `90000` but field is not nullable.
+            GasLimit = Gas ?? 90_000,
             Value = Value,
             Data = Input,
             GasPrice = GasPrice, // Default is `20.GWei()` but field is not nullable.
             ChainId = chainId,
-            SenderAddress = From
+            SenderAddress = From ?? Address.SystemUser,
         };
+    }
+
+    // TODO:
+    // - `ToTransactionWithDefaults` uses `90_000` as default
+    // - `EnsureDefaultGas` uses `long.MaxValue` as default
+    public void EnsureDefaultGas(long? gasCap = 0)
+    {
+        if (gasCap is null || gasCap == 0)
+            gasCap = long.MaxValue;
+
+        Gas = Gas == 0
+            ? gasCap
+            : Math.Min(gasCap.Value, Gas.Value);
     }
 
     public static readonly ITransactionConverter<RpcLegacyTransaction> Converter = new ConverterImpl();
