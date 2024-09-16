@@ -15,14 +15,14 @@ namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 public class RpcTransactionTests
 {
     private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([
-        new IRpcTransaction.JsonConverter()
+        new RpcNethermindTransaction.JsonConverter()
             .RegisterTransactionType(TxType.Legacy, typeof(RpcLegacyTransaction))
             .RegisterTransactionType(TxType.AccessList, typeof(RpcAccessListTransaction))
             .RegisterTransactionType(TxType.EIP1559, typeof(RpcEIP1559Transaction))
             .RegisterTransactionType(TxType.Blob, typeof(RpcBlobTransaction))
     ]);
 
-    private readonly IFromTransaction<IRpcTransaction> _converter = new IRpcTransaction.TransactionConverter()
+    private readonly IFromTransaction<RpcNethermindTransaction> _converter = new RpcNethermindTransaction.TransactionConverter()
         .RegisterConverter(TxType.Legacy, new RpcLegacyTransaction.Converter())
         .RegisterConverter(TxType.AccessList, new RpcAccessListTransaction.Converter())
         .RegisterConverter(TxType.EIP1559, new RpcEIP1559Transaction.Converter())
@@ -45,7 +45,7 @@ public class RpcTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_schema(Transaction transaction)
     {
-        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
+        RpcNethermindTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
@@ -72,7 +72,7 @@ public class RpcTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_Nethermind_fields_schema(Transaction transaction)
     {
-        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
+        RpcNethermindTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;

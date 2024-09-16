@@ -15,8 +15,6 @@ namespace Nethermind.Optimism.Rpc;
 /// </Remarks>
 public class RpcOptimismTransaction : RpcNethermindTransaction
 {
-    public TxType Type { get; set; }
-
     public Hash256 SourceHash { get; set; }
 
     public Address From { get; set; }

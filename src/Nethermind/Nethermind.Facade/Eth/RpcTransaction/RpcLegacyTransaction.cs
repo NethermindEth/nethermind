@@ -11,8 +11,6 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 public class RpcLegacyTransaction : RpcNethermindTransaction
 {
-    public TxType Type { get; set; }
-
     public UInt256 Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]

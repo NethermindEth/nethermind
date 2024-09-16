@@ -10,17 +10,18 @@ using Nethermind.Core;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 
 namespace Nethermind.Optimism.Test.Rpc;
 
 public class RpcOptimismTransactionTests
 {
     private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([
-        new IRpcTransaction.JsonConverter()
+        new RpcNethermindTransaction.JsonConverter()
             .RegisterTransactionType(TxType.DepositTx, typeof(RpcOptimismTransaction))
     ]);
 
-    private readonly IFromTransaction<IRpcTransaction> _converter = new IRpcTransaction.TransactionConverter()
+    private readonly IFromTransaction<RpcNethermindTransaction> _converter = new RpcNethermindTransaction.TransactionConverter()
         .RegisterConverter(TxType.DepositTx, new RpcOptimismTransaction.Converter());
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
@@ -43,7 +44,7 @@ public class RpcOptimismTransactionTests
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
-        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
+        RpcNethermindTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
