@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Eth;
 
 namespace Nethermind.Optimism.Rpc;
 
