@@ -6,6 +6,7 @@ using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Consensus;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
@@ -29,6 +30,7 @@ public class GCKeeper
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         size ??= _defaultSize;
+        bool pausedGCScheduler = GCScheduler.MarkGCPaused();
         if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
@@ -54,10 +56,10 @@ public class GCKeeper
                 if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
             }
 
-            return new NoGCRegion(this, failCause, size, _logger);
+            return new NoGCRegion(this, failCause, size, pausedGCScheduler, _logger);
         }
 
-        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, pausedGCScheduler, _logger);
     }
 
     private enum FailCause
@@ -76,17 +78,23 @@ public class GCKeeper
         private readonly FailCause _failCause;
         private readonly long? _size;
         private readonly ILogger _logger;
+        private readonly bool _pausedGCScheduler;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, bool pausedGCScheduler, ILogger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;
             _size = size;
+            _pausedGCScheduler = pausedGCScheduler;
             _logger = logger;
         }
 
         public void Dispose()
         {
+            if (_pausedGCScheduler)
+            {
+                GCScheduler.MarkGCResumed();
+            }
             if (_failCause == FailCause.None)
             {
                 if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
@@ -165,9 +173,7 @@ public class GCKeeper
                     GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 }
 
-                System.GC.Collect((int)generation, mode, blocking: true, compacting: compacting > 0);
-
-                MallocHelper.Instance.MallocTrim((uint)1.MiB());
+                GCScheduler.Instance.GCCollect((int)generation, mode, blocking: true, compacting: compacting > 0);
             }
         }
     }
