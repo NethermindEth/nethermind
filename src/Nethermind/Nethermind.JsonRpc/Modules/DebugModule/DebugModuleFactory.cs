@@ -60,7 +60,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager,
-        IBlockFinder blockFinder,
         IStateReader stateReader)
     {
         _worldStateManager = worldStateManager;

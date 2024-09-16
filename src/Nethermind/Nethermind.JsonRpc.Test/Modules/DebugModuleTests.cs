@@ -26,7 +26,6 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -41,7 +40,6 @@ public class DebugModuleTests
     private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
     private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
     private readonly MemDb _blocksDb = new();
-
 
     [Test]
     public async Task Get_from_db()
@@ -129,7 +127,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
@@ -143,7 +141,7 @@ public class DebugModuleTests
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
