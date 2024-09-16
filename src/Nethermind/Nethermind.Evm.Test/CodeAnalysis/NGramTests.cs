@@ -2,11 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test.CodeAnalysis
+namespace Nethermind.Evm.Test.CodeAnalysis.Stats
 {
     [TestFixture]
     public class NGramsTests
