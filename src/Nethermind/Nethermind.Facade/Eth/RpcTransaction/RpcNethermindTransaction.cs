@@ -35,8 +35,4 @@ public abstract class RpcNethermindTransaction : IRpcTransaction
         BlockHash = blockHash;
         BlockNumber = blockNumber;
     }
-
-    public abstract Transaction ToTransaction();
-
-    public abstract Transaction ToTransactionWitDefaults(ulong chainId);
 }

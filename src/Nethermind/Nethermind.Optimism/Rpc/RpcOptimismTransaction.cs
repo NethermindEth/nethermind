@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -55,44 +54,9 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Transaction ToTransaction()
-    {
-        return new Transaction
-        {
-            Type = Type,
-            SourceHash = SourceHash,
-            SenderAddress = From,
-            To = To,
-            Mint = Mint ?? 0,
-            Value = Value,
-            GasLimit = Gas,
-            IsOPSystemTransaction = IsSystemTx ?? false,
-            Data = Input,
-        };
-    }
+    public static readonly IFromTransaction<RpcOptimismTransaction> Converter = new ConverterImpl();
 
-    public override Transaction ToTransactionWitDefaults(ulong chainId)
-    {
-        return new Transaction
-        {
-            Type = Type,
-            SourceHash = SourceHash,
-            SenderAddress = From,
-            To = To,
-            Mint = Mint ?? 0,
-            Value = Value,
-            GasLimit = Gas, // Default is `90000` but field is not nullable.
-            IsOPSystemTransaction = IsSystemTx ?? false,
-            Data = Input,
-
-            GasPrice = 20.GWei(),
-            ChainId = chainId,
-        };
-    }
-
-    public static readonly ITransactionConverter<RpcOptimismTransaction> Converter = new ConverterImpl();
-
-    private class ConverterImpl : ITransactionConverter<RpcOptimismTransaction>
+    private class ConverterImpl : IFromTransaction<RpcOptimismTransaction>
     {
         public RpcOptimismTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);

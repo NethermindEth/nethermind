@@ -22,9 +22,6 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
     public override UInt256 V { get; set; }
 
-    [JsonConstructor]
-    public RpcBlobTransaction() { }
-
     public RpcBlobTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
         : base(transaction, txIndex, blockHash, blockNumber, baseFee)
     {
@@ -32,25 +29,9 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Transaction ToTransaction()
-    {
-        var tx = base.ToTransaction();
-        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
-        tx.BlobVersionedHashes = BlobVersionedHashes;
-        return tx;
-    }
+    public new static readonly IFromTransaction<RpcBlobTransaction> Converter = new ConverterImpl();
 
-    public override Transaction ToTransactionWitDefaults(ulong chainId)
-    {
-        var tx = base.ToTransactionWitDefaults(chainId);
-        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
-        tx.BlobVersionedHashes = BlobVersionedHashes;
-        return tx;
-    }
-
-    public new static readonly ITransactionConverter<RpcBlobTransaction> Converter = new ConverterImpl();
-
-    private class ConverterImpl : ITransactionConverter<RpcBlobTransaction>
+    private class ConverterImpl : IFromTransaction<RpcBlobTransaction>
     {
         public RpcBlobTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);

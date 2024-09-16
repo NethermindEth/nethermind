@@ -9,18 +9,14 @@ using Nethermind.Core;
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 // General flows:
-// * JSON -> IRpcTransaction (`IRpcTransaction.JsonConverter`, with a registry of [TxType => C# Type])
-// * IRpcTransaction -> Transaction (IRpcTransaction has `.ToTransaction`)
+// * JSON -> RpcGenericTransaction (derived by `System.Text.JSON`)
+// * RpcGenericTransaction -> Transaction (RpcGenericTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
 // * Transaction -> IRpcTransaction (IRpcTransaction.TransactionConverter with a registry of [TxType => ITransactionConverter<IRpcTransaction>])
 // * IRpcTransaction -> JSON (derived by `System.Text.JSON`)
 
 public interface IRpcTransaction
 {
-    Transaction ToTransaction();
-
-    Transaction ToTransactionWitDefaults(ulong chainId);
-
-    // TODO: Should/can we merge `JsonConverter` and `ITransactionConverter`?
+    // TODO: Should/can we merge `JsonConverter` and `IFromTransaction`?
     public class JsonConverter : JsonConverter<IRpcTransaction>
     {
         private readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];
@@ -52,11 +48,11 @@ public interface IRpcTransaction
         }
     }
 
-    public class TransactionConverter : ITransactionConverter<IRpcTransaction>
+    public class TransactionConverter : IFromTransaction<IRpcTransaction>
     {
-        private readonly ITransactionConverter<IRpcTransaction>?[] _converters = new ITransactionConverter<IRpcTransaction>?[Transaction.MaxTxType + 1];
+        private readonly IFromTransaction<IRpcTransaction>?[] _converters = new IFromTransaction<IRpcTransaction>?[Transaction.MaxTxType + 1];
 
-        public TransactionConverter RegisterConverter(TxType txType, ITransactionConverter<IRpcTransaction> converter)
+        public TransactionConverter RegisterConverter(TxType txType, IFromTransaction<IRpcTransaction> converter)
         {
             _converters[(byte)txType] = converter;
             return this;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -26,9 +25,6 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     /// </summary>
     public override UInt256 V { get; set; }
 
-    [JsonConstructor]
-    public RpcAccessListTransaction() { }
-
     public RpcAccessListTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
@@ -40,23 +36,9 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         V = YParity;
     }
 
-    public override Transaction ToTransaction()
-    {
-        var tx = base.ToTransaction();
-        tx.AccessList = AccessList?.ToAccessList();
-        return tx;
-    }
+    public new static readonly IFromTransaction<RpcAccessListTransaction> Converter = new ConverterImpl();
 
-    public override Transaction ToTransactionWitDefaults(ulong chainId)
-    {
-        var tx = base.ToTransactionWitDefaults(chainId);
-        tx.AccessList = AccessList?.ToAccessList();
-        return tx;
-    }
-
-    public new static readonly ITransactionConverter<RpcAccessListTransaction> Converter = new ConverterImpl();
-
-    private class ConverterImpl : ITransactionConverter<RpcAccessListTransaction>
+    private class ConverterImpl : IFromTransaction<RpcAccessListTransaction>
     {
         public RpcAccessListTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);

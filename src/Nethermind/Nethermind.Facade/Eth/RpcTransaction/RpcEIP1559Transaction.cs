@@ -20,9 +20,6 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
     /// </summary>
     public override UInt256 GasPrice { get; set; }
 
-    [JsonConstructor]
-    public RpcEIP1559Transaction() { }
-
     public RpcEIP1559Transaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
@@ -33,25 +30,9 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
                 : transaction.MaxFeePerGas;
     }
 
-    public override Transaction ToTransaction()
-    {
-        var tx = base.ToTransaction();
-        tx.DecodedMaxFeePerGas = MaxFeePerGas;
-        tx.GasPrice = MaxPriorityFeePerGas;
-        return tx;
-    }
+    public new static readonly IFromTransaction<RpcEIP1559Transaction> Converter = new ConverterImpl();
 
-    public override Transaction ToTransactionWitDefaults(ulong chainId)
-    {
-        var tx = base.ToTransactionWitDefaults(chainId);
-        tx.DecodedMaxFeePerGas = MaxFeePerGas;
-        tx.GasPrice = MaxPriorityFeePerGas;
-        return tx;
-    }
-
-    public new static readonly ITransactionConverter<RpcEIP1559Transaction> Converter = new ConverterImpl();
-
-    private class ConverterImpl : ITransactionConverter<RpcEIP1559Transaction>
+    private class ConverterImpl : IFromTransaction<RpcEIP1559Transaction>
     {
         public RpcEIP1559Transaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
