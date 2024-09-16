@@ -273,7 +273,5 @@ namespace Nethermind.State
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
 
         public bool ClearCache() => PreBlockCaches?.ClearImmediate() == true;
-
-        public Task ClearCachesInBackground() => PreBlockCaches?.ClearCachesInBackground() ?? Task.CompletedTask;
     }
 }

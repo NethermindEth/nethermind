@@ -58,7 +58,7 @@ public partial class BlockProcessor(
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
     private const int MaxUncommittedBlocks = 64;
-    private readonly Func<Task, Task> _clearCaches = _ => preWarmer.ClearCachesInBackground();
+    private readonly Action<Task> _clearCaches = _ => preWarmer.ClearCaches();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -118,10 +118,8 @@ public partial class BlockProcessor(
                     using CancellationTokenSource cancellationTokenSource = new();
                     (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
                     preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
-
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
-                    preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
                     cancellationTokenSource.Cancel();
                 }
                 else
@@ -135,6 +133,12 @@ public partial class BlockProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                if (preWarmTask is not null)
+                {
+                    // Can start clearing caches in background
+                    preWarmTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+                }
+
                 if (notReadOnly)
                 {
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
