@@ -1,45 +1,65 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text;
+using System;
+using DotNetty.Buffers;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginStore(IDb db) : IL1OriginStore
+public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginStore
 {
     private readonly IDb _db = db;
+    private readonly ILogger? _logger = logManager?.GetClassLogger<L1OriginStore>();
 
-    // Database key prefix for L2 block's L1Origin.
-    private static readonly byte[] l1OriginPrefix = Encoding.UTF8.GetBytes("TKO:L1O");
-    private static readonly byte[] headL1OriginKey = Encoding.UTF8.GetBytes("TKO:LastL1O");
-
-    // l1OriginKey calculates the L1Origin key.
-    // l1OriginPrefix + l2HeaderHash -> l1OriginKey
-    private static byte[] GetL1OriginKey(UInt256 blockId)
-    {
-        return [.. l1OriginPrefix, .. blockId.ToBigEndian()];
-    }
+    private static readonly int L1OriginHeadKeyLength = 32;
+    private static readonly byte[] L1OriginHeadKey = UInt256.MaxValue.ToBigEndian();
 
     public L1Origin? ReadL1Origin(UInt256 blockId)
     {
-        return _db.Get(GetL1OriginKey(blockId)) switch
+        Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
+        blockId.ToBigEndian(key);
+
+        return _db.Get(key) switch
         {
             null => null,
             byte[] bytes => Rlp.Decode<L1Origin>(bytes)
         };
     }
 
-    public void WriteL1Origin(UInt256 blockid, L1Origin l1Origin)
+    public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)
     {
-        _db.Set(GetL1OriginKey(blockid), Rlp.Encode(l1Origin).Bytes);
+        Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
+        blockId.ToBigEndian(key);
+
+        IRlpStreamDecoder<L1Origin>? decoder = Rlp.GetStreamDecoder<L1Origin>();
+
+        if (decoder is null)
+        {
+            _logger?.Warn($"Unable to save L1 origin decoder for {nameof(L1Origin)} not found");
+            return;
+        }
+
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(decoder.GetLength(l1Origin, RlpBehaviors.None));
+
+        try
+        {
+            using NettyRlpStream stream = new(buffer);
+            decoder.Encode(stream, l1Origin);
+            _db.Set(key, buffer.Array);
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
     public UInt256? ReadHeadL1Origin()
     {
-        return _db.Get(headL1OriginKey) switch
+        return _db.Get(L1OriginHeadKey) switch
         {
             null => null,
             byte[] bytes => new UInt256(bytes, isBigEndian: true)
@@ -48,6 +68,6 @@ public class L1OriginStore(IDb db) : IL1OriginStore
 
     public void WriteHeadL1Origin(UInt256 blockId)
     {
-        _db.Set(headL1OriginKey, blockId.ToBigEndian());
+        _db.Set(L1OriginHeadKey, blockId.ToBigEndian());
     }
 }

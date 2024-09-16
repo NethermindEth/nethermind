@@ -2,10 +2,7 @@
   "name": "Taiko Mainnet",
   "dataDir": "taiko-mainnet",
   "engine": {
-    "Taiko": {
-      "params": {        
-      }
-    }
+    "Taiko": { }
   },
   "params": {
     "chainId": "167000",

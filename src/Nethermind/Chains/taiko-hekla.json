@@ -2,10 +2,7 @@
   "name": "Taiko Hekla",
   "dataDir": "taiko-hekla",
   "engine": {
-    "Taiko": {
-      "params": {        
-      }
-    }
+    "Taiko": { }
   },
   "params": {
     "chainId": "167009",
