@@ -37,4 +37,6 @@ public abstract class RpcNethermindTransaction : IRpcTransaction
     }
 
     public abstract Transaction ToTransaction();
+
+    public abstract Transaction ToTransactionWitDefaults(ulong chainId);
 }

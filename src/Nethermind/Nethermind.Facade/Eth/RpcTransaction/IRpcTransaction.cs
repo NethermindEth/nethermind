@@ -18,8 +18,7 @@ public interface IRpcTransaction
 {
     Transaction ToTransaction();
 
-    // TODO: Implement
-    // Transaction ToTransactionWitDefaults();
+    Transaction ToTransactionWitDefaults(ulong chainId);
 
     // TODO: Should/can we merge `JsonConverter` and `ITransactionConverter`?
     public class JsonConverter : JsonConverter<IRpcTransaction>

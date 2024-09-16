@@ -79,6 +79,26 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         };
     }
 
+    public override Transaction ToTransactionWitDefaults(ulong chainId)
+    {
+        return new Transaction
+        {
+            Type = Type,
+            Nonce = Nonce, // TODO: here pick the last nonce?
+            To = To,
+            GasLimit = Gas, // ?? 90000,
+            Value = Value,
+            Data = Input,
+            GasPrice = GasPrice, // ?? 20.GWei(),
+            ChainId = chainId,
+
+            // TODO: Get `From`
+            // SenderAddress = From,
+            // TODO: `WithDefaults` sets the hash, unlike `ToTransaction`. Is this intentional?
+            Hash = Hash
+        };
+    }
+
     public static readonly ITransactionConverter<RpcLegacyTransaction> Converter = new ConverterImpl();
 
     private class ConverterImpl : ITransactionConverter<RpcLegacyTransaction>
