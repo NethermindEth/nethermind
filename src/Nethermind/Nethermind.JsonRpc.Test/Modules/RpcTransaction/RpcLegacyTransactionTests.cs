@@ -17,7 +17,7 @@ public static class RpcLegacyTransactionTests
         BuildALegacyTransaction.TestObject,
 
         BuildALegacyTransaction.WithNonce(UInt256.Zero).TestObject,
-        BuildALegacyTransaction.WithNonce((UInt256) 123).TestObject,
+        BuildALegacyTransaction.WithNonce((UInt256)123).TestObject,
         BuildALegacyTransaction.WithNonce(UInt256.MaxValue).TestObject,
 
         BuildALegacyTransaction.WithTo(null).TestObject,
@@ -33,7 +33,7 @@ public static class RpcLegacyTransactionTests
         BuildALegacyTransaction.WithGasLimit(long.MaxValue).TestObject,
 
         BuildALegacyTransaction.WithValue(UInt256.Zero).TestObject,
-        BuildALegacyTransaction.WithValue((UInt256) 123).TestObject,
+        BuildALegacyTransaction.WithValue((UInt256)123).TestObject,
         BuildALegacyTransaction.WithValue(UInt256.MaxValue).TestObject,
 
         BuildALegacyTransaction.WithData(TestItem.RandomDataA).TestObject,
@@ -42,7 +42,7 @@ public static class RpcLegacyTransactionTests
         BuildALegacyTransaction.WithData(TestItem.RandomDataD).TestObject,
 
         BuildALegacyTransaction.WithGasPrice(UInt256.Zero).TestObject,
-        BuildALegacyTransaction.WithGasPrice((UInt256) 123).TestObject,
+        BuildALegacyTransaction.WithGasPrice((UInt256)123).TestObject,
         BuildALegacyTransaction.WithGasPrice(UInt256.MaxValue).TestObject,
 
         BuildALegacyTransaction.WithChainId(null).TestObject,

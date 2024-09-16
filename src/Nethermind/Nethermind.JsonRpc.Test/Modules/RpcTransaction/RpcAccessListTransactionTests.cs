@@ -19,7 +19,7 @@ public static class RpcAccessListTransactionTests
         Build.TestObject,
 
         Build.WithNonce(UInt256.Zero).TestObject,
-        Build.WithNonce((UInt256) 123).TestObject,
+        Build.WithNonce((UInt256)123).TestObject,
         Build.WithNonce(UInt256.MaxValue).TestObject,
 
         Build.WithTo(null).TestObject,
@@ -35,7 +35,7 @@ public static class RpcAccessListTransactionTests
         Build.WithGasLimit(long.MaxValue).TestObject,
 
         Build.WithValue(UInt256.Zero).TestObject,
-        Build.WithValue((UInt256) 123).TestObject,
+        Build.WithValue((UInt256)123).TestObject,
         Build.WithValue(UInt256.MaxValue).TestObject,
 
         Build.WithData(TestItem.RandomDataA).TestObject,
@@ -44,7 +44,7 @@ public static class RpcAccessListTransactionTests
         Build.WithData(TestItem.RandomDataD).TestObject,
 
         Build.WithGasPrice(UInt256.Zero).TestObject,
-        Build.WithGasPrice((UInt256) 123).TestObject,
+        Build.WithGasPrice((UInt256)123).TestObject,
         Build.WithGasPrice(UInt256.MaxValue).TestObject,
 
         Build.WithChainId(null).TestObject,
