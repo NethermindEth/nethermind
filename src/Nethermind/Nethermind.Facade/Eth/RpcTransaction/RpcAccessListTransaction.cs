@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -52,9 +50,11 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
             return tx;
         }
 
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction t, ulong chainId)
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx, ulong chainId)
         {
-            throw new NotImplementedException();
+            var tx = _baseConverter.ToTransactionWithDefaults(rpcTx, chainId);
+            tx.AccessList = rpcTx.AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
+            return tx;
         }
     }
 }

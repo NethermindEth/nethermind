@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,9 +44,12 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
             return tx;
         }
 
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction t, ulong chainId)
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx, ulong chainId)
         {
-            throw new NotImplementedException();
+            var tx = _baseConverter.ToTransaction(rpcTx);
+            tx.MaxFeePerBlobGas = rpcTx.MaxFeePerBlobGas;
+            tx.BlobVersionedHashes = rpcTx.BlobVersionedHashes;
+            return tx;
         }
     }
 }
