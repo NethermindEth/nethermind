@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -50,11 +51,34 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         V = transaction.Signature?.V ?? 0;
     }
 
-    public static readonly IFromTransaction<RpcLegacyTransaction> Converter = new FromTransactionImpl();
-
-    private class FromTransactionImpl : IFromTransaction<RpcLegacyTransaction>
+    public class Converter : IToTransaction<RpcGenericTransaction>, IFromTransaction<RpcLegacyTransaction>
     {
         public RpcLegacyTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
+
+        public Transaction ToTransaction(RpcGenericTransaction rpcTx)
+        {
+            Transaction tx = new()
+            {
+                Type = (TxType)rpcTx.Type,
+                Nonce = rpcTx.Nonce ?? 0, // TODO: here pick the last nonce?
+                To = rpcTx.To,
+                GasLimit = rpcTx.Gas ?? 0,
+                Value = rpcTx.Value ?? 0,
+                Data = rpcTx.Input,
+                GasPrice = rpcTx.GasPrice ?? 0,
+                SenderAddress = rpcTx.From,
+
+                // TODO: Unsafe cast
+                ChainId = (ulong?)rpcTx.ChainId,
+            };
+
+            return tx;
+        }
+
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction t, ulong chainId)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
