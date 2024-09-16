@@ -69,15 +69,4 @@ public class RpcTransactionTests
 
         // TODO: Test that implementors satisfy the schema for the base `RpcNethermindTransaction`
     }
-
-    [TestCaseSource(nameof(Transactions))]
-    [Ignore("todo: reimplement")]
-    public void RpcTransaction_JSON_roundtrip(Transaction tx)
-    {
-        IRpcTransaction rpcTx = _converter.FromTransaction(tx);
-        string serialized = _serializer.Serialize(rpcTx);
-        IRpcTransaction deserialized = _serializer.Deserialize<IRpcTransaction>(serialized);
-
-        rpcTx.Should().BeEquivalentTo(deserialized, options => options.RespectingRuntimeTypes());
-    }
 }
