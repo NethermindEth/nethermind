@@ -26,7 +26,7 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
     public RpcBlobTransaction() { }
 
     public RpcBlobTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
-        : base(transaction, txIndex, blockHash, blockNumber)
+        : base(transaction, txIndex, blockHash, blockNumber, baseFee)
     {
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
