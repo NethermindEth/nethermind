@@ -33,7 +33,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
 
     public virtual UInt256 GasPrice { get; set; }
 
-    public UInt256? ChainId { get; set; }
+    public ulong? ChainId { get; set; }
 
     public virtual UInt256 V { get; set; }
 
@@ -71,9 +71,8 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             Value = Value,
             Data = Input,
             GasPrice = GasPrice,
+            ChainId = ChainId,
 
-            // TODO: Dangerous cast
-            ChainId = (ulong)ChainId,
             // TODO: Get `From`
             // SenderAddress = From,
         };
