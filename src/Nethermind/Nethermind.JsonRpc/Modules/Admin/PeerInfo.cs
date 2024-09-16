@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string Host { get; set; }
         public int Port { get; set; }
         public string Address { get; set; }
-        public bool IsBootnode { get; set; }
+        public bool IsBootnode { get; set; } // change to BootNode (capitalize "N")?
         public bool IsTrusted { get; set; }
         public bool IsStatic { get; set; }
         public string Enode { get; set; }
@@ -23,6 +23,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string ClientType { get; set; }
         public string EthDetails { get; set; }
         public string LastSignal { get; set; }
+
+        public bool Inbound { get; set; }
 
         public PeerInfo()
         {
@@ -43,13 +45,13 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IsBootnode = peer.Node.IsBootnode;
             IsStatic = peer.Node.IsStatic;
             Enode = peer.Node.ToString(Node.Format.ENode);
+            Inbound = peer.InSession is not null && peer.InSession.Direction == ConnectionDirection.In; // assumes one of InSession/Outsession is always set.?
 
-            if (includeDetails)
-            {
-                ClientType = peer.Node.ClientType.ToString();
-                EthDetails = peer.Node.EthDetails;
-                LastSignal = (peer.InSession ?? peer.OutSession)?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
-            }
+            if (!includeDetails) return;
+
+            ClientType = peer.Node.ClientType.ToString();
+            EthDetails = peer.Node.EthDetails;
+            LastSignal = (peer.InSession ?? peer.OutSession)?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
         }
     }
 }
