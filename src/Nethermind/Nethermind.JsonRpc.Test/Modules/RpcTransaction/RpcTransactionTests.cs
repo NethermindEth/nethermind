@@ -42,7 +42,7 @@ public class RpcTransactionTests
     }
 
     [TestCaseSource(nameof(Transactions))]
-    public void Always_satisfies_schema(Transaction transaction)
+    public void Serialized_JSON_satisfies_schema(Transaction transaction)
     {
         IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
         string serialized = _serializer.Serialize(rpcTransaction);
@@ -66,7 +66,19 @@ public class RpcTransactionTests
             default:
                 throw new ArgumentOutOfRangeException();
         }
+    }
 
-        // TODO: Test that implementors satisfy the schema for the base `RpcNethermindTransaction`
+    [TestCaseSource(nameof(Transactions))]
+    public void Serialized_JSON_satisfies_Nethermind_fields_schema(Transaction transaction)
+    {
+        IRpcTransaction rpcTransaction = _converter.FromTransaction(transaction);
+        string serialized = _serializer.Serialize(rpcTransaction);
+        using var jsonDocument = JsonDocument.Parse(serialized);
+        JsonElement json = jsonDocument.RootElement;
+
+        json.GetProperty("hash").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
+        json.GetProperty("transactionIndex").GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        json.GetProperty("blockHash").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
+        json.GetProperty("blockNumber").GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
     }
 }
