@@ -82,10 +82,9 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
             };
         }
 
-        public Transaction ToTransactionWithDefaults(RpcOptimismTransaction rpcTx, ulong chainId)
+        public Transaction ToTransactionWithDefaults(RpcOptimismTransaction rpcTx)
         {
             var tx = ToTransaction(rpcTx);
-            tx.ChainId = chainId;
             return tx;
         }
     }

@@ -75,7 +75,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
             return tx;
         }
 
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx, ulong chainId)
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx)
         {
             return new Transaction()
             {
@@ -87,7 +87,6 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
                 Data = rpcTx.Input,
                 GasPrice = rpcTx.GasPrice ?? 20.GWei(),
                 SenderAddress = rpcTx.From,
-                ChainId = chainId,
             };
         }
     }

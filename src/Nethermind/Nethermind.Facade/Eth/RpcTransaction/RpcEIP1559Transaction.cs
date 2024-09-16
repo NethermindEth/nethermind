@@ -44,7 +44,7 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
             return tx;
         }
 
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx, ulong chainId)
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx)
         {
             var tx = _baseConverter.ToTransaction(rpcTx);
             tx.GasPrice = rpcTx.MaxPriorityFeePerGas ?? 0;

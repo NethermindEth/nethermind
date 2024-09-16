@@ -50,9 +50,9 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
             return tx;
         }
 
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx, ulong chainId)
+        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx)
         {
-            var tx = _baseConverter.ToTransactionWithDefaults(rpcTx, chainId);
+            var tx = _baseConverter.ToTransactionWithDefaults(rpcTx);
             tx.AccessList = rpcTx.AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
             return tx;
         }

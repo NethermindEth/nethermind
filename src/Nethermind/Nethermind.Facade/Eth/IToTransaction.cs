@@ -9,5 +9,5 @@ namespace Nethermind.Facade.Eth;
 public interface IToTransaction<in T>
 {
     Transaction ToTransaction(T t);
-    Transaction ToTransactionWithDefaults(T t, ulong chainId);
+    Transaction ToTransactionWithDefaults(T t);
 }
