@@ -8,15 +8,6 @@ namespace Nethermind.Serialization.Ssz;
 
 public partial class Ssz
 {
-    public struct SlotDecryptionIdentites
-    {
-        public ulong InstanceID;
-        public ulong Eon;
-        public ulong Slot;
-        public ulong TxPointer;
-        public IEnumerable<ReadOnlyMemory<byte>> IdentityPreimages;
-    }
-
     private const int VarOffsetSize = sizeof(uint);
 
     private static void DecodeDynamicOffset(ReadOnlySpan<byte> span, ref int offset, out int dynamicOffset)

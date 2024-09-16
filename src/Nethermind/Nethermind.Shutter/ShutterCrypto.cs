@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Ssz;
 using Nethermind.Merkleization;
 using System.Text;
 
@@ -290,7 +289,7 @@ public static class ShutterCrypto
 
     internal static ValueHash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
     {
-        Ssz.SlotDecryptionIdentites container = new()
+        SlotDecryptionIdentites container = new()
         {
             InstanceID = instanceId,
             Eon = eon,
@@ -299,7 +298,14 @@ public static class ShutterCrypto
             IdentityPreimages = identityPreimages
         };
 
-        Merkle.Ize(out UInt256 root, container);
+        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(5));
+        merkleizer.Feed(container.InstanceID);
+        merkleizer.Feed(container.Eon);
+        merkleizer.Feed(container.Slot);
+        merkleizer.Feed(container.TxPointer);
+        merkleizer.Feed(container.IdentityPreimages, 1024);
+        merkleizer.CalculateRoot(out UInt256 root);
+
         return new(root.ToLittleEndian());
     }
 
@@ -319,4 +325,14 @@ public static class ShutterCrypto
         bytes.CopyTo(preimage[1..]);
         return ValueKeccak.Compute(preimage).Bytes;
     }
+
+    private readonly struct SlotDecryptionIdentites
+    {
+        public readonly ulong InstanceID { get; init; }
+        public readonly ulong Eon { get; init; }
+        public readonly ulong Slot { get; init; }
+        public readonly ulong TxPointer { get; init; }
+        public readonly IEnumerable<ReadOnlyMemory<byte>> IdentityPreimages { get; init; }
+    }
+
 }
