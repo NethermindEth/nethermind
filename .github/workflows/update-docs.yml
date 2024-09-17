@@ -41,20 +41,7 @@ jobs:
         working-directory: n
         run: dotnet build tools/docgen/DocGen.csproj -c release -o docgen
       - name: Generate docs
-        run: |
-          mv d/docs/fundamentals/configuration.md n/docgen/configuration.md
-          mv d/docs/interacting/json-rpc-ns/eth_subscribe.md n/docgen/eth_subscribe.md
-          mv d/docs/interacting/json-rpc-ns/eth_unsubscribe.md n/docgen/eth_unsubscribe.md
-          mv d/docs/monitoring/metrics/metrics.md n/docgen/metrics.md
-          cd n/docgen
-          ./DocGen --config --jsonrpc --metrics
-          cd ../..
-          mv n/docgen/configuration.md d/docs/fundamentals/configuration.md
-          rm -f d/docs/interacting/json-rpc-ns/*.md
-          mv n/docgen/eth_subscribe.md d/docs/interacting/json-rpc-ns/eth_subscribe.md
-          mv n/docgen/eth_unsubscribe.md d/docs/interacting/json-rpc-ns/eth_unsubscribe.md
-          mv n/docgen/json-rpc-ns/*.md d/docs/interacting/json-rpc-ns
-          mv n/docgen/metrics.md d/docs/monitoring/metrics/metrics.md
+        run: n/docgen/DocGen $GITHUB_WORKSPACE/d --config --jsonrpc --metrics
       - name: Tag a new version
         if: github.event_name == 'release' && !github.event.release.prerelease
         working-directory: d
