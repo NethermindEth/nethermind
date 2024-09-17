@@ -126,7 +126,8 @@ public static class ShutterCrypto
             Span<byte> preimage = preimageBuf[..(32 + suffixLength)];
             sigma.CopyTo(preimage);
             suffix[(4 - suffixLength)..4].CopyTo(preimage[32..]);
-            Hash4(preimage).CopyTo(res[(i * 32)..]);
+
+            Hash4(preimage).Bytes.CopyTo(res[(i * 32)..]);
         }
     }
 
@@ -318,12 +319,12 @@ public static class ShutterCrypto
         UInt256.Mod(new UInt256(hash, true), BlsSubgroupOrder, out res);
     }
 
-    private static ReadOnlySpan<byte> Hash4(ReadOnlySpan<byte> bytes)
+    private static ValueHash256 Hash4(ReadOnlySpan<byte> bytes)
     {
         Span<byte> preimage = stackalloc byte[bytes.Length + 1];
         preimage[0] = 0x4;
         bytes.CopyTo(preimage[1..]);
-        return Keccak.Compute(preimage).Bytes;
+        return ValueKeccak.Compute(preimage);
     }
 
     private readonly struct SlotDecryptionIdentites
