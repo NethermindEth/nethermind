@@ -11,5 +11,5 @@ namespace Nethermind.Consensus.Requests;
 
 public interface IWithdrawalRequestsProcessor
 {
-    IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block);
+    IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(Block block, IWorldState state, IReleaseSpec spec);
 }

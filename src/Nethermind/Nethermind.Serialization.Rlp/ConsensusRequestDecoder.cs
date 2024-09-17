@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.Rlp;
 public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlpValueDecoder<ConsensusRequest>, IRlpObjectDecoder<ConsensusRequest>
 {
     private readonly WithdrawalRequestDecoder _withdrawalRequestDecoder = new();
-    private readonly DepositDecoder _depositDecoder = new();
+    private readonly DepositDecoder _depositDecoder = DepositDecoder.Instance;
     public int GetContentLength(ConsensusRequest item, RlpBehaviors rlpBehaviors)
     {
         int length = item.Type switch

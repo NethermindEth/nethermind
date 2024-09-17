@@ -29,7 +29,7 @@ public static class KeyValueStoreRlpExtensions
 
     public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpStreamDecoder<TItem>? decoder, LruCache<long, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
-        byte[] keyDb = key.ToBigEndianByteArrayWithoutLeadingZeros();
+        ReadOnlySpan<byte> keyDb = key.ToBigEndianSpanWithoutLeadingZeros(out _);
         return Get(db, key, keyDb, decoder, cache, rlpBehaviors, shouldCache);
     }
 

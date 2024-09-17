@@ -18,30 +18,30 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
 
     public WithdrawalRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int _ = rlpStream.ReadSequenceLength();
+        _ = rlpStream.ReadSequenceLength();
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] ValidatorPubkey = rlpStream.DecodeByteArray();
+        byte[] validatorPubkey = rlpStream.DecodeByteArray();
         ulong amount = rlpStream.DecodeULong();
-        return new WithdrawalRequest()
+        return new WithdrawalRequest
         {
             SourceAddress = sourceAddress,
-            ValidatorPubkey = ValidatorPubkey,
+            ValidatorPubkey = validatorPubkey,
             Amount = amount
         };
     }
 
     public WithdrawalRequest Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int _ = decoderContext.ReadSequenceLength();
+        _ = decoderContext.ReadSequenceLength();
         Address sourceAddress = decoderContext.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
-        byte[] ValidatorPubkey = decoderContext.DecodeByteArray();
+        byte[] validatorPubkey = decoderContext.DecodeByteArray();
         ulong amount = decoderContext.DecodeULong();
-        return new WithdrawalRequest()
+        return new WithdrawalRequest
         {
             SourceAddress = sourceAddress,
-            ValidatorPubkey = ValidatorPubkey,
+            ValidatorPubkey = validatorPubkey,
             Amount = amount
         };
     }
@@ -51,7 +51,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
         stream.Encode(item.SourceAddress);
-        stream.Encode(item.ValidatorPubkey);
+        stream.Encode(item.ValidatorPubkey!);
         stream.Encode(item.Amount);
     }
 

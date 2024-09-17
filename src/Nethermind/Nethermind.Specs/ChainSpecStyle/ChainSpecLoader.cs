@@ -424,7 +424,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
-        var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled;
+        bool requestsEnabled = depositsEnabled || withdrawalRequestsEnabled;
         if (requestsEnabled)
             genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
 
@@ -449,17 +449,14 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
-        if (withdrawalsEnabled)
-            chainSpec.Genesis = new Block(
+        chainSpec.Genesis = !withdrawalsEnabled
+            ? new Block(genesisHeader)
+            : new Block(
                 genesisHeader,
                 Array.Empty<Transaction>(),
                 Array.Empty<BlockHeader>(),
                 Array.Empty<Withdrawal>(),
                 requestsEnabled ? Array.Empty<ConsensusRequest>() : null);
-        else
-        {
-            chainSpec.Genesis = new Block(genesisHeader);
-        }
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

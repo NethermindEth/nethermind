@@ -1323,7 +1323,7 @@ namespace Nethermind.Trie
                 // but we know that we have multiple optimizations and assumptions on trees
                 ExpectAccounts = visitingOptions.ExpectAccounts,
                 MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
-                IsStorage = storageAddr != null
+                IsStorage = storageAddr is not null
             };
 
             if (storageAddr is not null)

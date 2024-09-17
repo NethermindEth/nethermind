@@ -11,22 +11,18 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
 
-public class RequestsTrie : PatriciaTrie<ConsensusRequest>
+public class RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    : PatriciaTrie<ConsensusRequest>(requests, canBuildProof, bufferPool)
 {
     private static readonly ConsensusRequestDecoder _codec = new();
-
-    public RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
-        : base(requests, canBuildProof, bufferPool)
-    {
-    }
 
     protected override void Initialize(ConsensusRequest[] requests)
     {
         var key = 0;
 
-        foreach (ConsensusRequest exit in requests)
+        foreach (ConsensusRequest req in requests)
         {
-            Set(Rlp.Encode(key++).Bytes, _codec.Encode(exit, RlpBehaviors.SkipTypedWrapping).Bytes);
+            Set(Rlp.Encode(key++).Bytes, _codec.Encode(req, RlpBehaviors.SkipTypedWrapping).Bytes);
         }
     }
 

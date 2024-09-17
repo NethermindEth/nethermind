@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 using System.Text;
 
@@ -16,7 +17,7 @@ public class Deposit : ConsensusRequest
         Type = ConsensusRequestsType.Deposit;
         Amount = 0;
     }
-    public byte[]? Pubkey
+    public Memory<byte>? Pubkey
     {
         get { return PubKeyField; }
         set { PubKeyField = value; }
@@ -51,7 +52,7 @@ public class Deposit : ConsensusRequest
             {nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()},
             {nameof(Amount)}: {Amount},
             {nameof(Signature)}: {Signature?.ToHexString()},
-            {nameof(Pubkey)}: {Pubkey?.ToHexString()}}}";
+            {nameof(Pubkey)}: {Pubkey?.Span.ToHexString()}}}";
 
 
 }

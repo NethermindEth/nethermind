@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Extensions;
 using System.Text;
 
@@ -22,7 +23,7 @@ public class WithdrawalRequest : ConsensusRequest
         set { SourceAddressField = value; }
     }
 
-    public byte[]? ValidatorPubkey
+    public Memory<byte>? ValidatorPubkey
     {
         get { return PubKeyField; }
         set { PubKeyField = value; }
@@ -37,7 +38,7 @@ public class WithdrawalRequest : ConsensusRequest
 
     public string ToString(string indentation) => @$"{indentation}{nameof(WithdrawalRequest)}
             {{{nameof(SourceAddress)}: {SourceAddress},
-            {nameof(ValidatorPubkey)}: {ValidatorPubkey?.ToHexString()},
+            {nameof(ValidatorPubkey)}: {ValidatorPubkey?.Span.ToHexString()},
             {nameof(Amount)}: {Amount}}}";
 
 

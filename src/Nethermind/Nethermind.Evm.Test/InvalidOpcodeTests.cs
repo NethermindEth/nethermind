@@ -112,7 +112,6 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
-
         private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {

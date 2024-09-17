@@ -17,34 +17,39 @@ public class DepositsProcessor : IDepositsProcessor
 
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
-        if (spec.DepositsEnabled)
+        if (!spec.DepositsEnabled)
         {
-            for (int i = 0; i < receipts.Length; i++)
+            yield break;
+        }
+
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            LogEntry[]? logEntries = receipts[i].Logs;
+            if (logEntries is not null)
             {
-                LogEntry[]? logEntries = receipts[i].Logs;
-                if (logEntries is not null)
+                for (var j = 0; j < logEntries.Length; j++)
                 {
-                    for (int index = 0; index < logEntries.Length; index++)
+                    LogEntry log = logEntries[j];
+                    if (log.LoggersAddress == spec.DepositContractAddress)
                     {
-                        LogEntry log = logEntries[index];
-                        if (log.LoggersAddress == spec.DepositContractAddress)
-                        {
-                            var result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
-
-                            var newDeposit = new Deposit()
-                            {
-                                Pubkey = (byte[])result[0],
-                                WithdrawalCredentials = (byte[])result[1],
-                                Amount = BitConverter.ToUInt64((byte[])result[2], 0),
-                                Signature = (byte[])result[3],
-                                Index = BitConverter.ToUInt64((byte[])result[4], 0)
-                            };
-
-                            yield return newDeposit;
-                        }
+                        yield return DecodeDeposit(log);
                     }
                 }
             }
+        }
+
+        Deposit DecodeDeposit(LogEntry log)
+        {
+            object[] result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
+
+            return new Deposit
+            {
+                Pubkey = (byte[])result[0],
+                WithdrawalCredentials = (byte[])result[1],
+                Amount = BitConverter.ToUInt64((byte[])result[2], 0),
+                Signature = (byte[])result[3],
+                Index = BitConverter.ToUInt64((byte[])result[4], 0)
+            };
         }
     }
 }
