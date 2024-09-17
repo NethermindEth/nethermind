@@ -27,8 +27,11 @@ using Nethermind.Api;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Discovery.Portal.History;
+using Nethermind.Network.Discovery.Portal.History.Rpc;
+using Nethermind.Network.Discovery.Portal.LanternAdapter;
 using Nethermind.Network.Enr;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -71,9 +74,10 @@ public class DiscoveryV5App : IDiscoveryApp
         };
 
         IServiceCollection services = new ServiceCollection()
-           .AddSingleton(sessionOptions.Verifier)
-           .AddSingleton(sessionOptions.Signer)
-           .AddSingleton(logManager);
+            .AddSingleton(api.BlockTree!)
+            .AddSingleton(sessionOptions.Verifier)
+            .AddSingleton(sessionOptions.Signer)
+            .AddSingleton(logManager);
 
         EnrEntryRegistry registry = new EnrEntryRegistry();
         EnrFactory enrFactory = new(registry);
@@ -114,8 +118,9 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithServices((components) =>
             {
                 NettyDiscoveryV5Handler.Register(components);
-                Portal.ComponentConfiguration.ConfigureCommonServices(components);
-                Portal.LanternAdapter.ComponentConfiguration.Configure(components);
+                components
+                    .ConfigurePortalNetworkCommonServices()
+                    .ConfigureLanternPortalAdapter();
             });
 
         _discv5Protocol = discv5Builder.Build();
@@ -146,10 +151,10 @@ public class DiscoveryV5App : IDiscoveryApp
         ];
         IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
 
-        IServiceProvider historyNetworkServiceProvider =
-            Portal.History.ComponentConfiguration.CreateHistoryNetworkServiceProvider(_discV5ServiceProvider, historyNetworkBootnodes);
-
+        IServiceProvider historyNetworkServiceProvider = _discV5ServiceProvider.CreateHistoryNetworkServiceProvider(historyNetworkBootnodes);
         _historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
+        IPortalHistoryRpcModule rpcModule = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>();
+        _api.RpcModuleProvider!.RegisterSingle(rpcModule);
     }
 
     private IPortalHistoryNetwork _historyNetwork;

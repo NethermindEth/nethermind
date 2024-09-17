@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode : notnull
+public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
 {
     private class TreeNode
     {
@@ -34,14 +34,14 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public KBucketTree(int k, int b, ValueHash256 currentNodeHash, ILogManager logManager)
+    public KBucketTree(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
     {
-        _k = k;
-        _b = b;
-        _currentNodeHash = currentNodeHash;
-        _root = new TreeNode(k, new ValueHash256());
+        _k = config.KSize;
+        _b = config.Beta;
+        _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+        _root = new TreeNode(config.KSize, new ValueHash256());
         _logger = logManager.GetClassLogger();
-        _logger.Info($"Initialized KBucketTree with k={k}, currentNodeId={currentNodeHash}");
+        _logger.Info($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
     public BucketAddResult TryAddOrRefresh(in ValueHash256 nodeHash, TNode node, out TNode? toRefresh)

@@ -16,8 +16,12 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 /// <typeparam name="TNode"></typeparam>
 /// <typeparam name="TContentKey"></typeparam>
-public interface INodeHashProvider<in TNode, in TContentKey>
+public interface INodeHashProvider<in TNode>
 {
     ValueHash256 GetHash(TNode node);
+}
+
+public interface IContentHashProvider<in TContentKey>
+{
     ValueHash256 GetHash(TContentKey key);
 }

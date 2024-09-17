@@ -8,7 +8,7 @@ using Nethermind.Network.Discovery.Kademlia;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class EnrNodeHashProvider : INodeHashProvider<IEnr, byte[]>
+public class EnrNodeHashProvider : INodeHashProvider<IEnr>, IContentHashProvider<byte[]>
 {
     public static EnrNodeHashProvider Instance = new EnrNodeHashProvider();
 

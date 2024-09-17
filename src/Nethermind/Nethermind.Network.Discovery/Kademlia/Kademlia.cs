@@ -24,7 +24,8 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private static readonly TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
 
     private readonly IKademlia<TNode, TContentKey, TContent>.IStore _store;
-    private readonly INodeHashProvider<TNode, TContentKey> _nodeHashProvider;
+    private readonly INodeHashProvider<TNode> _nodeHashProvider;
+    private readonly IContentHashProvider<TContentKey> _contentHashProvider;
     private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
 
     private readonly TNode _currentNodeId;
@@ -41,13 +42,16 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private readonly IRoutingTable<TNode> _routingTable;
 
     public Kademlia(
-        INodeHashProvider<TNode, TContentKey> nodeHashProvider,
+        INodeHashProvider<TNode> nodeHashProvider,
+        IContentHashProvider<TContentKey> contentHashProvider,
         IKademlia<TNode, TContentKey, TContent>.IStore store,
         IMessageSender<TNode, TContentKey, TContent> sender,
+        IRoutingTable<TNode> routingTable,
         ILogManager logManager,
         KademliaConfig<TNode> config)
     {
         _nodeHashProvider = nodeHashProvider;
+        _contentHashProvider = contentHashProvider;
         _store = store;
         _messageSender = new MessageSenderMonitor(sender, this);
         _logManager = logManager;
@@ -60,14 +64,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _refreshInterval = config.RefreshInterval;
 
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
-        if (config.UseTreeBasedRoutingTable)
-        {
-            _routingTable = new KBucketTree<TNode, TContentKey>(_kSize, config.Beta, _currentNodeIdAsHash, _logManager);
-        }
-        else
-        {
-            _routingTable = new BucketListRoutingTable<TNode>(_currentNodeIdAsHash, _kSize);
-        }
+        _routingTable = routingTable;
         _useNewLookup = config.UseNewLookup;
     }
 
@@ -146,7 +143,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         token = cts.Token;
         // TODO: Timeout?
 
-        ValueHash256 targetHash = _nodeHashProvider.GetHash(contentKey);
+        ValueHash256 targetHash = _contentHashProvider.GetHash(contentKey);
 
         try
         {
@@ -669,7 +666,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             new FindValueResponse<TNode, TContent>(
                 false,
                 default,
-                _routingTable.GetKNearestNeighbour(_nodeHashProvider.GetHash(contentKey), _nodeHashProvider.GetHash(sender))
+                _routingTable.GetKNearestNeighbour(_contentHashProvider.GetHash(contentKey), _nodeHashProvider.GetHash(sender))
             ));
     }
 

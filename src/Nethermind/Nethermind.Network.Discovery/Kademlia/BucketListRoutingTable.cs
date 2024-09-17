@@ -16,17 +16,17 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public BucketListRoutingTable(ValueHash256 currentNodeIdAsHash, int kSize)
+    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider)
     {
         // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
         _buckets = new KBucket<TNode>[Hash256XORUtils.MaxDistance + 1];
         for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
         {
-            _buckets[i] = new KBucket<TNode>(kSize);
+            _buckets[i] = new KBucket<TNode>(config.KSize);
         }
 
-        _currentNodeIdAsHash = currentNodeIdAsHash;
-        _kSize = kSize;
+        _currentNodeIdAsHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+        _kSize = config.KSize;
     }
 
     private KBucket<TNode> GetBucket(in ValueHash256 hash)

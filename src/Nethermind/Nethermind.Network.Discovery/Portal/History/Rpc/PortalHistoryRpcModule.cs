@@ -15,7 +15,7 @@ using Nethermind.Network.Discovery.Portal.Messages;
 namespace Nethermind.Network.Discovery.Portal.History.Rpc;
 
 public class PortalHistoryRpcModule(
-    IKademlia<IEnr, byte[], byte[]> kademlia,
+    IKademlia<IEnr, byte[], LookupContentResult> kademlia,
     IRoutingTable<IEnr> kademliaRoutingTable,
     IContentDistributor contentDistributor,
     IContentNetworkProtocol contentNetworkProtocol,

@@ -20,6 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal;
+using Nethermind.Network.Discovery.Portal.History;
 using Nethermind.Network.Test;
 using NonBlocking;
 using NUnit.Framework;
@@ -212,29 +213,25 @@ public class ContentNetworkScenarioTests
 
             IEnrProvider enrProvider = new TestEnrProvider(newNodeEnr, _identityVerifier, _enrFactory);
             IRawTalkReqSender talkReqSender = CreateTalkReqSenderFor(newNodeEnr);
-            IServiceCollection services = new ServiceCollection()
+            IServiceProvider commonServices = new ServiceCollection()
                 .AddSingleton<ILogManager>(new TestLogManager())
                 .AddSingleton(enrProvider)
-                .AddSingleton(talkReqSender);
-
-            ComponentConfiguration.ConfigureCommonServices(services);
-            IServiceProvider commonServices = services.BuildServiceProvider();
-
-            services = new ServiceCollection();
-            Nethermind.Network.Discovery.Portal.History.ComponentConfiguration.ConfigureHistoryNetwork(commonServices, services);
-
-            services.AddSingleton(new ContentNetworkConfig()
-            {
-                ProtocolId = ProtocolId,
-                ContentRadius = UInt256.MaxValue
-            });
+                .AddSingleton(talkReqSender)
+                .ConfigurePortalNetworkCommonServices()
+                .BuildServiceProvider();
 
             TestStore testStore = new TestStore();
-            services.AddSingleton<IPortalContentNetwork.Store>(testStore);
+            ServiceProvider serviceProvider = new ServiceCollection()
+                .ConfigureHistoryNetwork(commonServices)
+                .AddSingleton(new ContentNetworkConfig()
+                {
+                    ProtocolId = ProtocolId,
+                    ContentRadius = UInt256.MaxValue
+                })
+                .AddSingleton<IPortalContentNetwork.Store>(testStore)
+                .BuildServiceProvider();
 
-            var serviceProvider = services.BuildServiceProvider();
             IPortalContentNetwork contentNetwork = serviceProvider.GetRequiredService<IPortalContentNetwork>();
-
             Node node = new Node(newNodeEnr, contentNetwork, testStore, serviceProvider);
             _nodes[EnrNodeHashProvider.Instance.GetHash(newNodeEnr)] = node;
 

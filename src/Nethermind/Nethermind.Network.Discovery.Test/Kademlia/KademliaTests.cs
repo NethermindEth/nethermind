@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
@@ -22,13 +23,17 @@ public class KademliaTests
 
     private Kademlia<ValueHash256, ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
     {
-        return new Kademlia<ValueHash256, ValueHash256, ValueHash256>(
-            new ValueHashNodeHashProvider(),
-            _store,
-            _messageSender,
-            new TestLogManager(LogLevel.Trace),
-            config
-        );
+        return new ServiceCollection()
+            .ConfigureKademliaComponents<ValueHash256, ValueHash256, ValueHash256>()
+            .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
+            .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton<IContentHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
+            .AddSingleton(config)
+            .AddSingleton(_store)
+            .AddSingleton(_messageSender)
+            .AddSingleton<Kademlia<ValueHash256, ValueHash256, ValueHash256>>()
+            .BuildServiceProvider()
+            .GetRequiredService<Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
     }
 
     [Test]
@@ -127,7 +132,7 @@ public class KademliaTests
         kad.GetAllAtDistance(250).ToHashSet().Should().BeEquivalentTo(testHashes[10..].ToHashSet());
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256, ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<ValueHash256>, IContentHashProvider<ValueHash256>
     {
         public ValueHash256 GetHash(ValueHash256 node)
         {

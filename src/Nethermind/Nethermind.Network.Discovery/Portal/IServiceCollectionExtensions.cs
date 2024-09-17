@@ -10,29 +10,31 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class ComponentConfiguration
+public static class IServiceCollectionExtensions
 {
-    public static void ConfigureCommonServices(IServiceCollection services)
+    public static IServiceCollection ConfigurePortalNetworkCommonServices(this IServiceCollection services)
     {
-        services.AddSingleton<ITalkReqTransport, TalkReqTransport>();
-        services.AddSingleton<IUtpManager, TalkReqUtpManager>();
+        return services
+            .AddSingleton<ITalkReqTransport, TalkReqTransport>()
+            .AddSingleton<IUtpManager, TalkReqUtpManager>();
     }
 
-    public static void ConfigureContentNetwork(IServiceProvider serviceProvider, IServiceCollection serviceCollection)
+    public static IServiceCollection ConfigureContentNetwork(this IServiceCollection serviceCollection, IServiceProvider baseServiceProvider)
     {
-        serviceCollection
-            .ForwardServiceAsSingleton<IEnrProvider>(serviceProvider)
-            .ForwardServiceAsSingleton<ITalkReqTransport>(serviceProvider)
-            .ForwardServiceAsSingleton<IUtpManager>(serviceProvider)
-            .ForwardServiceAsSingleton<ILogManager>(serviceProvider)
-            .AddSingleton<INodeHashProvider<IEnr, byte[]>>(EnrNodeHashProvider.Instance)
+        return serviceCollection
+            .ConfigureKademliaComponents<IEnr, byte[], LookupContentResult>()
+            .ForwardServiceAsSingleton<IEnrProvider>(baseServiceProvider)
+            .ForwardServiceAsSingleton<ITalkReqTransport>(baseServiceProvider)
+            .ForwardServiceAsSingleton<IUtpManager>(baseServiceProvider)
+            .ForwardServiceAsSingleton<ILogManager>(baseServiceProvider)
+            .AddSingleton<INodeHashProvider<IEnr>>(EnrNodeHashProvider.Instance)
+            .AddSingleton<IContentHashProvider<byte[]>>(EnrNodeHashProvider.Instance)
             .AddSingleton<ITalkReqProtocolHandler, TalkReqHandler>()
             .AddSingleton<IContentNetworkProtocol, ContentNetworkProtocol>()
             .AddSingleton<IContentDistributor, ContentDistributor>()
             .AddSingleton<ContentLookupService>()
             .AddSingleton<IMessageSender<IEnr, byte[], LookupContentResult>, KademliaTalkReqMessageSender>()
             .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
-            .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>, Kademlia<IEnr, byte[], LookupContentResult>>()
             .AddSingleton<IPortalContentNetwork, PortalContentNetwork>();
     }
 

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
@@ -147,7 +148,7 @@ public class KademliaSimulation
         }
     }
 
-    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode, ValueHash256>
+    private class ValueHashNodeHashProvider: INodeHashProvider<TestNode>, IContentHashProvider<ValueHash256>
     {
         public ValueHash256 GetHash(TestNode node)
         {
@@ -171,7 +172,7 @@ public class KademliaSimulation
         public bool SimulateLatency { get; set; } = false;
 
         internal ConcurrentDictionary<ValueHash256, IKademlia<TestNode, ValueHash256, ValueHash256>> _nodes = new();
-        readonly INodeHashProvider<TestNode, ValueHash256> _nodeHashProvider = new ValueHashNodeHashProvider();
+        readonly ValueHashNodeHashProvider _nodeHashProvider = new ValueHashNodeHashProvider();
         private readonly Random _random = new Random(0);
 
         private bool TryGetReceiver(TestNode receiverHash, out IKademlia<TestNode, ValueHash256, ValueHash256> messageReceiver)
@@ -182,12 +183,13 @@ public class KademliaSimulation
         public Kademlia<TestNode, ValueHash256, ValueHash256> CreateNode(ValueHash256 nodeID)
         {
             var nodeIDTestNode = new TestNode(nodeID);
-            var kad = new Kademlia<TestNode, ValueHash256, ValueHash256>(
-                _nodeHashProvider,
-                new OnlySelfIStore(nodeID),
-                new SenderForNode(nodeIDTestNode, this),
-                new TestLogManager(LogLevel.Error),
-                new KademliaConfig<TestNode>()
+
+            var kad = new ServiceCollection()
+                .ConfigureKademliaComponents<TestNode, ValueHash256, ValueHash256>()
+                .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
+                .AddSingleton<INodeHashProvider<TestNode>>(_nodeHashProvider)
+                .AddSingleton<IContentHashProvider<ValueHash256>>(_nodeHashProvider)
+                .AddSingleton(new KademliaConfig<TestNode>()
                 {
                     CurrentNodeId = nodeIDTestNode,
                     KSize = kSize,
@@ -196,8 +198,12 @@ public class KademliaSimulation
                     RefreshInterval = TimeSpan.FromHours(1),
                     UseTreeBasedRoutingTable = useTreeBasedRoutingTable,
                     UseNewLookup = useNewLookup
-                }
-            );
+                })
+                .AddSingleton<IKademlia<TestNode, ValueHash256, ValueHash256>.IStore>(new OnlySelfIStore(nodeID))
+                .AddSingleton<IMessageSender<TestNode, ValueHash256, ValueHash256>>(new SenderForNode(nodeIDTestNode, this))
+                .AddSingleton<Kademlia<TestNode, ValueHash256, ValueHash256>>()
+                .BuildServiceProvider()
+                .GetRequiredService<Kademlia<TestNode, ValueHash256, ValueHash256>>();
 
             _nodes[nodeID] = kad;
 
