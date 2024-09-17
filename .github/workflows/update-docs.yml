@@ -26,7 +26,8 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,docs"
+          repositories: |
+            nethermind
       - name: Check out Nethermind docs repository
         uses: actions/checkout@v4
         with:
