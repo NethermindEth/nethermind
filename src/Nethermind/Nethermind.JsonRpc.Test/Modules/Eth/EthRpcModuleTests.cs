@@ -1231,7 +1231,7 @@ public partial class EthRpcModuleTests
         specProvider.AllowTestChainOverride = false;
 
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
-        
+
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.State.GetNonce(TestItem.AddressB))

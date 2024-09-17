@@ -295,7 +295,7 @@ namespace Nethermind.Store.Test
             TrieStore trieStore = new TrieStore(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             sut.CreateAccount(TestItem.AddressA, 0);
-            byte[] code = [..Eip7702Constants.DelegationHeader, ..new byte[20]];
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
             sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
@@ -326,7 +326,7 @@ namespace Nethermind.Store.Test
 
         [Test]
         public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
-        {            
+        {
             IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
             releaseSpec.IsEip3607Enabled.Returns(true);
             TrieStore trieStore = new TrieStore(new MemDb(), Logger);

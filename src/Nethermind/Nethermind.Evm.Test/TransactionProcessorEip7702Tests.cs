@@ -407,7 +407,7 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.EXTCODESIZE)
             .Op(Instruction.PUSH0)
             .Op(Instruction.PUSH0)
-            .Op(Instruction.DUP4)    
+            .Op(Instruction.DUP4)
             .Op(Instruction.EXTCODECOPY)
             .Op(Instruction.PUSH0)
             .Op(Instruction.MLOAD)

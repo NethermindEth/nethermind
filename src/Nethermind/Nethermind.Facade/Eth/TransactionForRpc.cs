@@ -134,7 +134,7 @@ public class TransactionForRpc
     public TxType Type { get; set; }
 
     public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
-    public IEnumerable<AuthorizationTupleForRpc>? AuthorizationList{ get; set; }
+    public IEnumerable<AuthorizationTupleForRpc>? AuthorizationList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
