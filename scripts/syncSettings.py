@@ -63,6 +63,26 @@ configs = {
         "url": "https://rpc-1.testnet.japanopenchain.org:8545",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    "base-mainnet": {
+        "url": "https://mainnet.base.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "base-sepolia": {
+        "url": "https://sepolia.base.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "op-mainnet": {
+        "url": "api-optimistic.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "op-sepolia": {
+        "url": "api-sepolia-optimistic.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
