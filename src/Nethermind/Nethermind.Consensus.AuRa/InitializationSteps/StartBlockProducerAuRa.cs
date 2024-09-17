@@ -153,7 +153,7 @@ public class StartBlockProducerAuRa
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv.TransactionProcessor),
-            _api.WorldStateManager!.GlobalWorldStateProvider,
+            changeableTxProcessingEnv.WorldStateProvider,
             _api.ReceiptStorage,
             new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
             _api.LogManager,
