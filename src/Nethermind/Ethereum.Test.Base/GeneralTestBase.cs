@@ -60,8 +60,10 @@ namespace Ethereum.Test.Base
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
+
+            IDbProvider? dbProvider = TestMemDbProvider.Init();
+            IDb stateDb = dbProvider.StateDb;
+            IDb codeDb = dbProvider.CodeDb;
 
             ISpecProvider specProvider = new CustomSpecProvider(
                 ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
