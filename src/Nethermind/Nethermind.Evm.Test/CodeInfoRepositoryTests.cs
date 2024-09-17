@@ -177,6 +177,64 @@ public class CodeInfoRepositoryTests
 
         refunds.Should().Be(1);
     }
+    public static IEnumerable<object[]> CountsAsAccessedCases()
+    {
+        yield return new object[]
+        {
+            new AuthorizationTuple[]
+            {
+                CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+                CreateAuthorizationTuple(TestItem.PrivateKeyB, 1, TestItem.AddressF, 0),
+            },
+            new Address[]
+            {
+                TestItem.AddressA,
+                TestItem.AddressB
+            }
+        };
+        yield return new object[]
+        {
+            new AuthorizationTuple[]
+            {
+                CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+                CreateAuthorizationTuple(TestItem.PrivateKeyB, 2, TestItem.AddressF, 0),
+            },
+            new Address[]
+            {
+                TestItem.AddressA,
+            }
+        };
+        yield return new object[]
+        {
+            new AuthorizationTuple[]
+            {
+                CreateAuthorizationTuple(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+                //Bad signature
+                new AuthorizationTuple(1, TestItem.AddressF, 0, new Signature(new byte[65]), TestItem.AddressA)
+            },
+            new Address[]
+            {
+                TestItem.AddressA,
+            }
+        };
+    }
+
+    [TestCaseSource(nameof(CountsAsAccessedCases))]
+    public void InsertFromAuthorizations_TwoValidAuthorizations_(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        CodeInfoRepository sut = new(1);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+
+        ISet<Address> accessedAddresses = new HashSet<Address>();
+        sut.InsertFromAuthorizations(stateProvider, tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
+
+        accessedAddresses.Count.Should().Be(shouldCountAsAccessed.Length);
+        accessedAddresses.Should().Contain(shouldCountAsAccessed);
+    }
 
     public static IEnumerable<object[]> NotDelegationCodeCases()
     {
