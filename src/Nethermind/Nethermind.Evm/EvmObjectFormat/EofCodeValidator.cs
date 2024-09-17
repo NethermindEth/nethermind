@@ -9,6 +9,7 @@ using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.EofParser")]
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 
 namespace Nethermind.Evm.EvmObjectFormat;
 

@@ -15,13 +15,15 @@ public class PragueEofTests : EofTestBase
     [TestCaseSource(nameof(LoadTests))]
     public void Test(EofTest test) => Assert.That(RunTest(test));
 
-    private static IEnumerable<EofTest> LoadTests()
+    private static IEnumerable<TestCaseData> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
             ArchiveName = "fixtures_eip7692.tar.gz",
             ArchiveVersion = "eip7692@v1.0.9"
         }, $"fixtures/eof_tests/prague");
-        return loader.LoadTests().Cast<EofTest>();
+        return loader.LoadTests().Cast<EofTest>().Select(t => new TestCaseData(t)
+            .SetName(t.Name)
+            .SetCategory(t.Category));
     }
 }

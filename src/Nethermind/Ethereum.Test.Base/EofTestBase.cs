@@ -27,6 +27,7 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.TxPool;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Ethereum.Test.Base
 {
@@ -38,6 +39,7 @@ namespace Ethereum.Test.Base
         [SetUp]
         public void Setup()
         {
+            EofValidator.Logger = _logger;
         }
 
         protected static void Setup(ILogManager logManager)
@@ -53,38 +55,29 @@ namespace Ethereum.Test.Base
 
         protected bool RunTest(EofTest test, ITxTracer txTracer)
         {
-            TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            TestContext.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-
-            List<bool> results = new();
-            foreach (var vector in test.Vectors)
+            var vector = test.Vector;
+            var code = vector.Code;
+            var fork = test.Result.Fork switch
             {
-                var code = vector.Code;
-                foreach (var kvp in vector.Results)
-                {
-                    var fork = kvp.Key switch
-                    {
-                        "Prague" => Nethermind.Specs.Forks.Prague.Instance,
-                        "Berlin" => Nethermind.Specs.Forks.Berlin.Instance,
-                        "London" => Nethermind.Specs.Forks.London.Instance,
-                        "Shanghai" => Nethermind.Specs.Forks.Shanghai.Instance,
-                        "Constantinople" => Nethermind.Specs.Forks.Constantinople.Instance,
-                        "Byzantium" => Nethermind.Specs.Forks.Byzantium.Instance,
-                        "SpuriousDragon" => Nethermind.Specs.Forks.SpuriousDragon.Instance,
-                        "TangerineWhistle" => Nethermind.Specs.Forks.TangerineWhistle.Instance,
-                        "Homestead" => Nethermind.Specs.Forks.Homestead.Instance,
-                        "Frontier" => Nethermind.Specs.Forks.Frontier.Instance,
-                        _ => throw new NotSupportedException($"Fork {kvp.Key} is not supported")
-                    };
+                "Prague" => Nethermind.Specs.Forks.Prague.Instance,
+                "Berlin" => Nethermind.Specs.Forks.Berlin.Instance,
+                "London" => Nethermind.Specs.Forks.London.Instance,
+                "Shanghai" => Nethermind.Specs.Forks.Shanghai.Instance,
+                "Constantinople" => Nethermind.Specs.Forks.Constantinople.Instance,
+                "Byzantium" => Nethermind.Specs.Forks.Byzantium.Instance,
+                "SpuriousDragon" => Nethermind.Specs.Forks.SpuriousDragon.Instance,
+                "TangerineWhistle" => Nethermind.Specs.Forks.TangerineWhistle.Instance,
+                "Homestead" => Nethermind.Specs.Forks.Homestead.Instance,
+                "Frontier" => Nethermind.Specs.Forks.Frontier.Instance,
+                _ => throw new NotSupportedException($"Fork {test.Result.Fork} is not supported")
+            };
 
-                    bool result = CodeDepositHandler.IsValidWithEofRules(fork, code, 1);
-                    results.Add(result == kvp.Value.Success);
-                }
+            bool result = CodeDepositHandler.IsValidWithEofRules(fork, code, 1);
 
-            }
-
-            return results.TrueForAll(r => r);
+            return result == test.Result.Success;
         }
     }
 }

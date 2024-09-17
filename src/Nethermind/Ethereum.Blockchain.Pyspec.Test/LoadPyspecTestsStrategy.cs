@@ -74,7 +74,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
                 foreach (IEthereumTest test in tests)
                 {
-                    test.Category = testDir;
+                    test.Category ??= testDir;
                 }
                 testsByName.AddRange(tests);
             }

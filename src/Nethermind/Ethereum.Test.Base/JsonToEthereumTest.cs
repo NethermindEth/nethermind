@@ -289,22 +289,31 @@ namespace Ethereum.Test.Base
             List<EofTest> tests = new();
             foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
             {
-                EofTest test = new();
-                test.Name = namedTest.Key;
-                test.Vectors = namedTest.Value.Vectors.Select(pair =>
+                var index = namedTest.Key.IndexOf(".py::");
+                var name = namedTest.Key.Substring(index+5);
+                string category = namedTest.Key.Substring(0, index).Replace("tests/prague/eip7692_eof_v1/", "");
+
+                foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
                 {
                     VectorTestJson vectorJson = pair.Value;
                     VectorTest vector = new();
                     vector.Code = Bytes.FromHexString(vectorJson.Code);
-                    vector.Results = vectorJson.Results.ToDictionary(
-                        p => p.Key,
-                        p => p.Value.Result
-                            ? new Result { Success = true }
-                            : new Result { Success = false, Error = p.Value.Exception }
-                    );
-                    return vector;
-                }).ToArray();
-                tests.Add(test);
+
+                    foreach (var result in vectorJson.Results)
+                    {
+                        EofTest test = new()
+                        {
+                            Name = $"{name}",
+                            Category = $"{category} [{result.Key}]"
+                        };
+                        test.Vector = vector;
+
+                        test.Result = result.Value.Result
+                            ? new Result { Fork = result.Key, Success = true }
+                            : new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
+                        tests.Add(test);
+                    }
+                }
             }
 
             return tests;
