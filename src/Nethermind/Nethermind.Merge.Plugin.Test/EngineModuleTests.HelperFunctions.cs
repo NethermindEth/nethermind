@@ -170,26 +170,9 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Deposit[]? deposits = null;
             WithdrawalRequest[]? withdrawalRequests = null;
-
             if (requests is not null)
             {
-                (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
-                deposits = new Deposit[depositCount];
-                withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-                int depositIndex = 0;
-                int withdrawalRequestIndex = 0;
-                for (int i = 0; i < requests.Length; ++i)
-                {
-                    ConsensusRequest request = requests[i];
-                    if (request.Type == ConsensusRequestsType.Deposit)
-                    {
-                        deposits[depositIndex++] = (Deposit)request;
-                    }
-                    else
-                    {
-                        withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                    }
-                }
+                (deposits, withdrawalRequests) = requests.SplitRequests();
             }
 
             T blockRequest = new()
