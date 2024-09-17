@@ -23,7 +23,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Test;
 
-[TestFixture]
+[TestFixture, Parallelizable]
 public class CodeInfoRepositoryTests
 {
     [Test]
@@ -220,7 +220,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(CountsAsAccessedCases))]
-    public void InsertFromAuthorizations_TwoValidAuthorizations_(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
+    public void InsertFromAuthorizations_CombinationOfValidAndInvalidTuples_AddsTheCorrectAddressesToAccessedAddresses(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
