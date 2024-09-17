@@ -12,4 +12,5 @@ public interface IRoutingTable<TNode>
     TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude);
     TNode[] GetAllAtDistance(int i);
     IEnumerable<ValueHash256> IterateBucketRandomHashes();
+    TNode? GetByHash(ValueHash256 nodeId);
 }

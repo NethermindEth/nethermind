@@ -14,12 +14,12 @@ namespace Nethermind.Network.Discovery.Portal;
 /// Adapter from TalkReq/Resp to Kademlia's IMessageSender, which is its outgoing transport.
 /// </summary>
 /// <param name="config"></param>
-/// <param name="talkReqTransport"></param>
+/// <param name="contentNetworkProtocol"></param>
 /// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
 public class KademliaTalkReqMessageSender(
     ContentNetworkConfig config,
-    ITalkReqTransport talkReqTransport,
+    IContentNetworkProtocol contentNetworkProtocol,
     IEnrProvider enrProvider,
     ILogManager logManager
 ) : IMessageSender<IEnr, byte[], LookupContentResult>
@@ -30,18 +30,12 @@ public class KademliaTalkReqMessageSender(
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
-        byte[] pingBytes =
-            SlowSSZ.Serialize(new MessageUnion()
-            {
-                Ping = new Ping()
-                {
-                    EnrSeq = enrProvider.SelfEnr.SequenceNumber,
-                    // Note: This custom payload of type content radius is actually history network specific
-                    CustomPayload = config.ContentRadius.ToBigEndian()
-                }
-            });
-
-        await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
+        _ = await contentNetworkProtocol.Ping(receiver, new Ping()
+        {
+            EnrSeq = enrProvider.SelfEnr.SequenceNumber,
+            // Note: This custom payload of type content radius is actually history network specific
+            CustomPayload = config.ContentRadius.ToBigEndian()
+        }, token);
     }
 
     public async Task<IEnr[]> FindNeighbours(IEnr receiver, ValueHash256 hash, CancellationToken token)
@@ -77,51 +71,25 @@ public class KademliaTalkReqMessageSender(
             }
         }
 
-        byte[] findNodesBytes = SlowSSZ.Serialize(new MessageUnion()
+        Nodes message = await contentNetworkProtocol.FindNodes(receiver, new FindNodes()
         {
-            FindNodes = new FindNodes()
-            {
-                Distances = queryDistance
-            }
-        });
-
-        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, findNodesBytes, token);
-
-        Nodes message = SlowSSZ.Deserialize<MessageUnion>(response).Nodes!;
+            Distances = queryDistance
+        }, token);
 
         IEnr[] enrs = new IEnr[message.Enrs.Length];
-
         for (var i = 0; i < message.Enrs.Length; i++)
         {
             enrs[i] = enrProvider.Decode(message.Enrs[i]);
         }
-
         return enrs;
     }
 
     public async Task<FindValueResponse<IEnr, LookupContentResult>> FindValue(IEnr receiver, byte[] contentKey, CancellationToken token)
     {
-        byte[] findContentBytes = SlowSSZ.Serialize(new MessageUnion()
+        Content message = await contentNetworkProtocol.FindContent(receiver, new FindContent()
         {
-            FindContent = new FindContent()
-            {
-                ContentKey = contentKey
-            }
-        });
-
-        byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, findContentBytes, token);
-        MessageUnion union;
-        Content message;
-        try
-        {
-            union = SlowSSZ.Deserialize<MessageUnion>(response);
-            message = union.Content!;
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error($"Error deserialize {response.ToHexString()}. Request is {findContentBytes.ToHexString()}", e);
-            throw;
-        }
+            ContentKey = contentKey
+        }, token);
 
         if (message.ConnectionId == null && message.Payload == null)
         {

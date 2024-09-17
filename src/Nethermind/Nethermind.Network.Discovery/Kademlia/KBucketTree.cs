@@ -85,6 +85,11 @@ public class KBucketTree<TNode, TContentKey>: IRoutingTable<TNode> where TNode :
         }
     }
 
+    public TNode? GetByHash(ValueHash256 hash)
+    {
+        return GetBucketForHash(hash).GetByHash(hash);
+    }
+
     private KBucket<TNode> GetBucketForHash(ValueHash256 nodeHash)
     {
         TreeNode current = _root;

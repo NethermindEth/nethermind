@@ -6,13 +6,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Lantern.Discv5.Enr;
-using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.Enr.Identity.V4;
-using Lantern.Discv5.WireProtocol.Session;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal;
@@ -26,7 +23,7 @@ public class KademliaTalkReqMessageSenderTests
 {
     private ITalkReqTransport _talkReqTransport = null!;
     private IEnrProvider _enrProvider = null!;
-    private KademliaTalkReqMessageSender _messageSender = null!;
+    private ContentNetworkProtocol _protocol = null!;
 
     private IEnr _testReceiverEnr = null!;
 
@@ -39,10 +36,9 @@ public class KademliaTalkReqMessageSenderTests
         _enrProvider.Decode(Arg.Any<byte[]>())
             .Returns((callInfo) => enrFactory.CreateFromBytes((byte[])callInfo[0], new IdentityVerifierV4()));
 
-        _messageSender = new KademliaTalkReqMessageSender(
+        _protocol = new ContentNetworkProtocol(
             new ContentNetworkConfig(),
             _talkReqTransport,
-            _enrProvider,
             LimboLogs.Instance);
 
         _testReceiverEnr = TestUtils.CreateEnr(TestItem.PrivateKeyA);
@@ -51,7 +47,16 @@ public class KademliaTalkReqMessageSenderTests
     [Test]
     public async Task OnPing_ShouldSendTalkReq()
     {
-        await _messageSender.Ping(_testReceiverEnr, default);
+        byte[] resultBytes = SlowSSZ.Serialize(new MessageUnion()
+        {
+            Pong = new Pong() { }
+        });
+
+        _talkReqTransport
+            .CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Any<byte[]>(), default)
+            .Returns(Task.FromResult(resultBytes));
+
+        await _protocol.Ping(_testReceiverEnr, new Ping(), default);
         await _talkReqTransport.Received().CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Any<byte[]>(), default);
     }
 
@@ -71,8 +76,12 @@ public class KademliaTalkReqMessageSenderTests
             .CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Any<byte[]>(), default)
             .Returns(Task.FromResult(resultBytes));
 
-        FindValueResponse<IEnr, LookupContentResult> result = await _messageSender.FindValue(_testReceiverEnr, contentKey, default);
-        result.value!.ConnectionId.Should().Be(0x1234);
+        Content result = await _protocol.FindContent(_testReceiverEnr, new FindContent()
+        {
+            ContentKey = contentKey
+        }, default);
+
+        result.ConnectionId.Should().Be(0x1234);
     }
 
     [Test]
@@ -109,7 +118,10 @@ public class KademliaTalkReqMessageSenderTests
             .CallAndWaitForResponse(_testReceiverEnr, Arg.Any<byte[]>(), Arg.Is<byte[]>(b => Bytes.AreEqual(queryBytes, b)), default)
             .Returns(Task.FromResult(resultBytes));
 
-        IEnr[] result = await _messageSender.FindNeighbours(_testReceiverEnr, target, default);
-        result.Select((enr) => enr.EncodeRecord()).ToArray().Should().BeEquivalentTo(resultEnrs);
+        Nodes result = await _protocol.FindNodes(_testReceiverEnr, new FindNodes()
+        {
+            Distances = queryDistances
+        }, default);
+        result.Enrs.Should().BeEquivalentTo(resultEnrs);
     }
 }

@@ -82,4 +82,9 @@ public class KBucket<TNode> where TNode : notnull
     {
         return _items.Contains(hash);
     }
+
+    public TNode? GetByHash(ValueHash256 hash)
+    {
+        return _items.GetByHash(hash);
+    }
 }

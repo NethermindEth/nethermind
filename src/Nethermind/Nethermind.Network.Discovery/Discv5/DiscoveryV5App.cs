@@ -44,7 +44,7 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceProvider _discV5ServiceProvider;
 
     public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
@@ -114,7 +114,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithServices((components) =>
             {
                 NettyDiscoveryV5Handler.Register(components);
-                Portal.ComponentConfiguration.Configure(components);
+                Portal.ComponentConfiguration.ConfigureCommonServices(components);
                 Portal.LanternAdapter.ComponentConfiguration.Configure(components);
             });
 
@@ -122,10 +122,8 @@ public class DiscoveryV5App : IDiscoveryApp
         _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
-        _serviceProvider = discv5Builder.GetServiceProvider();
+        _discV5ServiceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
-
-        IPortalContentNetworkFactory portalContentNetworkFactory = _serviceProvider.GetRequiredService<IPortalContentNetworkFactory>();
 
         string[] bootNodesStr =
         [
@@ -146,20 +144,15 @@ public class DiscoveryV5App : IDiscoveryApp
             // "enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
             // "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o "
         ];
+        IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
 
-        IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) =>
-        {
-            var enr = enrFactory.CreateFromString(str, identityVerifier);
-            _logger.Warn($"The enr {enr.NodeId.ToHexString()}");
-            return enr;
-        }).ToArray();
+        IServiceProvider historyNetworkServiceProvider =
+            Portal.History.ComponentConfiguration.CreateHistoryNetworkServiceProvider(_discV5ServiceProvider, historyNetworkBootnodes);
 
-        var historyNetworkProtocolId = Bytes.FromHexString("0x500B");
-        _historyNetwork = new PortalHistoryNetwork(portalContentNetworkFactory, _api.BlockTree!, logManager, historyNetworkProtocolId, historyNetworkBootnodes);
-
+        _historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
     }
 
-    private PortalHistoryNetwork _historyNetwork;
+    private IPortalHistoryNetwork _historyNetwork;
 
     private void NodeAddedByDiscovery(IEnr newEntry)
     {
@@ -240,7 +233,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void InitializeChannel(IDatagramChannel channel)
     {
-        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        var handler = _discV5ServiceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
 

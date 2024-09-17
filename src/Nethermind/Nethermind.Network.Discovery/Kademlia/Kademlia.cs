@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Configuration.Internal;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Logging;
 using NonBlocking;
 
@@ -178,11 +176,11 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         return result;
     }
 
-    public async Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, int k, CancellationToken token)
+    public async Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token, int? k = null)
     {
         return await LookupNodesClosest(
             targetHash,
-            k,
+            k ?? _kSize,
             async (nextNode, token) =>
             {
                 _logger.Warn($"Lookup node closes {nextNode}");
@@ -587,7 +585,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     public async Task Run(CancellationToken token)
     {
-        await LookupNodesClosest(_currentNodeIdAsHash, _kSize, token);
+        await LookupNodesClosest(_currentNodeIdAsHash, token);
 
         while (true)
         {
@@ -601,7 +599,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     public async Task Bootstrap(CancellationToken token)
     {
         Stopwatch sw = Stopwatch.StartNew();
-        await LookupNodesClosest(_currentNodeIdAsHash, _kSize, token);
+        await LookupNodesClosest(_currentNodeIdAsHash, token);
 
         token.ThrowIfCancellationRequested();
 
@@ -609,7 +607,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         // A refresh means to do a k-nearest node lookup for a random hash for that particular bucket.
         foreach (ValueHash256 nodeToLookup in _routingTable.IterateBucketRandomHashes())
         {
-            await LookupNodesClosest(nodeToLookup, _kSize, token);
+            await LookupNodesClosest(nodeToLookup, token);
         }
 
         _logger.Info($"Bootstrap completed. Took {sw}. Bucket sizes (from 230) {string.Join(",", Enumerable.Range(200, 56).Select(i => GetAllAtDistance(i).Length))}");

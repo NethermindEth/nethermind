@@ -217,17 +217,24 @@ public class ContentNetworkScenarioTests
                 .AddSingleton(enrProvider)
                 .AddSingleton(talkReqSender);
 
-            ComponentConfiguration.Configure(services);
+            ComponentConfiguration.ConfigureCommonServices(services);
+            IServiceProvider commonServices = services.BuildServiceProvider();
 
-            var serviceProvider = services.BuildServiceProvider();
+            services = new ServiceCollection();
+            Nethermind.Network.Discovery.Portal.History.ComponentConfiguration.ConfigureHistoryNetwork(commonServices, services);
 
-            IPortalContentNetworkFactory factory = serviceProvider.GetRequiredService<IPortalContentNetworkFactory>();
-            TestStore testStore = new TestStore();
-            IPortalContentNetwork contentNetwork = factory.Create(new ContentNetworkConfig()
+            services.AddSingleton(new ContentNetworkConfig()
             {
                 ProtocolId = ProtocolId,
                 ContentRadius = UInt256.MaxValue
-            }, testStore);
+            });
+
+            TestStore testStore = new TestStore();
+            services.AddSingleton<IPortalContentNetwork.Store>(testStore);
+
+            var serviceProvider = services.BuildServiceProvider();
+            IPortalContentNetwork contentNetwork = serviceProvider.GetRequiredService<IPortalContentNetwork>();
+
             Node node = new Node(newNodeEnr, contentNetwork, testStore, serviceProvider);
             _nodes[EnrNodeHashProvider.Instance.GetHash(newNodeEnr)] = node;
 

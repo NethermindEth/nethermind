@@ -65,6 +65,11 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         }
     }
 
+    public TNode? GetByHash(ValueHash256 hash)
+    {
+        return GetBucket(hash).GetByHash(hash);
+    }
+
     private IEnumerable<(ValueHash256, TNode)> IterateNeighbour(ValueHash256 hash)
     {
         int startingDistance = Hash256XORUtils.CalculateDistance(_currentNodeIdAsHash, hash);

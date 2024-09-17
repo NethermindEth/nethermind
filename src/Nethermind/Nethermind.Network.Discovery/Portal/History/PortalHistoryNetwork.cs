@@ -2,141 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Lantern.Discv5.Enr;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class PortalHistoryNetwork: IPortalContentNetwork.Store, IPortalHistoryNetwork
+public class PortalHistoryNetwork: IPortalHistoryNetwork
 {
     private readonly IPortalContentNetwork _contentNetwork;
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly ILogger _logger;
-    private readonly IBlockTree _blockTree;
 
     public PortalHistoryNetwork(
-        IPortalContentNetworkFactory portalContentNetworkFactory,
-        IBlockTree blockTree,
-        ILogManager logManager,
-        byte[] protocolId,
-        IEnr[] bootNodes
-    ) {
-        _contentNetwork = portalContentNetworkFactory.Create(new ContentNetworkConfig()
-        {
-            ProtocolId = protocolId,
-            BootNodes = bootNodes
-        }, this);
-
-        _blockTree = blockTree;
+        IPortalContentNetwork portalContentNetwork,
+        ILogManager logManager
+    )
+    {
+        _contentNetwork = portalContentNetwork;
         _logger = logManager.GetClassLogger<PortalHistoryNetwork>();
     }
 
-    public byte[]? GetContent(byte[] contentKey)
-    {
-        ContentKey key = SlowSSZ.Deserialize<ContentKey>(contentKey);
-
-        if (key.HeaderKey != null)
-        {
-            BlockHeader? header = _blockTree.FindHeader(key.HeaderKey!);
-            if (header == null) return null;
-
-            return _encoderDecoder.EncodeHeader(header!);
-        }
-
-        if (key.BodyKey != null)
-        {
-            Block? block = _blockTree.FindBlock(key.BodyKey!);
-            if (block == null) return null;
-
-            return _encoderDecoder.EncodeBlockBody(block.Body!);
-        }
-
-        throw new Exception($"unsupported content {contentKey}");
-    }
-
-    public bool ShouldAcceptOffer(byte[] offerContentKey)
-    {
-        // Note: Just testing
-        return true;
-    }
-
-    public void AddEnr(IEnr enr)
-    {
-        throw new NotImplementedException();
-    }
-
-    public IEnr GetEnr(ValueHash256 nodeId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void DeleteEnr(ValueHash256 nodeId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<IEnr> LookupEnr(ValueHash256 nodeId, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<Pong> Ping(IEnr enr, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<IEnr[]> FindNodes(IEnr enr, ushort[] distances, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<FindContentResult> FindContent(IEnr enr, string contentKey, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<string> Offer(IEnr enr, string contentKey, string contentValue, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<IEnr[]> LookupKNodes(ValueHash256 nodeId, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<RecursiveFindContentResult> LookupContent(byte[] contentKey, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<TraceRecursiveFindContentResult> TraceLookupContent(byte[] contentKey, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void Store(byte[] contentKey, byte[] content)
-    {
-        // Note: Just testing
-        _logger.Info($"Got content {contentKey.ToHexString()} of size {content.Length} from portal network");
-    }
-
-    public byte[] LocalContent(byte[] contentKey)
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<int> Gossip(byte[] contentKey, byte[] contentValue, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
-
-    private async Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token)
+    public async Task<BlockHeader?> LookupBlockHeader(ValueHash256 hash, CancellationToken token)
     {
         _logger.Info($"Looking up header {hash}");
 
@@ -148,7 +36,7 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store, IPortalHistoryNe
         return asBytes == null ? null : _encoderDecoder.DecodeHeader(asBytes!);
     }
 
-    private async Task<BlockBody?> LookupBlockBody(ValueHash256 hash, CancellationToken token)
+    public async Task<BlockBody?> LookupBlockBody(ValueHash256 hash, CancellationToken token)
     {
         _logger.Info($"Looking up body {hash}");
 
@@ -160,7 +48,7 @@ public class PortalHistoryNetwork: IPortalContentNetwork.Store, IPortalHistoryNe
         return asBytes == null ? null : _encoderDecoder.DecodeBody(asBytes!);
     }
 
-    private async Task<BlockBody?> LookupBlockBodyFrom(IEnr enr, ValueHash256 hash, CancellationToken token)
+    public async Task<BlockBody?> LookupBlockBodyFrom(IEnr enr, ValueHash256 hash, CancellationToken token)
     {
         _logger.Info($"Looking up body {hash}");
 

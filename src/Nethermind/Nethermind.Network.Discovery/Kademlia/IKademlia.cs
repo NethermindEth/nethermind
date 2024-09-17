@@ -19,7 +19,7 @@ public interface IKademlia<TNode, TContentKey, TContent>: IMessageReceiver<TNode
     Task<TContent?> LookupValue(TContentKey id, CancellationToken token);
 
     /// Lookup k nearest neighbour closest to the content id
-    Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, int k, CancellationToken token);
+    Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token, int? k = null);
 
     /// Start timers, refresh and such for maintenance of the table.
     Task Run(CancellationToken token);

@@ -16,37 +16,31 @@ namespace Nethermind.Network.Discovery.Portal;
 /// This class basically, wire all those things up into an IPortalContentNetwork.
 /// The specific interpretation of the key and content is handle at higher level, see `PortalHistoryNetwork` for history network.
 /// </summary>
-/// <param name="enrProvider"></param>
-/// <param name="talkReqTransport"></param>
-/// <param name="utpManager"></param>
-/// <param name="logManager"></param>
 public class PortalContentNetwork : IPortalContentNetwork
 {
-    private readonly IUtpManager _utpManager;
     private readonly IKademlia<IEnr, byte[], LookupContentResult> _kademlia;
     private readonly IMessageSender<IEnr, byte[], LookupContentResult> _messageSender;
     private readonly IContentDistributor _contentDistributor;
-    private readonly TimeSpan _lookupContentHardTimeout;
     private readonly ILogger _logger1;
+    private readonly ContentLookupService _contentLookupService;
 
     public PortalContentNetwork(
         ContentNetworkConfig config,
-        IUtpManager utpManager,
         IKademlia<IEnr, byte[], LookupContentResult> kademlia,
         ITalkReqProtocolHandler talkReqHandler,
         ITalkReqTransport talkReqTransport,
         IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
         IContentDistributor contentDistributor,
+        ContentLookupService contentLookupService,
         ILogManager logManager)
     {
         talkReqTransport.RegisterProtocol(config.ProtocolId, talkReqHandler);
-        _utpManager = utpManager;
         _kademlia = kademlia;
         _messageSender = messageSender;
         _contentDistributor = contentDistributor;
         _logger1 = logManager.GetClassLogger<PortalContentNetwork>();
         _kademlia.OnNodeAdded += KademliaOnOnNodeAdded;
-        _lookupContentHardTimeout = config.LookupContentHardTimeout;
+        _contentLookupService = contentLookupService;
 
         foreach (IEnr bootNode in config.BootNodes)
         {
@@ -66,48 +60,16 @@ public class PortalContentNetwork : IPortalContentNetwork
 
     public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)
     {
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(_lookupContentHardTimeout);
-        token = cts.Token;
+        (byte[]? Payload, bool UtpTransfer) contentLookup = await _contentLookupService.LookupContent(key, token);
 
-        Stopwatch sw = Stopwatch.StartNew();
-        var result = await _kademlia.LookupValue(key, token);
-        _logger1.Info($"Lookup {key.ToHexString()} took {sw.Elapsed}");
-
-        sw.Restart();
-
-        if (result == null) return null;
-
-        if (result.Payload != null) return result.Payload;
-
-        Debug.Assert(result.ConnectionId != null);
-
-        MemoryStream stream = new MemoryStream();
-        await _utpManager.ReadContentFromUtp(result.NodeId, true, result.ConnectionId.Value, stream, token);
-        var asBytes = stream.ToArray();
-        _logger1.Info($"UTP download for {key.ToHexString()} took {sw.Elapsed}");
-        return asBytes;
+        return contentLookup.Payload;
     }
 
     public async Task<byte[]?> LookupContentFrom(IEnr node, byte[] contentKey, CancellationToken token)
     {
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        cts.CancelAfter(_lookupContentHardTimeout);
-        token = cts.Token;
+        (byte[]? Payload, bool UtpTransfer, IEnr[]? Neighbours) contentLookup = await _contentLookupService.LookupContentFrom(node, contentKey, token);
 
-        var content = await _messageSender.FindValue(node, contentKey, token);
-        if (!content.hasValue)
-        {
-            return null;
-        }
-
-        var value = content.value!;
-        if (value.Payload != null) return value.Payload;
-
-        MemoryStream stream = new MemoryStream();
-        await _utpManager.ReadContentFromUtp(node, true, value.ConnectionId!.Value, stream, token);
-        var asBytes = stream.ToArray();
-        return asBytes;
+        return contentLookup.Payload;
     }
 
     public Task BroadcastContent(byte[] contentKey, byte[] value, CancellationToken token)

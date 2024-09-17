@@ -19,7 +19,7 @@ public class ContentDistributor : IContentDistributor
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
     private readonly LruCache<ValueHash256, UInt256> _distanceCache = new(1000, "");
     private readonly IKademlia<IEnr, byte[], LookupContentResult> _kad;
-    private readonly ITalkReqTransport _transport;
+    private readonly IContentNetworkProtocol _protocol;
     private readonly IUtpManager _utpManager;
     private readonly IEnrProvider _enrProvider;
     private readonly ContentNetworkConfig _config;
@@ -31,13 +31,13 @@ public class ContentDistributor : IContentDistributor
         IKademlia<IEnr, byte[], LookupContentResult> kad,
         IEnrProvider enrProvider,
         ContentNetworkConfig config,
-        ITalkReqTransport transport,
+        IContentNetworkProtocol protocol,
         IUtpManager utpManager
     ) {
         _kad = kad;
         _config = config;
         _enrProvider = enrProvider;
-        _transport = transport;
+        _protocol = protocol;
         _utpManager = utpManager;
         _defaultRadius = config.DefaultPeerRadius;
         _offerAndSendContentTimeout = config.OfferAndSendContentTimeout;
@@ -74,7 +74,7 @@ public class ContentDistributor : IContentDistributor
         return inRadius;
     }
 
-    public async Task DistributeContent(byte[] contentKey, byte[] content, CancellationToken token)
+    public async Task<int> DistributeContent(byte[] contentKey, byte[] content, CancellationToken token)
     {
         ValueHash256 contentHash = _nodeHashProvider.GetHash(contentKey);
 
@@ -95,7 +95,7 @@ public class ContentDistributor : IContentDistributor
         // Note: It should be nearest node where its in radius.
         if (nearestNodes.Count < nodeToDistributeTo)
         {
-            var enrs = await _kad.LookupNodesClosest(contentHash, nodeToDistributeTo, token);
+            var enrs = await _kad.LookupNodesClosest(contentHash, token, nodeToDistributeTo);
             foreach (IEnr enr in enrs)
             {
                 bool inRadius = IsInRadius(enr, contentHash);
@@ -106,17 +106,22 @@ public class ContentDistributor : IContentDistributor
             }
         }
 
+        int peerDistributed = 0;
         foreach (KeyValuePair<byte[], IEnr> kv in nearestNodes)
         {
             try
             {
+                // TODO: Parallelize
                 IEnr enr = kv.Value;
                 await OfferAndSendContent(enr, contentKey, content, token);
+                peerDistributed++;
             }
             catch (OperationCanceledException)
             {
             }
         }
+
+        return peerDistributed;
     }
 
     private async Task OfferAndSendContent(IEnr enr, byte[] contentKey, byte[] content, CancellationToken token)
@@ -126,17 +131,11 @@ public class ContentDistributor : IContentDistributor
 
         token = cts.Token;
 
-        var message = SlowSSZ.Serialize(new MessageUnion()
+        Accept accept = await _protocol.Offer(enr, new Offer()
         {
-            Offer = new Offer()
-            {
-                ContentKeys = [contentKey]
-            }
-        });
+            ContentKeys = [contentKey]
+        }, token);
 
-        var responseByte = await _transport.CallAndWaitForResponse(enr, _config.ProtocolId, message, token);
-        Accept? accept = SlowSSZ.Deserialize<MessageUnion>(responseByte).Accept;
-        if (accept == null) return;
         if (accept.AcceptedBits.Length == 0 || !accept.AcceptedBits[0]) return;
 
         var pipe = new Pipe();
