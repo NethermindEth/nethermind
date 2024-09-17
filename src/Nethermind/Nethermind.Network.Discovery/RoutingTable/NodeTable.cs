@@ -44,6 +44,9 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
+        if (!_networkConfig.DiscoveryEnabled && !node.IsStatic && node.Id != MasterNode?.Id)
+            return NodeAddResult.Dropped();
+
         if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
         int distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode!.IdHash.Bytes, node.IdHash.Bytes);
         NodeBucket bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];

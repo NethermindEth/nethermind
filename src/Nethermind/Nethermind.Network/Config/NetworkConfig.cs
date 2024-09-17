@@ -12,23 +12,8 @@ namespace Nethermind.Network.Config
         public string? StaticPeers { get; set; }
         public string? DiscoveryDns { get; set; }
 
-        private bool onlyStaticPeers;
-        
-        public bool OnlyStaticPeers
-        {
-            get { return onlyStaticPeers; }
-            set
-            {
-                onlyStaticPeers = value;
-                discoveryEnabled = !value;
-            }
-        }
-        private bool discoveryEnabled;
-        public bool DiscoveryEnabled
-        {
-            get { return discoveryEnabled; }
-            private set { discoveryEnabled = value; }
-        }
+        public bool OnlyStaticPeers { get; set; }
+
         public bool IsPeersPersistenceOn { get; set; } = true;
 
         [Obsolete]
@@ -56,5 +41,9 @@ namespace Nethermind.Network.Config
         public int ProcessingThreadCount { get; set; } = 1;
         public string? ClientIdMatcher { get; set; } = null;
         public bool DisableDiscV4DnsFeeder { get; set; } = false;
+        public bool DiscoveryEnabled {
+            get { return DiscoveryEnabled; }
+            set { if (OnlyStaticPeers == true) value = false; else value = true; }
+        }
     }
 }
