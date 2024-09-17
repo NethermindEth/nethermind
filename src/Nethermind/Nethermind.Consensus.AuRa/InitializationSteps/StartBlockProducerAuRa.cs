@@ -104,7 +104,7 @@ public class StartBlockProducerAuRa
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txnProcessor)
+    private BlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope changeableTxProcessingEnv)
     {
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.ValidatorStore is null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -121,7 +121,7 @@ public class StartBlockProducerAuRa
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                txnProcessor,
+                changeableTxProcessingEnv.TransactionProcessor,
                 _api.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
                 _api.ReceiptStorage,
@@ -135,7 +135,7 @@ public class StartBlockProducerAuRa
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
-                _api.WorldStateManager!.GlobalWorldStateProvider,
+                changeableTxProcessingEnv.WorldStateProvider,
                 chainSpecAuRa.PosdaoTransition,
                 true)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
@@ -151,11 +151,11 @@ public class StartBlockProducerAuRa
         return new AuRaBlockProcessor(
             _api.SpecProvider,
             _api.BlockValidator,
-            _api.RewardCalculatorSource.Get(txnProcessor),
-            _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(txnProcessor),
+            _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
+            _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv.TransactionProcessor),
             _api.WorldStateManager!.GlobalWorldStateProvider,
             _api.ReceiptStorage,
-            new BeaconBlockRootHandler(txnProcessor),
+            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
@@ -228,7 +228,8 @@ public class StartBlockProducerAuRa
             ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv txProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource();
-            BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv.TransactionProcessor);
+            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+            BlockProcessor blockProcessor = CreateBlockProcessor(scope);
 
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
@@ -246,7 +247,7 @@ public class StartBlockProducerAuRa
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyWorldStateProvider = txProcessingEnv.WorldStateProvider,
+                ReadOnlyWorldStateProvider = scope.WorldStateProvider,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
                 ReadOnlyTxProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource(),
             };
