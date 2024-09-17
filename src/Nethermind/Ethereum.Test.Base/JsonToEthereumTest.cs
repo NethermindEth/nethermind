@@ -290,7 +290,7 @@ namespace Ethereum.Test.Base
             foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
             {
                 var index = namedTest.Key.IndexOf(".py::");
-                var name = namedTest.Key.Substring(index+5);
+                var name = namedTest.Key.Substring(index + 5);
                 string category = namedTest.Key.Substring(0, index).Replace("tests/prague/eip7692_eof_v1/", "");
 
                 foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
