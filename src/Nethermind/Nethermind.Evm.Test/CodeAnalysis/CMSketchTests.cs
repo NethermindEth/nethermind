@@ -167,7 +167,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis.Stats
 
             for (int trials = 0; trials < confidence; trials++)
             {
-
                 sketch.Reset();
                 actualCounts = new Dictionary<ulong, ulong>();
 
@@ -183,14 +182,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis.Stats
                     actualCounts[randomUlong] = (ulong)randomUpdate + CollectionsMarshal.GetValueRefOrAddDefault(actualCounts, randomUlong, out bool _);
                 }
 
-
                 observedConfidence += check_confidence(sketch, actualCounts, sketch.error, sketch.confidence) ? 1d : 0d;
             }
             // 99% certainity that the confidence holds
             observedConfidence.Should().BeGreaterThanOrEqualTo(confidence - 1);
 
         }
-        // CMSketch bounds
+
         // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= confidence
         private static bool check_confidence(CMSketch sketch, Dictionary<ulong, ulong> actualCounts, double error, double confidence)
         {
