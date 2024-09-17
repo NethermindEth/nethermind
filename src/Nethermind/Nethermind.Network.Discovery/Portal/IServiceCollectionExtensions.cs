@@ -28,32 +28,14 @@ public static class IServiceCollectionExtensions
             .ForwardServiceAsSingleton<IUtpManager>(baseServiceProvider)
             .ForwardServiceAsSingleton<ILogManager>(baseServiceProvider)
             .AddSingleton<INodeHashProvider<IEnr>>(EnrNodeHashProvider.Instance)
-            .AddSingleton<IContentHashProvider<byte[]>>(EnrNodeHashProvider.Instance)
+            .AddSingleton<IContentHashProvider<byte[]>>(ContentKeyHashProvider.Instance)
             .AddSingleton<ITalkReqProtocolHandler, TalkReqHandler>()
             .AddSingleton<IContentNetworkProtocol, ContentNetworkProtocol>()
             .AddSingleton<IContentDistributor, ContentDistributor>()
             .AddSingleton<ContentLookupService>()
-            .AddSingleton<IMessageSender<IEnr, byte[], LookupContentResult>, KademliaTalkReqMessageSender>()
+            .AddSingleton<RadiusTracker>()
+            .AddSingleton<IMessageSender<IEnr, byte[], LookupContentResult>, KademliaContentNetworkMessageSender>()
             .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
             .AddSingleton<IPortalContentNetwork, PortalContentNetwork>();
-    }
-
-    private class PortalContentStoreAdapter(IPortalContentNetwork.Store sourceStore) : IKademlia<IEnr, byte[], LookupContentResult>.IStore
-    {
-        public bool TryGetValue(byte[] contentId, out LookupContentResult? value)
-        {
-            byte[]? sourceContent = sourceStore.GetContent(contentId);
-            if (sourceContent == null)
-            {
-                value = null;
-                return false;
-            }
-
-            value = new LookupContentResult()
-            {
-                Payload = sourceContent
-            };
-            return true;
-        }
     }
 }

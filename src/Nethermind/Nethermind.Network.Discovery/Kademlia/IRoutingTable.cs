@@ -8,7 +8,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public interface IRoutingTable<TNode>
 {
     BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh);
-    void Remove(in ValueHash256 hash);
+    bool Remove(in ValueHash256 hash);
     TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude);
     TNode[] GetAllAtDistance(int i);
     IEnumerable<ValueHash256> IterateBucketRandomHashes();

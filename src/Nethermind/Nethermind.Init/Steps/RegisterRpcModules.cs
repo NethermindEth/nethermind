@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -27,6 +28,7 @@ using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
+using Nethermind.Network.Discovery.Portal.History.Rpc;
 
 namespace Nethermind.Init.Steps;
 
@@ -196,6 +198,11 @@ public class RegisterRpcModules : IStep
 
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
+
+        if (_api.PortalNetworkServiceProvider is not null)
+        {
+            rpcModuleProvider.RegisterSingle(_api.PortalNetworkServiceProvider!.GetRequiredService<IPortalHistoryRpcModule>());
+        }
 
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");

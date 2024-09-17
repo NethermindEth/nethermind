@@ -12,7 +12,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 public interface IEnrProvider
 {
-    IEnr Decode(string enrHex) => Decode(Hex.Decode(enrHex));
+    IEnr Decode(string enrStr);
 
     IEnr Decode(byte[] enrBytes);
 

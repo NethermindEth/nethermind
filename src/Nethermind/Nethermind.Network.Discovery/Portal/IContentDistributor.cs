@@ -8,7 +8,5 @@ namespace Nethermind.Network.Discovery.Portal;
 
 public interface IContentDistributor
 {
-    void UpdatePeerRadius(IEnr sender, UInt256 radius);
     Task<int> DistributeContent(byte[] contentKey, byte[] content, CancellationToken token);
-    bool IsContentInRadius(byte[] offerContentKey);
 }

@@ -6,6 +6,9 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
+/// <summary>
+/// Interface for easy(er) outgoing calls. Mainly to make RPC methods easier.
+/// </summary>
 public interface IContentNetworkProtocol
 {
     Task<Pong> Ping(IEnr receiver, Ping ping, CancellationToken token);

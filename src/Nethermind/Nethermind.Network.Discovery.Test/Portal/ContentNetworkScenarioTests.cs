@@ -228,7 +228,7 @@ public class ContentNetworkScenarioTests
                     ProtocolId = ProtocolId,
                     ContentRadius = UInt256.MaxValue
                 })
-                .AddSingleton<IPortalContentNetwork.Store>(testStore)
+                .AddSingleton<IPortalContentNetworkStore>(testStore)
                 .BuildServiceProvider();
 
             IPortalContentNetwork contentNetwork = serviceProvider.GetRequiredService<IPortalContentNetwork>();
@@ -280,7 +280,7 @@ public class ContentNetworkScenarioTests
             }
         }
 
-        internal class TestStore() : IPortalContentNetwork.Store
+        internal class TestStore() : IPortalContentNetworkStore
         {
             private SpanConcurrentDictionary<byte, byte[]> _contents = new(Bytes.SpanEqualityComparer);
 
@@ -311,6 +311,11 @@ public class ContentNetworkScenarioTests
             IEnrFactory enrFactory
         ): IEnrProvider
         {
+            public IEnr Decode(string enrStr)
+            {
+                return enrFactory.CreateFromString(enrStr, identityVerifier);
+            }
+
             public IEnr Decode(byte[] enrBytes)
             {
                 return enrFactory.CreateFromBytes(enrBytes, identityVerifier);

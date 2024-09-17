@@ -14,76 +14,27 @@ using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
 
-public class ContentDistributor : IContentDistributor
+public class ContentDistributor(
+    IKademlia<IEnr, byte[], LookupContentResult> kad,
+    RadiusTracker radiusTracker,
+    ContentNetworkConfig config,
+    IContentNetworkProtocol protocol,
+    IUtpManager utpManager)
+    : IContentDistributor
 {
-    private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
-    private readonly LruCache<ValueHash256, UInt256> _distanceCache = new(1000, "");
-    private readonly IKademlia<IEnr, byte[], LookupContentResult> _kad;
-    private readonly IContentNetworkProtocol _protocol;
-    private readonly IUtpManager _utpManager;
-    private readonly IEnrProvider _enrProvider;
-    private readonly ContentNetworkConfig _config;
-
-    private readonly UInt256 _defaultRadius;
-    private readonly TimeSpan _offerAndSendContentTimeout;
-
-    public ContentDistributor(
-        IKademlia<IEnr, byte[], LookupContentResult> kad,
-        IEnrProvider enrProvider,
-        ContentNetworkConfig config,
-        IContentNetworkProtocol protocol,
-        IUtpManager utpManager
-    ) {
-        _kad = kad;
-        _config = config;
-        _enrProvider = enrProvider;
-        _protocol = protocol;
-        _utpManager = utpManager;
-        _defaultRadius = config.DefaultPeerRadius;
-        _offerAndSendContentTimeout = config.OfferAndSendContentTimeout;
-    }
-
-    public void UpdatePeerRadius(IEnr node, UInt256 radius)
-    {
-        _distanceCache.Set(_nodeHashProvider.GetHash(node), radius);
-    }
-
-    private bool IsInRadius(IEnr node, ValueHash256 contentHash)
-    {
-        ValueHash256 nodeHash = new ValueHash256(node.NodeId);
-        if (!_distanceCache.TryGet(nodeHash, out UInt256 nodeRadius))
-        {
-            nodeRadius = _defaultRadius;
-        }
-
-        return IsInRadius(nodeHash, contentHash, nodeRadius);
-    }
-
-    public bool IsContentInRadius(byte[] offerContentKey)
-    {
-        ValueHash256 contentHash = _nodeHashProvider.GetHash(offerContentKey);
-        ValueHash256 nodeHash = _nodeHashProvider.GetHash(_enrProvider.SelfEnr);
-
-        return IsInRadius(nodeHash, contentHash, _config.ContentRadius);
-    }
-
-    private bool IsInRadius(ValueHash256 nodeHash, ValueHash256 contentHash, UInt256 nodeRadius)
-    {
-        UInt256 distance = Hash256XORUtils.CalculateDistanceUInt256(contentHash, nodeHash);
-        bool inRadius = distance <= nodeRadius;
-        return inRadius;
-    }
+    private readonly ContentKeyHashProvider _contentKeyHashProvider = ContentKeyHashProvider.Instance;
+    private readonly TimeSpan _offerAndSendContentTimeout = config.OfferAndSendContentTimeout;
 
     public async Task<int> DistributeContent(byte[] contentKey, byte[] content, CancellationToken token)
     {
-        ValueHash256 contentHash = _nodeHashProvider.GetHash(contentKey);
+        ValueHash256 contentHash = _contentKeyHashProvider.GetHash(contentKey);
 
         // Get list of nodes within the radius
         int nodeToDistributeTo = 8;
         SpanDictionary<byte, IEnr> nearestNodes = new(Bytes.SpanEqualityComparer);
-        foreach (IEnr enr in _kad.GetKNeighbour(contentHash, null))
+        foreach (IEnr enr in kad.GetKNeighbour(contentHash, null))
         {
-            if (IsInRadius(enr, contentHash))
+            if (radiusTracker.IsInRadius(enr, contentHash))
             {
                 nearestNodes[enr.NodeId] = enr;
                 if (nearestNodes.Count >= nodeToDistributeTo)
@@ -95,10 +46,10 @@ public class ContentDistributor : IContentDistributor
         // Note: It should be nearest node where its in radius.
         if (nearestNodes.Count < nodeToDistributeTo)
         {
-            var enrs = await _kad.LookupNodesClosest(contentHash, token, nodeToDistributeTo);
+            var enrs = await kad.LookupNodesClosest(contentHash, token, nodeToDistributeTo);
             foreach (IEnr enr in enrs)
             {
-                bool inRadius = IsInRadius(enr, contentHash);
+                bool inRadius = radiusTracker.IsInRadius(enr, contentHash);
                 if (!nearestNodes.ContainsKey(enr.NodeId) && inRadius)
                 {
                     nearestNodes[enr.NodeId] = enr;
@@ -131,7 +82,7 @@ public class ContentDistributor : IContentDistributor
 
         token = cts.Token;
 
-        Accept accept = await _protocol.Offer(enr, new Offer()
+        Accept accept = await protocol.Offer(enr, new Offer()
         {
             ContentKeys = [contentKey]
         }, token);
@@ -148,7 +99,7 @@ public class ContentDistributor : IContentDistributor
             pipe.Writer.Complete();
         }, cts.Token);
 
-        Task readTask = _utpManager.WriteContentToUtp(enr, true, accept.ConnectionId, pipe.Reader.AsStream(), token);
+        Task readTask = utpManager.WriteContentToUtp(enr, true, accept.ConnectionId, pipe.Reader.AsStream(), token);
         await Task.WhenAll(writeTask, readTask);
     }
 }

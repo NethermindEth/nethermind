@@ -59,16 +59,17 @@ public class KBucket<TNode> where TNode : notnull
         return _items.GetAllWithHash();
     }
 
-    public void RemoveAndReplace(in ValueHash256 hash)
+    public bool RemoveAndReplace(in ValueHash256 hash)
     {
-        if (_items.Remove(hash))
+        if (!_items.Remove(hash)) return false;
+
+        if (_replacement.TryPopHead(out TNode? replacement))
         {
-            if (_replacement.TryPopHead(out TNode? replacement))
-            {
-                _items.AddOrRefresh(hash, replacement!);
-            }
-            _cachedArray = _items.GetAll();
+            _items.AddOrRefresh(hash, replacement!);
         }
+        _cachedArray = _items.GetAll();
+
+        return true;
     }
 
     public void Clear()

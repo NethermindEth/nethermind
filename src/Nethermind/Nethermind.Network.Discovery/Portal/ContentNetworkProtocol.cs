@@ -14,7 +14,7 @@ public class ContentNetworkProtocol(
     ILogManager logManager
 ): IContentNetworkProtocol
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaContentNetworkMessageSender>();
     private readonly byte[] _protocol = config.ProtocolId;
 
     public async Task<Pong> Ping(IEnr receiver, Ping ping, CancellationToken token)

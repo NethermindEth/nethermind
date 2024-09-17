@@ -41,10 +41,10 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         return GetBucket(hash).TryAddOrRefresh(hash, item, out toRefresh);
     }
 
-    public void Remove(in ValueHash256 hash)
+    public bool Remove(in ValueHash256 hash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
-        GetBucket(hash).RemoveAndReplace(hash);
+        return GetBucket(hash).RemoveAndReplace(hash);
     }
 
     public TNode[] GetAllAtDistance(int i)

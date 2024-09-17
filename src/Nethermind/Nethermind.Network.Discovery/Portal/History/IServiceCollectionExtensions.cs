@@ -32,7 +32,7 @@ public static class IServiceCollectionExtensions
         return serviceCollection
             .ConfigureContentNetwork(baseServiceProvider)
             .ForwardServiceAsSingleton<IBlockTree>(baseServiceProvider)
-            .AddSingleton<IPortalContentNetwork.Store, HistoryNetworkStore>()
+            .AddSingleton<IPortalContentNetworkStore, HistoryNetworkStore>()
             .AddSingleton<IPortalHistoryNetwork, PortalHistoryNetwork>()
             .AddSingleton<IPortalHistoryRpcModule, PortalHistoryRpcModule>()
             .AddSingleton<KademliaConfig<IEnr>>((provider) =>

@@ -140,26 +140,13 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         _logger.Debug($"Finished splitting bucket. Left count: {node.Left.Bucket.Count}, Right count: {node.Right.Bucket.Count}");
     }
 
-    public void Remove(in ValueHash256 nodeHash)
+    public bool Remove(in ValueHash256 nodeHash)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
         _logger.Debug($"Attempting to remove node {nodeHash} with hash {nodeHash}");
-        RemoveRecursive(_root, 0, nodeHash);
-    }
 
-    private void RemoveRecursive(TreeNode node, int depth, ValueHash256 nodeHash)
-    {
-        if (node.IsLeaf)
-        {
-            _logger.Debug($"Removing node {nodeHash} from bucket at depth {depth}");
-            node.Bucket.RemoveAndReplace(nodeHash);
-            return;
-        }
-
-        bool goRight = GetBit(nodeHash, depth);
-        _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
-        RemoveRecursive(goRight ? node.Right! : node.Left!, depth + 1, nodeHash);
+        return GetBucketForHash(nodeHash).RemoveAndReplace(nodeHash);
     }
 
     public TNode[] GetAllAtDistance(int distance)

@@ -17,14 +17,4 @@ public interface IPortalContentNetwork
     void AddOrRefresh(IEnr node);
     Task Run(CancellationToken token);
     Task Bootstrap(CancellationToken token);
-
-    /// <summary>
-    /// Content provider to be used when serving content to peer.
-    /// </summary>
-    public interface Store
-    {
-        public byte[]? GetContent(byte[] contentKey);
-        bool ShouldAcceptOffer(byte[] offerContentKey);
-        void Store(byte[] contentKey, byte[] content);
-    }
 }

@@ -19,7 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 
-public class KademliaTalkReqMessageSenderTests
+public class KademliaContentNetworkMessageSenderTests
 {
     private ITalkReqTransport _talkReqTransport = null!;
     private IEnrProvider _enrProvider = null!;

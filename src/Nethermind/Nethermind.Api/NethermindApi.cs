@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
@@ -129,6 +130,7 @@ namespace Nethermind.Api
         public IConnectionsPool? DiscoveryConnections { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public IDiscoveryApp? DiscoveryV5App { get; set; }
+        public IServiceProvider? PortalNetworkServiceProvider { get; set; }
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }

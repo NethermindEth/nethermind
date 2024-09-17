@@ -21,9 +21,9 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="selfEnr"></param>
 /// <param name="utpManager"></param>
 public class TalkReqHandler(
-    IPortalContentNetwork.Store store,
+    IPortalContentNetworkStore store,
     IKademlia<IEnr, byte[], LookupContentResult> kad,
-    IContentDistributor contentDistributor,
+    RadiusTracker radiusTracker,
     IEnrProvider enrProvider,
     IUtpManager utpManager,
     ContentNetworkConfig config,
@@ -80,7 +80,7 @@ public class TalkReqHandler(
         if (ping.CustomPayload?.Length == 32)
         {
             UInt256 radius = SlowSSZ.Deserialize<UInt256>(ping.CustomPayload);
-            contentDistributor.UpdatePeerRadius(sender, radius);
+            radiusTracker.UpdatePeerRadius(sender, radius);
         }
 
         await kad.Ping(sender, default);
@@ -185,7 +185,7 @@ public class TalkReqHandler(
         bool hasAccept = false;
         for (var i = 0; i < toAccept.Count; i++)
         {
-            if (!contentDistributor.IsContentInRadius(offer.ContentKeys[i])) continue;
+            if (!radiusTracker.IsContentInRadius(offer.ContentKeys[i])) continue;
             if (store.ShouldAcceptOffer(offer.ContentKeys[i]))
             {
                 toAccept[i] = true;

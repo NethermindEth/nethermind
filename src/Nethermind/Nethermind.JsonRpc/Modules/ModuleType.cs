@@ -77,7 +77,6 @@ namespace Nethermind.JsonRpc.Modules
             Parity,
             Health,
             Rpc,
-            PortalHistory
         };
 
         public static IEnumerable<string> DefaultEngineModules { get; } = new List<string>()

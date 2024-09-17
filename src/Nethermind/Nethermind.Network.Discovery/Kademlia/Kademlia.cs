@@ -66,11 +66,15 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
         _routingTable = routingTable;
         _useNewLookup = config.UseNewLookup;
+
+        _logger.Info($"Add {_currentNodeIdAsHash} as first node");
+        AddOrRefresh(_currentNodeId);
     }
 
     public void AddOrRefresh(TNode node)
     {
-        if (SameAsSelf(node)) return;
+        // Should we skip ourself?
+        // if (SameAsSelf(node)) return;
 
         _isRefreshing.TryRemove(_nodeHashProvider.GetHash(node), out _);
 
@@ -87,6 +91,12 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     private void TryRefresh(TNode toRefresh)
     {
+        if (SameAsSelf(toRefresh))
+        {
+            _isRefreshing.TryRemove(_currentNodeIdAsHash, out _);
+            return;
+        }
+
         ValueHash256 nodeHash = _nodeHashProvider.GetHash(toRefresh);
         if (_isRefreshing.TryAdd(nodeHash, true))
         {

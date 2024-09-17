@@ -4,6 +4,7 @@
 using Lantern.Discv5.Enr;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.Messages;
@@ -11,31 +12,37 @@ using Nethermind.Network.Discovery.Portal.Messages;
 namespace Nethermind.Network.Discovery.Portal;
 
 /// <summary>
-/// Adapter from TalkReq/Resp to Kademlia's IMessageSender, which is its outgoing transport.
+/// Adapter from IContentNetworkProtocol to Kademlia's IMessageSender, which is its outgoing transport.
 /// </summary>
 /// <param name="config"></param>
 /// <param name="contentNetworkProtocol"></param>
 /// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
-public class KademliaTalkReqMessageSender(
+public class KademliaContentNetworkMessageSender(
     ContentNetworkConfig config,
+    RadiusTracker radiusTracker,
     IContentNetworkProtocol contentNetworkProtocol,
     IEnrProvider enrProvider,
     ILogManager logManager
 ) : IMessageSender<IEnr, byte[], LookupContentResult>
 {
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaTalkReqMessageSender>();
-    private readonly byte[] _protocol = config.ProtocolId;
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaContentNetworkMessageSender>();
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
-        _ = await contentNetworkProtocol.Ping(receiver, new Ping()
+        Pong pong = await contentNetworkProtocol.Ping(receiver, new Ping()
         {
             EnrSeq = enrProvider.SelfEnr.SequenceNumber,
             // Note: This custom payload of type content radius is actually history network specific
-            CustomPayload = config.ContentRadius.ToBigEndian()
+            CustomPayload = config.ContentRadius.ToLittleEndian()
         }, token);
+
+        if (pong.CustomPayload.Length == 32)
+        {
+            UInt256 radius = new UInt256(pong.CustomPayload, false);
+            radiusTracker.UpdatePeerRadius(receiver, radius);
+        }
     }
 
     public async Task<IEnr[]> FindNeighbours(IEnr receiver, ValueHash256 hash, CancellationToken token)
@@ -70,18 +77,14 @@ public class KademliaTalkReqMessageSender(
                 nowUpper = true;
             }
         }
+        Array.Sort(queryDistance);
 
         Nodes message = await contentNetworkProtocol.FindNodes(receiver, new FindNodes()
         {
             Distances = queryDistance
         }, token);
 
-        IEnr[] enrs = new IEnr[message.Enrs.Length];
-        for (var i = 0; i < message.Enrs.Length; i++)
-        {
-            enrs[i] = enrProvider.Decode(message.Enrs[i]);
-        }
-        return enrs;
+        return message.Enrs.Select(enrProvider.Decode).ToArray();
     }
 
     public async Task<FindValueResponse<IEnr, LookupContentResult>> FindValue(IEnr receiver, byte[] contentKey, CancellationToken token)
@@ -93,12 +96,7 @@ public class KademliaTalkReqMessageSender(
 
         if (message.ConnectionId == null && message.Payload == null)
         {
-            IEnr[] enrs = new IEnr[message.Enrs!.Length];
-            for (var i = 0; i < message.Enrs.Length; i++)
-            {
-                enrs[i] = enrProvider.Decode(message.Enrs[i]);
-            }
-
+            IEnr[] enrs = message.Enrs!.Select(enrProvider.Decode).ToArray();
             return new FindValueResponse<IEnr, LookupContentResult>(false, null, enrs);
         }
 

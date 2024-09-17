@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Core.PubSub;
@@ -27,6 +28,7 @@ namespace Nethermind.Api
         IConnectionsPool? DiscoveryConnections { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IDiscoveryApp? DiscoveryV5App { get; set; }
+        IServiceProvider? PortalNetworkServiceProvider { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }

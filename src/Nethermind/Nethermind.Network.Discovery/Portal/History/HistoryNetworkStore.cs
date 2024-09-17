@@ -1,21 +1,32 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
-public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): IPortalContentNetwork.Store
+public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): IPortalContentNetworkStore
 {
     private readonly HistoryNetworkEncoderDecoder _encoderDecoder = new();
     private readonly ILogger _logger = logManager.GetClassLogger<HistoryNetworkStore>();
 
+    private readonly SpanConcurrentDictionary<byte, byte[]> _testStore = new(Bytes.SpanEqualityComparer);
+
     public byte[]? GetContent(byte[] contentKey)
     {
+        if (_testStore.TryGetValue(contentKey, out byte[]? value))
+        {
+            _logger.Info($"Content {contentKey.ToHexString()} in test store");
+            return value;
+        }
+        _logger.Info($"Content {contentKey.ToHexString()} not in test store");
+
         ContentKey key = SlowSSZ.Deserialize<ContentKey>(contentKey);
 
         if (key.HeaderKey != null)
@@ -47,5 +58,7 @@ public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): 
     {
         // Note: Just testing
         _logger.Info($"Got content {contentKey.ToHexString()} of size {content.Length} from portal network");
+
+        _testStore[contentKey] = content;
     }
 }

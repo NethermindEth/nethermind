@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 extern alias BouncyCastleCryptography;
-using BouncyCastleCryptography::Org.BouncyCastle.Utilities.Encoders;
 using Lantern.Discv5.Enr;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,10 +19,21 @@ public class PortalHistoryRpcModule(
     IContentDistributor contentDistributor,
     IContentNetworkProtocol contentNetworkProtocol,
     ContentLookupService contentLookupService,
-    IPortalContentNetwork.Store contentNetworkStore,
+    IPortalContentNetworkStore contentNetworkStore,
     IEnrProvider enrProvider
 ): IPortalHistoryRpcModule
 {
+    public ResultWrapper<NodeInfo> discv5_nodeInfo()
+    {
+        IEnr self = enrProvider.SelfEnr;
+
+        return ResultWrapper<NodeInfo>.Success(new NodeInfo()
+        {
+            Enr = self.ToString()!,
+            NodeId = self.NodeId.ToHexString()
+        });
+    }
+
     public ResultWrapper<RoutingTableInfoResult> portal_historyRoutingTableInfo()
     {
         throw new System.NotImplementedException();
@@ -47,22 +57,20 @@ public class PortalHistoryRpcModule(
         {
             return ResultWrapper<string>.Fail("enr record not found");
         }
-
-        return ResultWrapper<string>.Success(enr.EncodeContent().ToHexString());
+        return ResultWrapper<string>.Success(enr.ToString()!);
     }
 
     public ResultWrapper<bool> portal_historyDeleteEnr(ValueHash256 nodeId)
     {
-        kademliaRoutingTable.Remove(nodeId);
-
-        return ResultWrapper<bool>.Success(true);
+        bool success = kademliaRoutingTable.Remove(nodeId);
+        return ResultWrapper<bool>.Success(success);
     }
 
     public async Task<ResultWrapper<string>> portal_historyLookupEnr(ValueHash256 nodeId)
     {
         IEnr[] enrs = await kademlia.LookupNodesClosest(nodeId, default, 1);
 
-        return ResultWrapper<string>.Success(enrs[0].EncodeContent().ToHexString());
+        return ResultWrapper<string>.Success(enrs[0].ToString()!);
     }
 
     public async Task<ResultWrapper<PingResult>> portal_historyPing(string enrStr)
@@ -92,7 +100,7 @@ public class PortalHistoryRpcModule(
             enrs[i] = enrProvider.Decode(nodes.Enrs[i]);
         }
 
-        string[] enrStrs = enrs.Select(it => it.EncodeContent().ToHexString()).ToArray();
+        string[] enrStrs = enrs.Select(it => it.ToString()!).ToArray();
         return ResultWrapper<string[]>.Success(enrStrs);
     }
 
@@ -107,7 +115,7 @@ public class PortalHistoryRpcModule(
 
         if (neighbours != null)
         {
-            result.Enrs = neighbours.Select(it => it.EncodeContent().ToHexString()).ToArray();
+            result.Enrs = neighbours.Select(it => it.ToString()!).ToArray();
         }
         else
         {
@@ -134,7 +142,7 @@ public class PortalHistoryRpcModule(
     public async Task<ResultWrapper<string[]>> portal_historyRecursiveFindNodes(ValueHash256 nodeId)
     {
         IEnr[] enrs = await kademlia.LookupNodesClosest(nodeId, default);
-        string[] enrStrs = enrs.Select(it => it.EncodeContent().ToHexString()).ToArray();
+        string[] enrStrs = enrs.Select(it => it.ToString()!).ToArray();
 
         return ResultWrapper<string[]>.Success(enrStrs);
     }
@@ -188,17 +196,16 @@ public class PortalHistoryRpcModule(
         return ResultWrapper<bool>.Success(true);
     }
 
-    public ResultWrapper<string> portal_historyLocalContent(string contentKeyStr)
+    public ResultWrapper<byte[]> portal_historyLocalContent(byte[] contentKey)
     {
-        byte[] contentKey = Bytes.FromHexString(contentKeyStr);
         byte[]? content = contentNetworkStore.GetContent(contentKey);
 
         if (content == null)
         {
-            return ResultWrapper<string>.Fail("fail to find content");
+            return ResultWrapper<byte[]>.Fail("fail to find content");
         }
 
-        return ResultWrapper<string>.Success(content.ToHexString());
+        return ResultWrapper<byte[]>.Success(content);
     }
 
     public async Task<ResultWrapper<int>> portal_historyGossip(string contentKeyStr, string contentValueStr)

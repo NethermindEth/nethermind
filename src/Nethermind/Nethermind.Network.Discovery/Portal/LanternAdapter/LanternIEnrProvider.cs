@@ -13,6 +13,11 @@ public class LanternIEnrProvider(
     IEnrFactory enrFactory
 ): IEnrProvider
 {
+    public IEnr Decode(string enrStr)
+    {
+        return enrFactory.CreateFromString(enrStr, identityVerifier);
+    }
+
     public IEnr Decode(byte[] enrBytes)
     {
         return enrFactory.CreateFromBytes(enrBytes, identityVerifier);
