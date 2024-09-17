@@ -99,6 +99,11 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             return ToBytes(ulong0);
         }
 
+        public string[] ToArray()
+        {
+            return ToBytes(ulong0).Select(i => ((Instruction)i).ToString()).ToArray();
+        }
+
         public static Instruction[] ToInstructions(ulong ngram)
         {
             return ToBytes(ngram).Select(i => (Instruction)i).ToArray();

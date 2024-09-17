@@ -1,40 +1,27 @@
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
 
-    public enum Level
-    {
-        Block,
-        Transaction,
-        Global,
-    }
-
-    public interface IStatsAccumulator<T>
-    {
-        void Add(Level level, ulong id, IEnumerable<T> items);
-    }
-
-    public class ProcessingQueue<T> : IDisposable
+    public class OpcodeStatsQueue : IDisposable
     {
 
-        public readonly ulong id;
-        private Level _level;
-        private IStatsAccumulator<T> _statsAccumulator;
-        private T[] _queue;
+        private StatsAnalyzer _statsAnalyzer;
+        private Instruction[] _queue;
         private int bufferPos = 0;
         private bool disposed = false;
+        private readonly McsLock _processingLock ;
 
-        public ProcessingQueue(Level level, ulong id, int size, IStatsAccumulator<T> statsAccumulator)
+        public OpcodeStatsQueue(int size, StatsAnalyzer statsAnalyzer, McsLock processingLock, Action<StatsAnalyzer> postProcessing = default)
         {
-            _level = level;
-            this.id = id;
-            _statsAccumulator = statsAccumulator;
-            _queue = new T[size];
+            _statsAnalyzer = statsAnalyzer;
+            _queue = new Instruction[size];
+            _processingLock = processingLock;
         }
 
-        public void Enqueue(T item)
+        public void Enqueue(Instruction item)
         {
             if (bufferPos < _queue.Length)
             {
@@ -55,13 +42,14 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             {
                 if (disposing)
                 {
-                    _statsAccumulator.Add(_level, id, _queue[..bufferPos]);
+                    _processingLock.Acquire();
+                    _statsAnalyzer.Add(_queue[..bufferPos]);
                 }
                 disposed = true;
             }
         }
 
-        ~ProcessingQueue()
+        ~OpcodeStatsQueue()
         {
             Dispose(disposing: false);
         }
