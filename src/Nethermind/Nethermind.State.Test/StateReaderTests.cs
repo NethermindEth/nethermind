@@ -248,5 +248,114 @@ namespace Nethermind.Store.Test
             var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
             stats.AccountCount.Should().Be(1);
         }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasCode_ReturnsTrue()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            sut.InsertCode(TestItem.AddressA, Keccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.True);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasNoCode_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasDelegatedCode_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
+            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasCodeButDelegateReturnsTrue_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = new byte[20];
+            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA, () => true);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasDelegatedCodeBut7702IsNotEnabled_ReturnsTrue()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip3607Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
+            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.True);
+        }
+
+        [Test]
+        public void IsInvalidContractSender_AccountHasDelegatedCodeBut3807IsNotEnabled_ReturnsFalse()
+        {
+            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsEip7702Enabled.Returns(true);
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState sut = new(trieStore, new MemDb(), Logger);
+            sut.CreateAccount(TestItem.AddressA, 0);
+            byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
+            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.Commit(MuirGlacier.Instance);
+            sut.CommitTree(0);
+
+            bool result = sut.IsInvalidContractSender(releaseSpec, TestItem.AddressA);
+
+            Assert.That(result, Is.False);
+        }
     }
 }

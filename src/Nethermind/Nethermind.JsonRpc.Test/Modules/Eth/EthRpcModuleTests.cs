@@ -1197,6 +1197,70 @@ public partial class EthRpcModuleTests
         })), Is.EqualTo(result));
     }
 
+
+    [Test]
+    public async Task eth_sendRawTransaction_sender_with_non_delegated_code_is_rejected()
+    {
+        var specProvider = new TestSpecProvider(Prague.Instance);
+        specProvider.AllowTestChainOverride = false;
+
+        TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+
+        Transaction testTx = Build.A.Transaction
+          .WithType(TxType.SetCode)
+          .WithNonce(Test.State.GetNonce(TestItem.AddressA))
+          .WithMaxFeePerGas(9.GWei())
+          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
+          .WithAuthorizationCodeIfAuthorizationListTx()
+          .WithTo(TestItem.AddressA)
+          .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        string result = await Test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(testTx).Bytes));
+
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
+        Assert.That(actual.Error!.Message, Is.EqualTo(nameof(AcceptTxResult.SenderIsContract)));
+    }
+
+
+    [Test]
+    public async Task eth_sendRawTransaction_sender_with_delegated_code_is_accepted()
+    {
+        var specProvider = new TestSpecProvider(Prague.Instance);
+        specProvider.AllowTestChainOverride = false;
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+
+        Transaction setCodeTx = Build.A.Transaction
+          .WithType(TxType.SetCode)
+          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithMaxFeePerGas(9.GWei())
+          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
+          .WithAuthorizationCode(test.EthereumEcdsa.Sign(TestItem.PrivateKeyB, 0, Address.Zero, (ulong)test.State.GetNonce(TestItem.AddressB) + 1))
+          .WithTo(TestItem.AddressA)
+          .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        await test.AddBlock(setCodeTx);
+
+        var code = test.State.GetCode(TestItem.AddressB);
+
+        Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
+
+        Transaction normalTx = Build.A.Transaction
+          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithMaxFeePerGas(9.GWei())
+          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithGasLimit(GasCostOf.Transaction)
+          .WithTo(TestItem.AddressA)
+          .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(normalTx).Bytes));
+
+        JsonRpcSuccessResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse>(result);
+        Assert.That(actual.Result, Is.Not.Null);
+    }
+
     private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
     {
         AccessListItemForRpc[] accessList = allowSystemUser

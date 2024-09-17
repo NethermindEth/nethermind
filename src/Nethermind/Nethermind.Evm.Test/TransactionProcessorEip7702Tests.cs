@@ -135,7 +135,7 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
+            .WithGasLimit(600_000)
             .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
@@ -146,9 +146,9 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        ReadOnlySpan<byte> cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
 
-        Assert.That(sender.Address.Bytes, Is.EqualTo(cell.ToArray()));
+        Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes));
     }
     public static IEnumerable<object[]> DifferentCommitValues()
     {
@@ -178,7 +178,7 @@ internal class TransactionProcessorEip7702Tests
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
-            .WithGasLimit(60_000)
+            .WithGasLimit(100_000)
             .WithAuthorizationCode(CreateAuthorizationTuple(signer, chainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
@@ -189,7 +189,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(expectedStorageValue));
+        var actual = _stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray();
+        Assert.That(actual, Is.EqualTo(expectedStorageValue));
     }
 
     [TestCase(0)]
@@ -368,6 +369,95 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx2, block.Header, NullTxTracer.Instance);
 
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(new[] { 1 }));
+    }
+
+    public static IEnumerable<object[]> OpcodesWithEXT()
+    {
+        //EXTCODESIZE should return the size of the delegated code
+        yield return new object[] {
+            Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done,
+            new byte[]{ 2 + 22 } };
+        //EXTCODEHASH should return the HASH of the delegated code
+        yield return new object[] {
+            Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Done,
+            Keccak.Compute(
+                Prepare.EvmCode
+                .PushData(TestItem.AddressA)
+                .Op(Instruction.EXTCODEHASH)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .Done).Bytes.ToArray()
+            };
+        //EXTCOPYCODE should copy the delegated code
+        yield return new object[] {
+            Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.DUP4)
+            .Op(Instruction.EXTCODECOPY)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.MLOAD)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done,
+            Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.DUP1)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.DUP4)
+            .Op(Instruction.EXTCODECOPY)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.MLOAD)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done
+            };
+    }
+    [TestCaseSource(nameof(OpcodesWithEXT))]
+    public void Execute_DelegatedCodeUsesEXTOPCODES_StoresExpectedValue(byte[] code, byte[] expectedValue)
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        DeployCode(codeSource, code);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(signer.Address)
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(CreateAuthorizationTuple(
+                    signer,
+                    _specProvider.ChainId,
+                    codeSource,
+                    0))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(expectedValue));
     }
 
     private void DeployCode(Address codeSource, byte[] code)
