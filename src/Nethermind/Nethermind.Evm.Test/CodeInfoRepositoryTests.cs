@@ -20,7 +20,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Trie.Pruning;
-using System.Diagnostics.Tracing;
 
 namespace Nethermind.Evm.Test;
 
@@ -177,6 +176,171 @@ public class CodeInfoRepositoryTests
         int refunds = sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
         refunds.Should().Be(1);
+    }
+
+    public static IEnumerable<object[]> NotDelegationCodeCases()
+    {
+        byte[] rndAddress = new byte[20];
+        TestContext.CurrentContext.Random.NextBytes(rndAddress);
+        //Change first byte of the delegation header
+        byte[] code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
+        code[0] = TestContext.CurrentContext.Random.NextByte(0xee);
+        yield return new object[]
+        {
+            code
+        };
+        //Change second byte of the delegation header
+        code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
+        code[1] = TestContext.CurrentContext.Random.NextByte(0x2, 0xff);
+        yield return new object[]
+        {
+            code
+        };
+        //Change third byte of the delegation header
+        code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
+        code[2] = TestContext.CurrentContext.Random.NextByte(0x1, 0xff);
+        yield return new object[]
+        {
+            code
+        };
+        code = [.. Eip7702Constants.DelegationHeader, .. new byte[21]];
+        yield return new object[]
+        {
+            code
+        };
+        code = [.. Eip7702Constants.DelegationHeader, .. new byte[19]];
+        yield return new object[]
+        {
+            code
+        };
+    }
+    [TestCaseSource(nameof(NotDelegationCodeCases))]
+    public void IsDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        CodeInfoRepository sut = new(1);
+
+        sut.IsDelegation(stateProvider, TestItem.AddressA, out _).Should().Be(false);
+    }
+
+
+    public static IEnumerable<object[]> DelegationCodeCases()
+    {
+        byte[] address = new byte[20];
+        byte[] code = [.. Eip7702Constants.DelegationHeader, .. address];
+        yield return new object[]
+        {
+            code
+        };
+        TestContext.CurrentContext.Random.NextBytes(address);
+        code = [.. Eip7702Constants.DelegationHeader, .. address];
+        yield return new object[]
+        {
+            code
+        };
+    }
+    [TestCaseSource(nameof(DelegationCodeCases))]
+    public void IsDelegation_CodeIsDelegation_ReturnsTrue(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        CodeInfoRepository sut = new(1);
+
+        sut.IsDelegation(stateProvider, TestItem.AddressA, out _).Should().Be(true);
+    }
+
+    [TestCaseSource(nameof(DelegationCodeCases))]
+    public void IsDelegation_CodeIsDelegation_CorrectDelegationAddressIsSet(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        CodeInfoRepository sut = new(1);
+
+        Address result;
+        sut.IsDelegation(stateProvider, TestItem.AddressA, out result);
+
+        result.Should().Be(new Address(code.Slice(3, Address.Size)));
+    }
+
+    [TestCaseSource(nameof(DelegationCodeCases))]
+    public void GetCodeHash_CodeIsDelegation_ReturnsHashOfDelegated(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        Address delegationAddress = new Address(code.Slice(3, Address.Size));
+        byte[] delegationCode = new byte[32];
+        stateProvider.CreateAccount(delegationAddress, 0);
+        stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
+
+        CodeInfoRepository sut = new(1);
+
+        sut.GetCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(delegationCode).ValueHash256);
+    }
+
+    [TestCaseSource(nameof(NotDelegationCodeCases))]
+    public void GetCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+
+        CodeInfoRepository sut = new(1);
+
+        sut.GetCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(code).ValueHash256);
+    }
+
+    [TestCaseSource(nameof(DelegationCodeCases))]
+    public void GetCachedCodeInfo_CodeIsDelegation_ReturnsCodeOfDelegation(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+        Address delegationAddress = new Address(code.Slice(3, Address.Size));
+        stateProvider.CreateAccount(delegationAddress, 0);
+        byte[] delegationCode = new byte[32];
+        stateProvider.InsertCode(delegationAddress, delegationCode, Substitute.For<IReleaseSpec>());
+        CodeInfoRepository sut = new(1);
+
+        CodeInfo result = sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>());
+        result.MachineCode.ToArray().Should().BeEquivalentTo(delegationCode);
+    }
+
+    [TestCaseSource(nameof(NotDelegationCodeCases))]
+    public void GetCachedCodeInfo_CodeIsNotDelegation_ReturnsCodeOfAddress(byte[] code)
+    {
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
+
+        CodeInfoRepository sut = new(1);
+
+        sut.GetCachedCodeInfo(stateProvider, TestItem.AddressA, Substitute.For<IReleaseSpec>()).Should().BeEquivalentTo(new CodeInfo(code));
     }
 
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
