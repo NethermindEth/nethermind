@@ -100,4 +100,7 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
+
+    [ConfigItem(Description = "Whether to enable the node discovery. If disabled, Nethermind doesn't look for other nodes beyond the specified nodes.", DefaultValue = "true")]
+    bool DiscoveryEnabled { get; set; }
 }
