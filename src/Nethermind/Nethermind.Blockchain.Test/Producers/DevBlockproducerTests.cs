@@ -81,7 +81,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 txProcessor,
                 new BeaconBlockRootHandler(txProcessor),
                 new BlockhashStore(specProvider, stateProvider),
-                txProcessor,
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,

@@ -179,7 +179,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (!opts.HasFlag(ExecutionOptions.NoValidation))
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
-                    WorldState.DecrementNonce(tx);
+                    DecrementNonce(tx);
 
                     WorldState.Commit(spec);
                 }

@@ -16,6 +16,8 @@ public static class TxErrorMessages
         $"InvalidTxType: Transaction type in {name} is not supported.";
     public const string IntrinsicGasTooLow =
         "IntrinsicGasTooLow: Gas limit is too low.";
+    public const string TxMissingTo =
+        "TxMissingTo: Must be set.";
 
     public const string InvalidTxSignature =
         "InvalidTxSignature: Signature is invalid.";
