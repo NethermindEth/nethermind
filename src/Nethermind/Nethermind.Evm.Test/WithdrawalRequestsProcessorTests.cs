@@ -70,7 +70,6 @@ public class WithdrawalRequestProcessorTests
     [Test]
     public void ShouldProcessWithdrawalRequest()
     {
-
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip7002Enabled.Returns(true);
         spec.Eip7002ContractAddress.Returns(eip7002Account);
@@ -86,7 +85,7 @@ public class WithdrawalRequestProcessorTests
             Amount = 0
         };
 
-        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider, block).ToList();
+        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(block, _stateProvider, spec).ToList();
 
         Assert.That(withdrawalRequests, Has.Count.EqualTo(16));
 
