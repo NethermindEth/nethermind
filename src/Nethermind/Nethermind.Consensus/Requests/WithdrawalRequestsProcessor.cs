@@ -13,7 +13,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
-using System.Buffers.Binary;
 
 namespace Nethermind.Consensus.Requests;
 

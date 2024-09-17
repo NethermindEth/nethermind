@@ -115,7 +115,6 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.TransactionProcessor,
                 new BeaconBlockRootHandler(scope.TransactionProcessor),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
-                getFromApi.TransactionProcessor,
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
 

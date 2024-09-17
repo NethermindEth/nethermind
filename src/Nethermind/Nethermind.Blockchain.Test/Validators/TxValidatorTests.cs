@@ -541,8 +541,9 @@ public class TxValidatorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
+            ValidationResult validationResult = txValidator.IsWellFormed(tx, Prague.Instance);
+            Assert.That(validationResult.AsBool(), Is.False);
+            Assert.That(validationResult.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
         });
     }
 
@@ -560,7 +561,7 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out _), Is.True);
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance), Is.True);
     }
 
     [Test]
@@ -577,7 +578,7 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out _), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance), Is.False);
     }
 
     [Test]
@@ -594,7 +595,7 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance, out _), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance), Is.False);
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>

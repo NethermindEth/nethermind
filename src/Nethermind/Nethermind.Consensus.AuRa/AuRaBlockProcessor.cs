@@ -64,7 +64,6 @@ namespace Nethermind.Consensus.AuRa
                 transactionProcessor,
                 beaconBlockRootHandler,
                 new BlockhashStore(specProvider, stateProvider),
-                transactionProcessor,
                 logManager,
                 withdrawalProcessor,
                 preWarmer: preWarmer,

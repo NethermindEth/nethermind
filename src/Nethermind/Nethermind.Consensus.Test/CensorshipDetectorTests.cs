@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -260,7 +261,9 @@ public class CensorshipDetectorTests
             new TxPoolConfig(),
             new TxValidator(_specProvider.ChainId),
             _logManager,
-            _comparer);
+            _comparer,
+            new CodeInfoRepository(BlockchainIds.Mainnet),
+            _stateProvider);
     }
 
     private void BlockProcessingWorkflow(Block block)
