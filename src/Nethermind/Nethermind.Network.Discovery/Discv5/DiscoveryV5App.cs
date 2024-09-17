@@ -153,8 +153,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IServiceProvider historyNetworkServiceProvider = _discV5ServiceProvider.CreateHistoryNetworkServiceProvider(historyNetworkBootnodes);
         _historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
-        IPortalHistoryRpcModule rpcModule = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>();
-        _api.RpcModuleProvider!.RegisterSingle(rpcModule);
+        _api.RpcModuleProvider!.RegisterSingle(historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>());
     }
 
     private IPortalHistoryNetwork _historyNetwork;
