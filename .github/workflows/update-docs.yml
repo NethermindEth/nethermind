@@ -20,13 +20,6 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           path: n
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: "nethermind,docs"
       - name: Check out Nethermind docs repository
         uses: actions/checkout@v4
         with:
@@ -48,6 +41,15 @@ jobs:
         run: |
           npm i
           npm run docusaurus docs:version v${{ github.event.release.tag_name }}
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: |
+            nethermind
+            docs
       - name: Create a pull request
         working-directory: d
         env:
