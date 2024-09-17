@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -50,6 +51,16 @@ namespace Nethermind.Crypto
             {
                 tx.Signature.V = tx.Signature.V + 8 + 2 * _chainIdValue;
             }
+        }
+
+        public AuthorizationTuple Sign(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
+        {
+            RlpStream rlp = _tupleDecoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
+            Span<byte> code = stackalloc byte[rlp.Length + 1];
+            code[0] = Eip7702Constants.Magic;
+            rlp.Data.AsSpan().CopyTo(code.Slice(1));
+            Signature sig = Sign(signer, Keccak.Compute(code));
+            return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
         }
 
         /// <summary>

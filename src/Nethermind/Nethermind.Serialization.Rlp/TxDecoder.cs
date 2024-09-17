@@ -45,6 +45,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         RegisterDecoder(new AccessListTxDecoder<T>(factory));
         RegisterDecoder(new EIP1559TxDecoder<T>(factory));
         RegisterDecoder(new BlobTxDecoder<T>(factory));
+        RegisterDecoder(new SetCodeTxDecoder<T>(factory));
     }
 
     public void RegisterDecoder(ITxDecoder decoder) => _decoders[(int)decoder.Type] = decoder;

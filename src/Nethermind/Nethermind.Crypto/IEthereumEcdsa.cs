@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Crypto
 {
@@ -15,5 +16,6 @@ namespace Nethermind.Crypto
         Address? RecoverAddress(Signature signature, Hash256 message);
         Address? RecoverAddress(Span<byte> signatureBytes, Hash256 message);
         bool Verify(Address sender, Transaction tx);
+        AuthorizationTuple Sign(PrivateKey authority, ulong chainId, Address codeAddress, ulong nonce);
     }
 }
