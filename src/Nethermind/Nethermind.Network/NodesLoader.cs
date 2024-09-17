@@ -41,17 +41,6 @@ namespace Nethermind.Network
         public List<Node> LoadInitialList()
         {
             List<Node> allPeers = new();
-
-            if(!_networkConfig.DiscoveryEnabled)
-            {
-                LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
-                {
-                    n.IsStatic = true;
-                    if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
-                });
-                return allPeers;
-            }
-
             LoadPeersFromDb(allPeers);
 
             LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
