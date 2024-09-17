@@ -352,7 +352,7 @@ public partial class EngineModuleTests
 
         chain.AddTransactions(txs);
 
-        ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV3(rpc, chain, true, Array.Empty<Withdrawal>());
+        ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
         Hash256[] blockHashes = new Hash256[]
         {
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
@@ -408,7 +408,7 @@ public partial class EngineModuleTests
 
         chain.AddTransactions(txs);
 
-        ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV3(rpc, chain, true, Array.Empty<Withdrawal>());
+        ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
 
         await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(executionPayload2.BlockHash!,
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
@@ -448,7 +448,7 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndSendNewBlockV3(
+    private async Task<ExecutionPayloadV4> BuildAndSendNewBlockV4(
         IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         bool waitForBlockImprovement,
@@ -458,7 +458,7 @@ public partial class EngineModuleTests
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
-        ExecutionPayloadV4 executionPayload = await BuildAndGetPayloadResultV3(rpc, chain, head,
+        ExecutionPayloadV4 executionPayload = await BuildAndGetPayloadResultV4(rpc, chain, head,
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
@@ -466,7 +466,7 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndGetPayloadResultV3(
+    private async Task<ExecutionPayloadV4> BuildAndGetPayloadResultV4(
         IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         Hash256 headBlockHash,

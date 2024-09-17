@@ -40,7 +40,7 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
                 continue;
             }
 
-            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) = block!.Requests.SplitRequests();
+            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) = block!.Requests?.SplitRequests() ?? (null, null);
             yield return new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
         }
 
