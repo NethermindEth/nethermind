@@ -33,6 +33,7 @@ namespace Nethermind.Specs
                 _ => SpuriousDragon.Instance
             };
         public long? DaoBlockNumber => null;
+        public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => BlockchainIds.Morden;
         public ulong ChainId => NetworkId;

@@ -22,15 +22,15 @@ class ShutterTxFilterTests
             .WithValue(100)
             .Signed(TestItem.PrivateKeyA).TestObject;
 
-         Transaction tx1 = Build.A.Transaction
-            .WithChainId(BlockchainIds.Chiado)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithTo(TestItem.AddressA)
-            .WithValue(100)
-            .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(4)
-            .WithGasLimit(21000)
-            .Signed(TestItem.PrivateKeyA).TestObject;
+        Transaction tx1 = Build.A.Transaction
+           .WithChainId(BlockchainIds.Chiado)
+           .WithSenderAddress(TestItem.AddressA)
+           .WithTo(TestItem.AddressA)
+           .WithValue(100)
+           .WithType(TxType.EIP1559)
+           .WithMaxFeePerGas(4)
+           .WithGasLimit(21000)
+           .Signed(TestItem.PrivateKeyA).TestObject;
 
         Assert.Multiple(() =>
         {

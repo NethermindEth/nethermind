@@ -13,7 +13,7 @@ public class GoerliSpecProvider : ISpecProvider
     public const long IstanbulBlockNumber = 1_561_651;
     public const long BerlinBlockNumber = 4_460_644;
     public const long LondonBlockNumber = 5_062_605;
-    public const ulong BeaconChainGenesisTimestamp = 0x6059f460;
+    public const ulong BeaconChainGenesisTimestampConst = 0x6059f460;
     public const ulong ShanghaiTimestamp = 0x6410f460;
     public const ulong CancunTimestamp = 0x65A77460;
 
@@ -47,6 +47,7 @@ public class GoerliSpecProvider : ISpecProvider
     public ulong ChainId => BlockchainIds.Goerli;
     public string SealEngine => SealEngineType.Clique;
     public long? DaoBlockNumber => null;
+    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = 10790000;
