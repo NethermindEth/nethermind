@@ -19,7 +19,7 @@ using Nethermind.Core.Eip2930;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, IWorldState? targetWorldState = null) : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
@@ -27,9 +27,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, AccessList? systemTxAccessList, CancellationToken cancellationToken = default)
     {
-        if (targetWorldState is not null)
+        if (preBlockCaches is not null)
         {
-            if (targetWorldState.ClearCache())
+            if (preBlockCaches.ClearCaches())
             {
                 if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
             }
@@ -40,10 +40,10 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = physicalCoreCount - 1, CancellationToken = cancellationToken };
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                ThreadPool.UnsafeQueueUserWorkItem(
-                    new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, systemTxAccessList, this), preferLocal: false);
+                var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, systemTxAccessList, this);
+                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, parallelOptions, cancellationToken));
+                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, parallelOptions, addressWarmer, cancellationToken));
             }
         }
 
@@ -53,11 +53,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     // Parent state root is null for genesis block
     private static bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public void ClearCaches() => targetWorldState?.ClearCache();
+    public bool ClearCaches() => preBlockCaches?.ClearCaches() ?? false;
 
-    public Task ClearCachesInBackground() => targetWorldState?.ClearCachesInBackground() ?? Task.CompletedTask;
-
-    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, CancellationToken cancellationToken)
+    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
@@ -68,6 +66,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
             WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
+
+            // Don't compete task until address warmer is also done.
+            addressWarmer.Wait();
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
@@ -152,19 +153,23 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, AccessList? systemTxAccessList, BlockCachePreWarmer preWarmer)
         : IThreadPoolWorkItem
     {
-        private readonly ParallelOptions ParallelOptions = parallelOptions;
         private readonly Block Block = block;
         private readonly Hash256 StateRoot = stateRoot;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly AccessList? SystemTxAccessList = systemTxAccessList;
+        private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
+
+        public void Wait() => _doneEvent.Wait();
 
         void IThreadPoolWorkItem.Execute()
         {
+            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+
             IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
             try
             {
                 using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
-                WarmupAddresses(ParallelOptions, Block, scope);
+                WarmupAddresses(parallelOptions, Block, scope);
             }
             catch (Exception ex)
             {
@@ -173,6 +178,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             finally
             {
                 PreWarmer._envPool.Return(env);
+                _doneEvent.Set();
             }
         }
 

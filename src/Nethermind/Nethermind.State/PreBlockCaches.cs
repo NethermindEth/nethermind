@@ -41,7 +41,7 @@ public class PreBlockCaches
     public ConcurrentDictionary<NodeKey, byte[]?> RlpCache => _rlpCache;
     public ConcurrentDictionary<PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> PrecompileCache => _precompileCache;
 
-    public bool ClearImmediate()
+    public bool ClearCaches()
     {
         bool isDirty = false;
         foreach (Func<bool> clearCache in _clearCaches)

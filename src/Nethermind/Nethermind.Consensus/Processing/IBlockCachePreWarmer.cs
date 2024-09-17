@@ -12,5 +12,5 @@ namespace Nethermind.Consensus.Processing;
 public interface IBlockCachePreWarmer
 {
     Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, AccessList? systemTxAccessList, CancellationToken cancellationToken = default);
-    void ClearCaches();
+    bool ClearCaches();
 }

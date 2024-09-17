@@ -512,6 +512,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         catch (InvalidBlockException ex)
         {
+            if (_logger.IsWarn) _logger.Warn($"Issue processing block {ex.InvalidBlock} {ex}");
             invalidBlockHash = ex.InvalidBlock.Hash;
             error = ex.Message;
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
@@ -540,10 +541,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     options,
                     new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
                     DumpOptions.Geth);
-            }
-            else
-            {
-                if (_logger.IsError) _logger.Error($"Unexpected situation occurred during the handling of an invalid block {ex.InvalidBlock}", ex);
             }
 
             processedBlocks = null;
