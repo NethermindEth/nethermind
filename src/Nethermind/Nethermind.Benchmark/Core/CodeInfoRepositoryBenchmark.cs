@@ -34,6 +34,7 @@ public class CodeInfoRepositoryBenchmark
     private CodeInfoRepository sut;
     private static EthereumEcdsa _ethereumEcdsa;
     private WorldState _stateProvider;
+    private HashSet<Address> _accessedAddresses;
 
     [GlobalSetup]
     public void GlobalSetup()
@@ -45,6 +46,7 @@ public class CodeInfoRepositoryBenchmark
         _stateProvider.CreateAccount(Address.Zero, 100000000000000);
         _stateProvider.Commit(_spec);
 
+        _accessedAddresses = new HashSet<Address>();
         _ethereumEcdsa = new(1);
         sut = new(1);
         var list = new List<AuthorizationTuple>();
@@ -63,7 +65,7 @@ public class CodeInfoRepositoryBenchmark
         Tuples100 = list.Take(100).ToArray();
         Tuples1k = list.Take(1_000).ToArray();
 
-        static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, UInt256? nonce)
+        static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
         {
             AuthorizationTupleDecoder decoder = new();
             RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
@@ -80,13 +82,13 @@ public class CodeInfoRepositoryBenchmark
     [Benchmark]
     public void Build100Tuples()
     {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples100, _spec);
+        sut.InsertFromAuthorizations(_stateProvider, Tuples100, _accessedAddresses, _spec);
     }
 
     [Benchmark]
     public void Build1kTuples()
     {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples1k, _spec);
+        sut.InsertFromAuthorizations(_stateProvider, Tuples1k, _accessedAddresses, _spec);
     }
 
     //[Benchmark]
