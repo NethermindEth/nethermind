@@ -78,7 +78,7 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public Task Start(Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
+    public async Task Start(Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
     {
         MyProto proto = new();
         _cts = cts ?? new();
@@ -88,40 +88,37 @@ public class ShutterP2P : IShutterP2P
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
 
-        return Task.Run(async () =>
+        long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+        while (true)
         {
-            long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-            while (true)
+            try
             {
-                try
-                {
-                    using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
-                    using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
+                using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
+                using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
 
-                    byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
-                    lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                    ProcessP2PMessage(msg, onKeysReceived);
-                }
-                catch (OperationCanceledException)
+                byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
+                lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                ProcessP2PMessage(msg, onKeysReceived);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_cts.IsCancellationRequested)
                 {
-                    if (_cts.IsCancellationRequested)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
-                        break;
-                    }
-                    else if (_logger.IsWarn)
-                    {
-                        long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                        _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
-                    }
+                    if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
+                    break;
                 }
-                catch (Exception e)
+                else if (_logger.IsWarn)
                 {
-                    if (_logger.IsError) _logger.Error("Shutter processing thread error", e);
-                    throw new ShutterP2PException("Shutter processing thread error", e);
+                    long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+                    _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
             }
-        }, _cts.Token);
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("Shutter processing thread error", e);
+                throw new ShutterP2PException("Shutter processing thread error", e);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
