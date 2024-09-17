@@ -284,7 +284,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
             {
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
-                return "block gas limit exceeded";
+                return TransactionResult.BlockGasLimitExceeded;
             }
 
             return TransactionResult.Ok;
@@ -674,5 +674,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static implicit operator TransactionResult(string? error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.Success;
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
+
+        public const string BlockGasLimitExceeded = "block gas limit exceeded";
     }
 }

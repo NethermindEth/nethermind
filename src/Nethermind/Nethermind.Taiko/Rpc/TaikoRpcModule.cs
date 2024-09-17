@@ -4,14 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Compression;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,6 +28,9 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Microsoft.IO;
+using Nethermind.Core.Resettables;
+using System.Buffers;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -37,7 +38,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
 {
     private readonly ISyncConfig _syncConfig;
     private readonly IL1OriginStore _l1OriginStore;
-    private readonly ReadOnlyTxProcessingEnv _readonlyTxProcessingEnv;
+    private readonly IReadOnlyTxProcessorSource _readonlyTxProcessingEnv;
 
     public TaikoRpcModule(
         IJsonRpcConfig rpcConfig,
@@ -56,7 +57,7 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         ulong? secondsPerSlot,
         ISyncConfig syncConfig,
         IL1OriginStore l1OriginStore,
-        ReadOnlyTxProcessingEnv readonlyTxProcessingEnv) : base(
+        IReadOnlyTxProcessorSource readonlyTxProcessingEnv) : base(
        rpcConfig,
        blockchainBridge,
        blockFinder,
@@ -103,32 +104,22 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         return origin is null ? ResultWrapper<L1Origin?>.Fail("not found") : ResultWrapper<L1Origin?>.Success(origin);
     }
 
-    public Task<ResultWrapper<PreBuiltTxList[]?>> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
+    public ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit,
         ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists)
     {
-        KeyValuePair<AddressAsKey, Queue<Transaction>>[] pendingTxs =
-            _txPool.GetPendingTransactionsBySender()
-                .ToDictionary(tx => tx.Key, tx => new Queue<Transaction>(tx.Value.Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee))))
-                .ToArray();
+        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs =
+            _txPool.GetPendingTransactionsBySender();
 
         if (localAccounts is not null)
         {
-            KeyValuePair<AddressAsKey, Queue<Transaction>>[] localTxs = pendingTxs
-                .Where(txPerAddr => localAccounts.Contains(txPerAddr.Key.Value) && txPerAddr.Value.Any())
-                .ToArray();
-
-            KeyValuePair<AddressAsKey, Queue<Transaction>>[] remoteTxs = pendingTxs
-                .Where(txPerAddr => !localAccounts.Contains(txPerAddr.Key.Value) && txPerAddr.Value.Any())
-                .ToArray();
-
-            pendingTxs = [.. localTxs, .. remoteTxs];
+            pendingTxs = pendingTxs.OrderBy(txs => !localAccounts.Contains(txs.Key.Value));
         }
 
-
+        Transaction[] txQueue = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee)).ToArray();
 
         BlockHeader? head = _blockFinder.Head?.Header;
 
-        if (pendingTxs.Length is 0 || head is null)
+        if (txQueue.Length is 0 || head is null)
         {
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
@@ -149,13 +140,87 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             BaseFeePerGas = baseFee,
             StateRoot = head.StateRoot,
             IsPostMerge = true,
-        }, pendingTxs, maxTransactionsLists, maxBytesPerTxList));
+        }, txQueue, maxTransactionsLists, maxBytesPerTxList));
     }
 
+    class Batch(ulong maxBytes, TxDecoder txDecoder)
+    {
+        private readonly ulong _maxBytes = maxBytes;
+        private ulong _length;
+
+        public List<Transaction> Transactions { get; } = [];
+
+        public bool TryAddTx(Transaction tx)
+        {
+            ulong estimatedLength = EstimateTxLength(tx);
+            if (_length + estimatedLength < _maxBytes)
+            {
+                Transactions.Add(tx);
+                _length += estimatedLength;
+                return true;
+            }
+
+            return false;
+        }
+
+        public ulong GetCompressedTxsLength()
+        {
+            int contentLength = Transactions.Sum(tx => txDecoder.GetLength(tx, RlpBehaviors.None));
+            byte[] data = ArrayPool<byte>.Shared.Rent(contentLength);
+
+            try
+            {
+                RlpStream rlpStream = new(data);
+
+                rlpStream.StartSequence(contentLength);
+                foreach (Transaction tx in Transactions)
+                {
+                    txDecoder.Encode(rlpStream, tx);
+                }
+
+                return GetCompressedLength(data, rlpStream.Position);
+
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(data);
+            }
+        }
+
+        private ulong EstimateTxLength(Transaction tx)
+        {
+            int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
+            byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
+
+            try
+            {
+                RlpStream rlpStream = new(data);
+
+                rlpStream.StartSequence(contentLength);
+                txDecoder.Encode(rlpStream, tx);
+
+                return GetCompressedLength(data, rlpStream.Position);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(data);
+            }
+        }
+
+        private static ulong GetCompressedLength(byte[] data, int length)
+        {
+            using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(Batch));
+            using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
+
+            compressingStream.Write(data, 0, length);
+            compressingStream.Flush();
+            return (ulong)stream.Position;
+        }
+    }
 
     private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
 
-    public PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, KeyValuePair<AddressAsKey, Queue<Transaction>>[] txSource, int maxBatchCount, ulong maxBytesPerTxList)
+    private PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList)
     {
         lock (worldState)
         {
@@ -166,113 +231,96 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
 
             List<PreBuiltTxList> Batches = [];
 
-            List<Transaction> currentBatch = [];
-
-            void CommitBatch()
+            void CommitBatch(ref Batch batch)
             {
-                byte[] list = EncodeAndCompress(currentBatch.ToArray());
-                Batches.Add(new PreBuiltTxList(currentBatch.Select(tx => new TransactionForRpc(tx)).ToArray(),
-                                               blockHeader.GasUsed,
-                                               list.Length));
-                currentBatch = [];
+                Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new TransactionForRpc(tx)).ToArray(),
+                                               (ulong)blockHeader.GasUsed,
+                                               batch.GetCompressedTxsLength()));
                 blockHeader.GasUsed = 0;
-            }
-
-            bool TryAddToBatch(Transaction tx)
-            {
-                currentBatch.Add(tx);
-
-                byte[] compressed = EncodeAndCompress(currentBatch.ToArray());
-
-                if ((ulong)compressed.LongLength > maxBytesPerTxList)
-                {
-                    currentBatch.RemoveAt(currentBatch.Count - 1);
-                    return false;
-                }
-
-                return true;
+                batch = new(maxBytesPerTxList, _txDecoder);
             }
 
             BlockExecutionContext blkCtx = new(blockHeader);
             worldState.StateRoot = blockHeader.StateRoot;
 
-            for (int senderCounter = 0; senderCounter < txSource.Length; senderCounter++)
+            Batch batch = new(maxBytesPerTxList, _txDecoder);
+
+            for (int i = 0; i < txSource.Length;)
             {
-                while (txSource[senderCounter].Value.Count != 0)
+                Snapshot snapshot = worldState.TakeSnapshot(true);
+                long gasUsed = blockHeader.GasUsed;
+                Transaction tx = txSource[i];
+
+                try
                 {
-                    Snapshot snapshot = worldState.TakeSnapshot(true);
-                    Transaction tx = txSource[senderCounter].Value.Peek();
-
-                    if (tx.Type == TxType.Blob)
+                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
+                    if (!executionResult)
                     {
-                        txSource[senderCounter].Value.Clear();
-                        break;
-                    }
-
-                    try
-                    {
-                        if (!txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance))
+                        if (executionResult.Error == "block gas limit exceeded")
                         {
-                            txSource[senderCounter].Value.Clear();
                             worldState.Restore(snapshot);
-                            break;
-                        }
-                    }
-                    catch
-                    {
-                        txSource[senderCounter].Value.Clear();
-                        worldState.Restore(snapshot);
-                        break;
-                    }
+                            blockHeader.GasUsed = gasUsed;
 
-                    if (TryAddToBatch(tx))
+                            if (batch.Transactions.Count is 0)
+                            {
+                                while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
+                                continue;
+                            }
+                            else
+                            {
+                                CommitBatch(ref batch);
+                                if (maxBatchCount == Batches.Count)
+                                {
+                                    return [.. Batches];
+                                }
+                                continue;
+                            }
+                        }
+                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
+                        worldState.Restore(snapshot);
+                        blockHeader.GasUsed = gasUsed;
+                        continue;
+                    }
+                }
+                catch
+                {
+                    while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
+                    worldState.Restore(snapshot);
+                    blockHeader.GasUsed = gasUsed;
+                    continue;
+                }
+
+                if (!batch.TryAddTx(tx))
+                {
+                    if (batch.Transactions.Count is 0)
                     {
-                        txSource[senderCounter].Value.Dequeue();
+                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
+                        worldState.Restore(snapshot);
+                        blockHeader.GasUsed = gasUsed;
+                        continue;
                     }
                     else
                     {
-                        if (!currentBatch.Any())
+                        CommitBatch(ref batch);
+                        worldState.Restore(snapshot);
+                        blockHeader.GasUsed = gasUsed;
+                        if (maxBatchCount == Batches.Count)
                         {
-                            txSource[senderCounter].Value.Clear();
-                            worldState.Restore(snapshot);
+                            return [.. Batches];
                         }
-                        else
-                        {
-                            CommitBatch();
-                            worldState.Restore(snapshot);
-                            if (maxBatchCount <= Batches.Count)
-                            {
-                                return Batches.ToArray();
-                            }
-                        }
+                        continue;
                     }
                 }
+
+                i++;
             }
 
-            if (currentBatch.Any())
+            if (batch.Transactions.Count is not 0)
             {
-                CommitBatch();
+                CommitBatch(ref batch);
             }
 
-            return Batches.ToArray();
+            return [.. Batches];
         }
-    }
-
-    byte[] EncodeAndCompress(Transaction[] txs)
-    {
-        int contentLength = txs.Sum(tx => _txDecoder.GetLength(tx, RlpBehaviors.None));
-        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
-
-        rlpStream.StartSequence(contentLength);
-        foreach (Transaction tx in txs)
-        {
-            _txDecoder.Encode(rlpStream, tx);
-        }
-
-        using MemoryStream stream = new();
-        using ZLibStream compressingStream = new(stream, CompressionMode.Compress, false);
-        compressingStream.Write(rlpStream.Data);
-        compressingStream.Close();
-        return stream.ToArray();
     }
 }

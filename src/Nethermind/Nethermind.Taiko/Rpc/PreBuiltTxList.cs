@@ -7,13 +7,13 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Taiko.Rpc;
 
-public class PreBuiltTxList(TransactionForRpc[] transactions, long estimatedGasUsed, long bytesLength)
+public class PreBuiltTxList(TransactionForRpc[] transactions, ulong estimatedGasUsed, ulong bytesLength)
 {
     public TransactionForRpc[] TxList { get; set; } = transactions;
 
     [JsonConverter(typeof(LongRawJsonConverter))]
-    public long EstimatedGasUsed { get; set; } = estimatedGasUsed;
+    public ulong EstimatedGasUsed { get; set; } = estimatedGasUsed;
 
     [JsonConverter(typeof(LongRawJsonConverter))]
-    public long BytesLength { get; set; } = bytesLength;
+    public ulong BytesLength { get; set; } = bytesLength;
 }
