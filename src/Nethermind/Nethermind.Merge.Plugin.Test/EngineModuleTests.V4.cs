@@ -346,7 +346,7 @@ public partial class EngineModuleTests
 
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayloadV4 executionPayload1 = await SendNewBlockV3(rpc, chain, requests);
+        ExecutionPayloadV4 executionPayload1 = await SendNewBlockV4(rpc, chain, requests);
         Transaction[] txs = BuildTransactions(
             chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
 
@@ -402,7 +402,7 @@ public partial class EngineModuleTests
 
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayloadV4 executionPayload1 = await SendNewBlockV3(rpc, chain, requests);
+        ExecutionPayloadV4 executionPayload1 = await SendNewBlockV4(rpc, chain, requests);
         Transaction[] txs = BuildTransactions(
             chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
 
@@ -438,7 +438,7 @@ public partial class EngineModuleTests
         payloadBodies.Should().BeEquivalentTo(expected);
     }
 
-    private async Task<ExecutionPayloadV4> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, ConsensusRequest[]? requests)
+    private async Task<ExecutionPayloadV4> SendNewBlockV4(IEngineRpcModule rpc, MergeTestBlockchain chain, ConsensusRequest[]? requests)
     {
         ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, Array.Empty<Withdrawal>(), 0, 0, Array.Empty<Transaction>(), parentBeaconBlockRoot: TestItem.KeccakA, requests: requests);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
