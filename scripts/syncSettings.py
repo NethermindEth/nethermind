@@ -75,12 +75,12 @@ configs = {
         "multiplierRequirement": 10000
     },
     "op-mainnet": {
-        "url": "api-optimistic.etherscan.io",
+        "url": "https://mainnet.optimism.io",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
     "op-sepolia": {
-        "url": "api-sepolia-optimistic.etherscan.io",
+        "url": "https://sepolia.optimism.io",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }
