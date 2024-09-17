@@ -23,7 +23,7 @@ class ShutterBlockHandlerTests
         IShutterBlockHandler blockHandler = api.BlockHandler;
 
         bool waitReturned = false;
-        CancellationTokenSource source = new();
+        using CancellationTokenSource source = new();
         _ = blockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
@@ -46,7 +46,7 @@ class ShutterBlockHandlerTests
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         bool waitReturned = false;
-        CancellationTokenSource source = new();
+        using CancellationTokenSource source = new();
         _ = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);
@@ -69,7 +69,7 @@ class ShutterBlockHandlerTests
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         bool waitReturned = false;
-        CancellationTokenSource source = new();
+        using CancellationTokenSource source = new();
         _ = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
             .ContinueWith((_) => waitReturned = true)
             .WaitAsync(source.Token);

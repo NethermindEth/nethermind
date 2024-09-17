@@ -83,7 +83,8 @@ public class ShutterIntegrationTests
         var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
-        await chain.Api.TxSource.WaitForTransactions(ShutterTestsCommon.InitialSlot, new CancellationToken());
+        using CancellationTokenSource source = new();
+        await chain.Api.TxSource.WaitForTransactions(ShutterTestsCommon.InitialSlot, source.Token);
         txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(20));
 
