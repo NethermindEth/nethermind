@@ -36,26 +36,26 @@ public interface IPortalHistoryRpcModule: IRpcModule
     Task<ResultWrapper<string[]>> portal_historyFindNodes(string enr, ushort[] distances);
 
     [JsonRpcMethod(Description = "Send FINDCONTENT message to get the content with a content key.")]
-    Task<ResultWrapper<FindContentResult>> portal_historyFindContent(string enr, string contentKey);
+    Task<ResultWrapper<FindContentResult>> portal_historyFindContent(string enr, byte[] contentKey);
 
     [JsonRpcMethod(Description = "Send an OFFER request with given ContentKey, to the designated peer and wait for a response.")]
-    Task<ResultWrapper<string>> portal_historyOffer(string enr, string contentKey, string contentValue);
+    Task<ResultWrapper<byte[]>> portal_historyOffer(string enr, byte[] contentKey, byte[] contentValue);
 
     [JsonRpcMethod(Description = "Look up ENRs closest to the given target, that are members of the history network")]
     Task<ResultWrapper<string[]>> portal_historyRecursiveFindNodes(ValueHash256 nodeId);
 
     [JsonRpcMethod(Description = "Look up a target content key in the network")]
-    Task<ResultWrapper<RecursiveFindContentResult>> portal_historyRecursiveFindContent(string contentKey);
+    Task<ResultWrapper<RecursiveFindContentResult>> portal_historyRecursiveFindContent(byte[] contentKey);
 
     [JsonRpcMethod(Description = "Look up a target content key in the network and get tracing data")]
-    Task<ResultWrapper<TraceRecursiveFindContentResult>> portal_historyTraceRecursiveFindContent(string contentKey);
+    Task<ResultWrapper<TraceRecursiveFindContentResult>> portal_historyTraceRecursiveFindContent(byte[] contentKey);
 
     [JsonRpcMethod(Description = "Store history content key with content data")]
-    ResultWrapper<bool> portal_historyStore(string contentKey, string contentValue);
+    ResultWrapper<bool> portal_historyStore(byte[] contentKey, byte[] contentValue);
 
     [JsonRpcMethod(Description = "Get a content from the local database")]
     ResultWrapper<byte[]> portal_historyLocalContent(byte[] contentKey);
 
     [JsonRpcMethod(Description = "Send the provided content item to interested peers. Clients may choose to send to some or all peers.")]
-    Task<ResultWrapper<int>> portal_historyGossip(string contentKey, string contentValue);
+    Task<ResultWrapper<int>> portal_historyGossip(byte[] contentKey, byte[] contentValue);
 }

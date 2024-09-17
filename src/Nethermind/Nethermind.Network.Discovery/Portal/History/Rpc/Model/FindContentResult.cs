@@ -6,7 +6,7 @@ namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 // TODO: Its a oneof
 public class FindContentResult
 {
-    public string Content { get; set; } = null!;
+    public byte[] Content { get; set; } = null!;
     public bool UtpTransfer { get; set; }
 
     public string[] Enrs { get; set; } = Array.Empty<string>();

@@ -70,6 +70,11 @@ public class PortalHistoryRpcModule(
     {
         IEnr[] enrs = await kademlia.LookupNodesClosest(nodeId, default, 1);
 
+        if (enrs.Length < 1)
+        {
+            return ResultWrapper<string>.Fail("Lookup failed");
+        }
+
         return ResultWrapper<string>.Success(enrs[0].ToString()!);
     }
 
@@ -104,12 +109,12 @@ public class PortalHistoryRpcModule(
         return ResultWrapper<string[]>.Success(enrStrs);
     }
 
-    public async Task<ResultWrapper<FindContentResult>> portal_historyFindContent(string enrStr, string contentKeyStr)
+    public async Task<ResultWrapper<FindContentResult>> portal_historyFindContent(string enrStr, byte[] contentKey)
     {
         CancellationToken token = new CancellationToken();
 
         IEnr enr = enrProvider.Decode(enrStr);
-        (byte[]? payload, bool utpTransfer, IEnr[]? neighbours) = await contentLookupService.LookupContentFrom(enr, Bytes.FromHexString(contentKeyStr), token);
+        (byte[]? payload, bool utpTransfer, IEnr[]? neighbours) = await contentLookupService.LookupContentFrom(enr, contentKey, token);
 
         FindContentResult result = new FindContentResult();
 
@@ -119,24 +124,24 @@ public class PortalHistoryRpcModule(
         }
         else
         {
-            result.Content = payload!.ToHexString();
+            result.Content = payload!;
             result.UtpTransfer = utpTransfer;
         }
 
         return ResultWrapper<FindContentResult>.Success(result);
     }
 
-    public async Task<ResultWrapper<string>> portal_historyOffer(string enrStr, string contentKeyStr, string contentValueStr)
+    public async Task<ResultWrapper<byte[]>> portal_historyOffer(string enrStr, byte[] contentKey, byte[] contentValue)
     {
         IEnr enr = enrProvider.Decode(enrStr);
 
         Accept accept = await contentNetworkProtocol.Offer(enr, new Offer()
         {
-            ContentKeys = [Bytes.FromHexString(contentKeyStr)]
+            ContentKeys = [contentKey]
         }, default);
         // TODO: Do we also send it?
 
-        return ResultWrapper<string>.Success(accept.AcceptedBits.ToBitString());
+        return ResultWrapper<byte[]>.Success(accept.AcceptedBits.ToBytes());
     }
 
     public async Task<ResultWrapper<string[]>> portal_historyRecursiveFindNodes(ValueHash256 nodeId)
@@ -147,9 +152,8 @@ public class PortalHistoryRpcModule(
         return ResultWrapper<string[]>.Success(enrStrs);
     }
 
-    public async Task<ResultWrapper<RecursiveFindContentResult>> portal_historyRecursiveFindContent(string contentKeyStr)
+    public async Task<ResultWrapper<RecursiveFindContentResult>> portal_historyRecursiveFindContent(byte[] contentKey)
     {
-        byte[] contentKey = Bytes.FromHexString(contentKeyStr);
         (byte[]? payload, bool utpTransfer) = await contentLookupService.LookupContent(contentKey, default);
 
         if (payload == null)
@@ -159,16 +163,15 @@ public class PortalHistoryRpcModule(
 
         var findContentResult = new RecursiveFindContentResult()
         {
-            Content = payload!.ToHexString(),
+            Content = payload!,
             UtpTransfer = utpTransfer
         };
 
         return ResultWrapper<RecursiveFindContentResult>.Success(findContentResult);
     }
 
-    public async Task<ResultWrapper<TraceRecursiveFindContentResult>> portal_historyTraceRecursiveFindContent(string contentKeyStr)
+    public async Task<ResultWrapper<TraceRecursiveFindContentResult>> portal_historyTraceRecursiveFindContent(byte[] contentKey)
     {
-        byte[] contentKey = Bytes.FromHexString(contentKeyStr);
         (byte[]? payload, bool utpTransfer) = await contentLookupService.LookupContent(contentKey, default);
 
         if (payload == null)
@@ -178,19 +181,15 @@ public class PortalHistoryRpcModule(
 
         var findContentResult = new TraceRecursiveFindContentResult()
         {
-            Content = payload!.ToHexString(),
+            Content = payload!,
             UtpTransfer = utpTransfer
         };
 
         return ResultWrapper<TraceRecursiveFindContentResult>.Success(findContentResult);
     }
 
-    public ResultWrapper<bool> portal_historyStore(string contentKeyStr, string contentValueStr)
+    public ResultWrapper<bool> portal_historyStore(byte[] contentKey, byte[] contentValue)
     {
-        // TODO: Can't it use byte array directly from rpc?
-        byte[] contentKey = Bytes.FromHexString(contentKeyStr);
-        byte[] contentValue = Bytes.FromHexString(contentValueStr);
-
         contentNetworkStore.Store(contentKey, contentValue);
 
         return ResultWrapper<bool>.Success(true);
@@ -208,12 +207,8 @@ public class PortalHistoryRpcModule(
         return ResultWrapper<byte[]>.Success(content);
     }
 
-    public async Task<ResultWrapper<int>> portal_historyGossip(string contentKeyStr, string contentValueStr)
+    public async Task<ResultWrapper<int>> portal_historyGossip(byte[] contentKey, byte[] contentValue)
     {
-        // TODO: Can't it use byte array directly from rpc?
-        byte[] contentKey = Bytes.FromHexString(contentKeyStr);
-        byte[] contentValue = Bytes.FromHexString(contentValueStr);
-
         int distributedPeer = await contentDistributor.DistributeContent(contentKey, contentValue, default);
 
         return ResultWrapper<int>.Success(distributedPeer);

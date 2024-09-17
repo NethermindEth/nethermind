@@ -7,7 +7,7 @@ namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 
 public class TraceRecursiveFindContentResult
 {
-    public string Content { get; set; } = null!;
+    public byte[] Content { get; set; } = null!;
     public bool UtpTransfer { get; set; }
 
     public TraceResultObject Trace { get; set; } = null!;

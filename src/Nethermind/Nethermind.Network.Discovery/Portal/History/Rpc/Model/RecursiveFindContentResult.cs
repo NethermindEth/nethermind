@@ -5,6 +5,6 @@ namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 
 public class RecursiveFindContentResult
 {
-    public string Content { get; set; } = null!;
+    public byte[] Content { get; set; } = null!;
     public bool UtpTransfer { get; set; }
 }
