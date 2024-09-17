@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin.Test
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.ConsensusRequestsProcessor?.ProcessRequests(block!, chain.State, Array.Empty<TxReceipt>(),chain.SpecProvider.GenesisSpec);
+            chain.ConsensusRequestsProcessor?.ProcessRequests(block!, chain.State, Array.Empty<TxReceipt>(), chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
