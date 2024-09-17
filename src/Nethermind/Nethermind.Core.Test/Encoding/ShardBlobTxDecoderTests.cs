@@ -19,7 +19,7 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public partial class ShardBlobTxDecoderTests
 {
-    private readonly TxDecoder _txDecoder = new();
+    private readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     [SetUp]
     public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();

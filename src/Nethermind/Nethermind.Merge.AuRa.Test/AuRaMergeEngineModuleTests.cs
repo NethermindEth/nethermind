@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -19,6 +20,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -60,16 +62,16 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     [TestCase(
         "0xe97d919a17fa5011ff3a08ffb07657ed9e1aaf5ff649888e5d7f605006caf598",
-        "0x91675165328fd9a5f25375eb1a468b65b927a1415afd18ff51eeef287ca71fae",
-        "0x692ba034d9dc8c4c2d7d172a2fb1f3773f8a250fde26501b99d2733a2b48e70b",
+        "0xdd9be69fe6ed616f44d53576f430c1c7720ed0e7bff59478539a4a43dbb3bf1f",
+        "0xd75d320c3a98a02ec7fe2abdcb1769bd063fec04d73f1735810f365ac12bc4ba",
         "0x3c6a8926870bdeff")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
     [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
-        "0x310f4c8c949eb758faa4497e293bb18ef27a465af16553e5fc03752d3be19cc3",
-        "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f",
+        "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
+        "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
         "0xcdd08163eccae523")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);
@@ -108,6 +110,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
+        protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        {
+            if (specProvider is TestSingleReleaseSpecProvider provider) provider.SealEngine = SealEngineType;
+            return base.Build(specProvider, initialValues, addBlockOnStart);
+        }
+
         protected override IBlockProcessor CreateBlockProcessor()
         {
             _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
@@ -142,11 +150,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                new BlockhashStore(SpecProvider, State),
                 TxProcessor,
+                new BeaconBlockRootHandler(TxProcessor),
+                new BlockhashStore(SpecProvider, State),
                 LogManager,
                 WithdrawalProcessor,
-                consensusRequestsProcessor: ConsensusRequestsProcessor);
+                consensusRequestsProcessor: ConsensusRequestsProcessor,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

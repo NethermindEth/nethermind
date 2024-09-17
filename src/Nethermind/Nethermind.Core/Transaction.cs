@@ -20,6 +20,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        public const byte MaxTxType = 0x7F;
         public const int BaseTxGasCost = 21000;
 
         public ulong? ChainId { get; set; }

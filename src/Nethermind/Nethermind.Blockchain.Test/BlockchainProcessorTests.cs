@@ -89,6 +89,7 @@ namespace Nethermind.Blockchain.Test
                         {
                             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                             Block suggestedBlock = suggestedBlocks[i];
+                            BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                             Hash256 hash = suggestedBlock.Hash!;
                             if (!_allowed.Contains(hash))
                             {
@@ -118,6 +119,8 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+                public event EventHandler<BlockEventArgs>? BlockProcessing;
 
                 public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 

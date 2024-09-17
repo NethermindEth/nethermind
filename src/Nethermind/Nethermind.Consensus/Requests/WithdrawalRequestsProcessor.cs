@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
@@ -17,17 +18,17 @@ using System.Buffers.Binary;
 namespace Nethermind.Consensus.Requests;
 
 // https://eips.ethereum.org/EIPS/eip-7002#block-processing
-public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProcessor)
+public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProcessor) : IWithdrawalRequestsProcessor
 {
     private const long GasLimit = 30_000_000L;
 
     public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
-        if (!spec.WithdrawalRequestsEnabled)
+        if (!spec.IsEip7002Enabled)
             yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;
-        if (!state.AccountExists(eip7002Account)) // not needed anymore?
+        if (!state.AccountExists(eip7002Account))
             yield break;
 
         CallOutputTracer tracer = new();

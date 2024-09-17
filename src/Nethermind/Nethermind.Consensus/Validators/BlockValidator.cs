@@ -349,6 +349,65 @@ public class BlockValidator(
         return true;
     }
 
+    public bool ValidateRequests(Block block, out string? error) =>
+        ValidateRequests(block, _specProvider.GetSpec(block.Header), out error);
+
+    public bool ValidateRequests(Block block, IReleaseSpec spec, out string? error)
+    {
+        if (spec.ConsensusRequestsEnabled && block.Requests is null)
+        {
+            error = BlockErrorMessages.MissingRequests;
+
+            if (_logger.IsWarn) _logger.Warn(error);
+
+            return false;
+        }
+
+        if (!spec.ConsensusRequestsEnabled && block.Requests is not null)
+        {
+            error = BlockErrorMessages.RequestsNotEnabled;
+
+            if (_logger.IsWarn) _logger.Warn(error);
+
+            return false;
+        }
+
+        if (!ValidateRequestsHashMatches(block, out Hash256 requestsRoot))
+        {
+            error = BlockErrorMessages.InvalidRequestsRoot(block.Header.RequestsRoot, requestsRoot);
+            if (_logger.IsWarn) _logger.Warn($"DepositsRoot root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.RequestsRoot}, got {requestsRoot}");
+
+            return false;
+        }
+
+        // validate that the requests types are in ascending order
+        if (!ValidateRequestsOrder(block, out error))
+        {
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    public static bool ValidateRequestsOrder(Block block, out string? error)
+    {
+        if (block.Requests is not null)
+        {
+            for (int i = 1; i < block.Requests.Length; i++)
+            {
+                if (block.Requests[i].Type < block.Requests[i - 1].Type)
+                {
+                    error = BlockErrorMessages.InvalidRequestsOrder;
+                    return false;
+                }
+            }
+        }
+        error = null;
+        return true;
+    }
+
     private bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
@@ -357,9 +416,11 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            if (!_txValidator.IsWellFormed(transaction, spec, out errorMessage))
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
+            if (!isWellFormed)
             {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {errorMessage}");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
+                errorMessage = isWellFormed.Error;
                 return false;
             }
         }

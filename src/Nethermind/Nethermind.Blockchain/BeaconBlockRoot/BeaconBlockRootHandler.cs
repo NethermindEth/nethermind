@@ -3,55 +3,42 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
-public class BeaconBlockRootHandler : IBeaconBlockRootHandler
+public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBlockRootHandler
 {
-    private readonly ITransactionProcessor _processor;
-    private static Address Default4788Address = new Address("0x000f3df6d732807ef1319fb7b8bb8522d0beac02");
-    private readonly ILogger _logger;
     private const long GasLimit = 30_000_000L;
-    public BeaconBlockRootHandler(
-        ITransactionProcessor processor,
-        ILogManager logManager)
-    {
-        _processor = processor;
-        _logger = logManager.GetClassLogger();
-    }
-    public void ExecuteSystemCall(Block block, IReleaseSpec spec)
+
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
         BlockHeader? header = block.Header;
-        if (!spec.IsBeaconBlockRootAvailable ||
-            header.IsGenesis ||
-            header.ParentBeaconBlockRoot is null) return;
+        var canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
+                                  && !header.IsGenesis
+                                  && header.ParentBeaconBlockRoot is not null;
 
-        Transaction? transaction = new()
+        if (canInsertBeaconRoot)
         {
-            Value = UInt256.Zero,
-            Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
-            To = spec.Eip4788ContractAddress ?? Default4788Address,
-            SenderAddress = Address.SystemUser,
-            GasLimit = GasLimit,
-            GasPrice = UInt256.Zero,
-        };
-        transaction.Hash = transaction.CalculateHash();
+            Address beaconRootsAddress = spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress;
+            Transaction transaction = new()
+            {
+                Value = UInt256.Zero,
+                Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
+                To = beaconRootsAddress,
+                SenderAddress = Address.SystemUser,
+                GasLimit = GasLimit,
+                GasPrice = UInt256.Zero,
+                AccessList = new AccessList.Builder().AddAddress(beaconRootsAddress).Build()
+            };
 
-        try
-        {
-            _processor.Execute(transaction, header, NullTxTracer.Instance);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error("Error during calling BeaconBlockRoot contract", e);
+            transaction.Hash = transaction.CalculateHash();
+
+            processor.Execute(transaction, header, NullTxTracer.Instance);
         }
     }
 }

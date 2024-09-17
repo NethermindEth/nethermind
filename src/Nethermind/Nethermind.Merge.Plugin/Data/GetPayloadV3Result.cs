@@ -12,8 +12,7 @@ public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256
 {
     public BlobsBundleV1 BlobsBundle { get; } = blobsBundle;
 
-    public bool ShouldOverrideBuilder { get; }
-
+    public bool ShouldOverrideBuilder { get; init; }
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }

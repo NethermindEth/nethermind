@@ -70,7 +70,7 @@ public class InitializeStateDb : IStep
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
         {
-            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            if (_logger.IsInfo) _logger.Info($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
             pruningConfig.PruningBoundary = 128;
         }
 
@@ -203,7 +203,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore, _logger);
 
         return Task.CompletedTask;
     }
@@ -219,7 +219,8 @@ public class InitializeStateDb : IStep
         INethermindApi api,
         IStateReader stateReader,
         INodeStorage mainNodeStorage,
-        IPruningTrieStore trieStore)
+        IPruningTrieStore trieStore,
+        ILogger logger)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -228,8 +229,10 @@ public class InitializeStateDb : IStep
             switch (pruningConfig.FullPruningTrigger)
             {
                 case FullPruningTrigger.StateDbSize:
+                    if (logger.IsInfo) logger.Info($"Full pruning will activate when the database size reaches {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
                     return new PathSizePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
                 case FullPruningTrigger.VolumeFreeSpace:
+                    if (logger.IsInfo) logger.Info($"Full pruning will activate when disk free space drops below {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
                     return new DiskFreeSpacePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
                 default:
                     return null;

@@ -30,4 +30,10 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
+
+    [JsonRpcMethod(
+        Description = "Returns requested blobs and proofs.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<GetBlobsV1Result>> engine_getBlobsV1(byte[][] blobVersionedHashes);
 }

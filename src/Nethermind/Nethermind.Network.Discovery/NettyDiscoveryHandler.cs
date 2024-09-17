@@ -11,23 +11,24 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery;
 
-public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMsgSender
+public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 {
     private readonly ILogger _logger;
     private readonly IDiscoveryManager _discoveryManager;
-    private readonly IDatagramChannel _channel;
+    private readonly IChannel _channel;
     private readonly IMessageSerializationService _msgSerializationService;
     private readonly ITimestamper _timestamper;
 
     public NettyDiscoveryHandler(
         IDiscoveryManager? discoveryManager,
-        IDatagramChannel? channel,
+        IChannel? channel,
         IMessageSerializationService? msgSerializationService,
         ITimestamper? timestamper,
-        ILogManager? logManager)
+        ILogManager? logManager) : base(logManager)
     {
         _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
@@ -80,9 +81,9 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
 
         int size = msgBuffer.ReadableBytes;
-        if (size > 1280)
+        if (size > MaxPacketSize)
         {
-            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all client. Msg: ${discoveryMsg}");
+            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all clients. Msg: ${discoveryMsg}");
         }
 
         if (discoveryMsg is PingMsg pingMessage)
@@ -106,8 +107,11 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
     }
-    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+
+    private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
     {
+        msg = null;
+
         IByteBuffer content = packet.Content;
         EndPoint address = packet.Sender;
 
@@ -120,20 +124,18 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         if (msgBytes.Length < 98)
         {
             if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msgBytes.Length}, sender: {address}");
-            return;
+            return false;
         }
 
         byte typeRaw = msgBytes[97];
         if (!FastEnum.IsDefined<MsgType>((int)typeRaw))
         {
             if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.ToHexString()}");
-            return;
+            return false;
         }
 
         MsgType type = (MsgType)typeRaw;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
-
-        DiscoveryMsg msg;
 
         try
         {
@@ -143,8 +145,24 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msgBytes.ToHexString()}, {e.Message}");
+            return false;
+        }
+
+        return true;
+    }
+
+    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+    {
+        if (!TryParseMessage(packet, out DiscoveryMsg? msg) || msg == null)
+        {
+            packet.Content.ResetReaderIndex();
+            ctx.FireChannelRead(packet.Retain());
             return;
         }
+
+        MsgType type = msg.MsgType;
+        EndPoint address = packet.Sender;
+        int size = packet.Content.ReadableBytes;
 
         try
         {

@@ -31,10 +31,8 @@ namespace Nethermind.Specs.Forks
             Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;
             Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
             DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
-            AuRaSystemCalls = false;
         }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());
-        public override bool IsEip158IgnoredAccount(Address address) => false;
     }
 }

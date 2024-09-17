@@ -16,7 +16,7 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public class TxTrie : PatriciaTrie<Transaction>
 {
-    private static readonly TxDecoder _txDecoder = new();
+    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>

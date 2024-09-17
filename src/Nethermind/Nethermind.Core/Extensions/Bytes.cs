@@ -145,20 +145,12 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
         {
-            byte mask = (byte)(1 << (7 - bitNumber));
-            b = b |= mask;
+            int mask = (1 << (7 - bitNumber));
+            b |= (byte)mask;
         }
 
         public static int GetHighestSetBitIndex(this byte b)
-        {
-            if ((b & 128) == 128) return 8;
-            if ((b & 64) == 64) return 7;
-            if ((b & 32) == 32) return 6;
-            if ((b & 16) == 16) return 5;
-            if ((b & 8) == 8) return 4;
-            if ((b & 4) == 4) return 3;
-            return (b & 2) == 2 ? 2 : b;
-        }
+            => 32 - BitOperations.LeadingZeroCount((uint)b);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
@@ -282,6 +274,14 @@ namespace Nethermind.Core.Extensions
 
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            return result;
+        }
+
+        public static byte[] Concat(byte[] part1, byte[] part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result, 0);
+            part2.CopyTo(result.AsSpan(part1.Length));
             return result;
         }
 
@@ -1041,19 +1041,7 @@ namespace Nethermind.Core.Extensions
                 ThrowInvalidOperationException();
             }
 
-            bool isSuccess;
-            if (oddMod == 0 &&
-                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
-                hexString.Length >= Vector128<byte>.Count)
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf8_Vector128(hexString, result);
-            }
-            else
-            {
-                isSuccess = HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1);
-            }
-
-            if (!isSuccess)
+            if (!HexConverter.TryDecodeFromUtf8(hexString, result))
             {
                 ThrowFormatException_IncorrectHexString();
             }
