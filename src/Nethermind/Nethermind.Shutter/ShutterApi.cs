@@ -97,7 +97,7 @@ public class ShutterApi : IShutterApi
     }
 
     public Task StartP2P(CancellationTokenSource? cancellationTokenSource = null)
-        => P2P!.Start(cancellationTokenSource);
+        => P2P!.Start(OnKeysReceived, cancellationTokenSource);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
     {
@@ -119,9 +119,9 @@ public class ShutterApi : IShutterApi
         await (P2P?.DisposeAsync() ?? default);
     }
 
-    protected virtual async void OnKeysReceived(object? sender, IShutterP2P.KeysReceivedArgs keysReceivedArgs)
+    protected virtual async Task OnKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        IShutterKeyValidator.ValidatedKeys? keys = KeyValidator.ValidateKeys(keysReceivedArgs.Keys);
+        IShutterKeyValidator.ValidatedKeys? keys = KeyValidator.ValidateKeys(decryptionKeys);
 
         if (keys is null)
         {
@@ -142,7 +142,6 @@ public class ShutterApi : IShutterApi
     protected virtual void InitP2P(IShutterConfig cfg, ILogManager logManager)
     {
         P2P = new ShutterP2P(cfg, logManager);
-        P2P.KeysReceived += OnKeysReceived;
     }
 
     protected virtual IShutterEon InitEon()

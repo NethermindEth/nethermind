@@ -9,12 +9,6 @@ namespace Nethermind.Shutter;
 
 public interface IShutterP2P
 {
-    Task Start(CancellationTokenSource? cts = null);
+    Task Start(Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null);
     ValueTask DisposeAsync();
-    event EventHandler<KeysReceivedArgs> KeysReceived;
-
-    class KeysReceivedArgs(Dto.DecryptionKeys keys) : EventArgs
-    {
-        public Dto.DecryptionKeys Keys = keys;
-    }
 }

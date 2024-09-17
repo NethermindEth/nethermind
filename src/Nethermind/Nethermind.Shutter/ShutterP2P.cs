@@ -34,7 +34,6 @@ public class ShutterP2P : IShutterP2P
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    public event EventHandler<IShutterP2P.KeysReceivedArgs>? KeysReceived;
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager)
     {
@@ -79,7 +78,7 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public Task Start(CancellationTokenSource? cts = null)
+    public Task Start(Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
     {
         MyProto proto = new();
         _cts = cts ?? new();
@@ -101,7 +100,7 @@ public class ShutterP2P : IShutterP2P
 
                     byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                     lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                    ProcessP2PMessage(msg);
+                    ProcessP2PMessage(msg, onKeysReceived);
                 }
                 catch (OperationCanceledException)
                 {
@@ -147,7 +146,7 @@ public class ShutterP2P : IShutterP2P
         }
     }
 
-    private void ProcessP2PMessage(byte[] msg)
+    private void ProcessP2PMessage(byte[] msg, Func<Dto.DecryptionKeys, Task> onKeysReceived)
     {
         if (_logger.IsTrace) _logger.Trace("Processing Shutter P2P message.");
 
@@ -156,7 +155,7 @@ public class ShutterP2P : IShutterP2P
             Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
             if (envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
             {
-                KeysReceived?.Invoke(this, new(decryptionKeys));
+                _ = onKeysReceived(decryptionKeys);
             }
             else if (_logger.IsDebug)
             {

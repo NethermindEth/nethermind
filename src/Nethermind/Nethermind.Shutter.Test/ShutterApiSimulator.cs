@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -57,7 +58,7 @@ public class ShutterApiSimulator(
         => _blockTree.NewHeadBlock += Raise.EventWith(this, e);
 
     public void TriggerKeysReceived(Dto.DecryptionKeys keys)
-        => P2P!.KeysReceived += Raise.EventWith<IShutterP2P.KeysReceivedArgs>(this, new(keys));
+        => _ = OnKeysReceived(keys);
 
     public void NextEon()
         => eventSimulator.NextEon();
@@ -84,9 +85,9 @@ public class ShutterApiSimulator(
         TxLoader.LoadFromReceipts(block, receipts, eventSimulator.GetCurrentEonInfo().Eon);
     }
 
-    protected override async void OnKeysReceived(object? sender, IShutterP2P.KeysReceivedArgs keysReceivedArgs)
+    protected override async Task OnKeysReceived(Dto.DecryptionKeys decryptionKeys)
     {
-        IShutterKeyValidator.ValidatedKeys? keys = KeyValidator.ValidateKeys(keysReceivedArgs.Keys);
+        IShutterKeyValidator.ValidatedKeys? keys = KeyValidator.ValidateKeys(decryptionKeys);
 
         if (keys is null)
         {
@@ -112,7 +113,6 @@ public class ShutterApiSimulator(
     protected override void InitP2P(IShutterConfig cfg, ILogManager logManager)
     {
         P2P = Substitute.For<IShutterP2P>();
-        P2P.KeysReceived += OnKeysReceived;
     }
 
     protected override IShutterEon InitEon()
