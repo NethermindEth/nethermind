@@ -1790,7 +1790,6 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Prague.Instance);
-            specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Prague.Instance);
             return specProvider;
         }
 
