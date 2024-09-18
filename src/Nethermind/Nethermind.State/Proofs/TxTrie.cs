@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Trie;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
@@ -16,37 +15,22 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public class TxTrie : PatriciaTrie<Transaction>
 {
-    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
-
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(Transaction[] transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
-        : base(transactions, canBuildProof, bufferPool: bufferPool) => ArgumentNullException.ThrowIfNull(transactions);
-
-    protected override void Initialize(Transaction[] list)
-    {
-        int key = 0;
-
-        foreach (Transaction? transaction in list)
-        {
-            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping, _bufferPool);
-            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(_bufferPool);
-
-            Set(keyBuffer.AsSpan(), buffer);
-        }
-    }
+    /// <param name="bufferPool"></param>
+    /// <param name="canBuildProof"></param>
+    public TxTrie(Transaction[] transactions, ICappedArrayPool bufferPool, bool canBuildProof = false)
+        : base(transactions, TxDecoder.Instance, bufferPool, canBuildProof) => ArgumentNullException.ThrowIfNull(transactions);
 
     public static byte[][] CalculateProof(Transaction[] transactions, int index)
     {
-        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Length * 4);
-        byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray).BuildProof(index);
-        return rootHash;
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
+        return new TxTrie(transactions, bufferPool: cappedArray, canBuildProof: true).BuildProof(index);
     }
 
     public static Hash256 CalculateRoot(Transaction[] transactions)
     {
-        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Length * 4);
-        Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
-        return rootHash;
+        using TrackingCappedArrayPool cappedArray = new(transactions.Length * 4);
+        return new TxTrie(transactions, bufferPool: cappedArray, canBuildProof: false).RootHash;
     }
 }

@@ -3,8 +3,10 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Trie;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
 
@@ -13,20 +15,23 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public class WithdrawalTrie : PatriciaTrie<Withdrawal>
 {
-    private static readonly WithdrawalDecoder _codec = new();
-
     /// <inheritdoc/>
     /// <param name="withdrawals">The withdrawals to build the trie of.</param>
-    public WithdrawalTrie(Withdrawal[]? withdrawals, bool canBuildProof = false)
-        : base(withdrawals, canBuildProof) => ArgumentNullException.ThrowIfNull(withdrawals);
+    /// <param name="bufferPool"></param>
+    /// <param name="canBuildProof"></param>
+    public WithdrawalTrie(Withdrawal[]? withdrawals, ICappedArrayPool bufferPool, bool canBuildProof = false)
+        : base(withdrawals, new WithdrawalDecoder(), bufferPool, canBuildProof) => ArgumentNullException.ThrowIfNull(withdrawals);
 
-    protected override void Initialize(Withdrawal[] withdrawals)
+    public static Hash256 CalculateRoot(Withdrawal[] withdrawals)
     {
-        var key = 0;
-
-        foreach (var withdrawal in withdrawals)
-        {
-            Set(Rlp.Encode(key++).Bytes, _codec.Encode(withdrawal).Bytes);
-        }
+        using TrackingCappedArrayPool cappedArrayPool = new(withdrawals.Length * 4);
+        return new WithdrawalTrie(withdrawals, bufferPool: cappedArrayPool).RootHash;
     }
+
+    public static byte[][] CalculateProof(Withdrawal[] withdrawals, int index)
+    {
+        using TrackingCappedArrayPool cappedArray = new(withdrawals.Length * 4);
+        return new WithdrawalTrie(withdrawals, bufferPool: cappedArray, canBuildProof: true).BuildProof(index);
+    }
+
 }

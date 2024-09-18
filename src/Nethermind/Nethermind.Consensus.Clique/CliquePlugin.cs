@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
@@ -112,9 +113,9 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(scope),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
-                getFromApi.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                new BeaconBlockRootHandler(scope.TransactionProcessor),
+                new ConsensusRequestsProcessor(scope.TransactionProcessor),
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, getFromApi.LogManager)));
 

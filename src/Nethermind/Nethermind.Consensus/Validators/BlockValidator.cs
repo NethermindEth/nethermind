@@ -428,7 +428,7 @@ public class BlockValidator(
             return header.WithdrawalsRoot is null;
         }
 
-        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(body.Withdrawals)) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateRequestsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
@@ -442,7 +442,7 @@ public class BlockValidator(
             return header.RequestsRoot is null;
         }
 
-        return (requestsRoot = new RequestsTrie(body.Requests).RootHash) == header.RequestsRoot;
+        return (requestsRoot = RequestsTrie.CalculateRoot(body.Requests)) == header.RequestsRoot;
     }
 
     private static string Invalid(Block block) =>

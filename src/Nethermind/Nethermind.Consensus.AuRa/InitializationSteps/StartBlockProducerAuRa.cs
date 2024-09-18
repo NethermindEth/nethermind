@@ -18,6 +18,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -156,10 +157,10 @@ public class StartBlockProducerAuRa
             changeableTxProcessingEnv.WorldState,
             _api.ReceiptStorage,
             new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
+            new ConsensusRequestsProcessor(changeableTxProcessingEnv.TransactionProcessor),
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,
-            _api.TransactionProcessor,
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator(_api) as AuRaContractGasLimitOverride,

@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
@@ -82,9 +83,9 @@ namespace Nethermind.Consensus.Ethash
                 new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
-                scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                new BeaconBlockRootHandler(scope.TransactionProcessor),
+                new ConsensusRequestsProcessor(scope.TransactionProcessor),
                 getFromApi.LogManager);
 
             IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(

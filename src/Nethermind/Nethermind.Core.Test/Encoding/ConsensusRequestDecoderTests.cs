@@ -103,7 +103,7 @@ public class ConsensusRequestDecoderTests
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode(deposit).Bytes;
+        byte[] rlp1 = new ConsensusRequestDecoder().EncodeToCappedArray(deposit).ToArray()!;
         byte[] rlp2 = Rlp.Encode(deposit).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
@@ -118,7 +118,7 @@ public class ConsensusRequestDecoderTests
             ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode(withdrawalRequest).Bytes;
+        byte[] rlp1 = new ConsensusRequestDecoder().EncodeToCappedArray(withdrawalRequest).ToArray()!;
         byte[] rlp2 = Rlp.Encode(withdrawalRequest).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);

@@ -169,7 +169,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
                 IsPostMerge = true,
                 TotalDifficulty = totalDifficulty,
                 TxRoot = TxTrie.CalculateRoot(transactions),
-                WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+                WithdrawalsRoot = Withdrawals is null ? null : WithdrawalTrie.CalculateRoot(Withdrawals)
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);

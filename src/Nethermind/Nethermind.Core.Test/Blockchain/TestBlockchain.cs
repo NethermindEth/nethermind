@@ -381,12 +381,11 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
             ReceiptStorage,
-            TxProcessor,
-            new BeaconBlockRootHandler(TxProcessor),
             new BlockhashStore(SpecProvider, State),
-            LogManager,
-            preWarmer: CreateBlockCachePreWarmer(),
-            consensusRequestsProcessor: ConsensusRequestsProcessor);
+            new BeaconBlockRootHandler(TxProcessor),
+            consensusRequestsProcessor: ConsensusRequestsProcessor,
+            logManager: LogManager,
+            preWarmer: CreateBlockCachePreWarmer());
 
 
     protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>

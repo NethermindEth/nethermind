@@ -17,6 +17,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Processing.CensorshipDetector;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -237,12 +238,11 @@ namespace Nethermind.Init.Steps
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
-                _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor),
                 new BlockhashStore(_api.SpecProvider!, worldState),
+                new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new ConsensusRequestsProcessor(_api.TransactionProcessor),
                 _api.LogManager,
-                preWarmer: preWarmer
-            );
+                preWarmer: preWarmer);
         }
 
         // TODO: remove from here - move to consensus?

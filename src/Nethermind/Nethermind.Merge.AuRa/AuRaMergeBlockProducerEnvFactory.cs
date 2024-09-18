@@ -12,6 +12,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -21,42 +22,31 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa;
 
-public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
+public class AuRaMergeBlockProducerEnvFactory(
+    AuRaNethermindApi auraApi,
+    IWorldStateManager worldStateManager,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculatorSource rewardCalculatorSource,
+    IReceiptStorage receiptStorage,
+    IBlockPreprocessorStep blockPreprocessorStep,
+    ITxPool txPool,
+    ITransactionComparerProvider transactionComparerProvider,
+    IBlocksConfig blocksConfig,
+    ILogManager logManager)
+    : BlockProducerEnvFactory(worldStateManager,
+        blockTree,
+        specProvider,
+        blockValidator,
+        rewardCalculatorSource,
+        receiptStorage,
+        blockPreprocessorStep,
+        txPool,
+        transactionComparerProvider,
+        blocksConfig,
+        logManager)
 {
-    private readonly AuRaNethermindApi _auraApi;
-    private readonly IConsensusRequestsProcessor? _consensusRequestsProcessor;
-
-    public AuRaMergeBlockProducerEnvFactory(
-        AuRaNethermindApi auraApi,
-        IWorldStateManager worldStateManager,
-        IBlockTree blockTree,
-        ISpecProvider specProvider,
-        IBlockValidator blockValidator,
-        IRewardCalculatorSource rewardCalculatorSource,
-        IReceiptStorage receiptStorage,
-        IBlockPreprocessorStep blockPreprocessorStep,
-        ITxPool txPool,
-        ITransactionComparerProvider transactionComparerProvider,
-        IBlocksConfig blocksConfig,
-        ILogManager logManager,
-        IConsensusRequestsProcessor? consensusRequestsProcessor = null) : base(
-            worldStateManager,
-            blockTree,
-            specProvider,
-            blockValidator,
-            rewardCalculatorSource,
-            receiptStorage,
-            blockPreprocessorStep,
-            txPool,
-            transactionComparerProvider,
-            blocksConfig,
-            logManager,
-            consensusRequestsProcessor)
-    {
-        _auraApi = auraApi;
-        _consensusRequestsProcessor = consensusRequestsProcessor;
-    }
-
     protected override BlockProcessor CreateBlockProcessor(
         IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
         ISpecProvider specProvider,
@@ -66,8 +56,9 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ILogManager logManager,
         IBlocksConfig blocksConfig)
     {
-        var withdrawalContractFactory = new WithdrawalContractFactory(_auraApi.ChainSpec!.AuRa, _auraApi.AbiEncoder);
+        var withdrawalContractFactory = new WithdrawalContractFactory(auraApi.ChainSpec!.AuRa, auraApi.AbiEncoder);
 
+        IWithdrawalProcessor withdrawalProcessor = new BlockProductionWithdrawalProcessor(new AuraWithdrawalProcessor(withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor), logManager));
         return new AuRaMergeBlockProcessor(
             specProvider,
             blockValidator,
@@ -76,17 +67,11 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
             new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
-            logManager,
-            _blockTree,
-            new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
-                new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
-                    logManager
-                )
-            ),
-            readOnlyTxProcessingEnv.TransactionProcessor,
-            null,
-            consensusRequestsProcessor: _consensusRequestsProcessor);
+            new ConsensusRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),
+            logManager: logManager,
+            blockTree: _blockTree,
+            withdrawalProcessor: withdrawalProcessor,
+            validator: null);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
@@ -96,6 +81,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource();
+        return new StartBlockProducerAuRa(auraApi).CreateTxPoolTxSource();
     }
 }

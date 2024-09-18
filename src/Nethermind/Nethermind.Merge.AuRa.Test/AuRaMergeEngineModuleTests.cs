@@ -150,12 +150,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor),
                 new BlockhashStore(SpecProvider, State),
-                LogManager,
-                WithdrawalProcessor,
+                new BeaconBlockRootHandler(TxProcessor),
                 consensusRequestsProcessor: ConsensusRequestsProcessor,
+                logManager: LogManager,
+                withdrawalProcessor: WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
@@ -190,8 +189,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager,
-                ConsensusRequestsProcessor);
+                LogManager);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();

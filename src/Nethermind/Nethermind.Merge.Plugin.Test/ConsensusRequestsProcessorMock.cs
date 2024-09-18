@@ -29,7 +29,7 @@ public class ConsensusRequestsProcessorMock : IConsensusRequestsProcessor
             return;
 
         block.Body.Requests = Requests;
-        Hash256 root = new RequestsTrie(Requests).RootHash;
+        Hash256 root = RequestsTrie.CalculateRoot(Requests);
         block.Header.RequestsRoot = root;
     }
 }

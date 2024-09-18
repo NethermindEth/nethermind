@@ -22,52 +22,33 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class BlockProducerEnvFactory : IBlockProducerEnvFactory
+    public class BlockProducerEnvFactory(
+        IWorldStateManager worldStateManager,
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculatorSource rewardCalculatorSource,
+        IReceiptStorage receiptStorage,
+        IBlockPreprocessorStep blockPreprocessorStep,
+        ITxPool txPool,
+        ITransactionComparerProvider transactionComparerProvider,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager)
+        : IBlockProducerEnvFactory
     {
-        protected readonly IWorldStateManager _worldStateManager;
-        protected readonly IBlockTree _blockTree;
-        protected readonly ISpecProvider _specProvider;
-        protected readonly IBlockValidator _blockValidator;
-        protected readonly IRewardCalculatorSource _rewardCalculatorSource;
-        protected readonly IReceiptStorage _receiptStorage;
-        protected readonly IBlockPreprocessorStep _blockPreprocessorStep;
-        protected readonly ITxPool _txPool;
-        protected readonly ITransactionComparerProvider _transactionComparerProvider;
-        protected readonly IBlocksConfig _blocksConfig;
-        protected readonly ILogManager _logManager;
-        private readonly IConsensusRequestsProcessor? _consensusRequestsProcessor;
+        protected readonly IWorldStateManager _worldStateManager = worldStateManager;
+        protected readonly IBlockTree _blockTree = blockTree;
+        protected readonly ISpecProvider _specProvider = specProvider;
+        protected readonly IBlockValidator _blockValidator = blockValidator;
+        protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource;
+        protected readonly IReceiptStorage _receiptStorage = receiptStorage;
+        protected readonly IBlockPreprocessorStep _blockPreprocessorStep = blockPreprocessorStep;
+        protected readonly ITxPool _txPool = txPool;
+        protected readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider;
+        protected readonly IBlocksConfig _blocksConfig = blocksConfig;
+        protected readonly ILogManager _logManager = logManager;
 
-        public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
-
-        public BlockProducerEnvFactory(
-            IWorldStateManager worldStateManager,
-            IBlockTree blockTree,
-            ISpecProvider specProvider,
-            IBlockValidator blockValidator,
-            IRewardCalculatorSource rewardCalculatorSource,
-            IReceiptStorage receiptStorage,
-            IBlockPreprocessorStep blockPreprocessorStep,
-            ITxPool txPool,
-            ITransactionComparerProvider transactionComparerProvider,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager,
-            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
-        {
-            _worldStateManager = worldStateManager;
-            _blockTree = blockTree;
-            _specProvider = specProvider;
-            _blockValidator = blockValidator;
-            _rewardCalculatorSource = rewardCalculatorSource;
-            _receiptStorage = receiptStorage;
-            _blockPreprocessorStep = blockPreprocessorStep;
-            _txPool = txPool;
-            _transactionComparerProvider = transactionComparerProvider;
-            _blocksConfig = blocksConfig;
-            _logManager = logManager;
-            _consensusRequestsProcessor = consensusRequestsProcessor;
-
-            TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
-        }
+        public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; } = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
 
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
         {
@@ -154,12 +135,10 @@ namespace Nethermind.Consensus.Producers
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
-                readOnlyTxProcessingEnv.TransactionProcessor,
-                new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
                 new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
-                logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),
-                consensusRequestsProcessor: _consensusRequestsProcessor
-            );
+                new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
+                new ConsensusRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),
+                logManager: logManager,
+                withdrawalProcessor: new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
     }
 }

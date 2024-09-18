@@ -37,6 +37,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Requests;
 using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -102,9 +103,9 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionsExecutor,
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
                 new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
+                new ConsensusRequestsProcessor(transactionProcessor),
                 LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);

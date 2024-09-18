@@ -271,7 +271,7 @@ namespace Nethermind.Core.Test.Builders
 
             TestObjectInternal.Header.WithdrawalsRoot = withdrawals is null
                 ? null
-                : new WithdrawalTrie(withdrawals).RootHash;
+                : WithdrawalTrie.CalculateRoot(withdrawals);
 
             return this;
         }
@@ -293,7 +293,7 @@ namespace Nethermind.Core.Test.Builders
 
             TestObjectInternal.Header.RequestsRoot = requests is null
                 ? null
-                : new RequestsTrie(requests).RootHash;
+                : RequestsTrie.CalculateRoot(requests);
 
             return this;
         }

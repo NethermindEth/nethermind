@@ -7,7 +7,7 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpValueDecoder<WithdrawalRequest>, IRlpObjectDecoder<WithdrawalRequest>
+public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpValueDecoder<WithdrawalRequest>
 {
     public int GetLength(WithdrawalRequest item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
@@ -53,14 +53,5 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         stream.Encode(item.SourceAddress);
         stream.Encode(item.ValidatorPubkey!);
         stream.Encode(item.Amount);
-    }
-
-    public Rlp Encode(WithdrawalRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-
-        Encode(rlpStream, item, rlpBehaviors);
-
-        return new Rlp(rlpStream.Data.ToArray());
     }
 }

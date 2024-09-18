@@ -223,8 +223,7 @@ public partial class EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager,
-                ConsensusRequestsProcessor);
+                LogManager);
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
@@ -252,13 +251,12 @@ public partial class EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor),
                 new BlockhashStore(SpecProvider, State),
-                LogManager,
-                WithdrawalProcessor,
-                preWarmer: CreateBlockCachePreWarmer(),
-                consensusRequestsProcessor: ConsensusRequestsProcessor);
+                new BeaconBlockRootHandler(TxProcessor),
+                consensusRequestsProcessor: ConsensusRequestsProcessor,
+                logManager: LogManager,
+                withdrawalProcessor: WithdrawalProcessor,
+                preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

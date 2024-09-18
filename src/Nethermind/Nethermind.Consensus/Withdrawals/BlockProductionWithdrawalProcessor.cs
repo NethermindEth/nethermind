@@ -24,7 +24,7 @@ public class BlockProductionWithdrawalProcessor : IWithdrawalProcessor
         {
             block.Header.WithdrawalsRoot = block.Withdrawals is null || block.Withdrawals.Length == 0
                 ? Keccak.EmptyTreeHash
-                : new WithdrawalTrie(block.Withdrawals!).RootHash;
+                : WithdrawalTrie.CalculateRoot(block.Withdrawals!);
         }
     }
 }

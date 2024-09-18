@@ -47,8 +47,8 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             TxReceipt receipt1 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
             TxReceipt receipt2 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-            ReceiptTrie<TxReceipt> trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1),
-                [receipt1, receipt2], _decoder, true);
+            using TrackingCappedArrayPool pool = new(1024);
+            ReceiptTrie<TxReceipt> trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1), [receipt1, receipt2], _decoder, pool, true);
             byte[][] proof = trie.BuildProof(0);
             Assert.That(proof.Length, Is.EqualTo(2));
 
