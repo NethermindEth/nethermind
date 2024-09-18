@@ -17,7 +17,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Address? From { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -76,7 +76,9 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         return tx;
     }
 
-    public class Converter : IFromTransaction<RpcLegacyTransaction>
+    public static readonly IFromTransaction<RpcLegacyTransaction> Converter = new ConverterImpl();
+
+    private class ConverterImpl : IFromTransaction<RpcLegacyTransaction>
     {
         public RpcLegacyTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
