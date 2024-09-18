@@ -27,10 +27,8 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         : base(transaction, txIndex, blockHash, blockNumber)
     {
         AccessList = RpcAccessList.FromAccessList(transaction.AccessList);
-        ChainId = (ulong?)(transaction.ChainId
-                  ?? DefaultChainId
-                  ?? BlockchainIds.Mainnet);
         YParity = transaction.Signature?.RecoveryId ?? 0;
+        ChainId = (ulong?)(transaction.ChainId ?? DefaultChainId ?? BlockchainIds.Mainnet);
         V = YParity ?? 0;
     }
 
