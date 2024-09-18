@@ -82,4 +82,12 @@ public class RpcTransactionTests
         json.GetProperty("blockHash").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
         json.GetProperty("blockNumber").GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
     }
+
+    [Test]
+    public void RpcNethermindTransactionJsonConverter_only_supports_registering_subclasses()
+    {
+        var converter = new RpcNethermindTransaction.JsonConverter();
+        Action action = () => converter.RegisterTransactionType(default, typeof(object));
+        action.Should().Throw<ArgumentException>();
+    }
 }
