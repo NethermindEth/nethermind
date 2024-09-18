@@ -12,7 +12,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
 {
     // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
-    public static UInt256? DefaultChainId { get; set; }
+    public static ulong? DefaultChainId { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public RpcAccessList? AccessList { get; set; }
@@ -28,7 +28,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     {
         AccessList = RpcAccessList.FromAccessList(transaction.AccessList);
         YParity = transaction.Signature?.RecoveryId ?? 0;
-        ChainId = (ulong?)(transaction.ChainId ?? DefaultChainId ?? BlockchainIds.Mainnet);
+        ChainId = transaction.ChainId ?? DefaultChainId ?? BlockchainIds.Mainnet;
         V = YParity ?? 0;
     }
 
