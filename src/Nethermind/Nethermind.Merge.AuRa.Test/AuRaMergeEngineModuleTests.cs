@@ -33,7 +33,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -152,7 +151,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
                 new BeaconBlockRootHandler(TxProcessor),
-                consensusRequestsProcessor: ConsensusRequestsProcessor,
+                consensusRequestsProcessor: ConsensusRequestsProcessor ?? new ConsensusRequestsProcessor(TxProcessor),
                 logManager: LogManager,
                 withdrawalProcessor: WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());

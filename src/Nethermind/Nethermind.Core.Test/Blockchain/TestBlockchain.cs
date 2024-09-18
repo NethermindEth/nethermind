@@ -383,7 +383,7 @@ public class TestBlockchain : IDisposable
             ReceiptStorage,
             new BlockhashStore(SpecProvider, State),
             new BeaconBlockRootHandler(TxProcessor),
-            consensusRequestsProcessor: ConsensusRequestsProcessor,
+            consensusRequestsProcessor: ConsensusRequestsProcessor ?? new ConsensusRequestsProcessor(TxProcessor),
             logManager: LogManager,
             preWarmer: CreateBlockCachePreWarmer());
 
