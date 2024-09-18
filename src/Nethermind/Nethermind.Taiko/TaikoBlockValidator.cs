@@ -86,7 +86,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.Value != 0)
+        if (!tx.Value.IsZero)
         {
             errorMessage = "Anchor Transaction must have 0 value.";
             return false;
