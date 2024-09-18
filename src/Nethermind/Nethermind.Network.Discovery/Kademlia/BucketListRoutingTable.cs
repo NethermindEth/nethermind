@@ -99,7 +99,7 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
             }
         }
 
-        if (exclude == null)
+        if (exclude == default)
         {
             return IterateNeighbour(hash)
                 .Select(kv => kv.Item2)
@@ -107,7 +107,7 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         }
 
         return IterateNeighbour(hash)
-            .Where(kv => kv.Item1 != exclude.Value)
+            .Where(kv => kv.Item1 != exclude!.Value)
             .Select(kv => kv.Item2).ToArray();
     }
 
@@ -120,9 +120,9 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
         yield return _buckets[startingDistance];
         int left = startingDistance - 1;
         int right = startingDistance + 1;
-        while (left > 0 || right <= Hash256XORUtils.MaxDistance)
+        while (left >= 0 || right <= Hash256XORUtils.MaxDistance)
         {
-            if (left > 0)
+            if (left >= 0)
             {
                 yield return _buckets[left];
             }

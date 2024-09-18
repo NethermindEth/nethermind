@@ -41,14 +41,14 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
         _root = new TreeNode(config.KSize, new ValueHash256());
         _logger = logManager.GetClassLogger();
-        _logger.Info($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
+        if (_logger.IsDebug) _logger.Debug($"Initialized KBucketTree with k={_k}, currentNodeId={_currentNodeHash}");
     }
 
     public BucketAddResult TryAddOrRefresh(in ValueHash256 nodeHash, TNode node, out TNode? toRefresh)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        _logger.Info($"Adding node {node} with XOR distance {Hash256XORUtils.XorDistance(_currentNodeHash, nodeHash)}");
+        if (_logger.IsDebug) _logger.Debug($"Adding node {node} with XOR distance {Hash256XORUtils.XorDistance(_currentNodeHash, nodeHash)}");
 
         TreeNode current = _root;
         // As in, what would be the depth of the node assuming all branch on the traversal is populated.
@@ -58,27 +58,27 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         {
             if (current.IsLeaf)
             {
-                _logger.Debug($"Reached leaf node at depth {depth}");
+                if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
                 var resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
                 if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
                 {
-                    _logger.Info($"Successfully added/refreshed node {node} in bucket at depth {depth}");
+                    if (_logger.IsDebug) _logger.Debug($"Successfully added/refreshed node {node} in bucket at depth {depth}");
                     return resp;
                 }
 
                 if (resp == BucketAddResult.Full && ShouldSplit(depth, logDistance))
                 {
-                    _logger.Info($"Splitting bucket at depth {depth}");
+                    if (_logger.IsTrace) _logger.Trace($"Splitting bucket at depth {depth}");
                     SplitBucket(depth, current);
                     continue;
                 }
 
-                _logger.Debug($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.GetAllWithHash().Count()}");
+                if (_logger.IsDebug) _logger.Debug($"Failed to add node {nodeHash} {node}. Bucket at depth {depth} is full. {_k} {current.Bucket.GetAllWithHash().Count()}");
                 return resp;
             }
 
             bool goRight = GetBit(nodeHash, depth);
-            _logger.Debug($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
+            if (_logger.IsTrace) _logger.Trace($"Traversing {(goRight ? "right" : "left")} at depth {depth}");
 
             current = goRight ? current.Right! : current.Left!;
             depth++;
@@ -305,12 +305,15 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         {
             return IterateNeighbour(hash)
                 .Select(kv => kv.Item2)
+                .Take(_k)
                 .ToArray();
         }
 
         return IterateNeighbour(hash)
             .Where(kv => kv.Item1 != exclude.Value)
-            .Select(kv => kv.Item2).ToArray();
+            .Select(kv => kv.Item2)
+            .Take(_k)
+            .ToArray();
     }
 
     private bool GetBit(ValueHash256 hash, int index)

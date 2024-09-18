@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -88,6 +89,36 @@ public class KademliaTests
 
         var afterCancelled = (testHashes[1..5].Concat([testHashes[9]])).ToHashSet();
         Assert.That(() => kad.GetAllAtDistance(250).ToHashSet(), Is.EquivalentTo(afterCancelled).After(100));
+    }
+
+    [Test]
+    public void TestLocalNeighbours()
+    {
+        TaskCompletionSource pingSource = new TaskCompletionSource();
+        _messageSender
+            .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
+            .Returns(pingSource.Task);
+
+        Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        {
+            CurrentNodeId = ValueKeccak.Zero,
+            KSize = 5,
+            Beta = 0,
+            RefreshInterval = TimeSpan.FromSeconds(10)
+        });
+
+        ValueHash256[] testHashes = Enumerable.Range(0, 7).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
+        foreach (ValueHash256 valueHash256 in testHashes)
+        {
+            kad.AddOrRefresh(valueHash256);
+        }
+
+        kad.GetKNeighbour(ValueKeccak.Zero, null).Length.Should().Be(5);
+
+        foreach (ValueHash256 valueHash256 in testHashes)
+        {
+            kad.GetKNeighbour(valueHash256, null).Length.Should().Be(5);
+        }
     }
 
     [Test]

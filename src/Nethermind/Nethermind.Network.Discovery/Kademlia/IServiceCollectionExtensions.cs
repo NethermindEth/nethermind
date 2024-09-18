@@ -12,6 +12,18 @@ public static class IServiceCollectionExtensions
     {
         return collection
             .AddSingleton<IKademlia<TNode, TContentKey, TContent>, Kademlia<TNode, TContentKey, TContent>>()
+            .AddSingleton<NewLookupKNearestNeighbour<TNode>>()
+            .AddSingleton<OriginalLookupKNearestNeighbour<TNode>>()
+            .AddSingleton<ILookupAlgo<TNode>>(provider =>
+            {
+                KademliaConfig<TNode> config = provider.GetRequiredService<KademliaConfig<TNode>>();
+                if (config.UseNewLookup)
+                {
+                    return provider.GetRequiredService<NewLookupKNearestNeighbour<TNode>>();
+                }
+
+                return provider.GetRequiredService<OriginalLookupKNearestNeighbour<TNode>>();
+            })
             .AddSingleton<KBucketTree<TNode>>()
             .AddSingleton<BucketListRoutingTable<TNode>>()
             .AddSingleton<IRoutingTable<TNode>>(provider =>

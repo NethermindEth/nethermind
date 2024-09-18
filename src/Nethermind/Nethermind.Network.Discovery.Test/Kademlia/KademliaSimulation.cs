@@ -17,8 +17,32 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
+[TestFixture(true, true, 3, 0)]
+[TestFixture(false, true, 3, 0)]
+[TestFixture(true, false, 3, 0)]
+[TestFixture(true, true, 3, 4)]
+[TestFixture(true, true, 1, 0)]
+[TestFixture(true, true, 1, 4)]
 public class KademliaSimulation
 {
+    private readonly KademliaConfig<ValueHash256> _config;
+
+    public KademliaSimulation(bool useNewLookup, bool useTreeBasedTable, int alpha, int beta)
+    {
+        _config = new KademliaConfig<ValueHash256>()
+        {
+            KSize = 20,
+            Alpha = alpha,
+            Beta = beta,
+            UseNewLookup = useNewLookup,
+            UseTreeBasedRoutingTable = useTreeBasedTable
+        };
+    }
+
+    private TestFabric CreateFabric()
+    {
+        return new TestFabric(_config);
+    }
 
     [Test]
     public async Task TestBootstrap()
@@ -26,7 +50,7 @@ public class KademliaSimulation
         using CancellationTokenSource cts = new CancellationTokenSource();
         cts.CancelAfter(500);
 
-        TestFabric fabric = new TestFabric();
+        TestFabric fabric = CreateFabric();
         Random rand = new Random(0);
 
         ValueHash256 node1Hash = RandomKeccak(rand);
@@ -36,6 +60,8 @@ public class KademliaSimulation
         Kademlia<TestNode, ValueHash256, ValueHash256> node1 = fabric.CreateNode(node1Hash);
         Kademlia<TestNode, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
         Kademlia<TestNode, ValueHash256, ValueHash256> node3 = fabric.CreateNode(node3Hash);
+
+        node1.GetKNeighbour(Keccak.Zero, null).Select(n => n.Hash).ToArray().Should().BeEquivalentTo([node1Hash]);
 
         node1.AddOrRefresh(new TestNode(node2Hash));
         node2.AddOrRefresh(new TestNode(node3Hash));
@@ -60,7 +86,7 @@ public class KademliaSimulation
         using CancellationTokenSource cts = new CancellationTokenSource();
         cts.CancelAfter(500);
 
-        TestFabric fabric = new TestFabric(alpha: 3);
+        TestFabric fabric = CreateFabric();
         Random rand = new Random(0);
 
         ValueHash256 node1Hash = RandomKeccak(rand);
@@ -80,15 +106,41 @@ public class KademliaSimulation
         (await node1.LookupValue(node3Hash, cts.Token)).Should().BeEquivalentTo(node3Hash);
     }
 
-    [TestCase(true, true, 0)]
-    [TestCase(false, true, 0)]
-    [TestCase(true, true, 4)]
-    [TestCase(true, false, 0)]
-    public async Task SimulateLargeLookupValue(bool useNewLookup, bool useTreeBasedTable, int beta)
+    [Test]
+    public async Task TestKNearestNeighbour()
+    {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(500);
+
+        TestFabric fabric = CreateFabric();
+        Random rand = new Random(0);
+
+        ValueHash256 node1Hash = RandomKeccak(rand);
+        ValueHash256 node2Hash = RandomKeccak(rand);
+        ValueHash256 node3Hash = RandomKeccak(rand);
+
+        Kademlia<TestNode, ValueHash256, ValueHash256> node1 = fabric.CreateNode(node1Hash);
+        Kademlia<TestNode, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
+        fabric.CreateNode(node3Hash);
+
+        node1.AddOrRefresh(new TestNode(node2Hash));
+        node2.AddOrRefresh(new TestNode(node3Hash));
+
+        await fabric.Bootstrap(cts.Token);
+
+        (await node1.LookupNodesClosest(node2Hash, cts.Token))
+            .Select(n => n.Hash)
+            .ToHashSet()
+            .Should()
+            .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash, node2Hash, node3Hash });
+    }
+
+    [Test]
+    public async Task SimulateLargeLookupValue()
     {
         int nodeCount = 500;
 
-        TestFabric fabric = new TestFabric(kSize: 20, alpha: 3, beta: beta, useTreeBasedRoutingTable: useTreeBasedTable, useNewLookup: useNewLookup);
+        TestFabric fabric = CreateFabric();
         Random rand = new Random(0);
         ValueHash256 mainNodeHash = RandomKeccak(rand);
         Kademlia<TestNode, ValueHash256, ValueHash256> mainNode = fabric.CreateNode(mainNodeHash);
@@ -103,7 +155,7 @@ public class KademliaSimulation
         }
 
         using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromSeconds(60));
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
 
         Stopwatch sw = Stopwatch.StartNew();
         fabric.SimulateLatency = false; // Bootstrap is so slow, latency simulation is disable for it.
@@ -120,10 +172,78 @@ public class KademliaSimulation
         }
         TimeSpan queryDuration = sw.Elapsed;
 
-        Console.Error.WriteLine($"FindValue count per lookup {fabric.FindValueCount / (double)nodeIds.Count}");
-        Console.Error.WriteLine($"FindNeighbour count {fabric.FindNeighbourCount}");
-        Console.Error.WriteLine($"Bootstrap duration: {bootstrapDuration}");
-        Console.Error.WriteLine($"Query duration: {queryDuration}");
+        TestContext.Out.WriteLine($"FindValue count per lookup {fabric.FindValueCount / (double)nodeIds.Count}");
+        TestContext.Out.WriteLine($"FindNeighbour count {fabric.FindNeighbourCount}");
+        TestContext.Out.WriteLine($"Bootstrap duration: {bootstrapDuration}");
+        TestContext.Out.WriteLine($"Query duration: {queryDuration}");
+    }
+
+    [Test]
+    public async Task SimulateLargeKNearestNeighbour()
+    {
+        int nodeCount = 500;
+
+        TestFabric fabric = CreateFabric();
+        Random rand = new Random(0);
+        ValueHash256 mainNodeHash = RandomKeccak(rand);
+        Kademlia<TestNode, ValueHash256, ValueHash256> mainNode = fabric.CreateNode(mainNodeHash);
+
+        List<ValueHash256> nodeIds = new();
+        for (int i = 0; i < nodeCount; i++)
+        {
+            ValueHash256 nodeHash = RandomKeccak(rand);
+            Kademlia<TestNode, ValueHash256, ValueHash256> kad = fabric.CreateNode(nodeHash);
+            kad.AddOrRefresh(new TestNode(mainNodeHash));
+            nodeIds.Add(nodeHash);
+        }
+
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+        Stopwatch sw = Stopwatch.StartNew();
+        // This test is really slow. Slower than find value which can short circuit once it find the value.
+        fabric.SimulateLatency = false;
+        await fabric.Bootstrap(cts.Token);
+        TimeSpan bootstrapDuration = sw.Elapsed;
+        sw.Restart();
+        fabric.FindNeighbourCount = 0;
+
+        int closestKCount = 0;
+        int missedCount = 0;
+
+        foreach (ValueHash256 targetNode in nodeIds)
+        {
+            var nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
+            var expectedNodeClosestK = nodeIds
+                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256XORUtils.Compare(n1, n2, targetNode)))
+                .Take(_config.KSize)
+                .ToHashSet();
+
+            nodesClosest.Length.Should().Be(_config.KSize);
+
+            foreach (TestNode node in nodesClosest)
+            {
+                if (expectedNodeClosestK.Contains(node.Hash))
+                {
+                    closestKCount++;
+                }
+                else
+                {
+                    missedCount++;
+                }
+            }
+        }
+        TimeSpan queryDuration = sw.Elapsed;
+        double totalNodesReturned = nodeIds.Count * _config.KSize;
+
+        (closestKCount / totalNodesReturned).Should().BeGreaterThan(0.95);
+
+        TestContext.Out.WriteLine($"Closest K ratio {closestKCount / totalNodesReturned}");
+        TestContext.Out.WriteLine($"Missed ratio {missedCount / totalNodesReturned}");
+        TestContext.Out.WriteLine($"FindNeighbour count per lookup {fabric.FindNeighbourCount / (double)nodeIds.Count}");
+        TestContext.Out.WriteLine($"FindNeighbour count {fabric.FindNeighbourCount}");
+        TestContext.Out.WriteLine($"Bootstrap duration: {bootstrapDuration}");
+        TestContext.Out.WriteLine($"Query duration: {queryDuration}");
     }
 
     private static ValueHash256 RandomKeccak(Random rand)
@@ -161,7 +281,7 @@ public class KademliaSimulation
         }
     }
 
-    private class TestFabric(int kSize = 20, int alpha = 3, int beta = 0, bool useTreeBasedRoutingTable = true, bool useNewLookup = true)
+    private class TestFabric(KademliaConfig<ValueHash256> config)
     {
         internal long PingCount = 0;
         internal long FindValueCount = 0;
@@ -186,18 +306,18 @@ public class KademliaSimulation
 
             var kad = new ServiceCollection()
                 .ConfigureKademliaComponents<TestNode, ValueHash256, ValueHash256>()
-                .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
+                .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error))
                 .AddSingleton<INodeHashProvider<TestNode>>(_nodeHashProvider)
                 .AddSingleton<IContentHashProvider<ValueHash256>>(_nodeHashProvider)
                 .AddSingleton(new KademliaConfig<TestNode>()
                 {
                     CurrentNodeId = nodeIDTestNode,
-                    KSize = kSize,
-                    Alpha = alpha,
-                    Beta = beta,
+                    KSize = config.KSize,
+                    Alpha = config.Alpha,
+                    Beta = config.Beta,
                     RefreshInterval = TimeSpan.FromHours(1),
-                    UseTreeBasedRoutingTable = useTreeBasedRoutingTable,
-                    UseNewLookup = useNewLookup
+                    UseTreeBasedRoutingTable = config.UseTreeBasedRoutingTable,
+                    UseNewLookup = config.UseNewLookup
                 })
                 .AddSingleton<IKademlia<TestNode, ValueHash256, ValueHash256>.IStore>(new OnlySelfIStore(nodeID))
                 .AddSingleton<IMessageSender<TestNode, ValueHash256, ValueHash256>>(new SenderForNode(nodeIDTestNode, this))
@@ -291,5 +411,10 @@ public class KademliaSimulation
     internal class TestNode(ValueHash256 hash)
     {
         public ValueHash256 Hash => hash;
+
+        public override string ToString()
+        {
+            return Hash.ToString();
+        }
     }
 }
