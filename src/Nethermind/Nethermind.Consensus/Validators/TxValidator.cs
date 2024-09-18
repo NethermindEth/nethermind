@@ -12,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using System.Linq;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -26,6 +27,7 @@ public sealed class TxValidator : ITxValidator
             new LegacySignatureTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance
         ]));
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
@@ -34,6 +36,7 @@ public sealed class TxValidator : ITxValidator
             new ExpectedChainIdTxValidator(chainId),
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance
         ]));
         RegisterValidator(TxType.EIP1559, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip1559Enabled),
@@ -43,6 +46,7 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance
         ]));
         RegisterValidator(TxType.Blob, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip4844Enabled),
@@ -52,7 +56,18 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             BlobFieldsTxValidator.Instance,
-            MempoolBlobTxValidator.Instance
+            MempoolBlobTxValidator.Instance,
+            NonSetCodeFieldsTxValidator.Instance
+        ]));
+        RegisterValidator(TxType.SetCode, new CompositeTxValidator([
+            new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
+            IntrinsicGasTxValidator.Instance,
+            SignatureTxValidator.Instance,
+            new ExpectedChainIdTxValidator(chainId),
+            GasFieldsTxValidator.Instance,
+            ContractSizeTxValidator.Instance,
+            NonBlobFieldsTxValidator.Instance,
+            SetCodeTxValidator.Instance,
         ]));
     }
 
@@ -147,6 +162,18 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
         { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
         { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
         { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransaction,
+        _ => ValidationResult.Success
+    };
+}
+
+public sealed class NonSetCodeFieldsTxValidator : ITxValidator
+{
+    public static readonly NonSetCodeFieldsTxValidator Instance = new();
+    private NonSetCodeFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => transaction switch
+    {
+        { AuthorizationList: not null } => TxErrorMessages.NotAllowedAuthorizationList,
         _ => ValidationResult.Success
     };
 }
@@ -282,4 +309,43 @@ public sealed class SignatureTxValidator : BaseSignatureTxValidator
 {
     public static readonly SignatureTxValidator Instance = new();
     private SignatureTxValidator() { }
+}
+
+public sealed class SetCodeTxValidator : ITxValidator
+{
+    public static readonly SetCodeTxValidator Instance = new();
+    private SetCodeTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        return Validate7702Fields(transaction);
+    }
+
+    private ValidationResult Validate7702Fields(Transaction tx)
+    {
+        if (tx.IsContractCreation)
+        {
+            return TxErrorMessages.NotAllowedCreateTransaction;
+        }
+        if (tx.AuthorizationList is null || tx.AuthorizationList.Length == 0)
+        {
+            return TxErrorMessages.MissingAuthorizationList;
+        }
+        if (tx.AuthorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)))
+        {
+            return TxErrorMessages.InvalidAuthoritySignature;
+        }
+        return ValidationResult.Success;
+    }
+    private bool ValidateAuthoritySignature(Signature signature)
+    {
+        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
+
+        if (sValue >= Secp256K1Curve.HalfNPlusOne)
+        {
+            return false;
+        }
+
+        return signature.RecoveryId is 0 or 1;
+    }
 }

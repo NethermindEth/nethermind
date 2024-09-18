@@ -562,7 +562,7 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance), Is.True);
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.True);
     }
 
     [Test]
@@ -580,9 +580,9 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
     }
-
+    
     [Test]
     public void IsWellFormed_NullAuthorizationList_ReturnsFalse()
     {
@@ -598,10 +598,10 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
     }
 
-    public static object[] BadSignatures =
+    private static object[] BadSignatures =
     {
         new object[] { 1ul, (UInt256)1, Secp256K1Curve.HalfNPlusOne, false},
         new object[] { 1ul, UInt256.Zero, Secp256K1Curve.HalfN, true },
@@ -623,6 +623,29 @@ public class TxValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TxType> NonSetCodeTypes() =>
+        Enum.GetValues<TxType>().Where(t => t != TxType.SetCode && t != TxType.DepositTx);
+
+    [TestCaseSource(nameof(NonSetCodeTypes))]
+    public void IsWellFormed_NonSetCodeTxHasAuthorizationList_ReturnsFalse(TxType type)
+    {
+        var x = Enum.GetValues<TxType>().Where(t => t != TxType.SetCode);
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(type)
+            .WithTo(TestItem.AddressA)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithShardBlobTxTypeAndFieldsIfBlobTx()
+            .WithAuthorizationCode(new AuthorizationTuple(TestBlockchainIds.ChainId, TestItem.AddressA, 0, new Signature(new byte[65])))
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
