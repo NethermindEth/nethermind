@@ -67,14 +67,16 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
             WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
 
-            // Don't compete task until address warmer is also done.
-            addressWarmer.Wait();
-
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
         catch (OperationCanceledException)
         {
             if (_logger.IsDebug) _logger.Debug($"Pre-warming caches cancelled for block {suggestedBlock.Number}.");
+        }
+        finally
+        {
+            // Don't compete task until address warmer is also done.
+            addressWarmer.Wait();
         }
     }
 
@@ -163,11 +165,11 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
         void IThreadPoolWorkItem.Execute()
         {
-            if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-
-            IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
+            IReadOnlyTxProcessorSource env = null;
             try
             {
+                if (parallelOptions.CancellationToken.IsCancellationRequested) return;
+                env = PreWarmer._envPool.Get();
                 using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
                 WarmupAddresses(parallelOptions, Block, scope);
             }
@@ -177,7 +179,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             }
             finally
             {
-                PreWarmer._envPool.Return(env);
+                if (env is not null) PreWarmer._envPool.Return(env);
                 _doneEvent.Set();
             }
         }
