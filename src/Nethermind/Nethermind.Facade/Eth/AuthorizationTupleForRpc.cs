@@ -30,7 +30,6 @@ namespace Nethermind.Facade.Eth
         public UInt256 ChainId { get; set; }
         public ulong Nonce { get; set; }
         public Address Address { get; set; }
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public UInt256? YParity { get; set; }
         public UInt256? S { get; set; }
         public UInt256? R { get; set; }

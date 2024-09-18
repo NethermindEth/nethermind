@@ -134,6 +134,7 @@ public class TransactionForRpc
     public TxType Type { get; set; }
 
     public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IEnumerable<AuthorizationTupleForRpc>? AuthorizationList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
