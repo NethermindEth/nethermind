@@ -323,46 +323,23 @@ public partial class EngineModuleTests
 
         if (requests is not null)
         {
-            (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
-            deposits = new Deposit[depositCount];
-            withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-            for (int i = 0; i < requests.Length; ++i)
-            {
-                ConsensusRequest request = requests[i];
-                if (request.Type == ConsensusRequestsType.Deposit)
-                {
-                    deposits[depositIndex++] = (Deposit)request;
-                }
-                else
-                {
-                    withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }
-            }
+            (deposits, withdrawalRequests) = requests.SplitRequests();
         }
-
         ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
-
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayloadV4 executionPayload1 = await SendNewBlockV4(rpc, chain, requests);
-        Transaction[] txs = BuildTransactions(
-            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
-
-        chain.AddTransactions(txs);
-
+        ExecutionPayloadV4 executionPayload1 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
-        Hash256[] blockHashes = new Hash256[]
-        {
+        Hash256[] blockHashes =
+        [
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
-        };
+        ];
         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV2(blockHashes).Result.Data;
         ExecutionPayloadBodyV2Result?[] expected = {
             new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
             null,
-            new (txs, Array.Empty<Withdrawal>(), deposits, withdrawalRequests),
+            new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>(), deposits, withdrawalRequests),
         };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
@@ -379,34 +356,13 @@ public partial class EngineModuleTests
 
         if (requests is not null)
         {
-            (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
-            deposits = new Deposit[depositCount];
-            withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-            for (int i = 0; i < requests.Length; ++i)
-            {
-                ConsensusRequest request = requests[i];
-                if (request.Type == ConsensusRequestsType.Deposit)
-                {
-                    deposits[depositIndex++] = (Deposit)request;
-                }
-                else
-                {
-                    withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }
-            }
+            (deposits, withdrawalRequests) = requests.SplitRequests();
         }
 
         ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
-
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayloadV4 executionPayload1 = await SendNewBlockV4(rpc, chain, requests);
-        Transaction[] txs = BuildTransactions(
-            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
-
-        chain.AddTransactions(txs);
+        await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
 
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
 
@@ -418,12 +374,10 @@ public partial class EngineModuleTests
            rpc.engine_getPayloadBodiesByRangeV2(1, 3).Result.Data;
         ExecutionPayloadBodyV2Result?[] expected =
         {
-            new (txs, Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
+            new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
         };
 
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
-
-
     }
 
     [Test]

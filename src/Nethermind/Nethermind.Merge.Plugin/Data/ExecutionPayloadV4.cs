@@ -32,23 +32,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
         else
         {
-            (int depositCount, int withdrawalRequestCount) = blockRequests.GetTypeCounts();
-            executionPayload.DepositRequests = new Deposit[depositCount];
-            executionPayload.WithdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-            int depositIndex = 0;
-            int withdrawalRequestIndex = 0;
-            for (int i = 0; i < blockRequests.Length; ++i)
-            {
-                ConsensusRequest request = blockRequests[i];
-                if (request.Type == ConsensusRequestsType.Deposit)
-                {
-                    executionPayload.DepositRequests[depositIndex++] = (Deposit)request;
-                }
-                else
-                {
-                    executionPayload.WithdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                }
-            }
+            (executionPayload.DepositRequests, executionPayload.WithdrawalRequests) = blockRequests.SplitRequests();
         }
 
         return executionPayload;
