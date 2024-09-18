@@ -61,7 +61,11 @@ public abstract class RpcNethermindTransaction
 
         public JsonConverter RegisterTransactionType(TxType type, Type @class)
         {
-            // TODO: Check that the type is a subclass of `RpcNethermindTransaction`
+            if (!@class.IsSubclassOf(typeof(RpcNethermindTransaction)))
+            {
+                throw new ArgumentException($"{@class.FullName} is not a subclass of ${nameof(RpcNethermindTransaction)}");
+            }
+
             _transactionTypes[(byte)type] = @class;
             return this;
         }
