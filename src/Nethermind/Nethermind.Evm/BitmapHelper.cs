@@ -52,6 +52,8 @@ public static class BitmapHelper
 
     public static void HandleNumbits(int numbits, Span<byte> bitvec, scoped ref int pc)
     {
+        if (numbits == 0) return;
+
         if (numbits >= 8)
         {
             for (; numbits >= 16; numbits -= 16)

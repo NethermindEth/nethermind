@@ -773,7 +773,6 @@ internal class Eof1 : IEofVersionHandler
                         return false;
                     }
                     BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
-
                 }
                 else if (opcode is Instruction.RJUMPV)
                 {
