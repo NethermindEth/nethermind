@@ -32,11 +32,8 @@ public class WithdrawalRequestProcessorTests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
-
     private ICodeInfoRepository _codeInfoRepository;
-
     private static readonly UInt256 AccountBalance = 1.Ether();
-
     private readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
 
     [SetUp]

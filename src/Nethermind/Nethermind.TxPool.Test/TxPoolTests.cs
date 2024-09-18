@@ -1694,7 +1694,7 @@ namespace Nethermind.TxPool.Test
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);
             //Delegation code
-            yield return ([.. Eip7702Constants.DelegationHeader,.. new byte[20]], AcceptTxResult.Accepted);
+            yield return ([.. Eip7702Constants.DelegationHeader, .. new byte[20]], AcceptTxResult.Accepted);
         }
         [TestCaseSource(nameof(CodeCases))]
         public void SubmitTx_CodeIsNotDelegationAndDelegation_DelegationIsAccepted((byte[] code, AcceptTxResult expected) testCase)
