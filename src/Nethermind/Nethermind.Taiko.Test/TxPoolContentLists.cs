@@ -26,6 +26,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
+using Nethermind.Specs;
 
 namespace Nethermind.Taiko.Test;
 

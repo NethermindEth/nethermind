@@ -41,9 +41,7 @@ public class Block
     )
     { }
 
-    public virtual Block Copy(BlockHeader headerOverride) => new(headerOverride, Transactions, Uncles, Withdrawals);
-
-    public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
     public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
 

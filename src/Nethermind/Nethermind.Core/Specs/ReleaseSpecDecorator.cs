@@ -75,4 +75,49 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
+
+    public virtual long MaxInitCodeSize => spec.MaxInitCodeSize;
+    public virtual bool ValidateChainId => spec.ValidateChainId;
+    public virtual bool ClearEmptyAccountWhenTouched => spec.ClearEmptyAccountWhenTouched;
+    // VM
+    public virtual bool LimitCodeSize => spec.LimitCodeSize;
+    public virtual bool UseHotAndColdStorage => spec.UseHotAndColdStorage;
+    public virtual bool UseTxAccessLists => spec.UseTxAccessLists;
+    public virtual bool AddCoinbaseToTxAccessList => spec.AddCoinbaseToTxAccessList;
+    public virtual bool ModExpEnabled => spec.ModExpEnabled;
+    public virtual bool Bn128Enabled => spec.Bn128Enabled;
+    public virtual bool BlakeEnabled => spec.BlakeEnabled;
+    public virtual bool Bls381Enabled => spec.Bls381Enabled;
+    public virtual bool ChargeForTopLevelCreate => spec.ChargeForTopLevelCreate;
+    public virtual bool FailOnOutOfGasCodeDeposit => spec.FailOnOutOfGasCodeDeposit;
+    public virtual bool UseShanghaiDDosProtection => spec.UseShanghaiDDosProtection;
+    public virtual bool UseExpDDosProtection => spec.UseExpDDosProtection;
+    public virtual bool UseLargeStateDDosProtection => spec.UseLargeStateDDosProtection;
+    public virtual bool ReturnDataOpcodesEnabled => spec.ReturnDataOpcodesEnabled;
+    public virtual bool ChainIdOpcodeEnabled => spec.ChainIdOpcodeEnabled;
+    public virtual bool Create2OpcodeEnabled => spec.Create2OpcodeEnabled;
+    public virtual bool DelegateCallEnabled => spec.DelegateCallEnabled;
+    public virtual bool StaticCallEnabled => spec.StaticCallEnabled;
+    public virtual bool ShiftOpcodesEnabled => spec.ShiftOpcodesEnabled;
+    public virtual bool RevertOpcodeEnabled => spec.RevertOpcodeEnabled;
+    public virtual bool ExtCodeHashOpcodeEnabled => spec.ExtCodeHashOpcodeEnabled;
+    public virtual bool SelfBalanceOpcodeEnabled => spec.SelfBalanceOpcodeEnabled;
+    public virtual bool UseConstantinopleNetGasMetering => spec.UseConstantinopleNetGasMetering;
+    public virtual bool UseIstanbulNetGasMetering => spec.UseIstanbulNetGasMetering;
+    public virtual bool UseNetGasMetering => spec.UseNetGasMetering;
+    public virtual bool UseNetGasMeteringWithAStipendFix => spec.UseNetGasMeteringWithAStipendFix;
+    public virtual bool Use63Over64Rule => spec.Use63Over64Rule;
+    public virtual bool BaseFeeEnabled => spec.BaseFeeEnabled;
+    // EVM Related
+    public virtual bool IncludePush0Instruction => spec.IncludePush0Instruction;
+    public virtual bool TransientStorageEnabled => spec.TransientStorageEnabled;
+    public virtual bool WithdrawalsEnabled => spec.WithdrawalsEnabled;
+    public virtual bool SelfdestructOnlyOnSameTransaction => spec.SelfdestructOnlyOnSameTransaction;
+    public virtual bool IsBeaconBlockRootAvailable => spec.IsBeaconBlockRootAvailable;
+    public virtual bool IsBlockHashInStateAvailable => spec.IsBlockHashInStateAvailable;
+    public virtual bool MCopyIncluded => spec.MCopyIncluded;
+    public virtual bool BlobBaseFeeEnabled => spec.BlobBaseFeeEnabled;
+    public virtual Address? Eip1559FeeCollector => spec.Eip1559FeeCollector;
+    public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
+    public virtual bool ValidateReceipts => spec.ValidateReceipts;
 }

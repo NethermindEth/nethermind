@@ -25,11 +25,7 @@ public class TaikoBlockValidator(
 
     private static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
-    private readonly Address TaikoL2Address = new(
-        specProvider.ChainId.ToString()
-        .PadRight(40 - TaikoL2AddressSuffix.Length, '0') +
-        TaikoL2AddressSuffix);
-    private const string TaikoL2AddressSuffix = "10001";
+    private readonly Address TaikoL2Address = TaikoAddressHelper.GetTaikoL2ContractAddress(specProvider);
 
     private const long AnchorGasLimit = 250_000;
 
@@ -74,13 +70,13 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.To is null || !tx.To.Equals(TaikoL2Address))
+        if (tx.To != TaikoL2Address)
         {
             errorMessage = "Anchor Transaction must target taiko L2 address.";
             return false;
         }
 
-        if (!Bytes.AreEqual(tx.Data.AsArray().AsSpan(0..4), AnchorSelector))
+        if (tx.Data is null || !Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorSelector))
         {
             errorMessage = "Anchor Transaction must have the correct selector.";
             return false;

@@ -31,6 +31,7 @@ using Nethermind.Wallet;
 using Microsoft.IO;
 using Nethermind.Core.Resettables;
 using System.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -143,12 +144,124 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
         }, txQueue, maxTransactionsLists, maxBytesPerTxList));
     }
 
-    class Batch(ulong maxBytes, TxDecoder txDecoder)
+
+    private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
+
+    private PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList)
+    {
+        lock (worldState)
+        {
+            if (txSource.Length is 0 || blockHeader.StateRoot is null)
+            {
+                return [];
+            }
+
+            List<PreBuiltTxList> Batches = [];
+
+            void CommitAndDisposeBatch(Batch batch)
+            {
+                Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new TransactionForRpc(tx)).ToArray(),
+                                               (ulong)blockHeader.GasUsed,
+                                               batch.GetCompressedTxsLength()));
+                blockHeader.GasUsed = 0;
+                batch.Dispose();
+            }
+
+            BlockExecutionContext blkCtx = new(blockHeader);
+            worldState.StateRoot = blockHeader.StateRoot;
+
+            Batch batch = new(maxBytesPerTxList, _txDecoder);
+
+            for (int i = 0; i < txSource.Length;)
+            {
+                Transaction tx = txSource[i];
+                Snapshot snapshot = worldState.TakeSnapshot(true);
+                long gasUsed = blockHeader.GasUsed;
+
+                void IgnoreCurrentSender()
+                {
+                    while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
+                }
+
+                void RestoreState()
+                {
+                    worldState.Restore(snapshot);
+                    blockHeader.GasUsed = gasUsed;
+                }
+
+                try
+                {
+                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
+
+                    if (!executionResult)
+                    {
+                        RestoreState();
+
+                        if (executionResult.Error == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
+                        {
+                            CommitAndDisposeBatch(batch);
+                            batch = new(maxBytesPerTxList, _txDecoder);
+
+                            if (maxBatchCount == Batches.Count)
+                            {
+                                return [.. Batches];
+                            }
+
+                            continue;
+                        }
+
+                        IgnoreCurrentSender();
+                        continue;
+                    }
+                }
+                catch
+                {
+                    RestoreState();
+                    IgnoreCurrentSender();
+                    continue;
+                }
+
+                if (!batch.TryAddTx(tx))
+                {
+                    RestoreState();
+
+                    if (batch.Transactions.Count is 0)
+                    {
+                        IgnoreCurrentSender();
+                        continue;
+                    }
+                    else
+                    {
+                        CommitAndDisposeBatch(batch);
+                        batch = new(maxBytesPerTxList, _txDecoder);
+
+                        if (maxBatchCount == Batches.Count)
+                        {
+                            return [.. Batches];
+                        }
+
+                        continue;
+                    }
+                }
+
+                i++;
+            }
+
+            if (batch.Transactions.Count is not 0)
+            {
+                CommitAndDisposeBatch(batch);
+            }
+
+            return [.. Batches];
+        }
+    }
+
+    sealed class Batch(ulong maxBytes, TxDecoder txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
 
-        public List<Transaction> Transactions { get; } = [];
+        public ArrayPoolList<Transaction> Transactions { get; } = ArrayPoolList<Transaction>.Empty();
 
         public bool TryAddTx(Transaction tx)
         {
@@ -216,111 +329,10 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
             compressingStream.Flush();
             return (ulong)stream.Position;
         }
-    }
 
-    private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
-
-    private PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList)
-    {
-        lock (worldState)
+        public void Dispose()
         {
-            if (txSource.Length is 0 || blockHeader.StateRoot is null)
-            {
-                return [];
-            }
-
-            List<PreBuiltTxList> Batches = [];
-
-            void CommitBatch(ref Batch batch)
-            {
-                Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new TransactionForRpc(tx)).ToArray(),
-                                               (ulong)blockHeader.GasUsed,
-                                               batch.GetCompressedTxsLength()));
-                blockHeader.GasUsed = 0;
-                batch = new(maxBytesPerTxList, _txDecoder);
-            }
-
-            BlockExecutionContext blkCtx = new(blockHeader);
-            worldState.StateRoot = blockHeader.StateRoot;
-
-            Batch batch = new(maxBytesPerTxList, _txDecoder);
-
-            for (int i = 0; i < txSource.Length;)
-            {
-                Snapshot snapshot = worldState.TakeSnapshot(true);
-                long gasUsed = blockHeader.GasUsed;
-                Transaction tx = txSource[i];
-
-                try
-                {
-                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
-                    if (!executionResult)
-                    {
-                        if (executionResult.Error == "block gas limit exceeded")
-                        {
-                            worldState.Restore(snapshot);
-                            blockHeader.GasUsed = gasUsed;
-
-                            if (batch.Transactions.Count is 0)
-                            {
-                                while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
-                                continue;
-                            }
-                            else
-                            {
-                                CommitBatch(ref batch);
-                                if (maxBatchCount == Batches.Count)
-                                {
-                                    return [.. Batches];
-                                }
-                                continue;
-                            }
-                        }
-                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
-                        worldState.Restore(snapshot);
-                        blockHeader.GasUsed = gasUsed;
-                        continue;
-                    }
-                }
-                catch
-                {
-                    while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
-                    worldState.Restore(snapshot);
-                    blockHeader.GasUsed = gasUsed;
-                    continue;
-                }
-
-                if (!batch.TryAddTx(tx))
-                {
-                    if (batch.Transactions.Count is 0)
-                    {
-                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
-                        worldState.Restore(snapshot);
-                        blockHeader.GasUsed = gasUsed;
-                        continue;
-                    }
-                    else
-                    {
-                        CommitBatch(ref batch);
-                        worldState.Restore(snapshot);
-                        blockHeader.GasUsed = gasUsed;
-                        if (maxBatchCount == Batches.Count)
-                        {
-                            return [.. Batches];
-                        }
-                        continue;
-                    }
-                }
-
-                i++;
-            }
-
-            if (batch.Transactions.Count is not 0)
-            {
-                CommitBatch(ref batch);
-            }
-
-            return [.. Batches];
+            Transactions.Dispose();
         }
     }
 }
