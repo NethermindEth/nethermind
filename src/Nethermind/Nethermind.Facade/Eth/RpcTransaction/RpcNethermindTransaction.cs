@@ -12,19 +12,19 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 /// <summary>
 /// Base class for all output Nethermind RPC Transactions.
-/// Several fields are non-spec compliant so are marked as optional
 /// </summary>
 /// <remarks>
 /// Input:
-/// <para>JSON -> <see cref="RpcGenericTransaction"></see> (derived by <c>System.Text.JSON</c>)</para>
-/// <para><see cref="RpcGenericTransaction"/> -> <see cref="Transaction"/> (<see cref="RpcGenericTransaction.Converter"/> with a registry of [<see cref="TxType"/> => <see cref="IToTransaction{T}"/>)</para>
+/// <para>JSON -> <see cref="RpcNethermindTransaction"></see> (TODO: to a specific sublcass based on `Type`. We need a registry where we can add these classes)</para>
+/// <para><see cref="RpcNethermindTransaction"/> -> <see cref="Transaction"/> (with an overload `ToTransaction` method)</para>
 /// Output:
 /// <para><see cref="Transaction"/> -> <see cref="RpcNethermindTransaction"/> (<see cref="TransactionConverter"/> with a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
-/// <para><see cref="RpcNethermindTransaction"/> -> JSON (derived by <c>System.Text.JSON</c>.)</para>
+/// <para><see cref="RpcNethermindTransaction"/> -> JSON (TODO: Derived by System.Text.JSON using the runtime type)</para>
 /// </remarks>
 public abstract class RpcNethermindTransaction
 {
-    public TxType Type { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public TxType? Type { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256? Hash { get; set; }
@@ -40,10 +40,16 @@ public abstract class RpcNethermindTransaction
 
     public RpcNethermindTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
     {
+        Type = transaction.Type;
         Hash = transaction.Hash;
         TransactionIndex = txIndex;
         BlockHash = blockHash;
         BlockNumber = blockNumber;
+    }
+
+    public virtual Transaction ToTransaction()
+    {
+        throw new NotImplementedException();
     }
 
     public class JsonConverter : JsonConverter<RpcNethermindTransaction>
@@ -60,7 +66,8 @@ public abstract class RpcNethermindTransaction
         {
             using var jsonDocument = JsonDocument.ParseValue(ref reader);
 
-            TxType discriminator = default;
+            // NOTE: Should we default to a different type?
+            TxType discriminator = TxType.Legacy;
             if (jsonDocument.RootElement.TryGetProperty("type", out JsonElement typeProperty))
             {
                 discriminator = (TxType?)typeProperty.Deserialize(typeof(TxType), options) ?? default;

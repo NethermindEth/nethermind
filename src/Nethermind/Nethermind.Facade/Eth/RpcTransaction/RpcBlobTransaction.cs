@@ -10,17 +10,18 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 public class RpcBlobTransaction : RpcEIP1559Transaction
 {
-    public UInt256 MaxFeePerBlobGas { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? MaxFeePerBlobGas { get; set; }
 
     // TODO: Each item should be a 32 byte array
     // Currently we don't enforce this (hashes can have any length)
     public byte[][] BlobVersionedHashes { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-    public override UInt256 GasPrice { get; set; }
+    public override UInt256? GasPrice { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-    public override UInt256 V { get; set; }
+    public override UInt256? V { get; set; }
 
     public RpcBlobTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
         : base(transaction, txIndex, blockHash, blockNumber, baseFee)
@@ -29,27 +30,9 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public new class Converter : IToTransaction<RpcGenericTransaction>, IFromTransaction<RpcBlobTransaction>
+    public new class Converter : IFromTransaction<RpcBlobTransaction>
     {
-        private readonly RpcEIP1559Transaction.Converter _baseConverter = new();
-
         public RpcBlobTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
-
-        public Transaction ToTransaction(RpcGenericTransaction rpcTx)
-        {
-            var tx = _baseConverter.ToTransaction(rpcTx);
-            tx.MaxFeePerBlobGas = rpcTx.MaxFeePerBlobGas;
-            tx.BlobVersionedHashes = rpcTx.BlobVersionedHashes;
-            return tx;
-        }
-
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx)
-        {
-            var tx = _baseConverter.ToTransaction(rpcTx);
-            tx.MaxFeePerBlobGas = rpcTx.MaxFeePerBlobGas;
-            tx.BlobVersionedHashes = rpcTx.BlobVersionedHashes;
-            return tx;
-        }
     }
 }

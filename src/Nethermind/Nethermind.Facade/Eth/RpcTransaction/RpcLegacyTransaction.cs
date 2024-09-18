@@ -11,30 +11,39 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 public class RpcLegacyTransaction : RpcNethermindTransaction
 {
-    public UInt256 Nonce { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
-    public UInt256 Value { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? Value { get; set; }
 
-    public byte[] Input { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public byte[]? Input { get; set; }
 
-    public virtual UInt256 GasPrice { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public virtual UInt256? GasPrice { get; set; }
 
-    public ulong? ChainId { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual ulong? ChainId { get; set; }
 
-    public virtual UInt256 V { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public virtual UInt256? V { get; set; }
 
-    public UInt256 R { get; set; }
-    public UInt256 S { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? R { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? S { get; set; }
 
     public RpcLegacyTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
-        Type = transaction.Type;
         Nonce = transaction.Nonce;
         To = transaction.To;
         Gas = transaction.GasLimit;
@@ -48,44 +57,9 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         V = transaction.Signature?.V ?? 0;
     }
 
-    public class Converter : IToTransaction<RpcGenericTransaction>, IFromTransaction<RpcLegacyTransaction>
+    public class Converter : IFromTransaction<RpcLegacyTransaction>
     {
         public RpcLegacyTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
-
-        public Transaction ToTransaction(RpcGenericTransaction rpcTx)
-        {
-            Transaction tx = new()
-            {
-                Type = (TxType)rpcTx.Type,
-                Nonce = rpcTx.Nonce ?? 0, // TODO: here pick the last nonce?
-                To = rpcTx.To,
-                GasLimit = rpcTx.Gas ?? 0,
-                Value = rpcTx.Value ?? 0,
-                Data = rpcTx.Input,
-                GasPrice = rpcTx.GasPrice ?? 0,
-                SenderAddress = rpcTx.From,
-
-                // TODO: Unsafe cast
-                ChainId = (ulong?)rpcTx.ChainId,
-            };
-
-            return tx;
-        }
-
-        public Transaction ToTransactionWithDefaults(RpcGenericTransaction rpcTx)
-        {
-            return new Transaction()
-            {
-                Type = (TxType)rpcTx.Type,
-                Nonce = rpcTx.Nonce ?? 0, // TODO: here pick the last nonce?
-                To = rpcTx.To,
-                GasLimit = rpcTx.Gas ?? 90000,
-                Value = rpcTx.Value ?? 0,
-                Data = rpcTx.Input,
-                GasPrice = rpcTx.GasPrice ?? 20.GWei(),
-                SenderAddress = rpcTx.From,
-            };
-        }
     }
 }

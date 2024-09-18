@@ -57,33 +57,9 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public class Converter : IToTransaction<RpcOptimismTransaction>, IFromTransaction<RpcOptimismTransaction>
+    public class Converter : IFromTransaction<RpcOptimismTransaction>
     {
         public RpcOptimismTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
-
-        public Transaction ToTransaction(RpcOptimismTransaction rpcTx)
-        {
-            return new Transaction()
-            {
-                Type = rpcTx.Type,
-                SourceHash = rpcTx.SourceHash,
-                SenderAddress = rpcTx.From,
-                To = rpcTx.To,
-                Mint = rpcTx.Mint ?? 0,
-                Value = rpcTx.Value,
-                GasPrice = rpcTx.Gas,
-                // TODO: Unsafe cast
-                GasLimit = (long)rpcTx.Gas,
-                IsOPSystemTransaction = rpcTx.IsSystemTx,
-                Data = rpcTx.Input
-            };
-        }
-
-        public Transaction ToTransactionWithDefaults(RpcOptimismTransaction rpcTx)
-        {
-            var tx = ToTransaction(rpcTx);
-            return tx;
-        }
     }
 }
