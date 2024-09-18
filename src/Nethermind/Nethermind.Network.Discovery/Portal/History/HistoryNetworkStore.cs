@@ -45,7 +45,8 @@ public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): 
             return _encoderDecoder.EncodeBlockBody(block.Body!);
         }
 
-        throw new Exception($"unsupported content {contentKey}");
+        // throw new Exception($"unsupported content {contentKey}");
+        return null;
     }
 
     public bool ShouldAcceptOffer(byte[] offerContentKey)

@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Lantern.Discv5.WireProtocol.Session;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -35,6 +37,13 @@ public class KademliaTests
             .AddSingleton<Kademlia<ValueHash256, ValueHash256, ValueHash256>>()
             .BuildServiceProvider()
             .GetRequiredService<Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
+    }
+
+    [Test]
+    public void test()
+    {
+        var prop = typeof(SessionMain)
+            .GetProperty("IsEstablished", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.SetProperty);
     }
 
     [Test]

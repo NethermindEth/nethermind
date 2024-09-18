@@ -131,7 +131,12 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             var decodedMessage = _messageDecoder.DecodeMessage(message);
             if (decodedMessage is TalkReqMessage talkReqMessage)
             {
-                return await _rawTalkReqResponder.OnTalkReq(enr, talkReqMessage);
+                byte[]? resp = await _rawTalkReqResponder.OnTalkReq(enr, talkReqMessage);
+                if (resp != null)
+                {
+                    resp = new TalkRespMessage(talkReqMessage.RequestId, resp!).EncodeMessage();
+                }
+                return resp;
             }
             else
             {
@@ -140,6 +145,8 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
 
                 // So that it wont disconnect the peer
                 _requestManager.MarkRequestAsFulfilled(decodedMessage.RequestId);
+                _requestManager.MarkCachedRequestAsFulfilled(decodedMessage.RequestId);
+
                 return null;
             }
         }

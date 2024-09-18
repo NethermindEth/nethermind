@@ -120,6 +120,13 @@ public class KademliaSimulation
         ValueHash256 node3Hash = RandomKeccak(rand);
 
         Kademlia<TestNode, ValueHash256, ValueHash256> node1 = fabric.CreateNode(node1Hash);
+
+        (await node1.LookupNodesClosest(node1Hash, cts.Token))
+            .Select(n => n.Hash)
+            .ToHashSet()
+            .Should()
+            .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash });
+
         Kademlia<TestNode, ValueHash256, ValueHash256> node2 = fabric.CreateNode(node2Hash);
         fabric.CreateNode(node3Hash);
 
@@ -133,6 +140,11 @@ public class KademliaSimulation
             .ToHashSet()
             .Should()
             .BeEquivalentTo(new HashSet<ValueHash256>() {node1Hash, node2Hash, node3Hash });
+
+        (await node1.LookupNodesClosest(node3Hash, cts.Token, 1))
+            .First().Hash
+            .Should()
+            .Be(node3Hash);
     }
 
     [Test]

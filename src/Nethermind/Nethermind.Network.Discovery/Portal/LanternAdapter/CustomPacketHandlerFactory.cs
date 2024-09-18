@@ -13,7 +13,7 @@ public class CustomPacketHandlerFactory(IServiceProvider serviceProvider) : IPac
     {
         { PacketType.Ordinary, typeof(HacklyLanternPacketHandler) },
         { PacketType.WhoAreYou, typeof(WhoAreYouPacketHandler) },
-        { PacketType.Handshake, typeof(HandshakePacketHandler) },
+        { PacketType.Handshake, typeof(HackyHandshakePacketHandler) },
     };
 
     public IPacketHandler GetPacketHandler(PacketType packetType)

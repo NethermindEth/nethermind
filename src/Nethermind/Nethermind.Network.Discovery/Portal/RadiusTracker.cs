@@ -35,6 +35,12 @@ public class RadiusTracker (
         return IsInRadius(nodeHash, contentHash, nodeRadius);
     }
 
+    public bool HasRadius(IEnr node)
+    {
+        ValueHash256 nodeHash = new ValueHash256(node.NodeId);
+        return _distanceCache.Contains(nodeHash);
+    }
+
     public bool IsContentInRadius(byte[] offerContentKey)
     {
         ValueHash256 contentHash = _contentKeyHashProvider.GetHash(offerContentKey);

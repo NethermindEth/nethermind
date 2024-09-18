@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal.History.Rpc.Model;
 using Nethermind.Network.Discovery.Portal.Messages;
@@ -20,12 +21,15 @@ public class PortalHistoryRpcModule(
     IContentNetworkProtocol contentNetworkProtocol,
     ContentLookupService contentLookupService,
     IPortalContentNetworkStore contentNetworkStore,
+    ILogManager logManager,
     IEnrProvider enrProvider
 ): IPortalHistoryRpcModule
 {
     public ResultWrapper<NodeInfo> discv5_nodeInfo()
     {
         IEnr self = enrProvider.SelfEnr;
+
+        logManager.GetClassLogger<PortalHistoryRpcModule>().Info($"The nodeid is {self.NodeId.ToHexString()}");
 
         return ResultWrapper<NodeInfo>.Success(new NodeInfo()
         {
@@ -68,9 +72,14 @@ public class PortalHistoryRpcModule(
 
     public async Task<ResultWrapper<string>> portal_historyLookupEnr(ValueHash256 nodeId)
     {
-        IEnr[] enrs = await kademlia.LookupNodesClosest(nodeId, default, 1);
+        IEnr[] enrs = await kademlia.LookupNodesClosest(nodeId, default);
 
         if (enrs.Length < 1)
+        {
+            return ResultWrapper<string>.Fail("Lookup failed");
+        }
+
+        if (new ValueHash256(enrs[0].NodeId) != nodeId)
         {
             return ResultWrapper<string>.Fail("Lookup failed");
         }

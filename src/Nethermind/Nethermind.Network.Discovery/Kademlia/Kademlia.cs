@@ -142,12 +142,15 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     public async Task<TContent?> LookupValue(TContentKey contentKey, CancellationToken token)
     {
         TContent? result = default(TContent);
-        bool resultWasFound = false;
+        if (_store.TryGetValue(contentKey, out result))
+        {
+            return result;
+        }
 
+        bool resultWasFound = false;
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
         // TODO: Timeout?
-
         ValueHash256 targetHash = _contentHashProvider.GetHash(contentKey);
 
         try
@@ -183,7 +186,14 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         return await LookupNodesClosest(
             targetHash,
             k ?? _kSize,
-            async (nextNode, token) => await _messageSender.FindNeighbours(nextNode, targetHash, token),
+            async (nextNode, token) =>
+            {
+                if (SameAsSelf(nextNode))
+                {
+                    return _routingTable.GetKNearestNeighbour(targetHash, null);
+                }
+                return await _messageSender.FindNeighbours(nextNode, targetHash, token);
+            },
             token
         );
     }

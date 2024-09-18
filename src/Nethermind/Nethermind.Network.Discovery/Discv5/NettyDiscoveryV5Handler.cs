@@ -34,6 +34,7 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
+        _logger.LogDebug("Received datagram of size {msg}", msg.Content.ReadableBytes);
         var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
         _inboundQueue.Writer.TryWrite(udpPacket);
     }

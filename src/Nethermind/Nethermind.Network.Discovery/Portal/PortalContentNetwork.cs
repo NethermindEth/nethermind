@@ -23,6 +23,7 @@ public class PortalContentNetwork : IPortalContentNetwork
     private readonly IContentDistributor _contentDistributor;
     private readonly ILogger _logger1;
     private readonly ContentLookupService _contentLookupService;
+    private readonly RadiusTracker _radiusTracker;
 
     public PortalContentNetwork(
         ContentNetworkConfig config,
@@ -31,6 +32,7 @@ public class PortalContentNetwork : IPortalContentNetwork
         ITalkReqTransport talkReqTransport,
         IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
         IContentDistributor contentDistributor,
+        RadiusTracker radiusTracker,
         ContentLookupService contentLookupService,
         ILogManager logManager)
     {
@@ -40,6 +42,7 @@ public class PortalContentNetwork : IPortalContentNetwork
         _contentDistributor = contentDistributor;
         _logger1 = logManager.GetClassLogger<PortalContentNetwork>();
         _kademlia.OnNodeAdded += KademliaOnOnNodeAdded;
+        _radiusTracker = radiusTracker;
         _contentLookupService = contentLookupService;
 
         foreach (IEnr bootNode in config.BootNodes)
@@ -54,8 +57,11 @@ public class PortalContentNetwork : IPortalContentNetwork
         // We never actually send ping except during refresh, and that only happen if a bucket is full.
         // So when do we actually send ping? Its unclear where. But just to make sure I send it when a
         // new node is found.
-        if (_logger1.IsDebug) _logger1.Debug($"Ping {newNode.NodeId.ToHexString()} on new node");
-        _messageSender.Ping(newNode, CancellationToken.None);
+        if (!_radiusTracker.HasRadius(newNode))
+        {
+            if (_logger1.IsDebug) _logger1.Debug($"Ping {newNode.NodeId.ToHexString()} on new node");
+            _messageSender.Ping(newNode, CancellationToken.None);
+        }
     }
 
     public async Task<byte[]?> LookupContent(byte[] key, CancellationToken token)
