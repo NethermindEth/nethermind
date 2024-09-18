@@ -20,7 +20,7 @@ namespace Nethermind.Evm
 
         public static byte ByteAt(this ReadOnlyMemory<byte> inputData, int index)
         {
-            return inputData.Span[index];
+            return inputData.Length > index ? inputData.Span[index] : (byte)0;
         }
     }
 }

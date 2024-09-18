@@ -13,7 +13,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 public class PragueEofTests : EofTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(EofTest test) => Assert.That(RunTest(test));
+    public void Test(EofTest test) => RunCITest(test);
 
     private static IEnumerable<TestCaseData> LoadTests()
     {

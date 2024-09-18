@@ -130,7 +130,7 @@ internal class Eof1 : IEofVersionHandler
         ReadOnlySpan<byte> container = containerMemory.Span;
 
         header = null;
-        // we need to be able to parse header + minimum section lenghts
+        // we need to be able to parse header + minimum section lengths
         if (container.Length < MINIMUM_SIZE)
         {
             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is too small to be valid code");
@@ -197,7 +197,7 @@ internal class Eof1 : IEofVersionHandler
 
                     if (sectionSizes.TypeSectionSize is null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
                         return false;
                     }
 
@@ -223,7 +223,7 @@ internal class Eof1 : IEofVersionHandler
 
                     codeSections = new int[numberOfCodeSections];
                     int CODESECTION_HEADER_PREFIX_SIZE = pos + EofValidator.TWO_BYTE_LENGTH;
-                    for (ushort i = 0; i < numberOfCodeSections; i++)
+                    for (ushort i = 0; i < codeSections.Length; i++)
                     {
                         int currentCodeSizeOffset = CODESECTION_HEADER_PREFIX_SIZE + i * EofValidator.TWO_BYTE_LENGTH; // offset of pos'th code size
                         int codeSectionSize = GetUInt16(container, currentCodeSizeOffset);
@@ -237,7 +237,7 @@ internal class Eof1 : IEofVersionHandler
                         codeSections[i] = codeSectionSize;
                     }
 
-                    pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfCodeSections;
+                    pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * codeSections.Length;
                     break;
                 case Separator.KIND_CONTAINER:
                     if (sectionSizes.ContainerSectionSize != null)
@@ -248,7 +248,7 @@ internal class Eof1 : IEofVersionHandler
 
                     if (sectionSizes.CodeSectionSize is null)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well fromated");
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code is not well formatted");
                         return false;
                     }
 
@@ -268,7 +268,7 @@ internal class Eof1 : IEofVersionHandler
                     sectionSizes.ContainerSectionSize = (ushort)(numberOfContainerSections * EofValidator.TWO_BYTE_LENGTH);
                     if (numberOfContainerSections is > MAXIMUM_NUM_CONTAINER_SECTIONS or 0)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, code sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, container sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
                         return false;
                     }
 
@@ -280,7 +280,7 @@ internal class Eof1 : IEofVersionHandler
 
                     containerSections = new int[numberOfContainerSections];
                     int CONTAINER_SECTION_HEADER_PREFIX_SIZE = pos + EofValidator.TWO_BYTE_LENGTH;
-                    for (ushort i = 0; i < numberOfContainerSections; i++)
+                    for (ushort i = 0; i < containerSections.Length; i++)
                     {
                         int currentContainerSizeOffset = CONTAINER_SECTION_HEADER_PREFIX_SIZE + i * EofValidator.TWO_BYTE_LENGTH; // offset of pos'th code size
                         int containerSectionSize = GetUInt16(container, currentContainerSizeOffset);
@@ -294,7 +294,7 @@ internal class Eof1 : IEofVersionHandler
                         containerSections[i] = containerSectionSize;
                     }
 
-                    pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * numberOfContainerSections;
+                    pos += EofValidator.TWO_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH * containerSections.Length;
                     break;
                 case Separator.KIND_DATA:
                     if (sectionSizes.DataSectionSize != null)
@@ -374,12 +374,14 @@ internal class Eof1 : IEofVersionHandler
     {
         if (!TryParseEofHeader(code, validationStrategy, out EofHeader? header))
         {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Header not parsed");
             eofContainer = null;
             return false;
         }
 
         if (!ValidateBody(code.Span, header.Value, validationStrategy))
         {
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Body not valid");
             eofContainer = null;
             return false;
         }
@@ -390,6 +392,7 @@ internal class Eof1 : IEofVersionHandler
         {
             if (!ValidateContainer(eofContainer.Value, validationStrategy))
             {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Container not valid");
                 eofContainer = null;
                 return false;
             }
@@ -422,10 +425,16 @@ internal class Eof1 : IEofVersionHandler
                     if (targetContainer.ContainerSections.Length < worklet.Index)
                         continue;
 
-                    ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[worklet.Index - 1];
-                    if (!TryParseEofHeader(subsection, validationStrategy, out EofHeader? header) ||
-                        !ValidateBody(subsection.Span, header.Value, validationStrategy))
+                    var section = worklet.Index - 1;
+                    ReadOnlyMemory<byte> subsection = targetContainer.ContainerSections[section];
+                    if (!TryParseEofHeader(subsection, validationStrategy, out EofHeader? header))
                     {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Header invalid: section {section}");
+                        return false;
+                    }
+                    if (!ValidateBody(subsection.Span, header.Value, validationStrategy))
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Body invalid: section {section}");
                         return false;
                     }
 
@@ -441,12 +450,16 @@ internal class Eof1 : IEofVersionHandler
                 else
                 {
                     if (!ValidateCodeSections(targetContainer, worklet.Strategy, in containerQueue))
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code sections invalid");
                         return false;
+                    }
                 }
                 containerQueue.MarkVisited(worklet.Index, GetVisited(worklet.Strategy));
             }
             if (!containerQueue.IsAllVisited())
             {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Not all containers visited");
                 return false;
             }
         }
@@ -610,20 +623,20 @@ internal class Eof1 : IEofVersionHandler
         }
 
         var length = code.Length / BYTE_BIT_COUNT + 1;
-        byte[] codeBitmapArray = ArrayPool<byte>.Shared.Rent(length);
-        byte[] jumpDestsArray = ArrayPool<byte>.Shared.Rent(length);
+        byte[] dataBitmapArray = ArrayPool<byte>.Shared.Rent(length);
+        byte[] jumpDestArray = ArrayPool<byte>.Shared.Rent(length);
 
         try
         {
             // ArrayPool may return a larger array than requested, so we need to slice it to the actual length
-            Span<byte> codeBitmap = codeBitmapArray.AsSpan(0, length);
-            Span<byte> jumpDests = jumpDestsArray.AsSpan(0, length);
+            Span<byte> dataBitmap = dataBitmapArray.AsSpan(0, length);
+            Span<byte> jumpDest = jumpDestArray.AsSpan(0, length);
             // ArrayPool may return a larger array than requested, so we need to slice it to the actual length
-            codeBitmap.Clear();
-            jumpDests.Clear();
+            dataBitmap.Clear();
+            jumpDest.Clear();
 
-            ReadOnlySpan<byte> currentTypesection = eofContainer.TypeSections[sectionId].Span;
-            var isCurrentSectionNonReturning = currentTypesection[OUTPUTS_OFFSET] == 0x80;
+            ReadOnlySpan<byte> currentTypeSection = eofContainer.TypeSections[sectionId].Span;
+            var isCurrentSectionNonReturning = currentTypeSection[OUTPUTS_OFFSET] == 0x80;
 
             int pos;
             Instruction opcode = Instruction.STOP;
@@ -632,7 +645,12 @@ internal class Eof1 : IEofVersionHandler
                 opcode = (Instruction)code[pos];
                 var postInstructionByte = pos + 1;
 
-                if (opcode is Instruction.RETURN or Instruction.STOP)
+                if (!opcode.IsValid(IsEofContext: true))
+                {
+                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains undefined opcode {opcode}");
+                    return false;
+                }
+                else if (opcode is Instruction.RETURN or Instruction.STOP)
                 {
                     if (strategy.HasFlag(ValidationStrategy.ValidateInitcodeMode))
                     {
@@ -652,14 +670,7 @@ internal class Eof1 : IEofVersionHandler
                         }
                     }
                 }
-
-                if (!opcode.IsValid(IsEofContext: true))
-                {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains undefined opcode {opcode}");
-                    return false;
-                }
-
-                if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
+                else if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                 {
                     if (postInstructionByte + EofValidator.TWO_BYTE_LENGTH > code.Length)
                     {
@@ -676,11 +687,10 @@ internal class Eof1 : IEofVersionHandler
                         return false;
                     }
 
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, jumpDests, ref rjumpdest);
-                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, jumpDest, ref rjumpdest);
+                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, dataBitmap, ref pos);
                 }
-
-                if (opcode is Instruction.JUMPF)
+                else if (opcode is Instruction.JUMPF)
                 {
                     if (postInstructionByte + EofValidator.TWO_BYTE_LENGTH > code.Length)
                     {
@@ -700,7 +710,7 @@ internal class Eof1 : IEofVersionHandler
 
                     var targetSectionOutputCount = targetTypesection[OUTPUTS_OFFSET];
                     var isTargetSectionNonReturning = targetTypesection[OUTPUTS_OFFSET] == 0x80;
-                    var currentSectionOutputCount = currentTypesection[OUTPUTS_OFFSET];
+                    var currentSectionOutputCount = currentTypeSection[OUTPUTS_OFFSET];
 
                     if (!isTargetSectionNonReturning && currentSectionOutputCount < targetSectionOutputCount)
                     {
@@ -709,21 +719,19 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     sectionsWorklist.Enqueue(targetSectionId, strategy);
-                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, dataBitmap, ref postInstructionByte);
                 }
-
-                if (opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
+                else if (opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
                 {
                     if (postInstructionByte + EofValidator.ONE_BYTE_LENGTH > code.Length)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {opcode.FastToString()} Argument underflow");
                         return false;
                     }
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, dataBitmap, ref postInstructionByte);
 
                 }
-
-                if (opcode is Instruction.RJUMPV)
+                else if (opcode is Instruction.RJUMPV)
                 {
                     if (postInstructionByte + EofValidator.ONE_BYTE_LENGTH + EofValidator.TWO_BYTE_LENGTH > code.Length)
                     {
@@ -754,12 +762,11 @@ internal class Eof1 : IEofVersionHandler
                             if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RJUMPV} Destination outside of Code bounds");
                             return false;
                         }
-                        BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, jumpDests, ref rjumpdest);
+                        BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, jumpDest, ref rjumpdest);
                     }
-                    BitmapHelper.HandleNumbits(immediateValueSize, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(immediateValueSize, dataBitmap, ref postInstructionByte);
                 }
-
-                if (opcode is Instruction.CALLF)
+                else if (opcode is Instruction.CALLF)
                 {
                     if (postInstructionByte + EofValidator.TWO_BYTE_LENGTH > code.Length)
                     {
@@ -786,16 +793,14 @@ internal class Eof1 : IEofVersionHandler
                     }
 
                     sectionsWorklist.Enqueue(targetSectionId, strategy);
-                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, dataBitmap, ref postInstructionByte);
                 }
-
-                if (opcode is Instruction.RETF && isCurrentSectionNonReturning)
+                else if (opcode is Instruction.RETF && isCurrentSectionNonReturning)
                 {
                     if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, non returning sections are not allowed to use opcode {Instruction.RETF}");
                     return false;
                 }
-
-                if (opcode is Instruction.DATALOADN)
+                else if (opcode is Instruction.DATALOADN)
                 {
                     if (postInstructionByte + EofValidator.TWO_BYTE_LENGTH > code.Length)
                     {
@@ -810,10 +815,9 @@ internal class Eof1 : IEofVersionHandler
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.DATALOADN}'s immediate argument must be less than datasection.Length / 32 i.e: {eofContainer.Header.DataSection.Size / 32}");
                         return false;
                     }
-                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, dataBitmap, ref postInstructionByte);
                 }
-
-                if (opcode is Instruction.RETURNCONTRACT)
+                else if (opcode is Instruction.RETURNCONTRACT)
                 {
                     if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
                     {
@@ -855,10 +859,9 @@ internal class Eof1 : IEofVersionHandler
 
                     containersWorklist.Enqueue(runtimeContainerId + 1, ValidationStrategy.ValidateRuntimeMode);
 
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, dataBitmap, ref postInstructionByte);
                 }
-
-                if (opcode is Instruction.EOFCREATE)
+                else if (opcode is Instruction.EOFCREATE)
                 {
                     if (postInstructionByte + EofValidator.ONE_BYTE_LENGTH > code.Length)
                     {
@@ -883,10 +886,9 @@ internal class Eof1 : IEofVersionHandler
 
                     containersWorklist.Enqueue(initcodeSectionId + 1, ValidationStrategy.ValidateInitcodeMode | ValidationStrategy.ValidateFullBody);
 
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, dataBitmap, ref postInstructionByte);
                 }
-
-                if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
+                else if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)
                 {
                     int len = opcode - Instruction.PUSH0;
                     if (postInstructionByte + len > code.Length)
@@ -894,7 +896,7 @@ internal class Eof1 : IEofVersionHandler
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {opcode.FastToString()} PC Reached out of bounds");
                         return false;
                     }
-                    BitmapHelper.HandleNumbits(len, codeBitmap, ref postInstructionByte);
+                    BitmapHelper.HandleNumbits(len, dataBitmap, ref postInstructionByte);
                 }
                 pos = postInstructionByte;
             }
@@ -911,7 +913,7 @@ internal class Eof1 : IEofVersionHandler
                 return false;
             }
 
-            var result = !BitmapHelper.CheckCollision(codeBitmap, jumpDests);
+            var result = !BitmapHelper.CheckCollision(dataBitmap, jumpDest);
             if (!result)
                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Invalid Jump destination");
 
@@ -921,8 +923,8 @@ internal class Eof1 : IEofVersionHandler
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(codeBitmapArray);
-            ArrayPool<byte>.Shared.Return(jumpDestsArray);
+            ArrayPool<byte>.Shared.Return(dataBitmapArray);
+            ArrayPool<byte>.Shared.Return(jumpDestArray);
         }
     }
     public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection)

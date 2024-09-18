@@ -2,38 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Ethash;
-using Nethermind.Consensus.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-using System.Threading.Tasks;
-using Nethermind.TxPool;
 using Nethermind.Evm.EvmObjectFormat;
 
 namespace Ethereum.Test.Base
 {
     public abstract class EofTestBase
     {
-        private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
+        private static ILogger _logger = new(TextContextLogger.Instance);
         private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
 
         [SetUp]
@@ -48,9 +27,14 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger();
         }
 
+        protected void RunCITest(EofTest test)
+        {
+            Assert.That(RunTest(test, NullTxTracer.Instance), Is.EqualTo(test.Result.Success));
+        }
+
         protected bool RunTest(EofTest test)
         {
-            return RunTest(test, NullTxTracer.Instance);
+            return RunTest(test, NullTxTracer.Instance) == test.Result.Success;
         }
 
         protected bool RunTest(EofTest test, ITxTracer txTracer)
@@ -76,8 +60,7 @@ namespace Ethereum.Test.Base
             };
 
             bool result = CodeDepositHandler.IsValidWithEofRules(fork, code, 1);
-
-            return result == test.Result.Success;
+            return result;
         }
     }
 }

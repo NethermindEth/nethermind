@@ -56,6 +56,7 @@ public static class EofValidator
             return handler.TryParseEofHeader(code, ValidationStrategy.Validate, out header);
         }
 
+        if (Logger.IsTrace) Logger.Trace($"EOF: Eof not recognized");
         header = null;
         return false;
     }
@@ -64,12 +65,14 @@ public static class EofValidator
     {
         if (strategy == ValidationStrategy.None)
         {
+            if (Logger.IsTrace) Logger.Trace($"EOF: No validation");
             eofContainer = null;
             return true;
         }
 
         if (strategy.HasFlag(ValidationStrategy.HasEofMagic) && !code.StartsWith(MAGIC))
         {
+            if (Logger.IsTrace) Logger.Trace($"EOF: No MAGIC as start of code");
             eofContainer = null;
             return false;
         }
@@ -79,6 +82,7 @@ public static class EofValidator
             return handler.TryGetEofContainer(code, strategy, out eofContainer);
         }
 
+        if (Logger.IsTrace) Logger.Trace($"EOF: Not EOF");
         eofContainer = null;
         return false;
     }
