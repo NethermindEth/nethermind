@@ -18,6 +18,9 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     public Address? To { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public Address? From { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
