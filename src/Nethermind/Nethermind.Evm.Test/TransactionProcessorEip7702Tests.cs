@@ -211,7 +211,6 @@ internal class TransactionProcessorEip7702Tests
                                              .Select(i => CreateAuthorizationTuple(
                                                  signer,
                                                  _specProvider.ChainId,
-                                                 //Copy empty code so will not add to gas cost
                                                  TestItem.AddressC,
                                                  0)).ToArray())
             .SignedAndResolved(_ethereumEcdsa, sender, true)
@@ -399,8 +398,7 @@ internal class TransactionProcessorEip7702Tests
                 .Done).Bytes.ToArray()
             };
         //EXTCOPYCODE should copy the delegated code
-        yield return new object[] {
-            Prepare.EvmCode
+        byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressA)
             .Op(Instruction.DUP1)
             .Op(Instruction.EXTCODESIZE)
@@ -413,22 +411,12 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.PUSH0)
             .Op(Instruction.SSTORE)
             .Op(Instruction.STOP)
-            .Done,
-            Prepare.EvmCode
-            .PushData(TestItem.AddressA)
-            .Op(Instruction.DUP1)
-            .Op(Instruction.EXTCODESIZE)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.DUP4)
-            .Op(Instruction.EXTCODECOPY)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.MLOAD)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.SSTORE)
-            .Op(Instruction.STOP)
-            .Done
-            };
+            .Done;
+        yield return new object[]
+        {
+            code,
+            code
+        };
     }
     [TestCaseSource(nameof(OpcodesWithEXT))]
     public void Execute_DelegatedCodeUsesEXTOPCODES_StoresExpectedValue(byte[] code, byte[] expectedValue)
