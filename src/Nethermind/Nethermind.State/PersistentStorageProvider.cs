@@ -329,7 +329,6 @@ namespace Nethermind.State
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
             _storages.Clear();
-            _preBlockCache?.NoResizeClear();
         }
 
         private StorageTree GetOrCreateStorage(Address address)
