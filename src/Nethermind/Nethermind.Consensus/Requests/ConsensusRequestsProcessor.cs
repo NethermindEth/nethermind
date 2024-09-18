@@ -21,7 +21,7 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
     private readonly WithdrawalRequestsProcessor _withdrawalRequestsProcessor = new(transactionProcessor);
     private readonly IDepositsProcessor _depositsProcessor = new DepositsProcessor();
 
-    public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
+    public void ProcessRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (!spec.RequestsEnabled)
             return;
@@ -29,7 +29,7 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
         using ArrayPoolList<ConsensusRequest> requestsList = new(receipts.Length * 2);
 
         requestsList.AddRange(_depositsProcessor.ProcessDeposits(block, receipts, spec));
-        requestsList.AddRange(_withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state, block));
+        requestsList.AddRange(_withdrawalRequestsProcessor.ReadWithdrawalRequests(block, state, spec));
         requestsList.AddRange(_consolidationRequestsProcessor.ReadConsolidationRequests(spec, state, block));
 
         ConsensusRequest[] requests = requestsList.ToArray();

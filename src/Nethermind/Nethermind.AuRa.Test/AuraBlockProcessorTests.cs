@@ -163,7 +163,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 transactionProcessor,
-                null,
+                auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
 

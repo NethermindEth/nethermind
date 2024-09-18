@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly HeaderDecoder _headerDecoder = new();
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly WithdrawalDecoder _withdrawalDecoder = new();
-        private readonly ConsensusRequestDecoder _consensusRequestsDecoder = new();
+        private readonly ConsensusRequestDecoder _consensusRequestsDecoder = ConsensusRequestDecoder.Instance;
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

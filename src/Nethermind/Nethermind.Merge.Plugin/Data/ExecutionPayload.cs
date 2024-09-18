@@ -238,7 +238,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return ValidationResult.Fail;
         }
 
-        var actualVersion = GetExecutionPayloadVersion();
+        int actualVersion = GetExecutionPayloadVersion();
 
         error = actualVersion switch
         {

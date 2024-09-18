@@ -9,5 +9,5 @@ namespace Nethermind.Consensus.Requests;
 
 public interface IConsensusRequestsProcessor
 {
-    void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts);
+    void ProcessRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec);
 }

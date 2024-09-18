@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
-        private static readonly ConsensusRequestDecoder _requestsDecoder = new();
+        private static readonly ConsensusRequestDecoder _requestsDecoder = ConsensusRequestDecoder.Instance;
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         private readonly CappedArray<byte> _data;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Requests;
@@ -70,7 +71,6 @@ public class WithdrawalRequestProcessorTests
     [Test]
     public void ShouldProcessWithdrawalRequest()
     {
-
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.WithdrawalRequestsEnabled.Returns(true);
         spec.Eip7002ContractAddress.Returns(eip7002Account);
@@ -86,12 +86,14 @@ public class WithdrawalRequestProcessorTests
             Amount = 0
         };
 
-        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider, block).ToList();
+        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(block, _stateProvider, spec).ToList();
 
         Assert.That(withdrawalRequests, Has.Count.EqualTo(16));
 
         WithdrawalRequest withdrawalRequestResult = withdrawalRequests[0];
 
-        withdrawalRequestResult.Should().BeEquivalentTo(withdrawalRequest);
+        withdrawalRequestResult.Should().BeEquivalentTo(withdrawalRequest, options => options
+            .Using<System.Memory<byte>>(ctx => ctx.Subject.Span.SequenceEqual(ctx.Expectation.Span).Should().BeTrue())
+            .WhenTypeIs<System.Memory<byte>>());
     }
 }

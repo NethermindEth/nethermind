@@ -9,6 +9,8 @@ namespace Nethermind.Serialization.Rlp;
 
 public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationRequest>, IRlpValueDecoder<ConsolidationRequest>, IRlpObjectDecoder<ConsolidationRequest>
 {
+    public static ConsolidationRequestDecoder Instance { get; } = new();
+    
     public int GetLength(ConsolidationRequest item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 

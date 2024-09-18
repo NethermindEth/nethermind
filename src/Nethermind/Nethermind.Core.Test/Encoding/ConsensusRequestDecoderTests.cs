@@ -82,7 +82,7 @@ public class ConsensusRequestDecoderTests
             Amount = int.MaxValue
         };
         RlpStream stream = new(1024);
-        ConsensusRequestDecoder codec = new();
+        ConsensusRequestDecoder codec = ConsensusRequestDecoder.Instance;
 
         codec.Encode(stream, deposit);
 
@@ -102,7 +102,7 @@ public class ConsensusRequestDecoderTests
             Amount = int.MaxValue
         };
         RlpStream stream = new(1024);
-        ConsensusRequestDecoder codec = new();
+        ConsensusRequestDecoder codec = ConsensusRequestDecoder.Instance;
 
         codec.Encode(stream, withdrawalRequest);
 
@@ -122,7 +122,7 @@ public class ConsensusRequestDecoderTests
             TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
         };
         RlpStream stream = new(1024);
-        ConsensusRequestDecoder codec = new();
+        ConsensusRequestDecoder codec = ConsensusRequestDecoder.Instance;
 
         codec.Encode(stream, consolidationRequest);
 
@@ -143,7 +143,7 @@ public class ConsensusRequestDecoderTests
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode(deposit).Bytes;
+        byte[] rlp1 = ConsensusRequestDecoder.Instance.Encode(deposit).Bytes;
         byte[] rlp2 = Rlp.Encode(deposit).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
@@ -158,7 +158,7 @@ public class ConsensusRequestDecoderTests
             ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode(withdrawalRequest).Bytes;
+        byte[] rlp1 = ConsensusRequestDecoder.Instance.Encode(withdrawalRequest).Bytes;
         byte[] rlp2 = Rlp.Encode(withdrawalRequest).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
@@ -173,7 +173,7 @@ public class ConsensusRequestDecoderTests
             SourcePubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             TargetPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes()
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode(consolidationRequest).Bytes;
+        byte[] rlp1 = ConsensusRequestDecoder.Instance.Encode(consolidationRequest).Bytes;
         byte[] rlp2 = Rlp.Encode(consolidationRequest).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
@@ -208,7 +208,7 @@ public class ConsensusRequestDecoderTests
 
         byte[] rlp = Rlp.Encode(requests).Bytes;
         RlpStream rlpStream = new(rlp);
-        ConsensusRequest[] decoded = Rlp.DecodeArray(rlpStream, new ConsensusRequestDecoder());
+        ConsensusRequest[] decoded = Rlp.DecodeArray(rlpStream, ConsensusRequestDecoder.Instance);
         decoded.Should().BeEquivalentTo(requests);
     }
 }

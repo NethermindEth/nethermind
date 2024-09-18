@@ -22,6 +22,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.ConsensusRequests;
 using Microsoft.CodeAnalysis;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -144,11 +146,13 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayloadV4 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV4>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot, requests: requests);
             blockRequestV4.TryGetBlock(out Block? block);
 
+            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor);
+            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header));
             Snapshot before = chain.State.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.ConsensusRequestsProcessor?.ProcessRequests(chain.SpecProvider.GenesisSpec, chain.State, block!, Array.Empty<TxReceipt>());
+            chain.ConsensusRequestsProcessor?.ProcessRequests(block!, chain.State, Array.Empty<TxReceipt>(), chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
@@ -170,29 +174,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             if (requests is not null)
             {
-                (int depositCount, int withdrawalRequestCount, int consolidationRequestCount) = requests.GetTypeCounts();
-                deposits = new Deposit[depositCount];
-                withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
-                consolidationRequests = new ConsolidationRequest[consolidationRequestCount];
-                int depositIndex = 0;
-                int withdrawalRequestIndex = 0;
-                int consolidationRequestIndex = 0;
-                for (int i = 0; i < requests.Length; ++i)
-                {
-                    ConsensusRequest request = requests[i];
-                    if (request.Type == ConsensusRequestsType.Deposit)
-                    {
-                        deposits[depositIndex++] = (Deposit)request;
-                    }
-                    else if (request.Type == ConsensusRequestsType.WithdrawalRequest)
-                    {
-                        withdrawalRequests[withdrawalRequestIndex++] = (WithdrawalRequest)request;
-                    }
-                    else
-                    {
-                        consolidationRequests[consolidationRequestIndex++] = (ConsolidationRequest)request;
-                    }
-                }
+                (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
             }
 
             T blockRequest = new()

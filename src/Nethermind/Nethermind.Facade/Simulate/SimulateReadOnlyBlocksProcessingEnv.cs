@@ -33,8 +33,7 @@ public class SimulateBlockValidationTransactionsExecutor(
     protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
         blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
 
-    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index,
-        BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
         if (!validate)
         {

@@ -35,25 +35,17 @@ public class BlockValidator(
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
-    {
-        return _headerValidator.Validate(header, parent, isUncle, out _);
-    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle) =>
+        _headerValidator.Validate(header, parent, isUncle, out _);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
-    {
-        return _headerValidator.Validate(header, parent, isUncle, out error);
-    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) =>
+        _headerValidator.Validate(header, parent, isUncle, out error);
 
-    public bool Validate(BlockHeader header, bool isUncle)
-    {
-        return _headerValidator.Validate(header, isUncle, out _);
-    }
+    public bool Validate(BlockHeader header, bool isUncle) =>
+        _headerValidator.Validate(header, isUncle, out _);
 
-    public bool Validate(BlockHeader header, bool isUncle, out string? error)
-    {
-        return _headerValidator.Validate(header, isUncle, out error);
-    }
+    public bool Validate(BlockHeader header, bool isUncle, out string? error) =>
+        _headerValidator.Validate(header, isUncle, out error);
 
     /// <summary>
     /// Applies to blocks without parent
@@ -80,10 +72,7 @@ public class BlockValidator(
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block)
-    {
-        return ValidateSuggestedBlock(block, out _);
-    }
+    public bool ValidateSuggestedBlock(Block block) => ValidateSuggestedBlock(block, out _);
 
     /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
@@ -99,10 +88,14 @@ public class BlockValidator(
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         if (!ValidateTransactions(block, spec, out errorMessage))
+        {
             return false;
+        }
 
         if (!ValidateEip4844Fields(block, spec, out errorMessage))
+        {
             return false;
+        }
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
@@ -147,7 +140,9 @@ public class BlockValidator(
             }
 
             if (!ValidateRequests(block, spec, out errorMessage))
+            {
                 return false;
+            }
         }
 
         return true;
@@ -161,10 +156,8 @@ public class BlockValidator(
     /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
-    }
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
+        ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
 
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Core.ConsensusRequests;
@@ -25,7 +26,7 @@ public class ConsensusRequest
     public Address? SourceAddressField { get; protected set; }
 
     [JsonIgnore]
-    public byte[]? PubKeyField { get; set; }
+    public Memory<byte>? PubKeyField { get; set; }
 
     [JsonIgnore]
     public byte[]? WithdrawalCredentialsField { get; protected set; }

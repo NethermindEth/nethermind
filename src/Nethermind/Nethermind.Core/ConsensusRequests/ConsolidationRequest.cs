@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
+using System;
 using Nethermind.Core.Extensions;
-using System.Text;
 
 namespace Nethermind.Core.ConsensusRequests;
 
@@ -21,7 +20,7 @@ public class ConsolidationRequest : ConsensusRequest
         set { SourceAddressField = value; }
     }
 
-    public byte[]? SourcePubkey
+    public Memory<byte>? SourcePubkey
     {
         get { return PubKeyField; }
         set { PubKeyField = value; }
@@ -37,7 +36,7 @@ public class ConsolidationRequest : ConsensusRequest
 
     public string ToString(string indentation) => @$"{indentation}{nameof(ConsolidationRequest)}
             {{ {nameof(SourceAddress)}: {SourceAddress},
-            {nameof(SourcePubkey)}: {SourcePubkey?.ToHexString()},
+            {nameof(SourcePubkey)}: {SourcePubkey?.Span.ToHexString()},
             {nameof(TargetPubkey)}: {TargetPubkey?.ToHexString()},
             }}";
 
