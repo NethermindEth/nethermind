@@ -70,7 +70,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
         StateProvider = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
-        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository(1));
+        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository(specProvider.ChainId));
         VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));
         _transactionProcessor = new SimulateTransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
