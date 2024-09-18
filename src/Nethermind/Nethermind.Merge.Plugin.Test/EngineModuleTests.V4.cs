@@ -317,10 +317,8 @@ public partial class EngineModuleTests
         getPayloadBodiesByHashV2_should_return_payload_bodies_in_order_of_request_block_hashes_and_null_for_unknown_hashes(
             ConsensusRequest[]? requests)
     {
-
         Deposit[]? deposits = null;
         WithdrawalRequest[]? withdrawalRequests = null;
-
         if (requests is not null)
         {
             (deposits, withdrawalRequests) = requests.SplitRequests();
@@ -341,7 +339,6 @@ public partial class EngineModuleTests
             null,
             new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>(), deposits, withdrawalRequests),
         };
-
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
     }
 
@@ -350,10 +347,8 @@ public partial class EngineModuleTests
         getPayloadBodiesByRangeV2_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
             ConsensusRequest[]? requests)
     {
-
         Deposit[]? deposits = null;
         WithdrawalRequest[]? withdrawalRequests = null;
-
         if (requests is not null)
         {
             (deposits, withdrawalRequests) = requests.SplitRequests();
@@ -363,12 +358,9 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
-
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
-
         await rpc.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(executionPayload2.BlockHash!,
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
-
 
         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
            rpc.engine_getPayloadBodiesByRangeV2(1, 3).Result.Data;
@@ -390,16 +382,6 @@ public partial class EngineModuleTests
         ExecutionPayloadBodyV2Result?[] expected = Array.Empty<ExecutionPayloadBodyV2Result?>();
 
         payloadBodies.Should().BeEquivalentTo(expected);
-    }
-
-    private async Task<ExecutionPayloadV4> SendNewBlockV4(IEngineRpcModule rpc, MergeTestBlockchain chain, ConsensusRequest[]? requests)
-    {
-        ExecutionPayloadV4 executionPayload = CreateBlockRequestV4(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, Array.Empty<Withdrawal>(), 0, 0, Array.Empty<Transaction>(), parentBeaconBlockRoot: TestItem.KeccakA, requests: requests);
-        ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
-
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
-
-        return executionPayload;
     }
 
     private async Task<ExecutionPayloadV4> BuildAndSendNewBlockV4(
