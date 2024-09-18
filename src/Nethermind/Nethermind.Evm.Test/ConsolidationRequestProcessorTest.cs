@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Requests;
@@ -92,6 +93,8 @@ public class ConsolidationRequestProcessorTests
 
         ConsolidationRequest ConsolidationRequestResult = ConsolidationRequests[0];
 
-        ConsolidationRequestResult.Should().BeEquivalentTo(ConsolidationRequest);
+        ConsolidationRequestResult.Should().BeEquivalentTo(ConsolidationRequest, options => options
+            .Using<Memory<byte>>(ctx => ctx.Subject.Span.SequenceEqual(ctx.Expectation.Span).Should().BeTrue())
+            .WhenTypeIs<Memory<byte>>());
     }
 }

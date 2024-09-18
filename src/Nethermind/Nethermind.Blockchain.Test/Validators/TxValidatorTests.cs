@@ -582,7 +582,6 @@ public class TxValidatorTests
 
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
     }
-    
     [Test]
     public void IsWellFormed_NullAuthorizationList_ReturnsFalse()
     {
