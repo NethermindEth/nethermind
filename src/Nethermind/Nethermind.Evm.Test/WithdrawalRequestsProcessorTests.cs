@@ -25,19 +25,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class WithdrawalRequestProcessorTests
+public class WithdrawalRequestProcessorTests(ITransactionProcessor transactionProcessor)
 {
 
     private ISpecProvider _specProvider;
-    private IEthereumEcdsa _ethereumEcdsa;
-    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
 
     private ICodeInfoRepository _codeInfoRepository;
 
     private static readonly UInt256 AccountBalance = 1.Ether();
 
-    private readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
+    private readonly Address _eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
 
     [SetUp]
     public void Setup()
@@ -46,7 +44,7 @@ public class WithdrawalRequestProcessorTests
         MemDb stateDb = new();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        _stateProvider.CreateAccount(eip7002Account, AccountBalance);
+        _stateProvider.CreateAccount(_eip7002Account, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -54,9 +52,9 @@ public class WithdrawalRequestProcessorTests
 
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository, LimboLogs.Instance);
 
-        _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        transactionProcessor = Substitute.For<ITransactionProcessor>();
 
-        _transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<CallOutputTracer>())
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<CallOutputTracer>())
             .Returns(ci =>
             {
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
@@ -64,7 +62,7 @@ public class WithdrawalRequestProcessorTests
                 return new TransactionResult();
             });
 
-        _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
+        new EthereumEcdsa(_specProvider.ChainId);
     }
 
 
@@ -73,11 +71,11 @@ public class WithdrawalRequestProcessorTests
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip7002Enabled.Returns(true);
-        spec.Eip7002ContractAddress.Returns(eip7002Account);
+        spec.Eip7002ContractAddress.Returns(_eip7002Account);
 
         Block block = Build.A.Block.TestObject;
 
-        WithdrawalRequestsProcessor withdrawalRequestsProcessor = new(transactionProcessor: _transactionProcessor);
+        WithdrawalRequestsProcessor withdrawalRequestsProcessor = new(transactionProcessor: transactionProcessor);
 
         var withdrawalRequest = new WithdrawalRequest()
         {
