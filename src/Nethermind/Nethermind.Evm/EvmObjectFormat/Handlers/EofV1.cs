@@ -266,7 +266,7 @@ internal class Eof1 : IEofVersionHandler
 
                     var numberOfContainerSections = GetUInt16(container, pos);
                     sectionSizes.ContainerSectionSize = (ushort)(numberOfContainerSections * EofValidator.TWO_BYTE_LENGTH);
-                    if (numberOfContainerSections is > MAXIMUM_NUM_CONTAINER_SECTIONS or 0)
+                    if (numberOfContainerSections is > (MAXIMUM_NUM_CONTAINER_SECTIONS + 1) or 0)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, container sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
                         return false;
@@ -504,10 +504,10 @@ internal class Eof1 : IEofVersionHandler
         var typeSection = header.TypeSection;
         (int typeSectionStart, int typeSectionSize) = (typeSection.Start, typeSection.Size);
 
-        if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS)
+        if (header.ContainerSections?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS + 1)
         {
             // move this check where `header.ExtraContainers.Count` is parsed
-            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSections?.Count}");
+            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, initcode Containers count must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSections?.Count}");
             return false;
         }
 
@@ -670,6 +670,50 @@ internal class Eof1 : IEofVersionHandler
                         }
                     }
                 }
+                else if (opcode is Instruction.RETURNCONTRACT)
+                {
+                    if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
+                        return false;
+                    }
+                    else
+                    {
+                        if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateRuntimeMode)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
+                            return false;
+                        }
+                        else
+                        {
+                            containersWorklist.VisitedContainers[0] = ValidationStrategy.ValidateInitcodeMode;
+                        }
+                    }
+
+                    if (nextPosition + EofValidator.ONE_BYTE_LENGTH > code.Length)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT} Argument underflow");
+                        return false;
+                    }
+
+                    ushort runtimeContainerId = code[nextPosition];
+                    if (eofContainer.Header.ContainerSections is null || runtimeContainerId >= eofContainer.Header.ContainerSections?.Count)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containerSection.Count i.e: {eofContainer.Header.ContainerSections?.Count}");
+                        return false;
+                    }
+
+                    if (containersWorklist.VisitedContainers[runtimeContainerId + 1] != 0
+                        && containersWorklist.VisitedContainers[runtimeContainerId + 1] != ValidationStrategy.ValidateRuntimeMode)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s target container can only be a runtime mode bytecode");
+                        return false;
+                    }
+
+                    containersWorklist.Enqueue(runtimeContainerId + 1, ValidationStrategy.ValidateRuntimeMode);
+
+                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
+                }
                 else if (opcode is Instruction.RJUMP or Instruction.RJUMPI)
                 {
                     if (nextPosition + EofValidator.TWO_BYTE_LENGTH > code.Length)
@@ -817,50 +861,6 @@ internal class Eof1 : IEofVersionHandler
                         return false;
                     }
                     BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
-                }
-                else if (opcode is Instruction.RETURNCONTRACT)
-                {
-                    if (strategy.HasFlag(ValidationStrategy.ValidateRuntimeMode))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection contains {opcode} opcode");
-                        return false;
-                    }
-                    else
-                    {
-                        if (containersWorklist.VisitedContainers[0] == ValidationStrategy.ValidateRuntimeMode)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, CodeSection cannot contain {opcode} opcode");
-                            return false;
-                        }
-                        else
-                        {
-                            containersWorklist.VisitedContainers[0] = ValidationStrategy.ValidateInitcodeMode;
-                        }
-                    }
-
-                    if (nextPosition + EofValidator.ONE_BYTE_LENGTH > code.Length)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT} Argument underflow");
-                        return false;
-                    }
-
-                    ushort runtimeContainerId = code[nextPosition];
-                    if (eofContainer.Header.ContainerSections is null || runtimeContainerId >= eofContainer.Header.ContainerSections?.Count)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s immediate argument must be less than containerSection.Count i.e: {eofContainer.Header.ContainerSections?.Count}");
-                        return false;
-                    }
-
-                    if (containersWorklist.VisitedContainers[runtimeContainerId + 1] != 0
-                        && containersWorklist.VisitedContainers[runtimeContainerId + 1] != ValidationStrategy.ValidateRuntimeMode)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.RETURNCONTRACT}'s target container can only be a runtime mode bytecode");
-                        return false;
-                    }
-
-                    containersWorklist.Enqueue(runtimeContainerId + 1, ValidationStrategy.ValidateRuntimeMode);
-
-                    BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
                 }
                 else if (opcode is Instruction.EOFCREATE)
                 {
