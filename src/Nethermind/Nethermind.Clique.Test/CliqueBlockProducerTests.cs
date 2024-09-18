@@ -131,7 +131,7 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-                CodeInfoRepository codeInfoRepository = new(1);
+                CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
                     new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                     codeInfoRepository,
