@@ -66,8 +66,8 @@ public abstract class RpcNethermindTransaction
         {
             using var jsonDocument = JsonDocument.ParseValue(ref reader);
 
-            // NOTE: Should we default to a different type?
-            TxType discriminator = TxType.Legacy;
+            // NOTE: Should we default to a specific TxType?
+            TxType discriminator = default;
             if (jsonDocument.RootElement.TryGetProperty("type", out JsonElement typeProperty))
             {
                 discriminator = (TxType?)typeProperty.Deserialize(typeof(TxType), options) ?? default;
