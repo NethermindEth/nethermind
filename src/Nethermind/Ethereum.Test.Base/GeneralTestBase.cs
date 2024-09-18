@@ -144,7 +144,7 @@ namespace Ethereum.Test.Base
             {
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
             }
-            else 
+            else
             {
                 if (!txIsValid)
                     _logger.Info($"Skipping invalid tx with error: {txIsValid.Error}");
