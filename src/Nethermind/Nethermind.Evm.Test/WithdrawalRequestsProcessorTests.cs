@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Requests;
@@ -91,6 +92,8 @@ public class WithdrawalRequestProcessorTests
 
         WithdrawalRequest withdrawalRequestResult = withdrawalRequests[0];
 
-        withdrawalRequestResult.Should().BeEquivalentTo(withdrawalRequest);
+        withdrawalRequestResult.Should().BeEquivalentTo(withdrawalRequest, options => options
+            .Using<System.Memory<byte>>(ctx => ctx.Subject.Span.SequenceEqual(ctx.Expectation.Span).Should().BeTrue())
+            .WhenTypeIs<System.Memory<byte>>());
     }
 }
