@@ -30,6 +30,16 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
+    public override Transaction ToTransaction()
+    {
+        var tx = base.ToTransaction();
+
+        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+        tx.BlobVersionedHashes = BlobVersionedHashes;
+
+        return tx;
+    }
+
     public new class Converter : IFromTransaction<RpcBlobTransaction>
     {
         public RpcBlobTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)

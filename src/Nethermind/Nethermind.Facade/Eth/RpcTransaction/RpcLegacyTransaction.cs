@@ -60,6 +60,22 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         V = transaction.Signature?.V ?? 0;
     }
 
+    public override Transaction ToTransaction()
+    {
+        var tx = base.ToTransaction();
+
+        tx.Nonce = Nonce ?? 0; // TODO: Should we pick the last nonce?
+        tx.To = To;
+        tx.GasLimit = Gas ?? 90_000;
+        tx.Value = Value ?? 0;
+        tx.Data = Input;
+        tx.GasPrice = GasPrice ?? 20.GWei();
+        tx.ChainId = ChainId;
+        tx.SenderAddress = From ?? Address.SystemUser;
+
+        return tx;
+    }
+
     public class Converter : IFromTransaction<RpcLegacyTransaction>
     {
         public RpcLegacyTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)

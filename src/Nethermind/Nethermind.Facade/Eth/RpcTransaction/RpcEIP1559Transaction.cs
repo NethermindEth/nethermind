@@ -26,6 +26,16 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
                 : transaction.MaxFeePerGas;
     }
 
+    public override Transaction ToTransaction()
+    {
+        var tx = base.ToTransaction();
+
+        tx.GasPrice = MaxPriorityFeePerGas ?? 0;
+        tx.DecodedMaxFeePerGas = MaxFeePerGas ?? 0;
+
+        return tx;
+    }
+
     public new class Converter : IFromTransaction<RpcEIP1559Transaction>
     {
         private readonly RpcAccessListTransaction.Converter _baseConverter = new();

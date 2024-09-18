@@ -15,11 +15,11 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// </summary>
 /// <remarks>
 /// Input:
-/// <para>JSON -> <see cref="RpcNethermindTransaction"></see> (TODO: to a specific sublcass based on `Type`. We need a registry where we can add these classes)</para>
-/// <para><see cref="RpcNethermindTransaction"/> -> <see cref="Transaction"/> (with an overload `ToTransaction` method)</para>
+/// <para>JSON -> <see cref="RpcNethermindTransaction"></see> (through <see cref="JsonConverter"/>, a registry of [<see cref="TxType"/> => <see cref="RpcNethermindTransaction"/> subtypes)</para>
+/// <para><see cref="RpcNethermindTransaction"/> -> <see cref="Transaction"/> (through an overloaded <see cref="ToTransaction"> method)</para>
 /// Output:
-/// <para><see cref="Transaction"/> -> <see cref="RpcNethermindTransaction"/> (<see cref="TransactionConverter"/> with a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
-/// <para><see cref="RpcNethermindTransaction"/> -> JSON (TODO: Derived by System.Text.JSON using the runtime type)</para>
+/// <para><see cref="Transaction"/> -> <see cref="RpcNethermindTransaction"/> (through <see cref="TransactionConverter"/>, a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
+/// <para><see cref="RpcNethermindTransaction"/> -> JSON (Derived by <c>System.Text.JSON</c> using the runtime type)</para>
 /// </remarks>
 public abstract class RpcNethermindTransaction
 {
@@ -49,7 +49,10 @@ public abstract class RpcNethermindTransaction
 
     public virtual Transaction ToTransaction()
     {
-        throw new NotImplementedException();
+        return new Transaction
+        {
+            Type = Type ?? default,
+        };
     }
 
     public class JsonConverter : JsonConverter<RpcNethermindTransaction>
@@ -58,6 +61,7 @@ public abstract class RpcNethermindTransaction
 
         public JsonConverter RegisterTransactionType(TxType type, Type @class)
         {
+            // TODO: Check that the type is a subclass of `RpcNethermindTransaction`
             _transactionTypes[(byte)type] = @class;
             return this;
         }

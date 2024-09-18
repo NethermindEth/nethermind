@@ -32,6 +32,15 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         V = YParity ?? 0;
     }
 
+    public override Transaction ToTransaction()
+    {
+        var tx = base.ToTransaction();
+
+        tx.AccessList = AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
+
+        return tx;
+    }
+
     public new class Converter : IFromTransaction<RpcAccessListTransaction>
     {
         public RpcAccessListTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
