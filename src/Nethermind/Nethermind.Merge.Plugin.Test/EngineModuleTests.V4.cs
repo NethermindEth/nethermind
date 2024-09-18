@@ -328,7 +328,6 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayloadV4 executionPayload1 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
-        
         Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash];
         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV2(blockHashes).Result.Data;
