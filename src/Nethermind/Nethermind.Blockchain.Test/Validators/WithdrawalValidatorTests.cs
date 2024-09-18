@@ -50,7 +50,7 @@ public class WithdrawalValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = [];
-        Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
+        Hash256 withdrawalRoot = WithdrawalTrie.CalculateRoot(withdrawals);
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
         Assert.True(isValid);
     }
@@ -61,7 +61,7 @@ public class WithdrawalValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth];
-        Hash256 withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
+        Hash256 withdrawalRoot = WithdrawalTrie.CalculateRoot(withdrawals);
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
         Assert.True(isValid);
     }

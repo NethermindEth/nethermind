@@ -14,6 +14,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -297,10 +298,10 @@ public class TxPermissionFilterTest
                 State,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor),
+                new ConsensusRequestsProcessor(TxProcessor),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                TxProcessor,
                 null,
                 txFilter: PermissionBasedTxFilter,
                 preWarmer: CreateBlockCachePreWarmer());

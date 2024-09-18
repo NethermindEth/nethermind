@@ -81,7 +81,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             }
 
             block.Body.Requests = requests;
-            block.Header.RequestsRoot = new RequestsTrie(requests).RootHash;
+            block.Header.RequestsRoot = RequestsTrie.CalculateRoot(requests);
         }
         else
         {

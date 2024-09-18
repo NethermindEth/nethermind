@@ -73,7 +73,7 @@ public class WithdrawalDecoderTests
             Address = new Address("0x7e24b8f924a82df020eef45c320deb224559f13e"),
             AmountInGwei = ulong.MaxValue
         };
-        byte[] rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;
+        byte[] rlp1 = new WithdrawalDecoder().EncodeToCappedArray(withdrawal).ToArray()!;
         byte[] rlp2 = Rlp.Encode(withdrawal).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);

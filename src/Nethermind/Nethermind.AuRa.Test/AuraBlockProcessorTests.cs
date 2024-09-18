@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
@@ -159,12 +160,12 @@ namespace Nethermind.AuRa.Test
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor),
+                new ConsensusRequestsProcessor(transactionProcessor),
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-                transactionProcessor,
                 auRaValidator: null,
-                txFilter,
+                txFilter: txFilter,
                 contractRewriter: contractRewriter);
 
             return (processor, stateProvider);

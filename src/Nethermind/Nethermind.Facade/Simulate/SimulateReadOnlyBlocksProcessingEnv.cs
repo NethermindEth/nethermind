@@ -7,6 +7,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -114,8 +115,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
-            _transactionProcessor,
-            new BeaconBlockRootHandler(_transactionProcessor),
             new BlockhashStore(SpecProvider, StateProvider),
+            new BeaconBlockRootHandler(_transactionProcessor),
+            new ConsensusRequestsProcessor(_transactionProcessor),
             _logManager);
 }

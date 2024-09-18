@@ -26,6 +26,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
@@ -50,9 +51,9 @@ namespace Nethermind.Blockchain.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
                 Substitute.For<IBlockhashStore>(),
+                new BeaconBlockRootHandler(transactionProcessor),
+                new ConsensusRequestsProcessor(transactionProcessor),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -81,9 +82,9 @@ namespace Nethermind.Blockchain.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
                 Substitute.For<IBlockhashStore>(),
+                new BeaconBlockRootHandler(transactionProcessor),
+                new ConsensusRequestsProcessor(transactionProcessor),
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

@@ -6,7 +6,7 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlpValueDecoder<ConsensusRequest>, IRlpObjectDecoder<ConsensusRequest>
+public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlpValueDecoder<ConsensusRequest>
 {
     private readonly WithdrawalRequestDecoder _withdrawalRequestDecoder = new();
     private readonly DepositDecoder _depositDecoder = DepositDecoder.Instance;
@@ -64,7 +64,7 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
         return result;
     }
 
-    public ConsensusRequest Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public ConsensusRequest? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (decoderContext.IsNextItemNull())
         {
@@ -100,21 +100,16 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
         }
 
         stream.WriteByte((byte)item.Type);
-        switch (item.Type)
+        switch (item)
         {
-            case ConsensusRequestsType.WithdrawalRequest:
+            case { Type: ConsensusRequestsType.WithdrawalRequest }:
                 _withdrawalRequestDecoder.Encode(stream, (WithdrawalRequest)item, rlpBehaviors);
                 break;
-            case ConsensusRequestsType.Deposit:
+            case { Type: ConsensusRequestsType.Deposit }:
                 _depositDecoder.Encode(stream, (Deposit)item, rlpBehaviors);
                 break;
+            default:
+                throw new RlpException($"Unsupported consensus request type {item.Type}");
         }
-    }
-
-    public Rlp Encode(ConsensusRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new Rlp(rlpStream.Data.ToArray());
     }
 }

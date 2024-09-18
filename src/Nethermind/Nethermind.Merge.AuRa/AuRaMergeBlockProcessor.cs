@@ -15,7 +15,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -29,16 +28,15 @@ public class AuRaMergeBlockProcessor(
     IWorldState stateProvider,
     IReceiptStorage receiptStorage,
     IBeaconBlockRootHandler beaconBlockRootHandler,
+    IConsensusRequestsProcessor? consensusRequestsProcessor,
     ILogManager logManager,
     IBlockTree blockTree,
     IWithdrawalProcessor withdrawalProcessor,
-    ITransactionProcessor transactionProcessor,
     IAuRaValidator? validator,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
     ContractRewriter? contractRewriter = null,
-    IBlockCachePreWarmer? preWarmer = null,
-    IConsensusRequestsProcessor? consensusRequestsProcessor = null)
+    IBlockCachePreWarmer? preWarmer = null)
     : AuRaBlockProcessor(specProvider,
         blockValidator,
         rewardCalculator,
@@ -46,16 +44,15 @@ public class AuRaMergeBlockProcessor(
         stateProvider,
         receiptStorage,
         beaconBlockRootHandler,
+        consensusRequestsProcessor,
         logManager,
         blockTree,
         withdrawalProcessor,
-        transactionProcessor,
         validator,
         txFilter,
         gasLimitOverride,
         contractRewriter,
-        preWarmer,
-        consensusRequestsProcessor)
+        preWarmer)
 {
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
         block.IsPostMerge

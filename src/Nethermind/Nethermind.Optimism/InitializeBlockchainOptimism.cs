@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -91,9 +92,9 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, api.WorldState),
             api.WorldState,
             api.ReceiptStorage,
-            transactionProcessor,
             new BlockhashStore(api.SpecProvider, api.WorldState),
             new BeaconBlockRootHandler(transactionProcessor),
+            new ConsensusRequestsProcessor(transactionProcessor),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,

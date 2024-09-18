@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -87,9 +88,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
             readOnlyTxProcessingEnv.WorldState,
             receiptStorage,
-            readOnlyTxProcessingEnv.TransactionProcessor,
             new BlockhashStore(specProvider, readOnlyTxProcessingEnv.WorldState),
             new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
+            new ConsensusRequestsProcessor(readOnlyTxProcessingEnv.TransactionProcessor),
             logManager,
             _specHelper,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),

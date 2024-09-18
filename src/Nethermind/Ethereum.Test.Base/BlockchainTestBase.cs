@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -170,9 +171,9 @@ namespace Ethereum.Test.Base
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
                 new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
+                new ConsensusRequestsProcessor(transactionProcessor),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

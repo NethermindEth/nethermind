@@ -100,7 +100,7 @@ public class PayloadAttributes
         {
             Hash256 withdrawalsRootHash = Withdrawals.Length == 0
                 ? PatriciaTree.EmptyTreeHash
-                : new WithdrawalTrie(Withdrawals).RootHash;
+                : WithdrawalTrie.CalculateRoot(Withdrawals);
             withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }

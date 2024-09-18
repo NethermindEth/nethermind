@@ -64,15 +64,6 @@ public class WithdrawalDecoder : IRlpStreamDecoder<Withdrawal>, IRlpValueDecoder
         stream.Encode(item.AmountInGwei);
     }
 
-    public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        var stream = new RlpStream(GetLength(item, rlpBehaviors));
-
-        Encode(stream, item, rlpBehaviors);
-
-        return new(stream.Data.ToArray());
-    }
-
     private static int GetContentLength(Withdrawal item) =>
         Rlp.LengthOf(item.Index) +
         Rlp.LengthOf(item.ValidatorIndex) +

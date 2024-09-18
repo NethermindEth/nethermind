@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -78,9 +79,9 @@ public class ReorgTests
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
             new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            new BeaconBlockRootHandler(transactionProcessor),
+            new ConsensusRequestsProcessor(transactionProcessor),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

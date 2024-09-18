@@ -17,10 +17,7 @@ public class WithdrawalTrieTests
     public void Should_compute_hash_root()
     {
         var block = Build.A.Block.WithWithdrawals(10).TestObject;
-        var trie = new WithdrawalTrie(block.Withdrawals!);
-
-        Assert.That(
-            trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
+        Assert.That(WithdrawalTrie.CalculateRoot(block.Withdrawals!).ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
     }
 
     [Test, Timeout(Timeout.MaxTestTime)]
@@ -28,11 +25,10 @@ public class WithdrawalTrieTests
     {
         var count = 10;
         var block = Build.A.Block.WithWithdrawals(count).TestObject;
-        var trie = new WithdrawalTrie(block.Withdrawals!, true);
 
         for (int i = 0; i < count; i++)
         {
-            Assert.IsTrue(VerifyProof(trie.BuildProof(i), trie.RootHash));
+            Assert.IsTrue(VerifyProof(WithdrawalTrie.CalculateProof(block.Withdrawals!, i), WithdrawalTrie.CalculateRoot(block.Withdrawals!)));
         }
     }
 
@@ -40,8 +36,8 @@ public class WithdrawalTrieTests
     {
         for (var i = proof.Length - 1; i >= 0; i--)
         {
-            var p = proof[i];
-            var hash = Keccak.Compute(p);
+            byte[] p = proof[i];
+            Hash256 hash = Keccak.Compute(p);
 
             if (i > 0)
             {

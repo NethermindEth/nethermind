@@ -95,7 +95,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
+        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamDecoder<T> decoder, T? item, ICappedArrayPool? bufferPool = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int size = decoder.GetLength(item, rlpBehaviors);
             CappedArray<byte> buffer = bufferPool.SafeRentBuffer(size);

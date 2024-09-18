@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -78,9 +79,9 @@ namespace Nethermind.Blockchain.Test.Producers
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                txProcessor,
-                new BeaconBlockRootHandler(txProcessor),
                 new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(txProcessor),
+                new ConsensusRequestsProcessor(txProcessor),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
                 blockTree,

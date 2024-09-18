@@ -6,13 +6,13 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -29,9 +29,9 @@ public class OptimismBlockProcessor : BlockProcessor
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
-        ITransactionProcessor transactionProcessor,
         IBlockhashStore? blockhashStore,
         IBeaconBlockRootHandler? beaconBlockRootHandler,
+        IConsensusRequestsProcessor consensusRequestsProcessor,
         ILogManager? logManager,
         IOptimismSpecHelper opSpecHelper,
         Create2DeployerContractRewriter contractRewriter,
@@ -44,9 +44,9 @@ public class OptimismBlockProcessor : BlockProcessor
             blockTransactionsExecutor,
             stateProvider,
             receiptStorage,
-            transactionProcessor,
-            beaconBlockRootHandler,
             blockhashStore,
+            beaconBlockRootHandler,
+            consensusRequestsProcessor,
             logManager,
             withdrawalProcessor,
             ReceiptsRootCalculator.Instance,

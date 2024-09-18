@@ -17,12 +17,9 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -36,24 +33,22 @@ namespace Nethermind.Consensus.AuRa
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
 
-        public AuRaBlockProcessor(
-            ISpecProvider specProvider,
+        public AuRaBlockProcessor(ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
             IWorldState stateProvider,
             IReceiptStorage receiptStorage,
             IBeaconBlockRootHandler beaconBlockRootHandler,
+            IConsensusRequestsProcessor? consensusRequestsProcessor,
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            ITransactionProcessor transactionProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null,
-            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
+            IBlockCachePreWarmer? preWarmer = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -61,13 +56,12 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                transactionProcessor,
-                beaconBlockRootHandler,
                 new BlockhashStore(specProvider, stateProvider),
-                logManager,
-                withdrawalProcessor,
-                preWarmer: preWarmer,
-                consensusRequestsProcessor: consensusRequestsProcessor)
+                beaconBlockRootHandler,
+                consensusRequestsProcessor: consensusRequestsProcessor,
+                logManager: logManager,
+                withdrawalProcessor: withdrawalProcessor,
+                preWarmer: preWarmer)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

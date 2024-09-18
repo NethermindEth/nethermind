@@ -33,7 +33,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -150,12 +149,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor),
                 new BlockhashStore(SpecProvider, State),
-                LogManager,
-                WithdrawalProcessor,
-                consensusRequestsProcessor: ConsensusRequestsProcessor,
+                new BeaconBlockRootHandler(TxProcessor),
+                consensusRequestsProcessor: ConsensusRequestsProcessor ?? new ConsensusRequestsProcessor(TxProcessor),
+                logManager: LogManager,
+                withdrawalProcessor: WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
@@ -190,8 +188,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager,
-                ConsensusRequestsProcessor);
+                LogManager);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();

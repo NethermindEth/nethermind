@@ -20,6 +20,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -108,10 +109,10 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             worldState,
             _api.ReceiptStorage!,
             new BeaconBlockRootHandler(_api.TransactionProcessor!),
+            new ConsensusRequestsProcessor(_api.TransactionProcessor!),
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
-            _api.TransactionProcessor,
             CreateAuRaValidator(),
             txFilter,
             GetGasLimitCalculator(),

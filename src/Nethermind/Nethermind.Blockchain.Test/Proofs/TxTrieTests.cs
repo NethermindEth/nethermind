@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Proofs
@@ -45,7 +46,8 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_collect_proof_trie_case_1()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
+            using TrackingCappedArrayPool pool = new(1024);
+            TxTrie txTrie = new(block.Transactions, pool, true);
             byte[][] proof = txTrie.BuildProof(0);
 
             txTrie.UpdateRootHash();
@@ -56,7 +58,8 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_collect_proof_with_trie_case_2()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
+            using TrackingCappedArrayPool pool = new(1024);
+            TxTrie txTrie = new(block.Transactions, pool, true);
             byte[][] proof = txTrie.BuildProof(0);
             Assert.That(proof.Length, Is.EqualTo(2));
 
@@ -68,7 +71,8 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_collect_proof_with_trie_case_3_modified()
         {
             Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 1000).ToArray()).TestObject;
-            TxTrie txTrie = new(block.Transactions, true);
+            using TrackingCappedArrayPool pool = new(1024);
+            TxTrie txTrie = new(block.Transactions, pool, true);
 
             txTrie.UpdateRootHash();
             for (int i = 0; i < 1000; i++)

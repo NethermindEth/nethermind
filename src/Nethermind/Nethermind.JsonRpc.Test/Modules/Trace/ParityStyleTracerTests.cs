@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
@@ -76,9 +77,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
                 new BlockhashStore(specProvider, stateProvider),
+                new BeaconBlockRootHandler(transactionProcessor),
+                new ConsensusRequestsProcessor(transactionProcessor),
                 LimboLogs.Instance);
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId), NullTxPool.Instance, specProvider, LimboLogs.Instance);
