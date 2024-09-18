@@ -6,6 +6,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -65,6 +66,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             receiptStorage,
             new BlockhashStore(specProvider, scope.WorldState),
             new BeaconBlockRootHandler(scope.TransactionProcessor),
+            new ConsensusRequestsProcessor(scope.TransactionProcessor),
             logManager,
             opSpecHelper,
             contractRewriter,
