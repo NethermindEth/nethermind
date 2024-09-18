@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
@@ -17,7 +16,7 @@ namespace Nethermind.Trie;
 public class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? arrayPool = null)
     : ICappedArrayPool, IDisposable
 {
-    private readonly ArrayPoolList<byte[]> _rentedBuffers = new(initialCapacity);
+    private readonly List<byte[]> _rentedBuffers = new(initialCapacity);
     private readonly ArrayPool<byte> _arrayPool = arrayPool ?? ArrayPool<byte>.Shared;
 
     public TrackingCappedArrayPool() : this(0)
@@ -44,11 +43,9 @@ public class TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte>? array
 
     public void Dispose()
     {
-        foreach (byte[] rentedBuffer in _rentedBuffers.AsSpan())
+        foreach (byte[] rentedBuffer in CollectionsMarshal.AsSpan(_rentedBuffers))
         {
             _arrayPool.Return(rentedBuffer);
         }
-
-        _rentedBuffers.Dispose();
     }
 }
