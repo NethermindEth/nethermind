@@ -38,6 +38,9 @@ public abstract class RpcNethermindTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? BlockNumber { get; set; }
 
+    [JsonConstructor]
+    public RpcNethermindTransaction() { }
+
     public RpcNethermindTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
     {
         Type = transaction.Type;

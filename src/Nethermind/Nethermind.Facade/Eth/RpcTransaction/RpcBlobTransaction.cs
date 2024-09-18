@@ -27,6 +27,9 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
     public override UInt256? V { get; set; }
 
+    [JsonConstructor]
+    public RpcBlobTransaction() { }
+
     public RpcBlobTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
         : base(transaction, txIndex, blockHash, blockNumber, baseFee)
     {

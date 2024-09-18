@@ -16,6 +16,9 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerGas { get; set; }
 
+    [JsonConstructor]
+    public RpcEIP1559Transaction() { }
+
     public RpcEIP1559Transaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {

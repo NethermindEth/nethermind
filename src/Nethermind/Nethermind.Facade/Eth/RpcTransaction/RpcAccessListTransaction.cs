@@ -23,6 +23,9 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public override ulong? ChainId { get; set; }
 
+    [JsonConstructor]
+    public RpcAccessListTransaction() { }
+
     public RpcAccessListTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {

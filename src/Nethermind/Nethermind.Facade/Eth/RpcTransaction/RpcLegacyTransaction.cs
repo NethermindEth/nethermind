@@ -44,6 +44,9 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? S { get; set; }
 
+    [JsonConstructor]
+    public RpcLegacyTransaction() { }
+
     public RpcLegacyTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {

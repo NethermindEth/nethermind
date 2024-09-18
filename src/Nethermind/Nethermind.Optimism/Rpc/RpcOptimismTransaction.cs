@@ -37,6 +37,11 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
     public UInt256? DepositReceiptVersion { get; set; }
     #endregion
 
+#pragma warning disable CS8618
+    [JsonConstructor]
+    public RpcOptimismTransaction() { }
+#pragma warning restore CS8618
+
     public RpcOptimismTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
