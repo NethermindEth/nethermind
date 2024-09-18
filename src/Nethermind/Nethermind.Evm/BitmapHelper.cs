@@ -2,13 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 
 namespace Nethermind.Evm;
 public static class BitmapHelper
 {
-    private static readonly byte[] _lookup = { 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1 };
+    private static readonly byte[] _lookup =
+    {
+        0b0000_0000,
+        0b0000_0001,
+        0b0000_0011,
+        0b0000_0111,
+        0b0000_1111,
+        0b0001_1111,
+        0b0011_1111,
+        0b0111_1111
+    };
 
     /// <summary>
     /// Collects data locations in code.
@@ -56,11 +67,9 @@ public static class BitmapHelper
             }
         }
 
-
-        ushort setNBitsMask = (ushort)(~((1 << 32 - numbits) - 1));
         if (numbits > 1)
         {
-            bitvec.SetN(pc, setNBitsMask);
+            bitvec.SetN(pc, _lookup[numbits]);
             pc += numbits;
         }
         else
@@ -79,14 +88,14 @@ public static class BitmapHelper
 
     private static void Set1(this Span<byte> bitvec, int pos)
     {
-        bitvec[pos / 8] |= _lookup[pos % 8];
+        bitvec[pos / 8] |= (byte)(1 << (pos % 8));
     }
 
-    private static void SetN(this Span<byte> bitvec, int pos, UInt16 flag)
+    private static void SetN(this Span<byte> bitvec, int pos, ushort flag)
     {
-        ushort a = (ushort)(flag >> (pos % 8));
-        bitvec[pos / 8] |= (byte)(a >> 8);
-        byte b = (byte)a;
+        ushort a = (ushort)(flag << (pos % 8));
+        bitvec[pos / 8] |= (byte)a;
+        byte b = (byte)(a >> 8);
         if (b != 0)
         {
             //	If the bit-setting affects the neighbouring byte, we can assign - no need to OR it,
@@ -97,14 +106,14 @@ public static class BitmapHelper
 
     private static void Set8(this Span<byte> bitvec, int pos)
     {
-        byte a = (byte)(0xFF >> (pos % 8));
+        byte a = (byte)(0xFF << (pos % 8));
         bitvec[pos / 8] |= a;
         bitvec[pos / 8 + 1] = (byte)~a;
     }
 
     private static void Set16(this Span<byte> bitvec, int pos)
     {
-        byte a = (byte)(0xFF >> (pos % 8));
+        byte a = (byte)(0xFF << (pos % 8));
         bitvec[pos / 8] |= a;
         bitvec[pos / 8 + 1] = 0xFF;
         bitvec[pos / 8 + 2] = (byte)~a;
