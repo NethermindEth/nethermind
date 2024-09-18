@@ -266,13 +266,17 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
 
-            // Since hash calculation requires certail values to be present in Blob transactions
-            // we initalize them to sane defaults here.
+            // Some TxTypes expect certain values to be present, thus we initialize them to sane defaults here
             // TODO: This should be removed when we have a proper Transaction type hierarchy
-            if (TestObjectInternal.Type == TxType.Blob)
+            if (TestObjectInternal.SupportsBlobs)
             {
                 TestObjectInternal.BlobVersionedHashes ??= [];
                 TestObjectInternal.MaxFeePerBlobGas ??= 0;
+            }
+
+            if (TestObjectInternal.SupportsAccessList)
+            {
+                TestObjectInternal.AccessList ??= AccessList.Empty;
             }
 
             if (TestObjectInternal.IsSigned)
