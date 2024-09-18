@@ -95,6 +95,6 @@ public class ConsolidationRequestProcessorTests
 
         ConsolidationRequestResult.Should().BeEquivalentTo(ConsolidationRequest, options => options
             .Using<Memory<byte>>(ctx => ctx.Subject.Span.SequenceEqual(ctx.Expectation.Span).Should().BeTrue())
-            .WhenTypeIs<Memory<byte>>());;
+            .WhenTypeIs<Memory<byte>>());
     }
 }
