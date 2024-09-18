@@ -111,12 +111,12 @@ public abstract class RpcNethermindTransaction
 
     #region Refactoring transition code
     public static readonly TransactionConverter GlobalConverter = new TransactionConverter()
-        .RegisterConverter(TxType.Legacy, new RpcLegacyTransaction.Converter())
-        .RegisterConverter(TxType.AccessList, new RpcAccessListTransaction.Converter())
-        .RegisterConverter(TxType.EIP1559, new RpcEIP1559Transaction.Converter())
-        .RegisterConverter(TxType.Blob, new RpcBlobTransaction.Converter());
+        .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
+        .RegisterConverter(TxType.AccessList, RpcAccessListTransaction.Converter)
+        .RegisterConverter(TxType.EIP1559, RpcEIP1559Transaction.Converter)
+        .RegisterConverter(TxType.Blob, RpcBlobTransaction.Converter);
     // TODO: Add Optimism:
-    // `.RegisterConverter(TxType.DepositTx, new RpcOptimismTransaction.Converter())`
+    // `.RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter)`
 
     public static RpcNethermindTransaction FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null)
     {

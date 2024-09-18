@@ -74,7 +74,9 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         return tx;
     }
 
-    public class Converter : IFromTransaction<RpcOptimismTransaction>
+    public static readonly IFromTransaction<RpcOptimismTransaction> Converter = new ConverterImpl();
+
+    private class ConverterImpl : IFromTransaction<RpcOptimismTransaction>
     {
         public RpcOptimismTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);

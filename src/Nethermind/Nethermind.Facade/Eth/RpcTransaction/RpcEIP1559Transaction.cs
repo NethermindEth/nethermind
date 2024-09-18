@@ -36,10 +36,10 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
         return tx;
     }
 
-    public new class Converter : IFromTransaction<RpcEIP1559Transaction>
-    {
-        private readonly RpcAccessListTransaction.Converter _baseConverter = new();
+    public new static readonly IFromTransaction<RpcEIP1559Transaction> Converter = new ConverterImpl();
 
+    private class ConverterImpl : IFromTransaction<RpcEIP1559Transaction>
+    {
         public RpcEIP1559Transaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
     }

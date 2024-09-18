@@ -22,7 +22,7 @@ public class RpcOptimismTransactionTests
     ]);
 
     private readonly IFromTransaction<RpcNethermindTransaction> _converter = new RpcNethermindTransaction.TransactionConverter()
-        .RegisterConverter(TxType.DepositTx, new RpcOptimismTransaction.Converter());
+        .RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter);
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
     public static readonly Transaction[] Transactions = [

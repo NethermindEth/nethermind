@@ -41,7 +41,9 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         return tx;
     }
 
-    public new class Converter : IFromTransaction<RpcAccessListTransaction>
+    public new static readonly IFromTransaction<RpcAccessListTransaction> Converter = new ConverterImpl();
+
+    private class ConverterImpl : IFromTransaction<RpcAccessListTransaction>
     {
         public RpcAccessListTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);

@@ -23,10 +23,10 @@ public class RpcTransactionTests
     ]);
 
     private readonly IFromTransaction<RpcNethermindTransaction> _converter = new RpcNethermindTransaction.TransactionConverter()
-        .RegisterConverter(TxType.Legacy, new RpcLegacyTransaction.Converter())
-        .RegisterConverter(TxType.AccessList, new RpcAccessListTransaction.Converter())
-        .RegisterConverter(TxType.EIP1559, new RpcEIP1559Transaction.Converter())
-        .RegisterConverter(TxType.Blob, new RpcBlobTransaction.Converter());
+        .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
+        .RegisterConverter(TxType.AccessList, RpcAccessListTransaction.Converter)
+        .RegisterConverter(TxType.EIP1559, RpcEIP1559Transaction.Converter)
+        .RegisterConverter(TxType.Blob, RpcBlobTransaction.Converter);
 
     public static readonly Transaction[] Transactions =
     [

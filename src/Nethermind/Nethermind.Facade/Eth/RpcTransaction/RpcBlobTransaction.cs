@@ -40,7 +40,9 @@ public class RpcBlobTransaction : RpcEIP1559Transaction
         return tx;
     }
 
-    public new class Converter : IFromTransaction<RpcBlobTransaction>
+    public new static readonly IFromTransaction<RpcBlobTransaction> Converter = new ConverterImpl();
+
+    private class ConverterImpl : IFromTransaction<RpcBlobTransaction>
     {
         public RpcBlobTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
