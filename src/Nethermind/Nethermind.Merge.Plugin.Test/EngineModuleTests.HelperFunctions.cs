@@ -103,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequest.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec, chain.State);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
@@ -122,9 +122,9 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV3.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
-            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            var blockHashStore = new BlockhashStore(chain.SpecProvider);
+            blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.State);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec, chain.State);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();

@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -11,21 +12,21 @@ public interface ITransactionProcessor
     /// <summary>
     /// Execute transaction, commit state
     /// </summary>
-    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Execute(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
-    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult CallAndRestore(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
-    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult BuildUp(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, no validations, commit state
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
-    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Trace(IWorldState worldState, Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 }

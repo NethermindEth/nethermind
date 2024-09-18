@@ -255,8 +255,9 @@ namespace Nethermind.Synchronization.Test
             IDb stateDb = dbProvider.StateDb;
 
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, logManager);
-            WorldState stateProvider = new(trieStore, codeDb, logManager);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+            IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
+            IWorldState stateProvider = worldStateProvider.GetWorldState();
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
@@ -276,7 +277,7 @@ namespace Nethermind.Synchronization.Test
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(tree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
@@ -293,16 +294,16 @@ namespace Nethermind.Synchronization.Test
 
             RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
-                new(specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                new(specProvider, virtualMachine, codeInfoRepository, logManager);
 
             BlockProcessor blockProcessor = new(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor),
+                worldStateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 new BeaconBlockRootHandler(txProcessor),
                 logManager);
 
@@ -314,18 +315,19 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
-            WorldState devState = new(trieStore, codeDb, logManager);
+            var devWorldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+            IWorldState devState = devWorldStateProvider.GetWorldState();
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
-            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, codeInfoRepository, logManager);
+            TransactionProcessor devTxProcessor = new(specProvider, devEvm, codeInfoRepository, logManager);
 
             BlockProcessor devBlockProcessor = new(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
-                devState,
+                new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, specProvider, logManager),
+                devWorldStateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, devState),
+                new BlockhashStore(specProvider),
                 new BeaconBlockRootHandler(devTxProcessor),
                 logManager);
 
@@ -340,7 +342,7 @@ namespace Nethermind.Synchronization.Test
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,
-                stateProvider,
+                worldStateProvider,
                 tree,
                 Timestamper.Default,
                 specProvider,

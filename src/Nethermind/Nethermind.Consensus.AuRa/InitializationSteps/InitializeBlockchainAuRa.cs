@@ -98,14 +98,13 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-        IWorldState worldState = _api.WorldState!;
 
         return new AuRaBlockProcessor(
             _api.SpecProvider!,
             _api.BlockValidator!,
             _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
-            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
-            worldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor),
+            _api.WorldStateManager!.GlobalWorldStateProvider,
             _api.ReceiptStorage!,
             new BeaconBlockRootHandler(_api.TransactionProcessor!),
             _api.LogManager,
@@ -133,10 +132,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         var chainSpecAuRa = _api.ChainSpec.AuRa;
 
-        IWorldState worldState = _api.WorldState!;
         IAuRaValidator validator = new AuRaValidatorFactory(
                 _api.AbiEncoder,
-                worldState,
                 _api.TransactionProcessor,
                 _api.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
@@ -151,6 +148,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
+                _api.WorldStateManager!.GlobalWorldStateProvider,
                 chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 

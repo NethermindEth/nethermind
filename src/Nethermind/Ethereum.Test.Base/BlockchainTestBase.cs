@@ -83,8 +83,9 @@ namespace Ethereum.Test.Base
                 TestContext.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            IDb stateDb = new MemDb();
-            IDb codeDb = new MemDb();
+            IDbProvider? dbProvider = TestMemDbProvider.Init();
+            IDb stateDb = dbProvider.StateDb;
+            IDb codeDb = dbProvider.CodeDb;
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition is not null)
@@ -135,7 +136,8 @@ namespace Ethereum.Test.Base
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId);
 
             TrieStore trieStore = new(stateDb, _logManager);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, _logManager);
+            IWorldState stateProvider = worldStateProvider.GetWorldState();
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
                 .WithoutSettingHead
@@ -144,7 +146,7 @@ namespace Ethereum.Test.Base
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, _logManager);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, _logManager);
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
@@ -158,7 +160,6 @@ namespace Ethereum.Test.Base
 
             TransactionProcessor transactionProcessor = new(
                 specProvider,
-                stateProvider,
                 virtualMachine,
                 codeInfoRepository,
                 _logManager);
@@ -167,10 +168,10 @@ namespace Ethereum.Test.Base
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+                worldStateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 new BeaconBlockRootHandler(transactionProcessor),
                 _logManager);
 

@@ -19,40 +19,46 @@ using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa;
 
-public class AuRaMergeBlockProcessor(
-    ISpecProvider specProvider,
-    IBlockValidator blockValidator,
-    IRewardCalculator rewardCalculator,
-    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-    IWorldState stateProvider,
-    IReceiptStorage receiptStorage,
-    IBeaconBlockRootHandler beaconBlockRootHandler,
-    ILogManager logManager,
-    IBlockTree blockTree,
-    IWithdrawalProcessor withdrawalProcessor,
-    IAuRaValidator? validator,
-    ITxFilter? txFilter = null,
-    AuRaContractGasLimitOverride? gasLimitOverride = null,
-    ContractRewriter? contractRewriter = null,
-    IBlockCachePreWarmer? preWarmer = null)
-    : AuRaBlockProcessor(specProvider,
-        blockValidator,
-        rewardCalculator,
-        blockTransactionsExecutor,
-        stateProvider,
-        receiptStorage,
-        beaconBlockRootHandler,
-        logManager,
-        blockTree,
-        withdrawalProcessor,
-        validator,
-        txFilter,
-        gasLimitOverride,
-        contractRewriter,
-        preWarmer)
+public class AuRaMergeBlockProcessor : AuRaBlockProcessor
 {
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
+    public AuRaMergeBlockProcessor(
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculator rewardCalculator,
+        IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+        IWorldStateProvider worldStateProvider,
+        IReceiptStorage receiptStorage,
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        ILogManager logManager,
+        IBlockTree blockTree,
+        IWithdrawalProcessor withdrawalProcessor,
+        IAuRaValidator? validator,
+        ITxFilter? txFilter = null,
+        AuRaContractGasLimitOverride? gasLimitOverride = null,
+        ContractRewriter? contractRewriter = null,
+        IBlockCachePreWarmer? preWarmer = null
+    ) : base(
+            specProvider,
+            blockValidator,
+            rewardCalculator,
+            blockTransactionsExecutor,
+            worldStateProvider,
+            receiptStorage,
+            beaconBlockRootHandler,
+            logManager,
+            blockTree,
+            withdrawalProcessor,
+            validator,
+            txFilter,
+            gasLimitOverride,
+            contractRewriter,
+            preWarmer
+        )
+    { }
+
+    protected override TxReceipt[] ProcessBlock(IWorldState worldState, Block block, IBlockTracer blockTracer,
+        ProcessingOptions options) =>
         block.IsPostMerge
-            ? PostMergeProcessBlock(block, blockTracer, options)
-            : base.ProcessBlock(block, blockTracer, options);
+            ? PostMergeProcessBlock(worldState, block, blockTracer, options)
+            : base.ProcessBlock(worldState, block, blockTracer, options);
 }

@@ -44,7 +44,7 @@ public class TransactionProcessorFeeTests
 
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
@@ -173,7 +173,7 @@ public class TransactionProcessorFeeTests
         blockTracer.StartNewBlockTrace(block);
         {
             var txTracer = blockTracer.StartNewTxTrace(tx1);
-            _transactionProcessor.Execute(tx1, block.Header, txTracer);
+            _transactionProcessor.Execute(_stateProvider, tx1, block.Header, txTracer);
             blockTracer.EndTxTrace();
         }
 
@@ -185,7 +185,7 @@ public class TransactionProcessorFeeTests
         try
         {
             var txTracer = blockTracer.StartNewTxTrace(tx2);
-            _transactionProcessor.Execute(tx2, block.Header, txTracer);
+            _transactionProcessor.Execute(_stateProvider, tx2, block.Header, txTracer);
             blockTracer.EndTxTrace();
             blockTracer.EndBlockTrace();
         }
@@ -237,7 +237,7 @@ public class TransactionProcessorFeeTests
         foreach (Transaction tx in block.Transactions)
         {
             var txTracer = tracer.StartNewTxTrace(tx);
-            _transactionProcessor.Execute(tx, block.Header, txTracer);
+            _transactionProcessor.Execute(_stateProvider, tx, block.Header, txTracer);
             tracer.EndTxTrace();
         }
         tracer.EndBlockTrace();

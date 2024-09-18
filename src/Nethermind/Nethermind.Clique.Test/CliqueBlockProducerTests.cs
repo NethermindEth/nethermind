@@ -85,15 +85,14 @@ namespace Nethermind.Clique.Test
                 AutoResetEvent newHeadBlockEvent = new(false);
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
 
-                MemDb blocksDb = new();
-                MemDb stateDb = new();
-                MemDb codeDb = new();
+                var dbProvider = TestMemDbProvider.Init();
 
                 ISpecProvider specProvider = GoerliSpecProvider.Instance;
 
-                var trieStore = new TrieStore(stateDb, nodeLogManager);
-                StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
-                WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
+                var trieStore = new TrieStore(dbProvider.StateDb, nodeLogManager);
+                var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+                IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
+                IWorldState stateProvider = worldStateProvider.GetWorldState();
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 GoerliSpecProvider goerliSpecProvider = GoerliSpecProvider.Instance;
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
@@ -101,7 +100,7 @@ namespace Nethermind.Clique.Test
 
                 BlockTree blockTree = Build.A.BlockTree()
                     .WithSpecProvider(goerliSpecProvider)
-                    .WithBlocksDb(blocksDb)
+                    .WithBlocksDb(dbProvider.BlocksDb)
                     .WithoutSettingHead
                     .TestObject;
 
@@ -118,10 +117,10 @@ namespace Nethermind.Clique.Test
                     transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
-                BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+                BlockhashProvider blockhashProvider = new(blockTree, specProvider, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
 
-                SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
+                SnapshotManager snapshotManager = new(_cliqueConfig, dbProvider.BlocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
                 _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
@@ -130,7 +129,7 @@ namespace Nethermind.Clique.Test
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
                 CodeInfoRepository codeInfoRepository = new();
-                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
+                TransactionProcessor transactionProcessor = new(goerliSpecProvider,
                     new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                     codeInfoRepository,
                     nodeLogManager);
@@ -138,10 +137,10 @@ namespace Nethermind.Clique.Test
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                    stateProvider,
+                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+                    worldStateProvider,
                     NullReceiptStorage.Instance,
-                    new BlockhashStore(goerliSpecProvider, stateProvider),
+                    new BlockhashStore(goerliSpecProvider),
                     new BeaconBlockRootHandler(transactionProcessor),
                     nodeLogManager);
 
@@ -150,18 +149,18 @@ namespace Nethermind.Clique.Test
 
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
-                WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
+                var minerWorldStateProvider = new WorldStateProvider(minerTrieStore, dbProvider, LimboLogs.Instance);
                 VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
-                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
+                TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
                 BlockProcessor minerBlockProcessor = new(
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
-                    minerStateProvider,
+                    new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, goerliSpecProvider, _logManager),
+                    minerWorldStateProvider,
                     NullReceiptStorage.Instance,
-                    new BlockhashStore(goerliSpecProvider, minerStateProvider),
+                    new BlockhashStore(goerliSpecProvider),
                     new BeaconBlockRootHandler(minerTransactionProcessor),
                     nodeLogManager);
 
@@ -180,7 +179,7 @@ namespace Nethermind.Clique.Test
                 CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,
                     minerProcessor,
-                    minerStateProvider,
+                    minerWorldStateProvider,
                     _timestamper,
                     new CryptoRandom(),
                     snapshotManager,

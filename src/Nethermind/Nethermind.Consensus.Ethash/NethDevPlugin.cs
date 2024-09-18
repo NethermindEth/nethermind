@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Ethash
                 return null;
             }
 
-            var (getFromApi, _) = _nethermindApi!.ForProducer;
+            (IApiWithBlockchain? getFromApi, _) = _nethermindApi!.ForProducer;
 
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
@@ -79,10 +79,10 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
-                scope.WorldState,
+                new BlockProcessor.BlockProductionTransactionsExecutor(scope.TransactionProcessor, getFromApi!.SpecProvider, getFromApi.LogManager),
+                scope.WorldStateProvider,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
+                new BlockhashStore(getFromApi.SpecProvider),
                 new BeaconBlockRootHandler(scope.TransactionProcessor),
                 getFromApi.LogManager);
 
@@ -97,7 +97,7 @@ namespace Nethermind.Consensus.Ethash
             IBlockProducer blockProducer = new DevBlockProducer(
                 additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
                 producerChainProcessor,
-                scope.WorldState,
+                scope.WorldStateProvider,
                 getFromApi.BlockTree,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,

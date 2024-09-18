@@ -39,6 +39,7 @@ namespace Nethermind.AuRa.Test
             public IBlockTree BlockTree { get; }
             public IBlockProcessingQueue BlockProcessingQueue { get; }
             public IWorldState StateProvider { get; }
+            public IWorldStateProvider WorldStateProvider { get; }
             public ITimestamper Timestamper { get; }
             public IAuRaStepCalculator AuRaStepCalculator { get; }
             public Address NodeAddress { get; }
@@ -55,6 +56,7 @@ namespace Nethermind.AuRa.Test
                 BlockTree = Substitute.For<IBlockTree>();
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
                 StateProvider = Substitute.For<IWorldState>();
+                WorldStateProvider = Substitute.For<IWorldStateProvider>();
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
@@ -72,7 +74,9 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
-                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
+                WorldStateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
+                WorldStateProvider.GetGlobalStateReader().HasStateForRoot(Arg.Any<Hash256>()).Returns(true);
+                WorldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(StateProvider);
                 InitProducer();
             }
 
@@ -98,7 +102,7 @@ namespace Nethermind.AuRa.Test
                 AuRaBlockProducer = new AuRaBlockProducer(
                     TransactionSource,
                     BlockchainProcessor,
-                    StateProvider,
+                    WorldStateProvider,
                     Sealer,
                     BlockTree,
                     Timestamper,

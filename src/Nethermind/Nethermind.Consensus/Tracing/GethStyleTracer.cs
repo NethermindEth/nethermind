@@ -33,12 +33,12 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
     private readonly IBlockchainProcessor _processor;
-    private readonly IWorldState _worldState;
+    private readonly IWorldStateProvider _worldStateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
 
     public GethStyleTracer(IBlockchainProcessor processor,
-        IWorldState worldState,
+        IWorldStateProvider worldStateProvider,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
         IBlockStore badBlockStore,
@@ -47,7 +47,7 @@ public class GethStyleTracer : IGethStyleTracer
         IFileSystem fileSystem)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-        _worldState = worldState;
+        _worldStateProvider = worldStateProvider;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
@@ -207,13 +207,20 @@ public class GethStyleTracer : IGethStyleTracer
         }
     }
 
-    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
-        options switch
+    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options)
+    {
+        IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(block);
+        return options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, _worldState)),
-            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(
+                options.TxHash,
+                (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx,
+                    worldStateToUse)),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldStateToUse,
+                _specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options),
         };
+    }
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {

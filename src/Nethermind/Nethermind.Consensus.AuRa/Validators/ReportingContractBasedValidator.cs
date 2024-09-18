@@ -28,10 +28,10 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ContractBasedValidator _contractValidator;
         private readonly long _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
-        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly Cache _cache;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
+        private readonly IWorldStateProvider _worldStateProvider;
         private readonly ILogger _logger;
 
         public ReportingContractBasedValidator(
@@ -41,21 +41,21 @@ namespace Nethermind.Consensus.AuRa.Validators
             ITxSender txSender,
             ITxPool txPool,
             IBlocksConfig blocksConfig,
-            IReadOnlyStateProvider stateProvider,
             Cache cache,
             ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
+            IWorldStateProvider worldStateProvider,
             ILogManager logManager)
         {
             _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
             ValidatorContract = reportingValidatorContract ?? throw new ArgumentNullException(nameof(reportingValidatorContract));
             _posdaoTransition = posdaoTransition;
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, gasPriceOracle);
             _persistentReports = cache.PersistentReports;
+            _worldStateProvider = worldStateProvider;
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
-            Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
+            Report(ReportType.Malicious, validator, blockNumber, proof, cause, (validator1, blockNumber1, proof1) => CreateReportMaliciousTransaction(validator1, blockNumber1, proof1));
         }
 
         private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
         {
             var transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
-            transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
+            transaction.Nonce = _worldStateProvider.GetGlobalWorldState(persistentReport.BlockNumber).GetNonce(ValidatorContract.NodeAddress);
             return transaction;
         }
 

@@ -9,6 +9,8 @@ using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Reward
@@ -27,7 +29,7 @@ namespace Nethermind.AuRa.Test.Reward
             Dictionary<long, UInt256> blockReward = new() { { 0, 200 }, { 5, 150 }, { 10, 100 }, { 11, 50 } };
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, Substitute.For<IWorldState>());
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
 
@@ -38,7 +40,7 @@ namespace Nethermind.AuRa.Test.Reward
             Dictionary<long, UInt256> blockReward = new() { { 0, 200 } };
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, Substitute.For<IWorldState>());
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
 
@@ -48,7 +50,7 @@ namespace Nethermind.AuRa.Test.Reward
         {
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(null);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, Substitute.For<IWorldState>());
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
 
@@ -59,7 +61,7 @@ namespace Nethermind.AuRa.Test.Reward
             Dictionary<long, UInt256> blockReward = new() { { 10, 200 } };
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, Substitute.For<IWorldState>());
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
 
@@ -69,7 +71,7 @@ namespace Nethermind.AuRa.Test.Reward
             Dictionary<long, UInt256> blockReward = new() { };
             _block.Header.Number = blockNumber;
             StaticRewardCalculator calculator = new(blockReward);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, Substitute.For<IWorldState>());
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
     }

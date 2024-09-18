@@ -5,5 +5,5 @@ namespace Nethermind.State;
 
 public interface IPreBlockCaches
 {
-    PreBlockCaches Caches { get; }
+    PreBlockCaches? Caches { get; }
 }

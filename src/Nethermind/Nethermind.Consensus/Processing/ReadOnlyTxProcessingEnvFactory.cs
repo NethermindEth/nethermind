@@ -12,18 +12,16 @@ public class ReadOnlyTxProcessingEnvFactory(
     IWorldStateManager worldStateManager,
     IReadOnlyBlockTree readOnlyBlockTree,
     ISpecProvider? specProvider,
-    ILogManager? logManager,
-    IWorldState? worldStateToWarmUp = null)
+    ILogManager? logManager)
 {
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         ISpecProvider? specProvider,
-        ILogManager? logManager,
-        IWorldState? worldStateToWarmUp = null)
-        : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+        ILogManager? logManager)
+        : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
     {
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp);
+    public ReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager);
 }

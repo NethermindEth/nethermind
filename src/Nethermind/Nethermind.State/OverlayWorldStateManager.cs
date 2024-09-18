@@ -2,49 +2,55 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class OverlayWorldStateManager(
-    IReadOnlyDbProvider dbProvider,
-    OverlayTrieStore overlayTrieStore,
-    ILogManager? logManager)
-    : IWorldStateManager
+public class OverlayWorldStateManager : IWorldStateManager
 {
-    private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
+    private OverlayTrieStore _overlayTrieStore;
+    private ILogManager _logManager;
+    private IDbProvider _dbProvider;
 
-    private readonly StateReader _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+    public IWorldStateProvider GlobalWorldStateProvider { get; }
+    public PreBlockCaches? Caches { get; }
 
-    private readonly WorldState _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
-
-    public IWorldState GlobalWorldState => _state;
-
-    public IStateReader GlobalStateReader => _reader;
-
-    public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
-
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
+    public OverlayWorldStateManager(
+        IReadOnlyDbProvider dbProvider,
+        OverlayTrieStore overlayTrieStore,
+        ILogManager logManager,
+        PreBlockCaches? caches = null)
     {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache),
-                _codeDb,
-                logManager,
-                preBlockCaches)
-            : new WorldState(
-                overlayTrieStore,
-                _codeDb,
-                logManager);
+        WorldState worldState = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+        _overlayTrieStore = overlayTrieStore;
+        _dbProvider = dbProvider;
+        GlobalWorldStateProvider = new OverlayWorldStateProvider(worldState, dbProvider, overlayTrieStore, logManager);
+
+        _logManager = logManager;
+        Caches = caches;
+    }
+
+    public IWorldStateProvider CreateResettableWorldStateProvider()
+    {
+        return new WorldStateProvider(_overlayTrieStore, _dbProvider, _logManager, Caches);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
-        add => overlayTrieStore.ReorgBoundaryReached += value;
-        remove => overlayTrieStore.ReorgBoundaryReached -= value;
+        add => _overlayTrieStore.ReorgBoundaryReached += value;
+        remove => _overlayTrieStore.ReorgBoundaryReached -= value;
+    }
+
+    public Task ClearCachesInBackground()
+    {
+        return Caches?.ClearCachesInBackground() ?? Task.CompletedTask;
+    }
+
+    public bool ClearCache()
+    {
+        return Caches?.ClearImmediate() == true;
     }
 }

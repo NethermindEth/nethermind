@@ -5,6 +5,8 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
+using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Rewards
@@ -19,7 +21,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle, uncle2).TestObject;
 
             RewardCalculator calculator = new(MainnetSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(3));
             Assert.That((long)rewards[0].Value, Is.EqualTo(5312500000000000000), "miner");
@@ -34,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(3).WithUncles(uncle).TestObject;
 
             RewardCalculator calculator = new(MainnetSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(2));
             Assert.That((long)rewards[0].Value, Is.EqualTo(5156250000000000000), "miner");
@@ -47,7 +49,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(3).TestObject;
 
             RewardCalculator calculator = new(MainnetSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(1));
             Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
@@ -62,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
 
             RewardCalculator calculator = new(MainnetSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(3));
             Assert.That((long)rewards[0].Value, Is.EqualTo(3187500000000000000), "miner");
@@ -79,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Block block = Build.A.Block.WithNumber(blockNumber).WithUncles(uncle, uncle2).TestObject;
 
             RewardCalculator calculator = new(MainnetSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<IWorldState>());
 
             Assert.That(rewards.Length, Is.EqualTo(3));
             Assert.That((long)rewards[0].Value, Is.EqualTo(2125000000000000000), "miner");

@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

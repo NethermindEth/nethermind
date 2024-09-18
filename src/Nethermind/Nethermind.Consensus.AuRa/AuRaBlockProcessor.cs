@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
-            IWorldState stateProvider,
+            IWorldStateProvider worldStateProvider,
             IReceiptStorage receiptStorage,
             IBeaconBlockRootHandler beaconBlockRootHandler,
             ILogManager logManager,
@@ -55,9 +55,9 @@ namespace Nethermind.Consensus.AuRa
                 blockValidator,
                 rewardCalculator,
                 blockTransactionsExecutor,
-                stateProvider,
+                worldStateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 beaconBlockRootHandler,
                 logManager,
                 withdrawalProcessor,
@@ -78,21 +78,23 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator AuRaValidator { get; }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected override TxReceipt[] ProcessBlock(IWorldState worldState, Block block, IBlockTracer blockTracer,
+            ProcessingOptions options)
         {
             ValidateAuRa(block);
-            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
+            _contractRewriter?.RewriteContracts(block.Number, worldState, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
+            TxReceipt[] receipts = base.ProcessBlock(worldState, block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected TxReceipt[] PostMergeProcessBlock(IWorldState worldState, Block block, IBlockTracer blockTracer,
+            ProcessingOptions options)
         {
-            return base.ProcessBlock(block, blockTracer, options);
+            return base.ProcessBlock(worldState, block, blockTracer, options);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
@@ -177,8 +179,10 @@ namespace Nethermind.Consensus.AuRa
         private class NullAuRaValidator : IAuRaValidator
         {
             public Address[] Validators => Array.Empty<Address>();
-            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
-            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
+            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
+            { }
+            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+            { }
         }
     }
 }

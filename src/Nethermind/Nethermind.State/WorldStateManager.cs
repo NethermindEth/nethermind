@@ -9,13 +9,14 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State;
 
 public class WorldStateManager(
-    IWorldState worldState,
-    ITrieStore trieStore,
+    WorldStateProvider worldStateProvider,
     IDbProvider dbProvider,
-    ILogManager logManager)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
+    ITrieStore trieStore,
+    ILogManager logManager,
+    PreBlockCaches? preBlockCaches = null)
+    : ReadOnlyWorldStateManager(worldStateProvider, dbProvider, trieStore.AsReadOnly(), logManager, preBlockCaches)
 {
-    public override IWorldState GlobalWorldState => worldState;
+    public override IWorldStateProvider GlobalWorldStateProvider => worldStateProvider;
 
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

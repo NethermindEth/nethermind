@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Producers
             _logManager = logManager;
         }
 
-        public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv) =>
-            new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager);
+        public IBlockProcessor.IBlockTransactionsExecutor Create(ITransactionProcessor transactionProcessor) =>
+            new BlockProcessor.BlockProductionTransactionsExecutor(transactionProcessor, _specProvider, _logManager);
     }
 }

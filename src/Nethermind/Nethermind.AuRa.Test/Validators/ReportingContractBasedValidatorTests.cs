@@ -204,9 +204,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 TxSender = Substitute.For<ITxSender>();
                 ITxPool txPool = Substitute.For<ITxPool>();
-                IWorldState stateProvider = Substitute.For<IWorldState>();
                 ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-                stateProvider.GetNonce(ReportingValidatorContract.NodeAddress).Returns(UInt256.One);
 
                 Validator = new ReportingContractBasedValidator(
                     ContractBasedValidator,
@@ -215,10 +213,10 @@ namespace Nethermind.AuRa.Test.Validators
                     TxSender,
                     txPool,
                     new BlocksConfig(),
-                    stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
                     specProvider,
                     Substitute.For<IGasPriceOracle>(),
+                    Substitute.For<IWorldStateProvider>(),
                     LimboLogs.Instance);
             }
         }

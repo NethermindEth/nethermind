@@ -25,8 +25,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
 
-        public ReadOnlyChainProcessingEnv(
-            IReadOnlyTxProcessingScope scope,
+        public ReadOnlyChainProcessingEnv(IReadOnlyTxProcessingScope scope,
             IBlockValidator blockValidator,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
@@ -38,37 +37,35 @@ namespace Nethermind.Consensus.Processing
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
         {
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor =
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor, scope.WorldState);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(scope.TransactionProcessor);
 
             BlockProcessor = CreateBlockProcessor(scope, blockTree, blockValidator, rewardCalculator, receiptStorage, specProvider, logManager, transactionsExecutor);
 
             _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
+            ChainProcessor = new OneTimeChainProcessor(_blockProcessingQueue);
             _blockProcessingQueue = new BlockchainProcessor(blockTree, BlockProcessor, recoveryStep, stateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(scope.WorldState, _blockProcessingQueue);
+            ChainProcessor = new OneTimeChainProcessor(_blockProcessingQueue);
         }
 
-        protected virtual IBlockProcessor CreateBlockProcessor(
-            IReadOnlyTxProcessingScope scope,
+        protected virtual IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
             ILogManager logManager,
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor
-        )
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
         {
             return new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
                 transactionsExecutor,
-                scope.WorldState,
+                scope.WorldStateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, scope.WorldState),
+                new BlockhashStore(specProvider),
                 new BeaconBlockRootHandler(scope.TransactionProcessor),
                 logManager);
         }

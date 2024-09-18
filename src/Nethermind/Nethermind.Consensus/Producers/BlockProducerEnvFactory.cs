@@ -89,19 +89,18 @@ namespace Nethermind.Consensus.Producers
                     readOnlyBlockTree,
                     blockProcessor,
                     _blockPreprocessorStep,
-                    txProcessingEnv.StateReader,
+                    txProcessingEnv.WorldStateProvider.GetGlobalStateReader(),
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
                 blockchainProcessor);
 
             return new BlockProducerEnv
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = scope.WorldState,
+                ReadOnlyWorldStateProvider = scope.WorldStateProvider,
                 TxSource = CreateTxSourceForProducer(additionalTxSource, txProcessingEnv, _txPool, _blocksConfig, _transactionComparerProvider, _logManager),
                 ReadOnlyTxProcessingEnv = txProcessingEnv
             };
@@ -147,13 +146,13 @@ namespace Nethermind.Consensus.Producers
             new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-                readOnlyTxProcessingEnv.WorldState,
+                TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
+                readOnlyTxProcessingEnv.WorldStateProvider,
                 receiptStorage,
-                new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
+                new BlockhashStore(_specProvider),
                 new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
                 logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(logManager)));
 
     }
 }

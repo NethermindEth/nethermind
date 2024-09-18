@@ -53,12 +53,10 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            WorldState stateProvider = new(
-                trieStore,
-                dbProvider.RegisteredDbs[DbNames.Code],
-                LimboLogs.Instance);
+            var worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -67,7 +65,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
             TransactionProcessor txProcessor = new(
                 specProvider,
-                stateProvider,
                 virtualMachine,
                 codeInfoRepository,
                 LimboLogs.Instance);
@@ -75,10 +72,10 @@ namespace Nethermind.Blockchain.Test.Producers
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
-                stateProvider,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor),
+                worldStateProvider,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 new BeaconBlockRootHandler(txProcessor),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
@@ -93,7 +90,7 @@ namespace Nethermind.Blockchain.Test.Producers
             DevBlockProducer devBlockProducer = new(
                 EmptyTxSource.Instance,
                 blockchainProcessor,
-                stateProvider,
+                worldStateProvider,
                 blockTree,
                 timestamper,
                 specProvider,

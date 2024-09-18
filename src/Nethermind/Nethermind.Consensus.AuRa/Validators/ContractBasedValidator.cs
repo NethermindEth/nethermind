@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
@@ -200,7 +201,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     _logger.Info($"Applying validator set change before block {block.ToString(BlockHeader.Format.Short)}.");
 
                 if (block.Number == InitBlockNumber)
-                    ValidatorContract.EnsureSystemAccount();
+                    ValidatorContract.EnsureSystemAccount(block);
 
                 ValidatorContract.FinalizeChange(block);
             }

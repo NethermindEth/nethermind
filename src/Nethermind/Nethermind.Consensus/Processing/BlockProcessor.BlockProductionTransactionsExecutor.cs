@@ -20,34 +20,20 @@ namespace Nethermind.Consensus.Processing
     {
         public class BlockProductionTransactionsExecutor(
             ITransactionProcessor txProcessor,
-            IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
-            private readonly ILogger _logger = logManager.GetClassLogger();
-
-            public BlockProductionTransactionsExecutor(
-                IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
-                ISpecProvider specProvider,
-                ILogManager logManager)
-                : this(
-                    readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTxProcessingEnv.WorldState,
-                    specProvider,
-                    logManager)
-            {
-            }
-
             public BlockProductionTransactionsExecutor(
                 ITransactionProcessor transactionProcessor,
-                IWorldState stateProvider,
                 ISpecProvider specProvider,
-                ILogManager logManager) : this(transactionProcessor, stateProvider,
+                ILogManager logManager) : this(transactionProcessor,
                 new BlockProductionTransactionPicker(specProvider), logManager)
             {
             }
+
+            private readonly ITransactionProcessorAdapter _transactionProcessor = new BuildUpTransactionProcessorAdapter(txProcessor);
+            private readonly ILogger _logger = logManager.GetClassLogger();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -63,7 +49,8 @@ namespace Nethermind.Consensus.Processing
                 remove => txPicker.AddingTransaction -= value;
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            public virtual TxReceipt[] ProcessTransactions(IWorldState worldState, Block block,
+                ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
@@ -73,18 +60,17 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    TxAction action = ProcessTransaction(worldState, block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
                 }
 
-                stateProvider.Commit(spec, receiptsTracer);
+                worldState.Commit(spec, receiptsTracer);
 
                 SetTransactions(block, transactionsInBlock);
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
-            protected TxAction ProcessTransaction(
-                Block block,
+            protected TxAction ProcessTransaction(IWorldState worldState, Block block,
                 in BlockExecutionContext blkCtx,
                 Transaction currentTx,
                 int index,
@@ -93,7 +79,7 @@ namespace Nethermind.Consensus.Processing
                 LinkedHashSet<Transaction> transactionsInBlock,
                 bool addToBlock = true)
             {
-                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
+                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, worldState);
 
                 if (args.Action != TxAction.Add)
                 {
@@ -101,7 +87,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
+                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, worldState);
 
                     if (result)
                     {

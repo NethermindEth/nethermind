@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -12,50 +13,38 @@ namespace Nethermind.State;
 /// <summary>
 /// Mainly to make it easier for test
 /// </summary>
-public class ReadOnlyWorldStateManager : IWorldStateManager
+public class ReadOnlyWorldStateManager(
+    ReadOnlyWorldStateProvider globalWorldStateProvider,
+    IDbProvider dbProvider,
+    IReadOnlyTrieStore readOnlyTrieStore,
+    ILogManager logManager,
+    PreBlockCaches? preBlockCaches = null) : IWorldStateManager
 {
-    private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-    private readonly ILogManager _logManager;
-    private readonly ReadOnlyDb _codeDb;
+    public virtual IWorldStateProvider GlobalWorldStateProvider => globalWorldStateProvider;
+    public PreBlockCaches? Caches => preBlockCaches;
 
-    public ReadOnlyWorldStateManager(
-        IDbProvider dbProvider,
-        IReadOnlyTrieStore readOnlyTrieStore,
-        ILogManager logManager
-    )
+    public IWorldStateProvider CreateResettableWorldStateProvider()
     {
-        _readOnlyTrieStore = readOnlyTrieStore;
-        _logManager = logManager;
+        ITrieStore preCachedTrieStore = Caches is null
+            ? readOnlyTrieStore
+            : new PreCachedTrieStore(readOnlyTrieStore, Caches.RlpCache);
 
-        IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
-        _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
-        GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
-    }
-
-    public virtual IWorldState GlobalWorldState => throw new InvalidOperationException("global world state not supported");
-
-    public IStateReader GlobalStateReader { get; }
-
-    public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
-
-    public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
-    {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
-                _codeDb,
-                _logManager,
-                preBlockCaches)
-            : new WorldState(
-                _readOnlyTrieStore,
-                _codeDb,
-                _logManager);
+        return new WorldStateProvider(preCachedTrieStore, readOnlyTrieStore, dbProvider, logManager, Caches);
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
         add => throw new InvalidOperationException("Unsupported operation");
         remove => throw new InvalidOperationException("Unsupported operation");
+    }
+
+    public Task ClearCachesInBackground()
+    {
+        return Caches?.ClearCachesInBackground() ?? Task.CompletedTask;
+    }
+
+    public bool ClearCache()
+    {
+        return Caches?.ClearImmediate() == true;
     }
 }

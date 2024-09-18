@@ -20,50 +20,48 @@ namespace Nethermind.Optimism;
 /// Not thread safe.
 /// </summary>
 public class OptimismReadOnlyChainProcessingEnv(
-    IReadOnlyTxProcessingScope txEnv,
+    IReadOnlyTxProcessingScope scope,
     IBlockValidator blockValidator,
     IBlockPreprocessorStep recoveryStep,
     IRewardCalculator rewardCalculator,
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IBlockTree blockTree,
-    IStateReader stateReader,
+    IWorldStateProvider worldStateProvider,
     ILogManager logManager,
     IOptimismSpecHelper opSpecHelper,
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor? withdrawalProcessor,
     IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null) : ReadOnlyChainProcessingEnv(
-    txEnv,
+    scope,
     blockValidator,
     recoveryStep,
     rewardCalculator,
     receiptStorage,
     specProvider,
     blockTree,
-    stateReader,
+    worldStateProvider.GetGlobalStateReader(),
     logManager,
     blockTransactionsExecutor)
 {
 
-    protected override IBlockProcessor CreateBlockProcessor(
-        IReadOnlyTxProcessingScope scope,
+    protected override IBlockProcessor CreateBlockProcessor(IReadOnlyTxProcessingScope scope,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor
-    )
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor)
     {
         return new OptimismBlockProcessor(
             specProvider,
             blockValidator,
             rewardCalculator,
             transactionsExecutor,
-            scope.WorldState,
+            worldStateProvider,
             receiptStorage,
-            new BlockhashStore(specProvider, scope.WorldState),
+            new BlockhashStore(specProvider),
             new BeaconBlockRootHandler(scope.TransactionProcessor),
             logManager,
             opSpecHelper,

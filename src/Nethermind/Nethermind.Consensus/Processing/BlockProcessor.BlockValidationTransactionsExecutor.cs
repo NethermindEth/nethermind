@@ -19,18 +19,18 @@ namespace Nethermind.Consensus.Processing
     public partial class BlockProcessor
     {
         public class BlockValidationTransactionsExecutor(
-            ITransactionProcessorAdapter transactionProcessor,
-            IWorldState stateProvider)
+            ITransactionProcessorAdapter transactionProcessor)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor)
+                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor))
             {
             }
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public TxReceipt[] ProcessTransactions(IWorldState worldState, Block block,
+                ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 Metrics.ResetBlockStats();
                 BlockExecutionContext blkCtx = CreateBlockExecutionContext(block);
@@ -38,16 +38,18 @@ namespace Nethermind.Consensus.Processing
                 {
                     block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(worldState, in blkCtx, currentTx, i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
             protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block) => new(block.Header);
 
-            protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected virtual void ProcessTransaction(IWorldState worldState, in BlockExecutionContext blkCtx,
+                Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer,
+                ProcessingOptions processingOptions)
             {
-                TransactionResult result = transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
+                TransactionResult result = transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, worldState);
                 if (!result) ThrowInvalidBlockException(result, blkCtx.Header, currentTx, index);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }

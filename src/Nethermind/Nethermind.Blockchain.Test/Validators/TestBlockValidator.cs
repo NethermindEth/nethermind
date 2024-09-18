@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -35,7 +36,8 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle,
+        [NotNullWhen(false)] out string? error)
     {
         var result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         error = result ? null : "";
@@ -56,7 +58,8 @@ public class TestBlockValidator : IBlockValidator
     {
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
-    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error,
+        bool validateHashes = true)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();

@@ -33,7 +33,6 @@ namespace Nethermind.AuRa.Test
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
             AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
-                Substitute.For<IWorldState>(),
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
                 Substitute.For<IReadOnlyTxProcessorSource>(),
@@ -48,7 +47,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<ISpecProvider>(),
 
                 Substitute.For<IGasPriceOracle>(),
-                new ReportingContractBasedValidator.Cache(), long.MaxValue);
+                new ReportingContractBasedValidator.Cache(),
+                Substitute.For<IWorldStateProvider>(), long.MaxValue);
 
             AuRaParameters.Validator validator = new()
             {

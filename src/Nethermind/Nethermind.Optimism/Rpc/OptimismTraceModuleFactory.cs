@@ -52,7 +52,7 @@ public class OptimismTraceModuleFactory(
                 _receiptStorage,
                 _specProvider,
                 _blockTree,
-                _worldStateManager.GlobalStateReader,
+                _worldStateManager.GlobalWorldStateProvider,
                 _logManager,
                 opSpecHelper,
                 contractRewriter,

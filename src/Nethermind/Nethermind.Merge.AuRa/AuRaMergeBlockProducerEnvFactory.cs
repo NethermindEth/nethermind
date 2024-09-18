@@ -54,8 +54,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         _auraApi = auraApi;
     }
 
-    protected override BlockProcessor CreateBlockProcessor(
-        IReadOnlyTxProcessingScope readOnlyTxProcessingEnv,
+    protected override BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv txProcessingEnv,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -68,16 +67,16 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         return new AuRaMergeBlockProcessor(
             specProvider,
             blockValidator,
-            rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
-            TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
-            readOnlyTxProcessingEnv.WorldState,
+            rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),
+            TransactionsExecutorFactory.Create(txProcessingEnv.TransactionProcessor),
+            txProcessingEnv.WorldStateProvider,
             receiptStorage,
-            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
+            new BeaconBlockRootHandler(txProcessingEnv.TransactionProcessor),
             logManager,
             _blockTree,
             new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
                 new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
+                    withdrawalContractFactory.Create(txProcessingEnv.TransactionProcessor),
                     logManager
                     )
                 ),

@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                WorldStateManager,
+                WorldStateManager.GlobalWorldStateProvider,
                 roBlockTree,
                 new ReadOnlyDbProvider(dbProvider, true),
                 SpecProvider,

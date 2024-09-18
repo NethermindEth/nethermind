@@ -69,7 +69,7 @@ namespace Nethermind.Facade
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
             _blockTree = processingEnv.BlockTree;
-            _stateReader = processingEnv.StateReader;
+            _stateReader = processingEnv.WorldStateProvider.GetGlobalStateReader();
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
@@ -186,6 +186,7 @@ namespace Nethermind.Facade
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
             using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
+            IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(header);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -194,9 +195,9 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState,
+            GasEstimator gasEstimator = new(scope.TransactionProcessor,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
+            long estimate = gasEstimator.Estimate(worldState, tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
             {
@@ -253,6 +254,7 @@ namespace Nethermind.Facade
 
             Hash256 stateRoot = blockHeader.StateRoot!;
             using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot);
+            IWorldState worldState = scope.WorldStateProvider.GetGlobalWorldState(blockHeader);
 
             if (transaction.Nonce == 0)
             {
@@ -294,7 +296,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(worldState, transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()

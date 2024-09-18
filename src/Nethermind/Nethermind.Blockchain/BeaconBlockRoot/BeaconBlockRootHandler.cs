@@ -9,6 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBlockRootHandler
@@ -42,7 +43,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
         return (eip4788ContractAddress, builder.Build());
     }
 
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState worldState)
     {
         (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
@@ -62,7 +63,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, header, NullTxTracer.Instance);
+            processor.Execute(worldState, transaction, header, NullTxTracer.Instance);
         }
     }
 }

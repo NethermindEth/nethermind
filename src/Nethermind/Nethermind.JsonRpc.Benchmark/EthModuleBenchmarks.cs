@@ -60,14 +60,16 @@ namespace Nethermind.JsonRpc.Benchmark
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
 
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldStateProvider worldStateProvider = new WorldStateProvider(trieStore, dbProvider, LimboLogs.Instance);
+
+            WorldStateManager stateManager =
+                new WorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
+
+            IWorldState stateProvider = worldStateProvider.GetWorldState();
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
-
-            WorldStateManager stateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
-
-            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
+            IStateReader stateReader = worldStateProvider.GetGlobalStateReader();
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
             BlockTree blockTree = new(
@@ -81,7 +83,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullBloomStorage.Instance,
                 new SyncConfig(),
                 LimboLogs.Instance);
-            _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+            _blockhashProvider = new BlockhashProvider(blockTree, specProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
 
@@ -92,17 +94,17 @@ namespace Nethermind.JsonRpc.Benchmark
             blockTree.SuggestBlock(block1);
 
             TransactionProcessor transactionProcessor
-                 = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
+                 = new(MainnetSpecProvider.Instance, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
-            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
+            IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor);
             BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
                 new RewardCalculator(specProvider),
                 transactionsExecutor,
-                stateProvider,
+                stateManager.GlobalWorldStateProvider,
                 NullReceiptStorage.Instance,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(specProvider),
                 new BeaconBlockRootHandler(transactionProcessor),
                 LimboLogs.Instance);
 
@@ -139,7 +141,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     specProvider,
                     LimboLogs.Instance),
                 new SimulateReadOnlyBlocksProcessingEnvFactory(
-                    stateManager,
+                    stateManager.GlobalWorldStateProvider,
                     new ReadOnlyBlockTree(blockTree),
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,

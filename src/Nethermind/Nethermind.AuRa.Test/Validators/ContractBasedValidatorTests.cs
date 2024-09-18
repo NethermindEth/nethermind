@@ -79,8 +79,11 @@ public class ContractBasedValidatorTests
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
+        IWorldStateProvider worldStateProvider = Substitute.For<IWorldStateProvider>();
+        worldStateProvider.GetGlobalWorldState(Arg.Any<BlockHeader>()).Returns(_stateProvider);
+
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, worldStateProvider));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
@@ -91,7 +94,7 @@ public class ContractBasedValidatorTests
             .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
             .Returns(_finalizeChangeData.TransactionData);
 
-        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _readOnlyTxProcessorSource, worldStateProvider, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
     }
 
     [TearDown]
@@ -185,13 +188,14 @@ public class ContractBasedValidatorTests
         // getValidators should have been called
         _transactionProcessor.Received()
             .CallAndRestore(
+                Arg.Any<IWorldState>(),
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_parentHeader)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         // finalizeChange should be called
         _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
-            .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
+            .Execute(Arg.Any<IWorldState>(), Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
@@ -604,7 +608,7 @@ public class ContractBasedValidatorTests
     {
         // finalizeChange should be called or not based on test spec
         _transactionProcessor.Received(chain.ExpectedFinalizationCount)
-            .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
+            .Execute(Arg.Any<IWorldState>(), Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
@@ -635,6 +639,7 @@ public class ContractBasedValidatorTests
         }
 
         _transactionProcessor.When(x => x.CallAndRestore(
+                Arg.Any<IWorldState>(),
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
                 Arg.Any<BlockExecutionContext>(),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer)))

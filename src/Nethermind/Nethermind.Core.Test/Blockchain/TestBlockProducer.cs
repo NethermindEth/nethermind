@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -21,7 +22,7 @@ namespace Nethermind.Core.Test.Blockchain
         public TestBlockProducer(
             ITxSource txSource,
             IBlockchainProcessor processor,
-            IWorldState stateProvider,
+            IWorldStateProvider worldStateProvider,
             ISealer sealer,
             IBlockTree blockTree,
             ITimestamper timestamper,
@@ -33,7 +34,7 @@ namespace Nethermind.Core.Test.Blockchain
                 processor,
                 sealer,
                 blockTree,
-                stateProvider,
+                worldStateProvider,
                 new FollowOtherMiners(specProvider),
                 timestamper,
                 specProvider,

@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Evm;
+using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Reward
 {
@@ -28,6 +29,7 @@ namespace Nethermind.AuRa.Test.Reward
         private AuRaParameters _auraParameters;
         private IAbiEncoder _abiEncoder;
         private ITransactionProcessor _transactionProcessor;
+        private IWorldState _worldState;
         private Block _block;
         private readonly byte[] _rewardData = { 3, 4, 5 };
         private Address _address10;
@@ -49,6 +51,7 @@ namespace Nethermind.AuRa.Test.Reward
 
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
+            _worldState = Substitute.For<IWorldState>();
 
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
 
@@ -97,7 +100,7 @@ namespace Nethermind.AuRa.Test.Reward
         {
             _block.Header.Number = blockNumber;
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, _worldState);
             result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
 
@@ -106,7 +109,7 @@ namespace Nethermind.AuRa.Test.Reward
         {
             _block.Header.Number = 0;
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, _worldState);
             result.Should().BeEmpty();
         }
 
@@ -118,7 +121,7 @@ namespace Nethermind.AuRa.Test.Reward
             BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, new[] { expected } } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, _worldState);
             result.Should().BeEquivalentTo(expected);
         }
 
@@ -144,7 +147,7 @@ namespace Nethermind.AuRa.Test.Reward
             BlockReward expected = new(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { address, new[] { expected } } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, _worldState);
             result.Should().BeEquivalentTo(expected);
         }
 
@@ -167,7 +170,7 @@ namespace Nethermind.AuRa.Test.Reward
 
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, expected } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, _worldState);
             result.Should().BeEquivalentTo(expected);
         }
 
@@ -190,13 +193,14 @@ namespace Nethermind.AuRa.Test.Reward
 
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, expected } });
             AuRaRewardCalculator calculator = new(_auraParameters, _abiEncoder, _transactionProcessor);
-            BlockReward[] result = calculator.CalculateRewards(_block);
+            BlockReward[] result = calculator.CalculateRewards(_block, _worldState);
             result.Should().BeEquivalentTo(expected);
         }
 
         private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards)
         {
             _transactionProcessor.When(x => x.Execute(
+                    Arg.Any<IWorldState>(),
                     Arg.Is<Transaction>(t => CheckTransaction(t, rewards.Keys, _rewardData)),
                     Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))

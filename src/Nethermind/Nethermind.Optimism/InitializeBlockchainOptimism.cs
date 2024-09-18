@@ -39,11 +39,9 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.L1CostHelper is null) throw new StepDependencyException(nameof(api.L1CostHelper));
-        if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
 
         return new OptimismTransactionProcessor(
             api.SpecProvider,
-            api.WorldState,
             virtualMachine,
             api.LogManager,
             api.L1CostHelper,
@@ -80,7 +78,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
         if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
         if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
-        if (api.WorldState is null) throw new StepDependencyException(nameof(api.WorldState));
+        if (api.WorldStateManager is null) throw new StepDependencyException(nameof(api.WorldStateManager));
 
         Create2DeployerContractRewriter contractRewriter = new(api.SpecHelper, api.SpecProvider, api.BlockTree);
 
@@ -88,10 +86,10 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.SpecProvider,
             api.BlockValidator,
             api.RewardCalculatorSource.Get(transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, api.WorldState),
-            api.WorldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor),
+            api.WorldStateManager!.GlobalWorldStateProvider,
             api.ReceiptStorage,
-            new BlockhashStore(api.SpecProvider, api.WorldState),
+            new BlockhashStore(api.SpecProvider),
             new BeaconBlockRootHandler(transactionProcessor),
             api.LogManager,
             api.SpecHelper,

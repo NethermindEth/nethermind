@@ -819,7 +819,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(TestState, transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
 
@@ -827,7 +827,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(TestState, transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
 
@@ -835,7 +835,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             ParityLikeTxTracer tracer = new(block, transaction, traceTypes);
-            _processor.Execute(transaction, block.Header, tracer);
+            _processor.Execute(TestState, transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
 
@@ -843,7 +843,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, input, value);
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            TransactionResult result = _processor.Execute(transaction, block.Header, tracer);
+            TransactionResult result = _processor.Execute(TestState, transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
     }

@@ -79,8 +79,10 @@ namespace Nethermind.Facade.Test
             ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
+            var worldStateProvider =
+                new ReadOnlyWorldStateProvider(dbProvider, trieStore, LimboLogs.Instance);
             IWorldStateManager readOnlyWorldStateManager =
-                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+                new ReadOnlyWorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
 
             IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
             ReadOnlyTxProcessingEnv processingEnv = new TestReadOnlyTxProcessingEnv(
@@ -91,7 +93,7 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                readOnlyWorldStateManager,
+                readOnlyWorldStateManager.GlobalWorldStateProvider,
                 readOnlyBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
@@ -158,6 +160,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx =>
                     blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
@@ -174,6 +177,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
                 Arg.Any<ITxTracer>());
@@ -189,6 +193,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
                 Arg.Any<ITxTracer>());
@@ -204,6 +209,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
+                Arg.Any<IWorldState>(),
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
                 Arg.Any<ITxTracer>());
@@ -216,8 +222,11 @@ namespace Nethermind.Facade.Test
             ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
+            var worldStateProvider =
+                new ReadOnlyWorldStateProvider(dbProvider, trieStore, LimboLogs.Instance);
             IWorldStateManager readOnlyWorldStateManager =
-                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+                new ReadOnlyWorldStateManager(worldStateProvider, dbProvider, trieStore, LimboLogs.Instance);
+
             IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
             ReadOnlyTxProcessingEnv processingEnv = new(
                 readOnlyWorldStateManager,
@@ -226,7 +235,7 @@ namespace Nethermind.Facade.Test
                 LimboLogs.Instance);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                readOnlyWorldStateManager,
+                readOnlyWorldStateManager.GlobalWorldStateProvider,
                 roBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,

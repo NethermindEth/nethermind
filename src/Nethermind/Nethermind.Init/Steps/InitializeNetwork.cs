@@ -111,9 +111,9 @@ public class InitializeNetwork : IStep
             healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }
 
-        if (_api.WorldState is HealingWorldState healingWorldState)
+        if (_api.WorldStateManager! is HealingWorldStateManager healingWorldStateManager)
         {
-            healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
+            healingWorldStateManager.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }
 
         IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();

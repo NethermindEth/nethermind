@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Processing
         protected readonly ILogManager _logManager;
 
         protected ITransactionProcessor? _transactionProcessor;
-        protected ITransactionProcessor TransactionProcessor
+        public ITransactionProcessor TransactionProcessor
         {
             get
             {
@@ -34,9 +34,8 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null)
-            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, worldStateToWarmUp)
+            ILogManager? logManager)
+            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
         {
         }
 
@@ -44,26 +43,26 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager,
-            IWorldState? worldStateToWarmUp = null
-            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
+            ILogManager? logManager
+            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager)
         {
-            CodeInfoRepository = new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
+            CodeInfoRepository = new CodeInfoRepository(worldStateManager.Caches?.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, logManager);
 
             _logManager = logManager;
         }
 
-        protected virtual ITransactionProcessor CreateTransactionProcessor() =>
-            new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
+        protected virtual ITransactionProcessor CreateTransactionProcessor()
+        {
+            return new TransactionProcessor(SpecProvider, Machine, CodeInfoRepository, _logManager);
+        }
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
-            Hash256 originalStateRoot = StateProvider.StateRoot;
-            StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            WorldStateProvider.SetStateRoot(stateRoot);
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, WorldStateProvider);
         }
     }
 }

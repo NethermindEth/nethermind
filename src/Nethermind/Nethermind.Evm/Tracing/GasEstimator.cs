@@ -21,20 +21,17 @@ namespace Nethermind.Evm.Tracing
         public const int DefaultErrorMargin = 150;
 
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
 
-        public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider,
-            ISpecProvider specProvider, IBlocksConfig blocksConfig)
+        public GasEstimator(ITransactionProcessor transactionProcessor, ISpecProvider specProvider, IBlocksConfig blocksConfig)
         {
             _transactionProcessor = transactionProcessor;
-            _stateProvider = stateProvider;
             _specProvider = specProvider;
             _blocksConfig = blocksConfig;
         }
 
-        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
+        public long Estimate(IWorldState worldState, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
         {
             ArgumentOutOfRangeException.ThrowIfNegative(errorMargin, nameof(errorMargin));
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(errorMargin, 10000, nameof(errorMargin));
@@ -44,7 +41,7 @@ namespace Nethermind.Evm.Tracing
             tx.GasLimit = Math.Min(tx.GasLimit, header.GasLimit); // Limit Gas to the header
 
             // Calculate and return additional gas required in case of insufficient funds.
-            UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
+            UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress);
             if (tx.Value != UInt256.Zero && tx.Value > senderBalance && !tx.IsSystem())
             {
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
@@ -65,17 +62,17 @@ namespace Nethermind.Evm.Tracing
                 return 0;
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
+            return BinarySearchEstimate(worldState, leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
+        private long BinarySearchEstimate(IWorldState worldState, long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
         {
             double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
             //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced in most cases
             long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
             if (optimisticGasEstimate > leftBound && optimisticGasEstimate < rightBound)
             {
-                if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
+                if (TryExecutableTransaction(worldState, tx, header, optimisticGasEstimate, token))
                     rightBound = optimisticGasEstimate;
                 else
                     leftBound = optimisticGasEstimate;
@@ -87,7 +84,7 @@ namespace Nethermind.Evm.Tracing
                 && leftBound + 1 < rightBound)
             {
                 long mid = (leftBound + rightBound) / 2;
-                if (!TryExecutableTransaction(tx, header, mid, token))
+                if (!TryExecutableTransaction(worldState, tx, header, mid, token))
                 {
                     leftBound = mid;
                 }
@@ -97,7 +94,7 @@ namespace Nethermind.Evm.Tracing
                 }
             }
 
-            if (rightBound == cap && !TryExecutableTransaction(tx, header, rightBound, token))
+            if (rightBound == cap && !TryExecutableTransaction(worldState, tx, header, rightBound, token))
             {
                 return 0;
             }
@@ -105,7 +102,7 @@ namespace Nethermind.Evm.Tracing
             return rightBound;
         }
 
-        private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit, CancellationToken token)
+        private bool TryExecutableTransaction(IWorldState worldState, Transaction transaction, BlockHeader block, long gasLimit, CancellationToken token)
         {
             OutOfGasTracer tracer = new();
 
@@ -115,7 +112,7 @@ namespace Nethermind.Evm.Tracing
             transaction.GasLimit = gasLimit;
 
             BlockExecutionContext blCtx = new(block);
-            _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
+            _transactionProcessor.CallAndRestore(worldState, transaction, in blCtx, tracer.WithCancellation(token));
             transaction.GasLimit = originalGasLimit;
 
             return !tracer.OutOfGas;

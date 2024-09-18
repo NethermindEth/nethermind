@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -11,7 +10,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -36,7 +34,7 @@ public partial class BlockProcessor(
     IBlockValidator? blockValidator,
     IRewardCalculator? rewardCalculator,
     IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-    IWorldState? stateProvider,
+    IWorldStateProvider? worldStateProvider,
     IReceiptStorage? receiptStorage,
     IBlockhashStore? blockHashStore,
     IBeaconBlockRootHandler? beaconBlockRootHandler,
@@ -48,10 +46,10 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+    protected readonly IWorldStateProvider _worldStateProvider = worldStateProvider ?? throw new ArgumentNullException(nameof(worldStateProvider));
     private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
     private readonly IReceiptsRootCalculator _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-    private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
+    private readonly IWithdrawalProcessor _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(logManager);
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
     private readonly IBlockValidator _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
     private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
@@ -85,13 +83,13 @@ public partial class BlockProcessor(
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
-        Hash256 previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        Hash256 previousBranchStateRoot = _worldStateProvider.GetWorldState().StateRoot; // we will store previousBranchStateRoot for both verkle and merkle trees
+        InitBranch(newBranchStateRoot, suggestedBlocks[0].Header);
         Hash256 preBlockStateRoot = newBranchStateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
-        Block[] processedBlocks = new Block[blocksCount];
+        var processedBlocks = new Block[blocksCount];
 
         try
         {
@@ -111,28 +109,30 @@ public partial class BlockProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
+                IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(suggestedBlock.Header);
+                _logger.Info($"Found the worldState to use: {worldStateToUse.StateRoot}");
                 Task? preWarmTask = null;
                 bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
                 if (!skipPrewarming)
                 {
                     using CancellationTokenSource cancellationTokenSource = new();
                     (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
-                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
+                    preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, worldStateToUse, cancellationTokenSource.Token);
 
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
                     preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
                     cancellationTokenSource.Cancel();
                 }
                 else
                 {
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(worldStateToUse, suggestedBlock, options, blockTracer);
                 }
 
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number, worldStateToUse);
                 if (notReadOnly)
                 {
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
@@ -146,20 +146,20 @@ public partial class BlockProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    previousBranchStateRoot = CreateCheckpoint();
+                    previousBranchStateRoot = CreateCheckpoint(worldStateToUse);
                     Hash256? newStateRoot = suggestedBlock.StateRoot;
-                    InitBranch(newStateRoot, false);
+                    InitBranch(newStateRoot, suggestedBlock.Header, false);
                 }
 
                 preBlockStateRoot = processedBlock.StateRoot;
                 // Make sure the prewarm task is finished before we reset the state
                 preWarmTask?.GetAwaiter().GetResult();
-                _stateProvider.Reset(resizeCollections: true);
+                worldStateToUse.Reset(resizeCollections: true);
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
             {
-                RestoreBranch(previousBranchStateRoot);
+                RestoreBranch(previousBranchStateRoot, _worldStateProvider.GetWorldState()); // we will restore for both merkle and verkle
             }
 
             return processedBlocks;
@@ -167,7 +167,7 @@ public partial class BlockProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
-            RestoreBranch(previousBranchStateRoot);
+            RestoreBranch(previousBranchStateRoot, _worldStateProvider.GetWorldState());
             throw;
         }
         finally
@@ -180,12 +180,26 @@ public partial class BlockProcessor(
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
+    // TODO: revist this implementation. First, what is mean by already existing TODO to move this to branch processor
+    // Second, can we move this inside the WorldStateManager? we can keep track of checkpoints as well in the world state
+    // manager and then easily restore those checkpoints as well
+    // Third, we can just break the processing branches into two, where we process the merkle branch separately
+    // and then process the verkle branch separately
     // TODO: move to branch processor
-    private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(Hash256? branchStateRoot, BlockHeader blockHeader, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
-           That said, I do not remember in what cases we receive null here.*/
-        if (branchStateRoot is not null && _stateProvider.StateRoot != branchStateRoot)
+         That said, I do not remember in what cases we receive null here.*/
+        if (branchStateRoot is null) return;
+
+        // here even if this is the transition boundary, we still use the correct one on the basis of which stateProvider
+        // should be used to process this block, so we reset the state for that. But this creates an interesting
+        // scenario where if we are processing a branch M0 -> M1 -> M2 -> V0 -> V1 -> V3, and now if we reorg to
+        // M0 -> M1B -> M2B -> V0B -> V1B -> V2B, this means we need to clear the verkle state as well.
+        // so here we will ensure that if the block we are processing is the transition block,
+        // we clean the new WorldState - this will be managed by the WorldStateManager
+        IWorldState? worldStateToUse = _worldStateProvider.GetGlobalWorldState(blockHeader);
+        if (worldStateToUse.StateRoot != branchStateRoot)
         {
             /* Discarding the other branch data - chain reorganization.
                We cannot use cached values any more because they may have been written
@@ -193,41 +207,45 @@ public partial class BlockProcessor(
 
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
-            _stateProvider.Reset();
-            _stateProvider.StateRoot = branchStateRoot;
+            worldStateToUse.Reset();
+            worldStateToUse.StateRoot = branchStateRoot;
         }
     }
 
     // TODO: move to branch processor
-    private Hash256 CreateCheckpoint()
+    // now this looks like a stupid function that does not make sense
+    private Hash256 CreateCheckpoint(IWorldState worldState)
     {
-        return _stateProvider.StateRoot;
+        return worldState.StateRoot;
     }
 
     // TODO: move to block processing pipeline
-    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
+    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber, IWorldState worldState)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
-        _stateProvider.CommitTree(blockNumber);
+        worldState.CommitTree(blockNumber);
     }
 
+    // TODO: how do we handle this in this new scenerio, because we dont know which type of stateProvider does this stateRoot
+    // belong to. Should we keep track of that as well.
     // TODO: move to branch processor
-    private void RestoreBranch(Hash256 branchingPointStateRoot)
+    private void RestoreBranch(Hash256 branchingPointStateRoot, IWorldState worldStateToRestore)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _stateProvider.Reset();
-        _stateProvider.StateRoot = branchingPointStateRoot;
-        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+        worldStateToRestore.Reset();
+        worldStateToRestore.StateRoot = branchingPointStateRoot;
+        if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {worldStateToRestore.StateRoot}");
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(IWorldState worldState, Block suggestedBlock,
+        ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        ApplyDaoTransition(suggestedBlock);
+        ApplyDaoTransition(suggestedBlock, worldState);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+        TxReceipt[] receipts = ProcessBlock(worldState, block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -255,8 +273,7 @@ public partial class BlockProcessor(
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
     // TODO: block processor pipeline
-    protected virtual TxReceipt[] ProcessBlock(
-        Block block,
+    protected virtual TxReceipt[] ProcessBlock(IWorldState worldState, Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options)
     {
@@ -265,11 +282,12 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        StoreBeaconRoot(block, spec);
-        _blockhashStore.ApplyBlockhashStateChanges(block.Header);
-        _stateProvider.Commit(spec, commitStorageRoots: false);
+        StoreBeaconRoot(block, spec, worldState);
+        _blockhashStore.ApplyBlockhashStateChanges(block.Header, worldState);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        worldState.Commit(spec, commitStorageRoots: false);
+
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(worldState, block, options, ReceiptsTracer, spec);
 
         if (spec.IsEip4844Enabled)
         {
@@ -277,22 +295,22 @@ public partial class BlockProcessor(
         }
 
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
-        ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        ApplyMinerRewards(block, blockTracer, spec, worldState);
+        _withdrawalProcessor.ProcessWithdrawals(block, spec, worldState);
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec, commitStorageRoots: true);
+        worldState.Commit(spec, commitStorageRoots: true);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             // Get the accounts that have been changed
-            block.AccountChanges = _stateProvider.GetAccountChanges();
+            block.AccountChanges = worldState.GetAccountChanges();
         }
 
         if (ShouldComputeStateRoot(block.Header))
         {
-            _stateProvider.RecalculateStateRoot();
-            block.Header.StateRoot = _stateProvider.StateRoot;
+            worldState.RecalculateStateRoot();
+            block.Header.StateRoot = worldState.StateRoot;
         }
 
         block.Header.Hash = block.Header.CalculateHash();
@@ -300,11 +318,11 @@ public partial class BlockProcessor(
         return receipts;
     }
 
-    private void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    private void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState worldState)
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, worldState);
         }
         catch (Exception e)
         {
@@ -361,10 +379,10 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec)
+    private void ApplyMinerRewards(Block block, IBlockTracer tracer, IReleaseSpec spec, IWorldState worldState)
     {
         if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+        BlockReward[] rewards = _rewardCalculator.CalculateRewards(block, worldState);
         for (int i = 0; i < rewards.Length; i++)
         {
             BlockReward reward = rewards[i];
@@ -374,7 +392,7 @@ public partial class BlockProcessor(
                 tracer.StartNewTxTrace(null)
                 : NullTxTracer.Instance;
 
-            ApplyMinerReward(block, reward, spec);
+            ApplyMinerReward(block, reward, spec, worldState);
 
             if (tracer.IsTracingRewards)
             {
@@ -382,44 +400,44 @@ public partial class BlockProcessor(
                 tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                 if (txTracer.IsTracingState)
                 {
-                    _stateProvider.Commit(spec, txTracer);
+                    worldState.Commit(spec, txTracer);
                 }
             }
         }
     }
 
     // TODO: block processor pipeline (only where rewards needed)
-    private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec)
+    private void ApplyMinerReward(Block block, BlockReward reward, IReleaseSpec spec, IWorldState worldState)
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        if (!_stateProvider.AccountExists(reward.Address))
+        if (!worldState.AccountExists(reward.Address))
         {
-            _stateProvider.CreateAccount(reward.Address, reward.Value);
+            worldState.CreateAccount(reward.Address, reward.Value);
         }
         else
         {
-            _stateProvider.AddToBalance(reward.Address, reward.Value, spec);
+            worldState.AddToBalance(reward.Address, reward.Value, spec);
         }
     }
 
     // TODO: block processor pipeline
-    private void ApplyDaoTransition(Block block)
+    private void ApplyDaoTransition(Block block, IWorldState worldState)
     {
         if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)
         {
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            if (!_stateProvider.AccountExists(withdrawAccount))
+            if (!worldState.AccountExists(withdrawAccount))
             {
-                _stateProvider.CreateAccount(withdrawAccount, 0);
+                worldState.CreateAccount(withdrawAccount, 0);
             }
 
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+                UInt256 balance = worldState.GetBalance(daoAccount);
+                worldState.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                worldState.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
     }

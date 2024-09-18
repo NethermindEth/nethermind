@@ -25,22 +25,22 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockValidationTransactionsExecutor(
     ITransactionProcessor transactionProcessor,
-    IWorldState stateProvider,
     bool validate,
     UInt256? blobBaseFeeOverride)
-    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
+    : BlockValidationTransactionsExecutor(transactionProcessor)
 {
     protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
         blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
 
-    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+    protected override void ProcessTransaction(IWorldState worldState, in BlockExecutionContext blkCtx,
+        Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
         if (!validate)
         {
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
         }
 
-        base.ProcessTransaction(in blkCtx, currentTx, index, receiptsTracer, processingOptions);
+        base.ProcessTransaction(worldState, in blkCtx, currentTx, index, receiptsTracer, processingOptions);
     }
 }
 
@@ -49,7 +49,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
     private readonly ITransactionProcessor _transactionProcessor;
-    public IWorldState WorldState => StateProvider;
 
     public SimulateReadOnlyBlocksProcessingEnv(
         IWorldStateManager worldStateManager,
@@ -63,21 +62,17 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     {
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
-        WorldStateManager = worldStateManager;
         _logManager = logManager;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
-        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
-        StateProvider = WorldStateManager.GlobalWorldState;
-        StateReader = WorldStateManager.GlobalStateReader;
+        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, logManager), BlockTree);
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
         VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));
-        _transactionProcessor = new SimulateTransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, validate);
+        _transactionProcessor = new SimulateTransactionProcessor(SpecProvider, VirtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
     }
 
-    public IWorldStateManager WorldStateManager { get; }
     public IVirtualMachine VirtualMachine { get; }
     public IReadOnlyDbProvider DbProvider { get; }
     public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
@@ -111,10 +106,10 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
-            StateProvider,
+            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, validate, blobBaseFeeOverride),
+            WorldStateProvider,
             NullReceiptStorage.Instance,
-            new BlockhashStore(SpecProvider, StateProvider),
+            new BlockhashStore(SpecProvider),
             new BeaconBlockRootHandler(_transactionProcessor),
             _logManager);
 }

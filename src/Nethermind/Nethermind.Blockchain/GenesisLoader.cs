@@ -20,29 +20,27 @@ namespace Nethermind.Blockchain
     public class GenesisLoader(
         ChainSpec chainSpec,
         ISpecProvider specProvider,
-        IWorldState stateProvider,
         ITransactionProcessor transactionProcessor)
     {
         private readonly ChainSpec _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly IWorldState _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
 
-        public Block Load()
+        public Block Load(IWorldState worldState)
         {
             Block genesis = _chainSpec.Genesis;
-            Preallocate(genesis);
+            Preallocate(genesis, worldState);
 
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
             if (!_chainSpec.GenesisStateUnavailable)
             {
-                _stateProvider.Commit(_specProvider.GenesisSpec, true);
+                worldState.Commit(_specProvider.GenesisSpec, true);
 
-                _stateProvider.CommitTree(0);
+                worldState.CommitTree(0);
 
-                genesis.Header.StateRoot = _stateProvider.StateRoot;
+                genesis.Header.StateRoot = worldState.StateRoot;
             }
 
             genesis.Header.Hash = genesis.Header.CalculateHash();
@@ -50,22 +48,22 @@ namespace Nethermind.Blockchain
             return genesis;
         }
 
-        private void Preallocate(Block genesis)
+        private void Preallocate(Block genesis, IWorldState worldState)
         {
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
-                _stateProvider.CreateAccount(address, allocation.Balance, allocation.Nonce);
+                worldState.CreateAccount(address, allocation.Balance, allocation.Nonce);
 
                 if (allocation.Code is not null)
                 {
-                    _stateProvider.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
+                    worldState.InsertCode(address, allocation.Code, _specProvider.GenesisSpec, true);
                 }
 
                 if (allocation.Storage is not null)
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                     {
-                        _stateProvider.Set(new StorageCell(address, storage.Key),
+                        worldState.Set(new StorageCell(address, storage.Key),
                             storage.Value.WithoutLeadingZeros().ToArray());
                     }
                 }
@@ -80,7 +78,7 @@ namespace Nethermind.Blockchain
                     };
 
                     CallOutputTracer outputTracer = new();
-                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
+                    _transactionProcessor.Execute(worldState, constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
 
                     if (outputTracer.StatusCode != StatusCode.Success)
                     {

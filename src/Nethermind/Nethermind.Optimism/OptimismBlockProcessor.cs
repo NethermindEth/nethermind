@@ -26,7 +26,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
-        IWorldState? stateProvider,
+        IWorldStateProvider? worldStateProvider,
         IReceiptStorage? receiptStorage,
         IBlockhashStore? blockhashStore,
         IBeaconBlockRootHandler? beaconBlockRootHandler,
@@ -35,28 +35,19 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IBlockCachePreWarmer? preWarmer = null)
-        : base(
-            specProvider,
-            blockValidator,
-            rewardCalculator,
-            blockTransactionsExecutor,
-            stateProvider,
-            receiptStorage,
-            blockhashStore,
-            beaconBlockRootHandler,
-            logManager,
-            withdrawalProcessor,
-            ReceiptsRootCalculator.Instance,
-            preWarmer)
+        : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
+            worldStateProvider, receiptStorage, blockhashStore, beaconBlockRootHandler, logManager, withdrawalProcessor,
+            ReceiptsRootCalculator.Instance, preWarmer)
     {
-        ArgumentNullException.ThrowIfNull(stateProvider);
+        ArgumentNullException.ThrowIfNull(worldStateProvider);
         _contractRewriter = contractRewriter;
-        ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, stateProvider);
+        ReceiptsTracer = new OptimismBlockReceiptTracer(opSpecHelper, worldStateProvider);
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+    protected override TxReceipt[] ProcessBlock(IWorldState worldState, Block block, IBlockTracer blockTracer,
+        ProcessingOptions options)
     {
-        _contractRewriter?.RewriteContract(block.Header, _stateProvider);
-        return base.ProcessBlock(block, blockTracer, options);
+        _contractRewriter?.RewriteContract(block.Header, worldState);
+        return base.ProcessBlock(worldState, block, blockTracer, options);
     }
 }

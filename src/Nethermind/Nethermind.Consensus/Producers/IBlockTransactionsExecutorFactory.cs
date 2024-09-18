@@ -8,6 +8,6 @@ namespace Nethermind.Consensus.Producers
 {
     public interface IBlockTransactionsExecutorFactory
     {
-        IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv);
+        IBlockProcessor.IBlockTransactionsExecutor Create(ITransactionProcessor transactionProcessor);
     }
 }

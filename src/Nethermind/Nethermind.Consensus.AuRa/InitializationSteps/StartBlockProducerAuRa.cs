@@ -89,7 +89,7 @@ public class StartBlockProducerAuRa
         IBlockProducer blockProducer = new AuRaBlockProducer(
             producerEnv.TxSource,
             producerEnv.ChainProcessor,
-            producerEnv.ReadOnlyStateProvider,
+            producerEnv.ReadOnlyWorldStateProvider,
             _api.Sealer,
             _api.BlockTree,
             _api.Timestamper,
@@ -121,7 +121,6 @@ public class StartBlockProducerAuRa
             new LocalTxFilter(_api.EngineSigner));
 
         _validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                changeableTxProcessingEnv.WorldState,
                 changeableTxProcessingEnv.TransactionProcessor,
                 _api.BlockTree,
                 _api.CreateReadOnlyTransactionProcessorSource(),
@@ -136,6 +135,7 @@ public class StartBlockProducerAuRa
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
+                changeableTxProcessingEnv.WorldStateProvider,
                 chainSpecAuRa.PosdaoTransition,
                 true)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
@@ -152,8 +152,8 @@ public class StartBlockProducerAuRa
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-            _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-            changeableTxProcessingEnv.WorldState,
+            _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv.TransactionProcessor),
+            changeableTxProcessingEnv.WorldStateProvider,
             _api.ReceiptStorage,
             new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
             _api.LogManager,
@@ -241,14 +241,13 @@ public class StartBlockProducerAuRa
                     BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                scope.WorldState,
                 blockchainProcessor);
 
             return new BlockProducerEnv()
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
-                ReadOnlyStateProvider = scope.WorldState,
+                ReadOnlyWorldStateProvider = scope.WorldStateProvider,
                 TxSource = CreateTxSourceForProducer(additionalTxSource),
                 ReadOnlyTxProcessingEnv = _api.CreateReadOnlyTransactionProcessorSource(),
             };

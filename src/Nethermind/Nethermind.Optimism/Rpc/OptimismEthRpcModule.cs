@@ -31,7 +31,7 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 {
     private readonly IJsonRpcClient? _sequencerRpcClient;
-    private readonly IAccountStateProvider _accountStateProvider;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
     private readonly IOptimismSpecHelper _opSpecHelper;
@@ -51,9 +51,8 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         IEthSyncingInfo ethSyncingInfo,
         IFeeHistoryOracle feeHistoryOracle,
         ulong? secondsPerSlot,
-
         IJsonRpcClient? sequencerRpcClient,
-        IAccountStateProvider accountStateProvider,
+        IWorldStateManager worldStateManager,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
         IOptimismSpecHelper opSpecHelper) : base(
@@ -73,7 +72,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
        secondsPerSlot)
     {
         _sequencerRpcClient = sequencerRpcClient;
-        _accountStateProvider = accountStateProvider;
+        _worldStateManager = worldStateManager;
         _ecdsa = ecdsa;
         _sealer = sealer;
         _opSpecHelper = opSpecHelper;
@@ -116,9 +115,10 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             return ResultWrapper<Hash256>.Fail("Failed to recover sender");
         }
 
-        if (rpcTx.Nonce is null)
+        if (rpcTx.Nonce is null && _blockFinder.Head?.StateRoot != null)
         {
-            tx.Nonce = _accountStateProvider.GetNonce(tx.SenderAddress);
+            tx.Nonce = _worldStateManager.GlobalWorldStateProvider
+                .GetGlobalStateReader().GetNonce(_blockFinder.Head.StateRoot, tx.SenderAddress);
         }
 
         await _sealer.Seal(tx, TxHandlingOptions.None);
