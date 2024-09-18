@@ -253,7 +253,7 @@ public partial class EngineModuleTests
                 ReceiptStorage,
                 new BlockhashStore(SpecProvider, State),
                 new BeaconBlockRootHandler(TxProcessor),
-                consensusRequestsProcessor: ConsensusRequestsProcessor,
+                consensusRequestsProcessor: ConsensusRequestsProcessor ?? new ConsensusRequestsProcessor(TxProcessor),
                 logManager: LogManager,
                 withdrawalProcessor: WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer());
