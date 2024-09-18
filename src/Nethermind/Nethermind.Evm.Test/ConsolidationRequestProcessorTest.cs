@@ -49,7 +49,7 @@ public class ConsolidationRequestProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        _codeInfoRepository = new CodeInfoRepository(0);
+        _codeInfoRepository = new CodeInfoRepository(_specProvider.ChainId);
 
         VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, _codeInfoRepository, LimboLogs.Instance);
 

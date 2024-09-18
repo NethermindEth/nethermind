@@ -158,7 +158,7 @@ namespace Nethermind.Evm.Test
                     new MemDb(),
                     LimboLogs.Instance);
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-            CodeInfoRepository codeInfoRepository = new(1);
+            CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
             VirtualMachine virtualMachine = new(
                 new TestBlockhashProvider(specProvider),
                     specProvider,

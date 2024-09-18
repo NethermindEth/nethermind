@@ -60,7 +60,7 @@ public class ReorgTests
             new CodeInfoRepository(specProvider.ChainId),
             stateProvider);
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
-        CodeInfoRepository codeInfoRepository = new(1);
+        CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,

@@ -18,7 +18,6 @@ using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
 using Nethermind.Int256;
 using Nethermind.Crypto;
-using System.Linq;
 
 namespace Nethermind.Evm;
 

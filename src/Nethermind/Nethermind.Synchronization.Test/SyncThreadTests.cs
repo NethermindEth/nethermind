@@ -279,7 +279,7 @@ namespace Nethermind.Synchronization.Test
                 new CodeInfoRepository(specProvider.ChainId),
                 stateProvider);
             BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new(1);
+            CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
             Always sealValidator = Always.Valid;
