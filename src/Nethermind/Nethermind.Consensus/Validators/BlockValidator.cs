@@ -286,7 +286,7 @@ public class BlockValidator(
     public bool ValidateRequests(Block block, out string? error) =>
         ValidateRequests(block, _specProvider.GetSpec(block.Header), out error);
 
-    public bool ValidateRequests(Block block, IReleaseSpec spec, out string? error)
+    private bool ValidateRequests(Block block, IReleaseSpec spec, out string? error)
     {
         if (spec.RequestsEnabled && block.Requests is null)
         {
@@ -458,7 +458,7 @@ public class BlockValidator(
     public static bool ValidateRequestsHashMatches(Block block, out Hash256? requestsRoot) =>
         ValidateRequestsHashMatches(block.Header, block.Body, out requestsRoot);
 
-    public static bool ValidateRequestsHashMatches(BlockHeader header, BlockBody body, out Hash256? requestsRoot)
+    private static bool ValidateRequestsHashMatches(BlockHeader header, BlockBody body, out Hash256? requestsRoot)
     {
         if (body.Requests == null)
         {

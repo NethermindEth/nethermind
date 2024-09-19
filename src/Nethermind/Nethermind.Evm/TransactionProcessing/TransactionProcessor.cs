@@ -536,8 +536,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (substate.ShouldRevert || substate.IsError)
                 {
-                    if (Logger.IsTrace)
-                        Logger.Trace("Restoring state from before transaction");
+                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                     WorldState.Restore(snapshot);
                 }
                 else
@@ -549,12 +548,12 @@ namespace Nethermind.Evm.TransactionProcessing
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
                         if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
-                            ThrowOutOfGasException();
+                            goto Fail;
                         }
 
                         if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                         {
-                            ThrowInvalidCodeException();
+                            goto Fail;
                         }
 
                         if (unspentGas >= codeDepositGasCost)
@@ -582,13 +581,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, delegationRefunds);
+                goto Complete;
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
             {
                 if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
-                WorldState.Restore(snapshot);
             }
+        Fail:
+            if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+            WorldState.Restore(snapshot);
 
+        Complete:
             if (!opts.HasFlag(ExecutionOptions.NoValidation))
                 header.GasUsed += spentGas;
         }
@@ -693,14 +696,6 @@ namespace Nethermind.Evm.TransactionProcessing
         [DoesNotReturn]
         [StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowInvalidCodeException() => throw new InvalidCodeException();
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowOutOfGasException() => throw new OutOfGasException();
 
         [DoesNotReturn]
         [StackTraceHidden]

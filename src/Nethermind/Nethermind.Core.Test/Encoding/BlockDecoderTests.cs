@@ -49,7 +49,7 @@ public class BlockDecoderTests
         {
             if (i % 2 == 0)
             {
-                requests[i] = Build.Deposit
+                requests[i] = Build.A.Deposit
                     .WithIndex(long.MaxValue)
                     .WithPublicKey(new byte[] { (byte)i })
                     .WithSignature(new byte[] { (byte)i })
@@ -61,7 +61,7 @@ public class BlockDecoderTests
             {
                 byte[] ValidatorPubkey = new byte[48];
                 ValidatorPubkey[11] = 11;
-                requests[i] = Build.WithdrawalRequest
+                requests[i] = Build.A.WithdrawalRequest
                     .WithSourceAddress(TestItem.AddressA)
                     .WithValidatorPubkey(ValidatorPubkey)
                     .WithAmount(int.MaxValue)
