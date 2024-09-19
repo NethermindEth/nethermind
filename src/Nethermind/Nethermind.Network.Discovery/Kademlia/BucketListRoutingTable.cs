@@ -42,7 +42,12 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
     public BucketAddResult TryAddOrRefresh(in ValueHash256 hash, TNode item, out TNode? toRefresh)
     {
         using McsLock.Disposable _ = _lock.Acquire();
-        return GetBucket(hash).TryAddOrRefresh(hash, item, out toRefresh);
+        BucketAddResult result = GetBucket(hash).TryAddOrRefresh(hash, item, out toRefresh);
+        if (result == BucketAddResult.Added)
+        {
+            OnNodeAdded?.Invoke(this, item);
+        }
+        return result;
     }
 
     public bool Remove(in ValueHash256 hash)
@@ -151,4 +156,6 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
     {
         _logger.Debug($"Bucket sizes {string.Join(", ", _buckets.Select(b => b.Count))}");
     }
+
+    public event EventHandler<TNode>? OnNodeAdded;
 }

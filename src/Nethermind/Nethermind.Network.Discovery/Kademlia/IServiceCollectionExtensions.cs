@@ -44,6 +44,7 @@ public static class IServiceCollectionExtensions
             })
             .AddSingleton<KBucketTree<TNode>>()
             .AddSingleton<BucketListRoutingTable<TNode>>()
+            .AddSingleton<NodeHealthTracker<TNode>>()
             .AddSingleton<IRoutingTable<TNode>>(provider =>
             {
                 KademliaConfig<TNode> config = provider.GetRequiredService<KademliaConfig<TNode>>();

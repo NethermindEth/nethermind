@@ -14,4 +14,5 @@ public interface IRoutingTable<TNode>
     IEnumerable<ValueHash256> IterateBucketRandomHashes();
     TNode? GetByHash(ValueHash256 nodeId);
     void LogDebugInfo();
+    event EventHandler<TNode>? OnNodeAdded;
 }

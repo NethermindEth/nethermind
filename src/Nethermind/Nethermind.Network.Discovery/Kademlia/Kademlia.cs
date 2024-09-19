@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Lantern.Discv5.Enr;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
@@ -16,15 +13,13 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
     private readonly INodeHashProvider<TNode> _nodeHashProvider;
     private readonly IRoutingTable<TNode> _routingTable;
     private readonly ILookupAlgo<TNode> _lookupAlgo;
+    private readonly NodeHealthTracker<TNode> _nodeHealthTracker;
     private readonly ILogger _logger;
 
-    private readonly ConcurrentDictionary<ValueHash256, bool> _isRefreshing = new();
     private readonly TNode _currentNodeId;
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
-    private readonly LruCache<ValueHash256, int> _peerFailures;
     private readonly TimeSpan _refreshInterval;
-    private readonly TimeSpan _refreshPingTimeout;
 
     public Kademlia(
         INodeHashProvider<TNode> nodeHashProvider,
@@ -32,21 +27,20 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
         IRoutingTable<TNode> routingTable,
         ILookupAlgo<TNode> lookupAlgo,
         ILogManager logManager,
+        NodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config)
     {
         _nodeHashProvider = nodeHashProvider;
-        _kademliaMessageSender = new KademliaMessageSenderMonitor(sender, this);
+        _kademliaMessageSender = sender;
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
+        _nodeHealthTracker = nodeHealthTracker;
         _logger = logManager.GetClassLogger<Kademlia<TNode>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
-        _refreshPingTimeout = config.RefreshPingTimeout;
-
-        _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
 
         AddOrRefresh(_currentNodeId);
     }
@@ -55,75 +49,12 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
 
     public void AddOrRefresh(TNode node)
     {
-        _isRefreshing.TryRemove(_nodeHashProvider.GetHash(node), out _);
-
-        var addResult = _routingTable.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
-        switch (addResult)
-        {
-            case BucketAddResult.Added:
-                OnNodeAdded?.Invoke(this, node);
-                break;
-            case BucketAddResult.Full:
-            {
-                if (toRefresh != null)
-                {
-                    if (SameAsSelf(toRefresh))
-                    {
-                        // Move the current node entry to the front of its bucket.
-                        _routingTable.TryAddOrRefresh(_currentNodeIdAsHash, node, out TNode? _);
-                    }
-                    else
-                    {
-                        TryRefresh(toRefresh);
-                    }
-                }
-
-                break;
-            }
-        }
+        // It add to routing table and does the whole refresh logid.
+        _nodeHealthTracker.OnIncomingMessageFrom(node);
     }
-
     public void Remove(TNode node)
     {
         _routingTable.Remove(_nodeHashProvider.GetHash(node));
-    }
-
-    private void TryRefresh(TNode toRefresh)
-    {
-        ValueHash256 nodeHash = _nodeHashProvider.GetHash(toRefresh);
-        if (_isRefreshing.TryAdd(nodeHash, true))
-        {
-            Task.Run(async () =>
-            {
-                // First, we delay in case any new message come and clear the refresh task, so we don't need to send any ping.
-                await Task.Delay(100);
-                if (!_isRefreshing.ContainsKey(nodeHash))
-                {
-                    return;
-                }
-
-                // OK, fine, we'll ping it.
-                using CancellationTokenSource cts = new CancellationTokenSource(_refreshPingTimeout);
-                try
-                {
-                    await _kademliaMessageSender.Ping(toRefresh, cts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Error while refreshing node {toRefresh}, {e}");
-                }
-
-                // In any case, if a pong happened, AddOrRefresh would have been called and _isRefreshing would
-                // remove the entry.
-                if (_isRefreshing.TryRemove(nodeHash, out _))
-                {
-                    _routingTable.Remove(nodeHash);
-                }
-            });
-        }
     }
 
     public TNode[] GetAllAtDistance(int i)
@@ -208,66 +139,9 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
         return _routingTable.GetKNearestNeighbour(hash,  excludeHash, excludeSelf);
     }
 
-    public event EventHandler<TNode>? OnNodeAdded;
-
-    public void OnIncomingMessageFrom(TNode sender)
+    public event EventHandler<TNode> OnNodeAdded
     {
-        AddOrRefresh(sender);
-        _peerFailures.Delete(_nodeHashProvider.GetHash(sender));
-    }
-
-    public void OnRequestFailed(TNode receiver)
-    {
-        ValueHash256 hash = _nodeHashProvider.GetHash(receiver);
-        if (!_peerFailures.TryGet(hash, out var currentFailure))
-        {
-            _peerFailures.Set(hash, 1);
-            return;
-        }
-
-        if (currentFailure >= 5)
-        {
-            _routingTable.Remove(hash);
-            _peerFailures.Delete(hash);
-        }
-
-        _peerFailures.Set(hash, currentFailure + 1);
-    }
-
-    /// <summary>
-    /// Monitor requests for success or failure.
-    /// </summary>
-    /// <param name="implementation"></param>
-    /// <param name="kademlia"></param>
-    private class KademliaMessageSenderMonitor(IKademliaMessageSender<TNode> implementation, Kademlia<TNode> kademlia) : IKademliaMessageSender<TNode>
-    {
-        public async Task Ping(TNode receiver, CancellationToken token)
-        {
-            try
-            {
-                await implementation.Ping(receiver, token);
-                kademlia.OnIncomingMessageFrom(receiver);
-            }
-            catch (OperationCanceledException)
-            {
-                kademlia.OnRequestFailed(receiver);
-                throw;
-            }
-        }
-
-        public async Task<TNode[]> FindNeighbours(TNode receiver, ValueHash256 hash, CancellationToken token)
-        {
-            try
-            {
-                TNode[] res = await implementation.FindNeighbours(receiver, hash, token);
-                kademlia.OnIncomingMessageFrom(receiver);
-                return res;
-            }
-            catch (OperationCanceledException)
-            {
-                kademlia.OnRequestFailed(receiver);
-                throw;
-            }
-        }
+        add => _routingTable.OnNodeAdded += value;
+        remove => _routingTable.OnNodeAdded -= value;
     }
 }

@@ -20,6 +20,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 public class NewLookupKNearestNeighbour<TNode>(
     IRoutingTable<TNode> routingTable,
     INodeHashProvider<TNode> nodeHashProvider,
+    NodeHealthTracker<TNode> nodeHealthTracker,
     KademliaConfig<TNode> config,
     ILogManager logManager): ILookupAlgo<TNode>
 {
@@ -124,15 +125,18 @@ public class NewLookupKNearestNeighbour<TNode>(
             {
                 // targetHash is implied in findNeighbourOp
                 var ret = await findNeighbourOp(node, cts.Token);
+                nodeHealthTracker.OnIncomingMessageFrom(node);
 
                 return (node, ret);
             }
             catch (OperationCanceledException)
             {
+                nodeHealthTracker.OnRequestFailed(node);
                 return (node, null);
             }
             catch (Exception e)
             {
+                nodeHealthTracker.OnRequestFailed(node);
                 if (_logger.IsDebug) _logger.Debug($"Find neighbour op failed. {e}");
                 return (node, null);
             }

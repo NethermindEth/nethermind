@@ -60,6 +60,10 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached leaf node at depth {depth}");
                 var resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
+                if (resp == BucketAddResult.Added)
+                {
+                    OnNodeAdded?.Invoke(this, node);
+                }
                 if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Successfully added/refreshed node {node} in bucket at depth {depth}");
@@ -396,4 +400,6 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         LogTreeStatistics();
         LogTreeStructure();
     }
+
+    public event EventHandler<TNode>? OnNodeAdded;
 }

@@ -59,16 +59,4 @@ public interface IKademlia<TNode>
     /// Called when a TNode is added to the routing table.
     /// </summary>
     event EventHandler<TNode> OnNodeAdded;
-
-    /// <summary>
-    /// Call when an incoming message from a node is received. This is used by other algorithm for health checks.
-    /// </summary>
-    /// <param name="node"></param>
-    void OnIncomingMessageFrom(TNode node);
-
-    /// <summary>
-    /// Call when a requset to a node failed. This is used by other algorithm for health checks.
-    /// </summary>
-    /// <param name="node"></param>
-    void OnRequestFailed(TNode node);
 }

@@ -9,7 +9,6 @@ namespace Nethermind.Network.Discovery.Kademlia.Content;
 public class KademliaContent<TNode, TContentKey, TContent>(
     IContentHashProvider<TContentKey> contentHashProvider,
     IKademliaContentStore<TContentKey, TContent> kademliaContentStore,
-    IKademlia<TNode> kademlia,
     IContentMessageSender<TNode, TContentKey, TContent> contentMessageSender,
     ILookupAlgo<TNode> lookupAlgo,
     KademliaConfig<TNode> config,
@@ -39,17 +38,7 @@ public class KademliaContent<TNode, TContentKey, TContent>(
             await lookupAlgo.Lookup(
                 targetHash, config.KSize, async (nextNode, token) =>
                 {
-                    FindValueResponse<TNode, TContent> valueResponse;
-                    try
-                    {
-                        valueResponse = await contentMessageSender.FindValue(nextNode, contentKey, token);
-                        kademlia.OnIncomingMessageFrom(nextNode);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        kademlia.OnRequestFailed(nextNode);
-                        throw;
-                    }
+                    FindValueResponse<TNode, TContent> valueResponse = await contentMessageSender.FindValue(nextNode, contentKey, token);
 
                     if (valueResponse.hasValue)
                     {
