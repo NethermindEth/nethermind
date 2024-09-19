@@ -34,7 +34,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
-    [ConfigItem(Description = "Try to pre-warm the state when processing blocks. Can lead to 2x speedup in main loop block processing.", DefaultValue = "True")]
+    [ConfigItem(Description = "Whether to pre-warm the state when processing blocks. This can lead to an up to 2x speed-up in the main loop block processing.", DefaultValue = "True")]
     bool PreWarmStateOnBlockProcessing { get; set; }
 
     [ConfigItem(Description = "Block Production timeout, in milliseconds.", DefaultValue = "4000")]
