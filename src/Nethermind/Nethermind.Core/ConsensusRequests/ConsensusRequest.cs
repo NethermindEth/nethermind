@@ -63,8 +63,8 @@ public static class ConsensusRequestExtensions
     {
         if (requests is null) return (null, null);
         (int depositCount, int withdrawalRequestCount) = requests.GetTypeCounts();
-        Deposit[]? deposits = new Deposit[depositCount];
-        WithdrawalRequest[]? withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
+        Deposit[] deposits = new Deposit[depositCount];
+        WithdrawalRequest[] withdrawalRequests = new WithdrawalRequest[withdrawalRequestCount];
         int depositIndex = 0;
         int withdrawalRequestIndex = 0;
         for (int i = 0; i < requests.Length; i++)
