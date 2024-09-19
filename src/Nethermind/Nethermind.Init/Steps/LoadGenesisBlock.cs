@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -19,13 +20,13 @@ namespace Nethermind.Init.Steps
         private readonly IApiWithBlockchain _api;
         private readonly ILogger _logger;
         private IInitConfig? _initConfig;
-
-        readonly TimeSpan _genesisProcessedTimeout = TimeSpan.FromSeconds(40);
+        private readonly TimeSpan _genesisProcessedTimeout;
 
         public LoadGenesisBlock(INethermindApi api)
         {
             _api = api;
             _logger = _api.LogManager.GetClassLogger();
+            _genesisProcessedTimeout = TimeSpan.FromMilliseconds(_api.Config<IBlocksConfig>().GenesisTimeoutMs);
         }
 
         public async Task Execute(CancellationToken _)
@@ -85,7 +86,7 @@ namespace Nethermind.Init.Steps
 
             if (!genesisLoaded)
             {
-                throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds");
+                throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds. If you are running custom chain with very big genesis file consider increasing {nameof(BlocksConfig)}.{nameof(IBlocksConfig.GenesisTimeoutMs)}.");
             }
         }
 

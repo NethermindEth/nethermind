@@ -13,9 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Logging;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -25,7 +23,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Json;
@@ -36,7 +33,6 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
-[Parallelizable(ParallelScope.All)]
 [TestFixture]
 public class TraceRpcModuleTests
 {

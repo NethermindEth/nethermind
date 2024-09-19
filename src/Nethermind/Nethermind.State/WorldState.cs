@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -269,9 +268,5 @@ namespace Nethermind.State
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
-
-        public bool ClearCache() => PreBlockCaches?.ClearImmediate() == true;
-
-        public Task ClearCachesInBackground() => PreBlockCaches?.ClearCachesInBackground() ?? Task.CompletedTask;
     }
 }
