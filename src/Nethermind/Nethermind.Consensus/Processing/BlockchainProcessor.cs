@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -296,24 +297,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private void RunProcessingLoop()
     {
-        const int BlocksBacklogTriggeringManualGC = 4;
-        const int MaxBlocksWithoutGC = 100;
-
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
         FireProcessingQueueEmpty();
 
-        var fireGC = false;
-        var countToGC = 0;
+        GCScheduler.Instance.SwitchOnBackgroundGC(0);
         foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
         {
-            if (!fireGC && _blockQueue.Count > BlocksBacklogTriggeringManualGC)
-            {
-                // Long chains in archive sync don't force GC and don't call MallocTrim;
-                // so we trigger it manually
-                fireGC = true;
-                countToGC = MaxBlocksWithoutGC;
-            }
+            // Have block, switch off background GC timer
+            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Count);
 
             try
             {
@@ -353,26 +345,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
             FireProcessingQueueEmpty();
 
-            if (fireGC)
-            {
-                countToGC--;
-                if (countToGC <= 0)
-                {
-                    fireGC = false;
-                    PerformFullGC();
-                }
-            }
+            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
-    }
-
-    private void PerformFullGC()
-    {
-        if (_logger.IsDebug) _logger.Debug($"Performing Full GC");
-        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        System.GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
-        MallocHelper.Instance.MallocTrim((uint)1.MiB());
     }
 
     private void FireProcessingQueueEmpty()
@@ -536,6 +512,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         catch (InvalidBlockException ex)
         {
+            if (_logger.IsWarn) _logger.Warn($"Issue processing block {ex.InvalidBlock} {ex}");
             invalidBlockHash = ex.InvalidBlock.Hash;
             error = ex.Message;
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
@@ -564,10 +541,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     options,
                     new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
                     DumpOptions.Geth);
-            }
-            else
-            {
-                if (_logger.IsError) _logger.Error($"Unexpected situation occurred during the handling of an invalid block {ex.InvalidBlock}", ex);
             }
 
             processedBlocks = null;

@@ -1263,6 +1263,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
+                            // Thrown away result
+                            if (nextInstruction == Instruction.POP)
+                            {
+                                programCounter++;
+                                // Add gas cost for POP
+                                gasAvailable -= GasCostOf.Base;
+                                break;
+                            }
                             // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {

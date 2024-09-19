@@ -40,5 +40,8 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Block Production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
+    [ConfigItem(Description = "Genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
+    int GenesisTimeoutMs { get; set; }
+
     byte[] GetExtraDataBytes();
 }
