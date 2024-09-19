@@ -25,16 +25,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     {
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
         ConsensusRequest[]? blockRequests = block.Requests;
-        if (blockRequests is null)
-        {
-            executionPayload.DepositRequests = Array.Empty<Deposit>();
-            executionPayload.WithdrawalRequests = Array.Empty<WithdrawalRequest>();
-        }
-        else
-        {
-            (executionPayload.DepositRequests, executionPayload.WithdrawalRequests) = blockRequests.SplitRequests();
-        }
-
+        (executionPayload.DepositRequests, executionPayload.WithdrawalRequests) = blockRequests?.SplitRequests() ?? ([], []);
         return executionPayload;
     }
 
