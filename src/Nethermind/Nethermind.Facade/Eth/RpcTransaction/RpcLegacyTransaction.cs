@@ -27,6 +27,12 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? Value { get; set; }
 
+    // Required for compatibility with some CLs like Prysm
+    // Accept during deserialization, ignore during serialization
+    // See: https://github.com/NethermindEth/nethermind/pull/6067
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? Data { set { Input = value; } private get { return null; } }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? Input { get; set; }
 
