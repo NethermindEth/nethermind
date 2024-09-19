@@ -99,16 +99,13 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
             }
         }
 
-        if (exclude == default)
-        {
+        if (!exclude.HasValue)
             return IterateNeighbour(hash)
-                .Select(kv => kv.Item2)
-                .ToArray();
-        }
+                .Take(_kSize).Select(kv => kv.Item2).ToArray();
 
         return IterateNeighbour(hash)
-            .Where(kv => kv.Item1 != exclude!.Value)
-            .Select(kv => kv.Item2).ToArray();
+            .Where(kv => kv.Item1 != exclude.Value)
+            .Take(_kSize).Select(kv => kv.Item2).ToArray();
     }
 
     private IEnumerable<KBucket<TNode>> EnumerateBucket(int startingDistance)

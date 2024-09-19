@@ -1,31 +1,37 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Lantern.Discv5.WireProtocol.Session;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
+[TestFixture(true)]
+[TestFixture(false)]
 public class KademliaTests
 {
     private readonly IKademlia<ValueHash256, ValueHash256, ValueHash256>.IStore _store = Substitute.For<IKademlia<ValueHash256, ValueHash256, ValueHash256>.IStore>();
     private readonly IMessageSender<ValueHash256, ValueHash256, ValueHash256> _messageSender = Substitute.For<IMessageSender<ValueHash256, ValueHash256, ValueHash256>>();
+    private readonly bool _useTreeBasedBucket;
+
+    public KademliaTests(bool useTreeBasedBucket)
+    {
+        _useTreeBasedBucket = useTreeBasedBucket;
+    }
 
     private Kademlia<ValueHash256, ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
     {
+        config.UseTreeBasedRoutingTable = _useTreeBasedBucket;
+
         return new ServiceCollection()
             .ConfigureKademliaComponents<ValueHash256, ValueHash256, ValueHash256>()
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
@@ -40,21 +46,12 @@ public class KademliaTests
     }
 
     [Test]
-    public void test()
-    {
-        var prop = typeof(SessionMain)
-            .GetProperty("IsEstablished", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.SetProperty);
-    }
-
-    [Test]
     public void TestNewNodeAdded()
     {
         Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
-            CurrentNodeId = ValueKeccak.Zero,
             KSize = 5,
             Beta = 0,
-            RefreshInterval = TimeSpan.FromSeconds(10)
         });
 
         int nodeAddedTriggered = 0;
@@ -78,10 +75,8 @@ public class KademliaTests
 
         Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
-            CurrentNodeId = ValueKeccak.Zero,
             KSize = 5,
             Beta = 0,
-            RefreshInterval = TimeSpan.FromSeconds(10)
         });
 
         ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XORUtils.GetRandomHashAtDistance( ValueKeccak.Zero, 250) ).ToArray();
@@ -101,7 +96,7 @@ public class KademliaTests
     }
 
     [Test]
-    public void TestLocalNeighbours()
+    public void TestGetKNeighbours()
     {
         TaskCompletionSource pingSource = new TaskCompletionSource();
         _messageSender
@@ -110,10 +105,8 @@ public class KademliaTests
 
         Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
-            CurrentNodeId = ValueKeccak.Zero,
             KSize = 5,
             Beta = 0,
-            RefreshInterval = TimeSpan.FromSeconds(10)
         });
 
         ValueHash256[] testHashes = Enumerable.Range(0, 7).Select((k) => ValueKeccak.Compute(k.ToString())).ToArray();
@@ -123,26 +116,37 @@ public class KademliaTests
         }
 
         kad.GetKNeighbour(ValueKeccak.Zero, null).Length.Should().Be(5);
-
-        foreach (ValueHash256 valueHash256 in testHashes)
+        foreach (ValueHash256 testHash in testHashes)
         {
-            kad.GetKNeighbour(valueHash256, null).Length.Should().Be(5);
+            // It must return K items exactly, taking from other bucket if necessary.
+            kad.GetKNeighbour(testHash, null).Length.Should().Be(5);
+
+            // It must find the closest one at least.
+            kad.GetKNeighbour(testHash, null).Should().Contain(testHash);
+
+            // It must exclude a node when hash is specified
+            kad.GetKNeighbour(testHash, testHash).Length.Should().Be(5);
+            kad.GetKNeighbour(testHash, testHash).Should().NotContain(testHash);
         }
     }
 
     [Test]
     public async Task TestTooManyNodeWithAcceleratedLookup()
     {
+        if (!_useTreeBasedBucket)
+        {
+            // Accelerated lookup only supported with tree based bucket
+            return;
+        }
+
         _messageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
-            CurrentNodeId = ValueKeccak.Zero,
             KSize = 5,
             Beta = 1,
-            RefreshInterval = TimeSpan.FromSeconds(10)
         });
 
         ValueHash256[] testHashes = new IEnumerable<ValueHash256>[]

@@ -47,7 +47,7 @@ public class ContentNetworkConfig
     /// <summary>
     /// Maximum size of content before needing to use UTP to transfer content.
     /// </summary>
-    public int MaxContentSizeForTalkReq { get; set; } = 1500;
+    public int MaxContentSizeForTalkReq { get; set; } = 1165;
 
     /// <summary>
     /// Timeout for task that download offer and process offer

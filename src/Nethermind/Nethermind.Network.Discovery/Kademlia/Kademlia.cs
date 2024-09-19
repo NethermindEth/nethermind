@@ -294,10 +294,7 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     public Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token)
     {
-        OnIncomingMessageFrom(sender);
-        var res = _routingTable.GetKNearestNeighbour(hash, _nodeHashProvider.GetHash(sender));
-        _logger.Info($"The res length {res.Length} {_kSize}");
-        return Task.FromResult(res);
+        return Task.FromResult(GetKNeighbour(hash, sender));
     }
 
     public Task<FindValueResponse<TNode, TContent>> FindValue(TNode sender, TContentKey contentKey, CancellationToken token)
