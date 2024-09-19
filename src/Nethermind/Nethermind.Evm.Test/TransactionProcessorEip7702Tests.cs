@@ -227,6 +227,56 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * count));
     }
 
+    private static IEnumerable<object> EvmExecutionErrorCases()
+    {
+        byte[] runOutOfGasCode = Prepare.EvmCode
+          .Op(Instruction.CALLER)
+          .Op(Instruction.BALANCE)
+          .Op(Instruction.PUSH0)
+          .Op(Instruction.JUMP)
+          .Done;
+        yield return new object[] { runOutOfGasCode };
+        byte[] revertExecution = Prepare.EvmCode
+          .Op(Instruction.REVERT)
+          .Done;
+        yield return new object[] { revertExecution };
+    }
+    [TestCaseSource(nameof(EvmExecutionErrorCases))]
+    public void Execute_TxWithDelegationRunsOutOfGas_DelegationRefundIsStillApplied(byte[] executionErrorCode)
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        Address codeSource = TestItem.AddressB;
+
+        _stateProvider.CreateAccount(codeSource, 0);
+        _stateProvider.InsertCode(codeSource, executionErrorCode, Prague.Instance);
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        const long gasLimit = 10_000_000;
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(codeSource)
+            .WithGasLimit(gasLimit)
+            .WithAuthorizationCode(
+            CreateAuthorizationTuple(
+                sender,
+                _specProvider.ChainId,
+                Address.Zero,
+                1)
+            )
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(long.MaxValue).TestObject;
+
+        CallOutputTracer tracer = new();
+
+        _transactionProcessor.Execute(tx, block.Header, tracer);
+
+        Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit - GasCostOf.NewAccount + GasCostOf.PerAuthBaseCost));
+    }
+
     [Test]
     public void Execute_TxAuthorizationListWithBALANCE_WarmAccountReadGasIsCharged()
     {
