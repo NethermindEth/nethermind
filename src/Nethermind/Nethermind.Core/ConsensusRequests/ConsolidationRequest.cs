@@ -14,23 +14,10 @@ public class ConsolidationRequest : ConsensusRequest
     {
         Type = ConsensusRequestsType.ConsolidationRequest;
     }
-    public Address? SourceAddress
-    {
-        get { return SourceAddressField; }
-        set { SourceAddressField = value; }
-    }
+    public Address? SourceAddress { get; set; }
+    public Memory<byte>? SourcePubkey { get; set; }
 
-    public Memory<byte>? SourcePubkey
-    {
-        get { return PubKeyField; }
-        set { PubKeyField = value; }
-    }
-
-    public byte[]? TargetPubkey
-    {
-        get { return WithdrawalCredentialsField; }
-        set { WithdrawalCredentialsField = value; }
-    }
+    public byte[]? TargetPubkey { get; set; }
 
     public override string ToString() => ToString(string.Empty);
 

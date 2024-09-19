@@ -17,23 +17,11 @@ public class WithdrawalRequest : ConsensusRequest
         Type = ConsensusRequestsType.WithdrawalRequest;
         Amount = 0;
     }
-    public Address? SourceAddress
-    {
-        get { return SourceAddressField; }
-        set { SourceAddressField = value; }
-    }
+    public Address? SourceAddress { get; set; }
 
-    public Memory<byte>? ValidatorPubkey
-    {
-        get { return PubKeyField; }
-        set { PubKeyField = value; }
-    }
+    public Memory<byte>? ValidatorPubkey { get; set; }
 
-    public ulong Amount
-    {
-        get { return AmountField; }
-        set { AmountField = value; }
-    }
+    public ulong Amount { get; set; }
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => @$"{indentation}{nameof(WithdrawalRequest)}

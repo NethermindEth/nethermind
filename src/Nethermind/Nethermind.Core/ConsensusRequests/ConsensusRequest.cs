@@ -21,21 +21,6 @@ public class ConsensusRequest
 
     [JsonIgnore]
     public ulong AmountField { get; protected set; }
-
-    [JsonIgnore]
-    public Address? SourceAddressField { get; protected set; }
-
-    [JsonIgnore]
-    public Memory<byte>? PubKeyField { get; set; }
-
-    [JsonIgnore]
-    public byte[]? WithdrawalCredentialsField { get; protected set; }
-
-    [JsonIgnore]
-    public byte[]? SignatureField { get; protected set; }
-
-    [JsonIgnore]
-    public ulong? IndexField { get; protected set; }
 }
 
 public static class ConsensusRequestExtensions

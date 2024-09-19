@@ -16,34 +16,13 @@ public class Deposit : ConsensusRequest
         Type = ConsensusRequestsType.Deposit;
         Amount = 0;
     }
-    public Memory<byte>? Pubkey
-    {
-        get { return PubKeyField; }
-        set { PubKeyField = value; }
-    }
+    public Memory<byte>? Pubkey { get; set; }
+    public byte[]? WithdrawalCredentials { get; set; }
 
-    public byte[]? WithdrawalCredentials
-    {
-        get { return WithdrawalCredentialsField; }
-        set { WithdrawalCredentialsField = value; }
-    }
+    public ulong Amount { get; set; }
 
-    public ulong Amount
-    {
-        get { return AmountField; }
-        set { AmountField = value; }
-    }
-
-    public byte[]? Signature
-    {
-        get { return SignatureField; }
-        set { SignatureField = value; }
-    }
-    public ulong? Index
-    {
-        get { return IndexField; }
-        set { IndexField = value; }
-    }
+    public byte[]? Signature { get; set; }
+    public ulong? Index { get; set; }
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => @$"{indentation}{nameof(Deposit)}
