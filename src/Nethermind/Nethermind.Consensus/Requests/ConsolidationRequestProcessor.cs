@@ -29,7 +29,7 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
             yield break;
 
         Address eip7251Account = spec.Eip7251ContractAddress;
-        if (!state.AccountExists(eip7251Account)) // not needed anymore?
+        if (!state.AccountExists(eip7251Account))
             yield break;
 
         CallOutputTracer tracer = new();
