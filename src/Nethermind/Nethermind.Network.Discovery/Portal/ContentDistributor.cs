@@ -75,7 +75,7 @@ public class ContentDistributor(
         return peerDistributed;
     }
 
-    private async Task OfferAndSendContent(IEnr enr, byte[] contentKey, byte[] content, CancellationToken token)
+    public async Task OfferAndSendContent(IEnr enr, byte[] contentKey, byte[] content, CancellationToken token)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         cts.CancelAfter(_offerAndSendContentTimeout);

@@ -180,12 +180,20 @@ public class TalkReqHandler(
     {
         if (_logger.IsDebug) _logger.Debug($"Handling offer from {sender.NodeId.ToHexString()}");
 
-        if (offer.ContentKeys.Length == 0) return Task.FromResult<byte[]?>(null);
+        if (offer.ContentKeys.Length == 0)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Empty content keys");
+            return Task.FromResult<byte[]?>(null);
+        }
         BitArray toAccept = new BitArray(offer.ContentKeys.Length);
         bool hasAccept = false;
         for (var i = 0; i < toAccept.Count; i++)
         {
-            if (!radiusTracker.IsContentInRadius(offer.ContentKeys[i])) continue;
+            if (!radiusTracker.IsContentInRadius(offer.ContentKeys[i]))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Content {offer.ContentKeys[i].ToHexString()} not in radius");
+                continue;
+            }
             if (store.ShouldAcceptOffer(offer.ContentKeys[i]))
             {
                 toAccept[i] = true;
@@ -193,7 +201,11 @@ public class TalkReqHandler(
             }
         }
 
-        if (!hasAccept) return Task.FromResult<byte[]?>(null);
+        if (!hasAccept)
+        {
+            if (_logger.IsDebug) _logger.Debug($"No content accepted");
+            return Task.FromResult<byte[]?>(null);
+        }
 
         if (_logger.IsDebug) _logger.Debug($"Accepting offer from {sender.NodeId.ToHexString()}");
         ushort connectionId = (ushort)Random.Shared.Next();

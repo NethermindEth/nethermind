@@ -40,7 +40,15 @@ public class TalkReqTransport(
             return null;
         }
 
-        return await handler.OnMsgReq(sender, message);
+        try
+        {
+            return await handler.OnMsgReq(sender, message);
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Error handling talkreq.", e);
+            throw;
+        }
     }
 
     public void OnTalkResp(IEnr sender, TalkRespMessage message)

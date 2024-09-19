@@ -109,13 +109,9 @@ public class EasilyEstablishedSession(ISessionMain baseSession) : ISessionMain
         var res = baseSession.DecryptMessageWithNewKeys(header, maskingIv, encryptedMessage, handshakePacket, selfNodeId);
         if (res != null)
         {
-            Console.Error.WriteLine("Set=====");
             _wasDecryptedWithNewKey = true;
         }
-        else
-        {
-            Console.Error.WriteLine("Not set=====");
-        }
+
         return res;
     }
 

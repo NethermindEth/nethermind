@@ -9,4 +9,5 @@ namespace Nethermind.Network.Discovery.Portal;
 public interface IContentDistributor
 {
     Task<int> DistributeContent(byte[] contentKey, byte[] content, CancellationToken token);
+    Task OfferAndSendContent(IEnr enr, byte[] contentKey, byte[] content, CancellationToken token);
 }

@@ -142,15 +142,12 @@ public class PortalHistoryRpcModule(
 
     public async Task<ResultWrapper<byte[]>> portal_historyOffer(string enrStr, byte[] contentKey, byte[] contentValue)
     {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+
         IEnr enr = enrProvider.Decode(enrStr);
-
-        Accept accept = await contentNetworkProtocol.Offer(enr, new Offer()
-        {
-            ContentKeys = [contentKey]
-        }, default);
-        // TODO: Do we also send it?
-
-        return ResultWrapper<byte[]>.Success(accept.AcceptedBits.ToBytes());
+        await contentDistributor.OfferAndSendContent(enr, contentKey, contentValue, cts.Token);
+        return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
     }
 
     public async Task<ResultWrapper<string[]>> portal_historyRecursiveFindNodes(ValueHash256 nodeId)

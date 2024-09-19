@@ -37,7 +37,7 @@ public class ContentNetworkConfig
     /// <summary>
     /// The radius of content that this peer will store.
     /// </summary>
-    public UInt256 ContentRadius { get; set; } = new UInt256(Bytes.FromHexString("0x0100000000000000000000000000000000000000000000000000000000000000"));
+    public UInt256 ContentRadius { get; set; } = new UInt256(Bytes.FromHexString("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"));
 
     /// <summary>
     /// The radius of peer when we don't know what is its radius. We assume it always want to store.
@@ -47,7 +47,7 @@ public class ContentNetworkConfig
     /// <summary>
     /// Maximum size of content before needing to use UTP to transfer content.
     /// </summary>
-    public int MaxContentSizeForTalkReq { get; set; } = 500;
+    public int MaxContentSizeForTalkReq { get; set; } = 1500;
 
     /// <summary>
     /// Timeout for task that download offer and process offer

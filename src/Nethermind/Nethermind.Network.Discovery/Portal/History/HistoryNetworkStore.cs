@@ -22,7 +22,7 @@ public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): 
     {
         if (_testStore.TryGetValue(contentKey, out byte[]? value))
         {
-            _logger.Info($"Content {contentKey.ToHexString()} in test store");
+            _logger.Info($"Content {contentKey.ToHexString()} in test store of size {value.Length}");
             return value;
         }
         _logger.Info($"Content {contentKey.ToHexString()} not in test store");
