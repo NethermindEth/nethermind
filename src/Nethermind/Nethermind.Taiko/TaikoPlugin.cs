@@ -210,7 +210,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.LogManager,
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
                 _api.Config<IReceiptConfig>().StoreReceipts),
-            new ForkchoiceUpdatedHandler(
+            new TaikoForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 (ManualBlockFinalizationManager)_api.FinalizationManager,
                 _api.PoSSwitcher,

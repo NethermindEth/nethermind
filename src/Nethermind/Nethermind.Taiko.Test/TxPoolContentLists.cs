@@ -26,7 +26,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
-using Nethermind.Specs;
 
 namespace Nethermind.Taiko.Test;
 
@@ -49,7 +48,14 @@ public class TxPoolContentLists
 
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         transactionProcessor.When((x) => x.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
-            .Do(info => ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost);
+            .Do(info =>
+            {
+                if (((BlockExecutionContext)info[1]).Header.GasUsed + Transaction.BaseTxGasCost <= ((BlockExecutionContext)info[1]).Header.GasLimit)
+                {
+                    ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost;
+                }
+            });
+
         transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
             .Returns(info => ((BlockExecutionContext)info[1]).Header.GasUsed - Transaction.BaseTxGasCost < ((BlockExecutionContext)info[1]).Header.GasLimit ? TransactionResult.Ok : TransactionResult.BlockGasLimitExceeded);
 

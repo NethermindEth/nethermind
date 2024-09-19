@@ -8,7 +8,7 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Taiko.Rpc;
 
-[RpcModule(ModuleType.TaikoAuth)]
+[RpcModule(ModuleType.Engine)]
 public interface ITaikoAuthRpcModule : IRpcModule
 {
     [JsonRpcMethod(

@@ -28,8 +28,6 @@ namespace Nethermind.JsonRpc.Modules
         public const string Deposit = nameof(Deposit);
         public const string Health = nameof(Health);
         public const string Rpc = nameof(Rpc);
-        public const string Taiko = nameof(Taiko);
-        public const string TaikoAuth = nameof(TaikoAuth);
 
         public static IEnumerable<string> AllBuiltInModules { get; } = new List<string>()
         {

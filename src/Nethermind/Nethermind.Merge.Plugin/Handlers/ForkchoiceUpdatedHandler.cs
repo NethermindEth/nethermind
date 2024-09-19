@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -91,6 +92,20 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
             ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
+    }
+
+    protected virtual bool IsNewHeadAlignedWithChain(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+       [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    {
+        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+        {
+            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
+            errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            return false;
+        }
+
+        errorResult = null;
+        return true;
     }
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
@@ -231,11 +246,17 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        //if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
-        //{
-        //    if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
-        //    return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-        //}
+        if (!IsNewHeadAlignedWithChain(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+        {
+            if (_logger.IsWarn) _logger.Warn($"{errorResult.Result.Error} Request: {requestStr}.");
+            return errorResult;
+        }
+
+        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+        {
+            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+            return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+        }
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
@@ -273,6 +294,20 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return null;
     }
 
+    protected virtual bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
+        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    {
+        if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
+        {
+            string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
+            errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+            return false;
+        }
+
+        errorResult = null;
+        return true;
+    }
+
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
@@ -291,13 +326,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (payloadAttributes is not null)
         {
-            if (newHeadBlock.Timestamp > payloadAttributes.Timestamp)
+            if (!IsPayloadAttributesTimestampValid(newHeadBlock, forkchoiceState, payloadAttributes, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
-                string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
-
-                if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {error}");
-
-                return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
+                if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult.Result.Error}");
+                return errorResult;
             }
 
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);

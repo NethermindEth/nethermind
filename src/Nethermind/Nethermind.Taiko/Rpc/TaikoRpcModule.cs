@@ -186,7 +186,6 @@ public class TaikoRpcModule : EthRpcModule, ITaikoRpcModule, ITaikoAuthRpcModule
                 void RestoreState()
                 {
                     worldState.Restore(snapshot);
-                    blockHeader.GasUsed = gasUsed;
                 }
 
                 try

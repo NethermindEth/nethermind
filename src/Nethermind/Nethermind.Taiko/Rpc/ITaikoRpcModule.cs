@@ -8,8 +8,7 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Taiko.Rpc;
 
-#pragma warning disable IDE1006 // Naming Styles
-[RpcModule(ModuleType.Taiko)]
+[RpcModule(ModuleType.Eth)]
 public interface ITaikoRpcModule : IRpcModule
 {
     [JsonRpcMethod(
