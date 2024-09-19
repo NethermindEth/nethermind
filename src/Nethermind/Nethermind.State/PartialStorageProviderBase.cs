@@ -145,9 +145,9 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitStorageRoots = true)
+        public void Commit(bool commitRoots = true)
         {
-            Commit(NullStateTracer.Instance, commitStorageRoots);
+            Commit(NullStateTracer.Instance, commitRoots);
         }
 
         protected readonly struct ChangeTrace
@@ -172,7 +172,7 @@ namespace Nethermind.State
         /// Commit persistent storage
         /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitStorageRoots = true)
+        public void Commit(IStorageTracer tracer, bool commitRoots = true)
         {
             if (_changes.Count == 0)
             {
@@ -183,7 +183,7 @@ namespace Nethermind.State
                 CommitCore(tracer);
             }
 
-            if (commitStorageRoots)
+            if (commitRoots)
             {
                 CommitStorageRoots();
             }
@@ -209,7 +209,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resizeCollections = true)
+        public virtual void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 

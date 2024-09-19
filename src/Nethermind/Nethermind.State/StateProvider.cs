@@ -30,7 +30,8 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly ClockKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024);
-        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, Account> _blockReadCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, Account> _blockWriteCache = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
@@ -406,9 +407,9 @@ namespace Nethermind.State
             }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
-            Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
+            Commit(releaseSpec, NullStateTracer.Instance, isGenesis, commitRoots);
         }
 
         private readonly struct ChangeTrace
@@ -429,7 +430,7 @@ namespace Nethermind.State
             public Account? After { get; }
         }
 
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer stateTracer, bool isGenesis = false, bool commitRoots = true)
         {
             var currentPosition = _changes.Count - 1;
             if (currentPosition < 0)
@@ -577,6 +578,24 @@ namespace Nethermind.State
             {
                 ReportChanges(stateTracer, trace);
             }
+
+            if (commitRoots)
+            {
+                var count = 0;
+                var skipped = 0;
+                foreach (KeyValuePair<AddressAsKey, Account> pair in _blockWriteCache)
+                {
+                    if (_blockReadCache.TryGetValue(pair.Key, out Account? before) &&
+                        pair.Value == before)
+                    {
+                        skipped++;
+                        continue;
+                    }
+                    count++;
+                    _tree.Set(pair.Key, pair.Value);
+                }
+                Metrics.StateTreeWrites += count;
+            }
         }
 
         private void ReportChanges(IStateTracer stateTracer, Dictionary<AddressAsKey, ChangeTrace> trace)
@@ -664,18 +683,24 @@ namespace Nethermind.State
         private Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
-            if (!exists)
+            if (!_blockWriteCache.TryGetValue(address, out Account? accountValue))
             {
-                account = !_populatePreBlockCache ?
-                    GetStateReadPreWarmCache(addressAsKey) :
-                    GetStatePopulatePrewarmCache(addressAsKey);
+                ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockReadCache, addressAsKey, out bool exists);
+                if (!exists)
+                {
+                    account = !_populatePreBlockCache ?
+                        GetStateReadPreWarmCache(addressAsKey) :
+                        GetStatePopulatePrewarmCache(addressAsKey);
+                }
+                else
+                {
+                    Metrics.IncrementStateTreeCacheHits();
+                }
+                return account;
             }
-            else
-            {
-                Metrics.IncrementStateTreeCacheHits();
-            }
-            return account;
+
+            Metrics.IncrementStateTreeCacheHits();
+            return accountValue;
         }
 
         private Account? GetStatePopulatePrewarmCache(AddressAsKey addressAsKey)
@@ -707,10 +732,8 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
-            _blockCache[address] = account;
+            _blockWriteCache[address] = account;
             _needsStateRootUpdate = true;
-            Metrics.StateTreeWrites++;
-            _tree.Set(address, account);
         }
 
         private Account? GetAndAddToCache(Address address)
@@ -822,7 +845,7 @@ namespace Nethermind.State
 
         public ArrayPoolList<AddressAsKey>? ChangedAddresses()
         {
-            int count = _blockCache.Count;
+            int count = _blockWriteCache.Count;
             if (count == 0)
             {
                 return null;
@@ -830,7 +853,7 @@ namespace Nethermind.State
             else
             {
                 ArrayPoolList<AddressAsKey> addresses = new(count);
-                foreach (AddressAsKey address in _blockCache.Keys)
+                foreach (AddressAsKey address in _blockWriteCache.Keys)
                 {
                     addresses.Add(address);
                 }
@@ -838,10 +861,12 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resizeCollections = true)
+        public void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-            _blockCache.Clear();
+
+            _blockReadCache.Clear();
+            _blockWriteCache.Clear();
             _intraTxCache.Clear();
             _committedThisRound.Clear();
             _nullAccountReads.Clear();

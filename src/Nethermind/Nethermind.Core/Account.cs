@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -8,89 +9,91 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public class Account
+    public class Account : IEquatable<Account>
     {
         public static readonly Account TotallyEmpty = new();
 
         private readonly Hash256? _codeHash;
         private readonly Hash256? _storageRoot;
+        private readonly UInt256 _nonce;
+        private readonly UInt256 _balance;
 
         public Account(in UInt256 balance)
         {
             _codeHash = null;
             _storageRoot = null;
-            Nonce = default;
-            Balance = balance;
+            _nonce = default;
+            _balance = balance;
         }
 
         public Account(in UInt256 nonce, in UInt256 balance)
         {
             _codeHash = null;
             _storageRoot = null;
-            Nonce = nonce;
-            Balance = balance;
+            _nonce = nonce;
+            _balance = balance;
         }
 
         private Account()
         {
             _codeHash = null;
             _storageRoot = null;
-            Nonce = default;
-            Balance = default;
+            _nonce = default;
+            _balance = default;
         }
 
         public Account(in UInt256 nonce, in UInt256 balance, Hash256 storageRoot, Hash256 codeHash)
         {
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
-            Nonce = nonce;
-            Balance = balance;
+            _nonce = nonce;
+            _balance = balance;
         }
 
         private Account(Account account, Hash256? storageRoot)
         {
             _codeHash = account._codeHash;
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
-            Nonce = account.Nonce;
-            Balance = account.Balance;
+            _nonce = account._nonce;
+            _balance = account._balance;
         }
 
         private Account(Hash256? codeHash, Account account)
         {
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = account._storageRoot;
-            Nonce = account.Nonce;
-            Balance = account.Balance;
+            _nonce = account._nonce;
+            _balance = account._balance;
         }
 
         private Account(Account account, in UInt256 nonce, in UInt256 balance)
         {
             _codeHash = account._codeHash;
             _storageRoot = account._storageRoot;
-            Nonce = nonce;
-            Balance = balance;
+            _nonce = nonce;
+            _balance = balance;
         }
 
         public bool HasCode => _codeHash is not null;
 
         public bool HasStorage => _storageRoot is not null;
 
-        public UInt256 Nonce { get; }
-        public UInt256 Balance { get; }
+        public UInt256 Nonce => _nonce;
+        public UInt256 Balance => _balance;
         public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
         public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
-        public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
+        public bool IsEmpty => _codeHash is null && _balance.IsZero && _nonce.IsZero;
         public bool IsContract => _codeHash is not null;
 
         public Account WithChangedBalance(in UInt256 newBalance)
         {
-            return new(this, Nonce, newBalance);
+            return new(this, in _nonce, newBalance);
         }
 
         public Account WithChangedNonce(in UInt256 newNonce)
         {
-            return new(this, newNonce, Balance);
+            return new(this, in newNonce, in _balance);
         }
 
         public Account WithChangedStorageRoot(Hash256 newStorageRoot)
@@ -103,7 +106,33 @@ namespace Nethermind.Core
             return new(newCodeHash, this);
         }
 
-        public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
+        public AccountStruct ToStruct() => new(in _nonce, in _balance, StorageRoot, CodeHash);
+
+        public bool Equals(Account? other)
+        {
+            if (other is null) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            return _nonce == other._nonce &&
+                _balance == other._balance &&
+                _codeHash == other._codeHash &&
+                _storageRoot == other._storageRoot;
+        }
+
+        public override bool Equals(object? obj) => Equals(obj as Account);
+
+        public override int GetHashCode() => throw new NotImplementedException();
+
+        public static bool operator ==(Account? left, Account? right)
+        {
+            if (left is not null)
+            {
+                return left.Equals(right);
+            }
+            return right is null;
+        }
+
+        public static bool operator !=(Account? left, Account? right) => !(left == right);
     }
 
     public readonly struct AccountStruct

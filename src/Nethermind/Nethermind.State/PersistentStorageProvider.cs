@@ -5,7 +5,10 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -38,7 +41,8 @@ namespace Nethermind.State
         private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly HashSet<StorageCell> _committedThisRound = new();
-        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<UInt256, byte[]>> _blockCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<UInt256, byte[]>> _blockReadCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<UInt256, byte[]>> _blockWriteCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
@@ -68,10 +72,11 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public override void Reset(bool resizeCollections = true)
+        public override void Reset()
         {
             base.Reset();
-            _blockCache.Clear();
+            _blockReadCache.Clear();
+            _blockWriteCache.Clear();
             _storages.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
@@ -234,6 +239,30 @@ namespace Nethermind.State
                 return;
             }
 
+            var totalCount = 0;
+            var i = 0;
+            var keys = _blockWriteCache.Keys.ToArray();
+            Parallel.For(0, keys.Length, RuntimeInformation.ParallelOptionsLogicalCores, _ =>
+            {
+                var address = keys[Interlocked.Increment(ref i) - 1];
+                if (!_storages.TryGetValue(address, out StorageTree tree))
+                {
+                    tree = GetOrCreateStorageLocked(address);
+                }
+
+                var dict = _blockWriteCache[address];
+                var count = 0;
+                foreach (var kvp in dict)
+                {
+                    tree.Set(kvp.Key, kvp.Value);
+                    count++;
+                }
+
+                Interlocked.Add(ref totalCount, count);
+            });
+
+            Db.Metrics.StorageTreeWrites += totalCount;
+
             // Is overhead of parallel foreach worth it?
             if (_toUpdateRoots.Count <= 4)
             {
@@ -262,15 +291,14 @@ namespace Nethermind.State
 
             void UpdateRootHashesMultiThread()
             {
+                var storages = _toUpdateRoots.ToArray();
+                var i = 0;
                 // We can recalculate the roots in parallel as they are all independent tries
-                Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsLogicalCores, kvp =>
+                Parallel.For(0, storages.Length, RuntimeInformation.ParallelOptionsLogicalCores, _ =>
                 {
-                    if (!_toUpdateRoots.Contains(kvp.Key))
-                    {
-                        // Wasn't updated don't recalculate
-                        return;
-                    }
-                    StorageTree storageTree = kvp.Value;
+                    AddressAsKey address = storages[Interlocked.Increment(ref i) - 1];
+
+                    StorageTree storageTree = _storages[address];
                     storageTree.UpdateRootHash(canBeParallel: false);
                 });
 
@@ -298,12 +326,9 @@ namespace Nethermind.State
                 return;
             }
 
-            StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-            Db.Metrics.StorageTreeWrites++;
             toUpdateRoots.Add(change.StorageCell.Address);
-            tree.Set(change.StorageCell.Index, change.Value);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockWriteCache, change.StorageCell.Address, out bool exists);
             if (!exists)
             {
                 dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
@@ -330,6 +355,21 @@ namespace Nethermind.State
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
             _storages.Clear();
+        }
+
+        private StorageTree GetOrCreateStorageLocked(Address address)
+        {
+            ref StorageTree? value = ref Unsafe.NullRef<StorageTree>();
+            lock (_storages)
+            {
+                value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+                if (!exists)
+                {
+                    value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+                }
+            }
+
+            return value;
         }
 
         private StorageTree GetOrCreateStorage(Address address)
@@ -360,16 +400,24 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            if (_blockWriteCache.TryGetValue(storageCell.Address, out SelfDestructDictionary<UInt256, byte[]>? writeDict) &&
+                writeDict.TryGetValue(storageCell.Index, out var value))
+            {
+                Db.Metrics.IncrementStorageTreeCache();
+                if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
+                return value;
+            }
+
+            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockReadCache, storageCell.Address, out bool exists);
             if (!exists)
             {
                 dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
             }
 
-            ref byte[]? value = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
+            ref byte[]? valueRef = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
             if (!exists)
             {
-                value = !_populatePreBlockCache ?
+                valueRef = !_populatePreBlockCache ?
                     LoadFromTreeReadPreWarmCache(in storageCell) :
                     LoadFromTreePopulatePrewarmCache(in storageCell);
             }
@@ -378,8 +426,8 @@ namespace Nethermind.State
                 Db.Metrics.IncrementStorageTreeCache();
             }
 
-            if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
-            return value;
+            if (!storageCell.IsHash) PushToRegistryOnly(storageCell, valueRef);
+            return valueRef;
         }
 
         private byte[] LoadFromTreePopulatePrewarmCache(in StorageCell storageCell)
@@ -455,7 +503,7 @@ namespace Nethermind.State
         {
             base.ClearStorage(address);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockWriteCache, address, out bool exists);
             if (!exists)
             {
                 dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
@@ -477,7 +525,8 @@ namespace Nethermind.State
                 => new(trieStore, storageRoot, logManager);
         }
 
-        private class SelfDestructDictionary<TKey, TValue>(TValue destructedValue) where TKey : notnull
+        private class SelfDestructDictionary<TKey, TValue>(TValue destructedValue) : IEnumerable<KeyValuePair<TKey, TValue>>
+            where TKey : notnull
         {
             private bool _selfDestruct;
             private readonly Dictionary<TKey, TValue> _dictionary = new();
@@ -499,10 +548,31 @@ namespace Nethermind.State
                 return ref value;
             }
 
+            public bool TryGetValue(TKey key, out TValue value)
+            {
+                bool exists = _dictionary.TryGetValue(key, out value);
+                if (!exists && _selfDestruct)
+                {
+                    value = destructedValue;
+                    exists = true;
+                }
+
+                return exists;
+            }
+
             public TValue? this[TKey key]
             {
                 set => _dictionary[key] = value;
             }
+
+            public Dictionary<TKey, TValue>.Enumerator GetEnumerator()
+                => _dictionary.GetEnumerator();
+
+            IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator()
+                => GetEnumerator();
+
+            IEnumerator IEnumerable.GetEnumerator()
+                => GetEnumerator();
         }
     }
 }

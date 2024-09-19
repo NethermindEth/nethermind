@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Processing
                     if (action == TxAction.Stop) break;
                 }
 
-                stateProvider.Commit(spec, receiptsTracer);
+                stateProvider.Commit(spec, receiptsTracer, commitRoots: false);
 
                 SetTransactions(block, transactionsInBlock);
                 return receiptsTracer.TxReceipts.ToArray();

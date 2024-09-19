@@ -56,7 +56,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>
     /// Reset all storage
     /// </summary>
-    void Reset(bool resizeCollections = false);
+    void Reset();
 
     /// <summary>
     /// Creates a restartable snapshot.
@@ -107,9 +107,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     /* snapshots */
 
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true);
+    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitStorageRoots = true);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitRoots = true);
 
     void CommitTree(long blockNumber);
     ArrayPoolList<AddressAsKey>? GetAccountChanges();

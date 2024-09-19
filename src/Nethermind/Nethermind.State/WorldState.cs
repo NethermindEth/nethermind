@@ -104,11 +104,11 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections = false)
+        public void Reset()
         {
-            _stateProvider.Reset(resizeCollections);
-            _persistentStorageProvider.Reset(resizeCollections);
-            _transientStorageProvider.Reset(resizeCollections);
+            _stateProvider.Reset();
+            _persistentStorageProvider.Reset();
+            _transientStorageProvider.Reset();
         }
         public void WarmUp(AccessList? accessList)
         {
@@ -222,17 +222,17 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(commitStorageRoots);
-            _transientStorageProvider.Commit(commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, isGenesis);
+            _persistentStorageProvider.Commit(commitRoots);
+            _transientStorageProvider.Commit(commitRoots);
+            _stateProvider.Commit(releaseSpec, isGenesis, commitRoots);
         }
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
-            _transientStorageProvider.Commit(tracer, commitStorageRoots);
-            _stateProvider.Commit(releaseSpec, tracer, isGenesis);
+            _persistentStorageProvider.Commit(tracer, commitRoots);
+            _transientStorageProvider.Commit(tracer, commitRoots);
+            _stateProvider.Commit(releaseSpec, tracer, isGenesis, commitRoots);
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
