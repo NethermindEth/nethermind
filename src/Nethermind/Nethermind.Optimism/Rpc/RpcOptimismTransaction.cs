@@ -33,7 +33,7 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
 
     public byte[] Input { get; set; }
 
-    public UInt256 Nonce { get; set; }
+    public UInt256? Nonce { get; set; }
 
     #region Nethermind specific fields
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -50,7 +50,7 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
     {
         // TODO: `Nonce === 0` according to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79
         // This is a leftover from the original Nethermind Optimism implementation
-        Nonce = receipt?.DepositNonce ?? 0;
+        Nonce = receipt?.DepositNonce;
 
         Type = transaction.Type;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
