@@ -21,6 +21,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// <para><see cref="Transaction"/> -> <see cref="RpcNethermindTransaction"/> (through <see cref="TransactionConverter"/>, a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
 /// <para><see cref="RpcNethermindTransaction"/> -> JSON (Derived by <c>System.Text.JSON</c> using the runtime type)</para>
 /// </remarks>
+[JsonConverter(typeof(JsonConverter))]
 public abstract class RpcNethermindTransaction
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -63,6 +64,17 @@ public abstract class RpcNethermindTransaction
     public class JsonConverter : JsonConverter<RpcNethermindTransaction>
     {
         private readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];
+
+        // TODO: Refactoring transition code
+        public JsonConverter()
+        {
+            RegisterTransactionType(TxType.Legacy, typeof(RpcLegacyTransaction));
+            RegisterTransactionType(TxType.AccessList, typeof(RpcAccessListTransaction));
+            RegisterTransactionType(TxType.EIP1559, typeof(RpcEIP1559Transaction));
+            RegisterTransactionType(TxType.Blob, typeof(RpcBlobTransaction));
+            // TODO: Add Optimism:
+            // RegisterTransactionType(TxType.DepositTx, typeof(RpcOptimismTransaction))
+        }
 
         public JsonConverter RegisterTransactionType(TxType type, Type @class)
         {
