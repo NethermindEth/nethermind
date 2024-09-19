@@ -4,6 +4,7 @@
 using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Kademlia.Content;
 
 namespace Nethermind.Network.Discovery.Portal;
 

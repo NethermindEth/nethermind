@@ -6,16 +6,16 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-/// A generic kademlia implementation. As in the XOR distance table and routing algorithm.
-/// Does not assume any transport, need to implement `IMessageReceiver` and `IMessageSender` for that.
-/// The THash is for both node id and content id, which is probably not a good idea since the node id
-/// probably need to store the ip also.
+/// <summary>
+/// Main kademlia interface. High level code is expected to interface with this interface.
+/// </summary>
+/// <typeparam name="TNode"></typeparam>
 public interface IKademlia<TNode>
 {
     /// Add node to the table.
     void AddOrRefresh(TNode node);
 
-    /// Remove node to the table.
+    /// Remove from to the table.
     void Remove(TNode node);
 
     /// Lookup k nearest neighbour closest to the content id
@@ -36,20 +36,4 @@ public interface IKademlia<TNode>
 
     void OnIncomingMessageFrom(TNode sender);
     void OnRequestFailed(TNode receiver);
-}
-
-public interface IKademliaContent
-{
-}
-
-public interface IKademliaContent<TNode, TContentKey, TContent> : IKademliaContent
-{
-    /// Initiate a full traversal for finding the value
-    Task<TContent?> LookupValue(TContentKey id, CancellationToken token);
-
-    public interface IStore
-    {
-        /// Used for serving transport.
-        bool TryGetValue(TContentKey hash, out TContent? value);
-    }
 }

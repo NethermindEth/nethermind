@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Kademlia.Content;
 using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
@@ -28,7 +29,7 @@ public static class IServiceCollectionExtensions
             .ConfigureKademliaContentComponents<IEnr, byte[], LookupContentResult>()
             .AddSingleton<IContentMessageSender<IEnr, byte[], LookupContentResult>, KademliaContentNetworkContentMessageSender>()
             .AddSingleton<IMessageSender<IEnr>, KademliaContentNetworkContentMessageSender>()
-            .AddSingleton<IKademliaContent<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
+            .AddSingleton<IKademliaContentStore<byte[], LookupContentResult>, PortalContentKademliaContentStoreAdapter>()
             .AddSingleton<INodeHashProvider<IEnr>>(EnrNodeHashProvider.Instance)
             .AddSingleton<IContentHashProvider<byte[]>>(ContentKeyHashProvider.Instance)
 

@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Kademlia.Content;
 using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;

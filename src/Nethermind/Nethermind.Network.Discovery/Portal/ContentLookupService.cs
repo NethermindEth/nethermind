@@ -6,6 +6,7 @@ using Lantern.Discv5.Enr;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Kademlia.Content;
 using Nethermind.Network.Discovery.Portal.Messages;
 
 namespace Nethermind.Network.Discovery.Portal;
@@ -13,7 +14,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public class ContentLookupService(
     ContentNetworkConfig config,
     IUtpManager utpManager,
-    IKademliaContent<IEnr, byte[], LookupContentResult> kademliaContent,
+    IKademliaContent<byte[], LookupContentResult> kademliaContent,
     IContentNetworkProtocol protocol,
     IEnrProvider enrProvider,
     ILogManager logManager

@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Discovery.Kademlia;
+namespace Nethermind.Network.Discovery.Kademlia.Content;
 
 public interface IContentHashProvider<in TContentKey>
 {

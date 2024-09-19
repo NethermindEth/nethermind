@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Kademlia.Content;
 using NonBlocking;
 using NUnit.Framework;
 
@@ -268,7 +269,7 @@ public class KademliaSimulation
         return val;
     }
 
-    private class OnlySelfIStore(ValueHash256 self) : IKademliaContent<TestNode, ValueHash256, ValueHash256>.IStore
+    private class OnlySelfIKademliaContentStore(ValueHash256 self) : IKademliaContentStore<ValueHash256, ValueHash256>
     {
         public bool TryGetValue(ValueHash256 hash, out ValueHash256 value)
         {
@@ -359,7 +360,7 @@ public class KademliaSimulation
                     UseTreeBasedRoutingTable = config.UseTreeBasedRoutingTable,
                     UseNewLookup = config.UseNewLookup
                 })
-                .AddSingleton<IKademliaContent<TestNode, ValueHash256, ValueHash256>.IStore>(new OnlySelfIStore(nodeID))
+                .AddSingleton<IKademliaContentStore<ValueHash256, ValueHash256>>(new OnlySelfIKademliaContentStore(nodeID))
                 .AddSingleton<IContentMessageSender<TestNode, ValueHash256, ValueHash256>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<IMessageSender<TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<Kademlia<TestNode>>()

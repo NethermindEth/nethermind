@@ -38,12 +38,4 @@ public static class IServiceCollectionExtensions
                 return provider.GetRequiredService<BucketListRoutingTable<TNode>>();
             });
     }
-
-    public static IServiceCollection ConfigureKademliaContentComponents<TNode, TContentKey, TContent>(this IServiceCollection collection) where TNode : notnull
-    {
-        return collection
-            .AddSingleton<IKademliaContent<TNode, TContentKey, TContent>, KademliaContent<TNode, TContentKey, TContent>>()
-            .AddSingleton<IContentMessageReceiver<TNode, TContentKey, TContent>, KademliaContentMessageReceiver<TNode, TContentKey, TContent>>()
-            .AddSingleton<IContentMessageReceiver<TNode, TContentKey, TContent>, KademliaContentMessageReceiver<TNode, TContentKey, TContent>>();
-    }
 }
