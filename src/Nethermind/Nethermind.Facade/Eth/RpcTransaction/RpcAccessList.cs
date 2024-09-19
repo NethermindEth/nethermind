@@ -63,8 +63,6 @@ public record RpcAccessList
         return builder.Build();
     }
 
-    public static readonly JsonConverter<RpcAccessList> JsonConverter = new JsonConverterImpl();
-
     public class JsonConverterImpl : JsonConverter<RpcAccessList>
     {
         public override RpcAccessList? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
