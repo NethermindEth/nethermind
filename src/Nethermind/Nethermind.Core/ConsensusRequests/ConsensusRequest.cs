@@ -18,9 +18,6 @@ public class ConsensusRequest
 {
     [JsonIgnore]
     public ConsensusRequestsType Type { get; protected set; }
-
-    [JsonIgnore]
-    public ulong AmountField { get; protected set; }
 }
 
 public static class ConsensusRequestExtensions
