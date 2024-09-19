@@ -119,8 +119,15 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
+        private static ExecutionPayloadV3 CreateBlockRequestV3(
+            MergeTestBlockchain chain,
+            ExecutionPayload parent,
+            Address miner,
+            Withdrawal[]? withdrawals = null,
+            ulong? blobGasUsed = null,
+            ulong? excessBlobGas = null,
+            Transaction[]? transactions = null,
+            Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
