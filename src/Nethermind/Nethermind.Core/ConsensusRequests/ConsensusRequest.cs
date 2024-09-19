@@ -14,7 +14,7 @@ public enum ConsensusRequestsType : byte
     ConsolidationRequest = 2
 }
 
-public class ConsensusRequest
+public abstract class ConsensusRequest
 {
     [JsonIgnore]
     public ConsensusRequestsType Type { get; protected set; }
