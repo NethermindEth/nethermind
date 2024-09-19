@@ -33,12 +33,19 @@ namespace Nethermind.Core.Collections
         public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue>? dictionary)
                 where TKey : notnull
         {
-            if (dictionary is null || dictionary.IsEmpty)
+            if (dictionary?.IsEmpty ?? true)
             {
                 return false;
             }
 
             using var handle = dictionary.AcquireLock();
+
+            // Recheck under lock, so not to over clear which is expensive.
+            // May have cleared while waiting for lock.
+            if (dictionary.IsEmpty)
+            {
+                return false;
+            }
 
             ClearCache<TKey, TValue>.Clear(dictionary);
             return true;
