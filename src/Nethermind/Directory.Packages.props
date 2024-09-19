@@ -37,8 +37,8 @@
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.5" />
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="4.1.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0-rc.1.24431.7" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.0-rc.1.24431.7" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.0-rc.1.24452.1" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
