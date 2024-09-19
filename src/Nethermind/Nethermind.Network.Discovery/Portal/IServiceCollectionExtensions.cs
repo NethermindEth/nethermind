@@ -27,8 +27,8 @@ public static class IServiceCollectionExtensions
             // Kademlia integration configurations
             .ConfigureKademliaComponents<IEnr>()
             .ConfigureKademliaContentComponents<IEnr, byte[], LookupContentResult>()
-            .AddSingleton<IContentMessageSender<IEnr, byte[], LookupContentResult>, KademliaContentNetworkContentMessageSender>()
-            .AddSingleton<IMessageSender<IEnr>, KademliaContentNetworkContentMessageSender>()
+            .AddSingleton<IContentMessageSender<IEnr, byte[], LookupContentResult>, KademliaContentNetworkContentKademliaMessageSender>()
+            .AddSingleton<IKademliaMessageSender<IEnr>, KademliaContentNetworkContentKademliaMessageSender>()
             .AddSingleton<IKademliaContentStore<byte[], LookupContentResult>, PortalContentKademliaContentStoreAdapter>()
             .AddSingleton<INodeHashProvider<IEnr>>(EnrNodeHashProvider.Instance)
             .AddSingleton<IContentHashProvider<byte[]>>(ContentKeyHashProvider.Instance)

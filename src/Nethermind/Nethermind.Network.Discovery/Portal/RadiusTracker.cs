@@ -51,7 +51,7 @@ public class RadiusTracker (
 
     private bool IsInRadius(ValueHash256 nodeHash, ValueHash256 contentHash, UInt256 nodeRadius)
     {
-        UInt256 distance = Hash256XORUtils.CalculateDistanceUInt256(contentHash, nodeHash);
+        UInt256 distance = Hash256XorUtils.CalculateDistanceUInt256(contentHash, nodeHash);
         bool inRadius = distance <= nodeRadius;
         return inRadius;
     }

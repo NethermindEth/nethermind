@@ -19,7 +19,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 [TestFixture(false)]
 public class KademliaTests
 {
-    private readonly IMessageSender<ValueHash256> _messageSender = Substitute.For<IMessageSender<ValueHash256>>();
+    private readonly IKademliaMessageSender<ValueHash256> _kademliaMessageSender = Substitute.For<IKademliaMessageSender<ValueHash256>>();
     private readonly bool _useTreeBasedBucket;
 
     public KademliaTests(bool useTreeBasedBucket)
@@ -36,7 +36,7 @@ public class KademliaTests
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
-            .AddSingleton(_messageSender)
+            .AddSingleton(_kademliaMessageSender)
             .AddSingleton<Kademlia<ValueHash256>>()
             .BuildServiceProvider()
             .GetRequiredService<Kademlia<ValueHash256>>();
@@ -66,7 +66,7 @@ public class KademliaTests
     public async Task TestTooManyNode()
     {
         TaskCompletionSource pingSource = new TaskCompletionSource();
-        _messageSender
+        _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
@@ -76,7 +76,7 @@ public class KademliaTests
             Beta = 0,
         });
 
-        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XORUtils.GetRandomHashAtDistance( ValueKeccak.Zero, 250) ).ToArray();
+        ValueHash256[] testHashes = Enumerable.Range(0, 10).Select((k) => Hash256XorUtils.GetRandomHashAtDistance( ValueKeccak.Zero, 250) ).ToArray();
         foreach (ValueHash256 valueHash256 in testHashes[..10])
         {
             kad.AddOrRefresh(valueHash256);
@@ -96,12 +96,13 @@ public class KademliaTests
     public void TestGetKNeighbours()
     {
         TaskCompletionSource pingSource = new TaskCompletionSource();
-        _messageSender
+        _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
         Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
+            CurrentNodeId = ValueKeccak.Compute("something"),
             KSize = 5,
             Beta = 0,
         });
@@ -112,18 +113,19 @@ public class KademliaTests
             kad.AddOrRefresh(valueHash256);
         }
 
-        kad.GetKNeighbour(ValueKeccak.Zero, null).Length.Should().Be(5);
+        kad.GetKNeighbour(ValueKeccak.Zero).Length.Should().Be(5);
+        kad.GetKNeighbour(kad.CurrentNode).Should().Contain(kad.CurrentNode);
         foreach (ValueHash256 testHash in testHashes)
         {
             // It must return K items exactly, taking from other bucket if necessary.
-            kad.GetKNeighbour(testHash, null).Length.Should().Be(5);
+            kad.GetKNeighbour(testHash).Length.Should().Be(5);
 
             // It must find the closest one at least.
-            kad.GetKNeighbour(testHash, null).Should().Contain(testHash);
+            kad.GetKNeighbour(testHash).Should().Contain(testHash);
 
             // It must exclude a node when hash is specified
             kad.GetKNeighbour(testHash, testHash).Length.Should().Be(5);
-            kad.GetKNeighbour(testHash, testHash).Should().NotContain(testHash);
+            kad.GetKNeighbour(testHash, excludeSelf: true).Should().NotContain(kad.CurrentNode);
         }
     }
 
@@ -136,7 +138,7 @@ public class KademliaTests
             return;
         }
 
-        _messageSender
+        _kademliaMessageSender
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
@@ -149,16 +151,16 @@ public class KademliaTests
         ValueHash256[] testHashes = new IEnumerable<ValueHash256>[]
         {
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XORUtils.GetRandomHashAtDistance(new ValueHash256("0x0000000000000000000000000000000000000000000000000000000000000000"), 248)
+                Hash256XorUtils.GetRandomHashAtDistance(new ValueHash256("0x0000000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XORUtils.GetRandomHashAtDistance(new ValueHash256("0x0100000000000000000000000000000000000000000000000000000000000000"), 248)
+                Hash256XorUtils.GetRandomHashAtDistance(new ValueHash256("0x0100000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XORUtils.GetRandomHashAtDistance(new ValueHash256("0x0200000000000000000000000000000000000000000000000000000000000000"), 248)
+                Hash256XorUtils.GetRandomHashAtDistance(new ValueHash256("0x0200000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
             Enumerable.Range(0, 5).Select((k) =>
-                Hash256XORUtils.GetRandomHashAtDistance(new ValueHash256("0x0300000000000000000000000000000000000000000000000000000000000000"), 248)
+                Hash256XorUtils.GetRandomHashAtDistance(new ValueHash256("0x0300000000000000000000000000000000000000000000000000000000000000"), 248)
             ),
         }.SelectMany(it => it).ToArray();
 

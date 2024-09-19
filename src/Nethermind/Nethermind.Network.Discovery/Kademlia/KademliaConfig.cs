@@ -40,4 +40,14 @@ public class KademliaConfig<TNode>
     /// Use a different algorithm for the neighbour and value lookup.
     /// </summary>
     public bool UseNewLookup { get; set; }
+
+    /// <summary>
+    /// The timeout for each find neighbour call lookup
+    /// </summary>
+    public TimeSpan LookupFindNeighbourHardTimout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The timeout for a ping message during a refresh after which the node is considered to be offline.
+    /// </summary>
+    public TimeSpan RefreshPingTimeout { get; set; } = TimeSpan.FromSeconds(1);
 }

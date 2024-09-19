@@ -17,19 +17,14 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// earlier as it converge to the content faster, but take more query for findnodes due to a more strict stop
 /// condition.
 /// </summary>
-/// <param name="targetHash"></param>
-/// <param name="k"></param>
-/// <param name="findNeighbourOp"></param>
-/// <param name="token"></param>
-/// <returns></returns>
 public class NewLookupKNearestNeighbour<TNode>(
     IRoutingTable<TNode> routingTable,
     INodeHashProvider<TNode> nodeHashProvider,
     KademliaConfig<TNode> config,
     ILogManager logManager): ILookupAlgo<TNode>
 {
-    private static readonly TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
-    private ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TNode>>();
+    private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
+    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TNode>>();
 
     public async Task<TNode[]> Lookup(
         ValueHash256 targetHash,
@@ -46,9 +41,9 @@ public class NewLookupKNearestNeighbour<TNode>(
         ConcurrentDictionary<ValueHash256, TNode> seen = new();
 
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
-            Hash256XORUtils.Compare(h1, h2, targetHash));
+            Hash256XorUtils.Compare(h1, h2, targetHash));
         IComparer<ValueHash256> comparerReverse = Comparer<ValueHash256>.Create((h1, h2) =>
-            Hash256XORUtils.Compare(h2, h1, targetHash));
+            Hash256XorUtils.Compare(h2, h1, targetHash));
 
         McsLock queueLock = new McsLock();
 
@@ -123,7 +118,7 @@ public class NewLookupKNearestNeighbour<TNode>(
         async Task<(TNode target, TNode[]? retVal)> WrappedFindNeighbourOp(TNode node)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(FindNeighbourHardTimeout);
+            cts.CancelAfter(_findNeighbourHardTimeout);
 
             try
             {

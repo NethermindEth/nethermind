@@ -48,11 +48,11 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
-        if (_logger.IsDebug) _logger.Debug($"Adding node {node} with XOR distance {Hash256XORUtils.XorDistance(_currentNodeHash, nodeHash)}");
+        if (_logger.IsDebug) _logger.Debug($"Adding node {node} with XOR distance {Hash256XorUtils.XorDistance(_currentNodeHash, nodeHash)}");
 
         TreeNode current = _root;
         // As in, what would be the depth of the node assuming all branch on the traversal is populated.
-        int logDistance = Hash256XORUtils.MaxDistance - Hash256XORUtils.CalculateDistance(_currentNodeHash, nodeHash);
+        int logDistance = Hash256XorUtils.MaxDistance - Hash256XorUtils.CalculateDistance(_currentNodeHash, nodeHash);
         int depth = 0;
         while (true)
         {
@@ -162,13 +162,13 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
 
     private void GetAllAtDistanceRecursive(TreeNode node, int depth, int distance, List<TNode> result)
     {
-        int targetDepth = Hash256XORUtils.MaxDistance - distance;
+        int targetDepth = Hash256XorUtils.MaxDistance - distance;
         if (node.IsLeaf)
         {
             if (depth <= targetDepth)
             {
                 result.AddRange(node.Bucket.GetAllWithHash()
-                    .Where(kv => Hash256XORUtils.CalculateDistance(kv.Item1, _currentNodeHash) == distance)
+                    .Where(kv => Hash256XorUtils.CalculateDistance(kv.Item1, _currentNodeHash) == distance)
                     .Select(kv => kv.Item2));
             }
             else
@@ -223,7 +223,7 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
     {
         if (node.IsLeaf)
         {
-            yield return Hash256XORUtils.GetRandomHashAtDistance(_currentNodeHash, depth);
+            yield return Hash256XorUtils.GetRandomHashAtDistance(_currentNodeHash, depth);
         }
         else
         {
@@ -285,12 +285,15 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         }
     }
 
-    public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude)
+    public TNode[] GetKNearestNeighbour(ValueHash256 hash, ValueHash256? exclude, bool excludeSelf)
     {
         using McsLock.Disposable _ = _lock.Acquire();
 
         KBucket<TNode> firstBucket = GetBucketForHash(hash);
-        if (exclude == null || !firstBucket.ContainsNode(exclude.Value))
+        bool shouldNotContainExcludedNode = exclude == null || !firstBucket.ContainsNode(exclude.Value);
+        bool shouldNotContainSelf = excludeSelf == false || !firstBucket.ContainsNode(_currentNodeHash);
+
+        if (shouldNotContainExcludedNode && shouldNotContainSelf)
         {
             TNode[] nodes = firstBucket.GetAll();
             if (nodes.Length == _k)
@@ -301,18 +304,18 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
             }
         }
 
-        if (exclude == null)
-        {
-            return IterateNeighbour(hash)
-                .Select(kv => kv.Item2)
-                .Take(_k)
-                .ToArray();
-        }
+        var iterator = IterateNeighbour(hash);
 
-        return IterateNeighbour(hash)
-            .Where(kv => kv.Item1 != exclude.Value)
+        if (exclude != null)
+            iterator = iterator
+                .Where(kv => kv.Item1 != exclude.Value);
+
+        if (excludeSelf)
+            iterator = iterator
+                .Where(kv => kv.Item1 != _currentNodeHash);
+
+        return iterator.Take(_k)
             .Select(kv => kv.Item2)
-            .Take(_k)
             .ToArray();
     }
 

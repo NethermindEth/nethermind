@@ -23,7 +23,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="utpManager"></param>
 public class TalkReqHandler(
     IPortalContentNetworkStore store,
-    IMessageReceiver<IEnr> kadMessageReceiver,
+    IKademliaMessageReceiver<IEnr> kadKademliaMessageReceiver,
     IContentMessageReceiver<IEnr, byte[], LookupContentResult> kadContentMessageReceiver,
     RadiusTracker radiusTracker,
     IEnrProvider enrProvider,
@@ -85,7 +85,7 @@ public class TalkReqHandler(
             radiusTracker.UpdatePeerRadius(sender, radius);
         }
 
-        await kadMessageReceiver.Ping(sender, default);
+        await kadKademliaMessageReceiver.Ping(sender, default);
 
         return SlowSSZ.Serialize(new MessageUnion()
         {
@@ -106,8 +106,8 @@ public class TalkReqHandler(
         // fortunately, its basically the same as randomizing hash at a specific distance.
         // unfortunately, the protocol said to filter neighbour that is of incorrect distance...
         // which is another weird thing that I'm not sure how to handle.
-        ValueHash256 theHash = Hash256XORUtils.GetRandomHashAtDistance(_nodeHashProvider.GetHash(enrProvider.SelfEnr), nodes.Distances[0]);
-        var neighbours = await kadMessageReceiver.FindNeighbours(sender, theHash, CancellationToken.None);
+        ValueHash256 theHash = Hash256XorUtils.GetRandomHashAtDistance(_nodeHashProvider.GetHash(enrProvider.SelfEnr), nodes.Distances[0]);
+        var neighbours = await kadKademliaMessageReceiver.FindNeighbours(sender, theHash, CancellationToken.None);
         var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 
         var response = new MessageUnion()

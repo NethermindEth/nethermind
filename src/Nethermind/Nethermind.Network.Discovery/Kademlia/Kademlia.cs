@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Lantern.Discv5.Enr;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -11,7 +12,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
 {
-    private readonly IMessageSender<TNode> _messageSender;
+    private readonly IKademliaMessageSender<TNode> _kademliaMessageSender;
     private readonly INodeHashProvider<TNode> _nodeHashProvider;
     private readonly IRoutingTable<TNode> _routingTable;
     private readonly ILookupAlgo<TNode> _lookupAlgo;
@@ -23,17 +24,18 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
     private readonly int _kSize;
     private readonly LruCache<ValueHash256, int> _peerFailures;
     private readonly TimeSpan _refreshInterval;
+    private readonly TimeSpan _refreshPingTimeout;
 
     public Kademlia(
         INodeHashProvider<TNode> nodeHashProvider,
-        IMessageSender<TNode> sender,
+        IKademliaMessageSender<TNode> sender,
         IRoutingTable<TNode> routingTable,
         ILookupAlgo<TNode> lookupAlgo,
         ILogManager logManager,
         KademliaConfig<TNode> config)
     {
         _nodeHashProvider = nodeHashProvider;
-        _messageSender = new MessageSenderMonitor(sender, this);
+        _kademliaMessageSender = new KademliaMessageSenderMonitor(sender, this);
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
         _logger = logManager.GetClassLogger<Kademlia<TNode>>();
@@ -42,33 +44,41 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
         _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
         _kSize = config.KSize;
         _refreshInterval = config.RefreshInterval;
+        _refreshPingTimeout = config.RefreshPingTimeout;
 
         _peerFailures = new LruCache<ValueHash256, int>(1024, "peer failure");
 
         AddOrRefresh(_currentNodeId);
     }
 
+    public TNode CurrentNode => _currentNodeId;
+
     public void AddOrRefresh(TNode node)
     {
         _isRefreshing.TryRemove(_nodeHashProvider.GetHash(node), out _);
 
         var addResult = _routingTable.TryAddOrRefresh(_nodeHashProvider.GetHash(node), node, out TNode? toRefresh);
-        if (addResult == BucketAddResult.Added)
+        switch (addResult)
         {
-            OnNodeAdded?.Invoke(this, node);
-        }
-        if (addResult == BucketAddResult.Full)
-        {
-            if (toRefresh != null)
+            case BucketAddResult.Added:
+                OnNodeAdded?.Invoke(this, node);
+                break;
+            case BucketAddResult.Full:
             {
-                if (SameAsSelf(toRefresh))
+                if (toRefresh != null)
                 {
-                    _routingTable.TryAddOrRefresh(_currentNodeIdAsHash, node, out TNode? _);
+                    if (SameAsSelf(toRefresh))
+                    {
+                        // Move the current node entry to the front of its bucket.
+                        _routingTable.TryAddOrRefresh(_currentNodeIdAsHash, node, out TNode? _);
+                    }
+                    else
+                    {
+                        TryRefresh(toRefresh);
+                    }
                 }
-                else
-                {
-                    TryRefresh(toRefresh);
-                }
+
+                break;
             }
         }
     }
@@ -85,7 +95,7 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
         {
             Task.Run(async () =>
             {
-                // First, we delay in case any new message come and clear the refresh task, so we don't send any ping.
+                // First, we delay in case any new message come and clear the refresh task, so we don't need to send any ping.
                 await Task.Delay(100);
                 if (!_isRefreshing.ContainsKey(nodeHash))
                 {
@@ -93,10 +103,10 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
                 }
 
                 // OK, fine, we'll ping it.
-                using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+                using CancellationTokenSource cts = new CancellationTokenSource(_refreshPingTimeout);
                 try
                 {
-                    await _messageSender.Ping(toRefresh, cts.Token);
+                    await _kademliaMessageSender.Ping(toRefresh, cts.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -135,25 +145,14 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
             {
                 if (SameAsSelf(nextNode))
                 {
-                    return _routingTable.GetKNearestNeighbour(targetHash, null);
+                    return _routingTable.GetKNearestNeighbour(targetHash);
                 }
-                return await _messageSender.FindNeighbours(nextNode, targetHash, token);
+                return await _kademliaMessageSender.FindNeighbours(nextNode, targetHash, token);
             },
             token
         );
     }
 
-    /// <summary>
-    /// Main find closest-k node within the network. See the kademlia paper, 2.3.
-    /// Since find value is basically the same also just with a shortcut, this allow changing the find neighbour op.
-    /// Find closest-k is also used to determine which node should store a particular value which is used by
-    /// store RPC (not implemented).
-    /// </summary>
-    /// <param name="targetHash"></param>
-    /// <param name="k"></param>
-    /// <param name="findNeighbourOp"></param>
-    /// <param name="token"></param>
-    /// <returns></returns>
     private Task<TNode[]> LookupNodesClosest(
         ValueHash256 targetHash,
         int k,
@@ -202,11 +201,11 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
         }
     }
 
-    public TNode[] GetKNeighbour(ValueHash256 hash, TNode? excluding)
+    public TNode[] GetKNeighbour(ValueHash256 hash, TNode? excluding = default, bool excludeSelf = false)
     {
         ValueHash256? excludeHash = null;
         if (excluding != null) excludeHash = _nodeHashProvider.GetHash(excluding);
-        return _routingTable.GetKNearestNeighbour(hash,  excludeHash);
+        return _routingTable.GetKNearestNeighbour(hash,  excludeHash, excludeSelf);
     }
 
     public event EventHandler<TNode>? OnNodeAdded;
@@ -240,7 +239,7 @@ public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
     /// </summary>
     /// <param name="implementation"></param>
     /// <param name="kademlia"></param>
-    private class MessageSenderMonitor(IMessageSender<TNode> implementation, Kademlia<TNode> kademlia) : IMessageSender<TNode>
+    private class KademliaMessageSenderMonitor(IKademliaMessageSender<TNode> implementation, Kademlia<TNode> kademlia) : IKademliaMessageSender<TNode>
     {
         public async Task Ping(TNode receiver, CancellationToken token)
         {

@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class KademliaMessageReceiver<TNode>(IKademlia<TNode> kademlia): IMessageReceiver<TNode>
+public class KademliaKademliaMessageReceiver<TNode>(IKademlia<TNode> kademlia): IKademliaMessageReceiver<TNode>
 {
     public Task Ping(TNode sender, CancellationToken token)
     {

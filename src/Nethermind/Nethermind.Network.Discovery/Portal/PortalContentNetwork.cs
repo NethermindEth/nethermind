@@ -19,7 +19,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public class PortalContentNetwork : IPortalContentNetwork
 {
     private readonly IKademlia<IEnr> _kademlia;
-    private readonly IMessageSender<IEnr> _messageSender;
+    private readonly IKademliaMessageSender<IEnr> _kademliaMessageSender;
     private readonly IContentDistributor _contentDistributor;
     private readonly ILogger _logger1;
     private readonly ContentLookupService _contentLookupService;
@@ -30,7 +30,7 @@ public class PortalContentNetwork : IPortalContentNetwork
         IKademlia<IEnr> kademlia,
         ITalkReqProtocolHandler talkReqHandler,
         ITalkReqTransport talkReqTransport,
-        IMessageSender<IEnr> messageSender,
+        IKademliaMessageSender<IEnr> kademliaMessageSender,
         IContentDistributor contentDistributor,
         RadiusTracker radiusTracker,
         ContentLookupService contentLookupService,
@@ -38,7 +38,7 @@ public class PortalContentNetwork : IPortalContentNetwork
     {
         talkReqTransport.RegisterProtocol(config.ProtocolId, talkReqHandler);
         _kademlia = kademlia;
-        _messageSender = messageSender;
+        _kademliaMessageSender = kademliaMessageSender;
         _contentDistributor = contentDistributor;
         _logger1 = logManager.GetClassLogger<PortalContentNetwork>();
         _kademlia.OnNodeAdded += KademliaOnOnNodeAdded;
@@ -60,7 +60,7 @@ public class PortalContentNetwork : IPortalContentNetwork
         if (!_radiusTracker.HasRadius(newNode))
         {
             if (_logger1.IsDebug) _logger1.Debug($"Ping {newNode.NodeId.ToHexString()} on new node");
-            _messageSender.Ping(newNode, CancellationToken.None);
+            _kademliaMessageSender.Ping(newNode, CancellationToken.None);
         }
     }
 

@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public static class Hash256XORUtils
+public static class Hash256XorUtils
 {
     public static int CalculateDistance(ValueHash256 h1, ValueHash256 h2)
     {

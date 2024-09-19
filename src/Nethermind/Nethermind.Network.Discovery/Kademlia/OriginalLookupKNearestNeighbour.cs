@@ -9,19 +9,14 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <summary>
 /// This find nearest k query follows the kademlia paper faithfully, but does not do much parallelism.
 /// </summary>
-/// <param name="targetHash"></param>
-/// <param name="k"></param>
-/// <param name="findNeighbourOp"></param>
-/// <param name="token"></param>
-/// <returns></returns>
 public class OriginalLookupKNearestNeighbour<TNode>(
     IRoutingTable<TNode> routingTable,
     INodeHashProvider<TNode> nodeHashProvider,
     KademliaConfig<TNode> config,
     ILogManager logManager): ILookupAlgo<TNode>
 {
-    private static readonly TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
-    private ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TNode>>();
+    private readonly TimeSpan _findNeighbourHardTimeout = config.LookupFindNeighbourHardTimout;
+    private readonly ILogger _logger = logManager.GetClassLogger<NewLookupKNearestNeighbour<TNode>>();
 
     public async Task<TNode[]> Lookup(
         ValueHash256 targetHash,
@@ -34,7 +29,7 @@ public class OriginalLookupKNearestNeighbour<TNode>(
         Func<TNode, Task<(TNode target, TNode[]? retVal)>> wrappedFindNeighbourHop = async (node) =>
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(FindNeighbourHardTimeout);
+            cts.CancelAfter(_findNeighbourHardTimeout);
 
             try
             {
@@ -57,7 +52,7 @@ public class OriginalLookupKNearestNeighbour<TNode>(
         Dictionary<ValueHash256, TNode> seen = new();
 
         IComparer<ValueHash256> comparer = Comparer<ValueHash256>.Create((h1, h2) =>
-            Hash256XORUtils.Compare(h1, h2, targetHash));
+            Hash256XorUtils.Compare(h1, h2, targetHash));
 
         // Ordered by lowest distance. Will get popped for next round.
         PriorityQueue<TNode, ValueHash256> bestSeen = new (comparer);
@@ -70,6 +65,7 @@ public class OriginalLookupKNearestNeighbour<TNode>(
             .Take(config.Alpha)
             .Select((node) => (nodeHashProvider.GetHash(node), node))
             .ToArray();
+
         foreach ((ValueHash256 nodeHash, TNode node) entry in roundQuery)
         {
             (ValueHash256 nodeHash, TNode node) = entry;

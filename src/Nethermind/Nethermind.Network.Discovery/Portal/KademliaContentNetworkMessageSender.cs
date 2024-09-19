@@ -19,16 +19,16 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="contentNetworkProtocol"></param>
 /// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
-public class KademliaContentNetworkContentMessageSender(
+public class KademliaContentNetworkContentKademliaMessageSender(
     ContentNetworkConfig config,
     RadiusTracker radiusTracker,
     IContentNetworkProtocol contentNetworkProtocol,
     IEnrProvider enrProvider,
     ILogManager logManager
-) : IContentMessageSender<IEnr, byte[], LookupContentResult>, IMessageSender<IEnr>
+) : IContentMessageSender<IEnr, byte[], LookupContentResult>, IKademliaMessageSender<IEnr>
 {
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaContentNetworkContentMessageSender>();
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaContentNetworkContentKademliaMessageSender>();
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {
@@ -53,7 +53,7 @@ public class KademliaContentNetworkContentMessageSender(
         // With the most basic implementation, this is the same as returning the bucket of the distance between
         // the target and current node. But more sophisticated routing table can do more if just query with
         // nodeid.
-        ushort theDistance = (ushort)Hash256XORUtils.CalculateDistance(_nodeHashProvider.GetHash(receiver), hash);
+        ushort theDistance = (ushort)Hash256XorUtils.CalculateDistance(_nodeHashProvider.GetHash(receiver), hash);
 
         // To simulate a neighbour query to a particular hash with distance, we also query for neighbouring
         // bucket in the order as if we are running a query to a particular hash

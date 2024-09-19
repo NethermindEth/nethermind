@@ -19,7 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 
-public class KademliaContentNetworkContentMessageSenderTests
+public class KademliaContentNetworkContentKademliaMessageSenderTests
 {
     private ITalkReqTransport _talkReqTransport = null!;
     private IEnrProvider _enrProvider = null!;
@@ -88,7 +88,7 @@ public class KademliaContentNetworkContentMessageSenderTests
     public async Task OnFindNeighbours_ShouldSendTalkReqAndParseResponseCorrectly()
     {
         var target = new ValueHash256(TestUtils.CreateEnr(TestItem.PrivateKeys[0]).NodeId);
-        ushort dist = (ushort)Hash256XORUtils.CalculateDistance(new ValueHash256(_testReceiverEnr.NodeId), target);
+        ushort dist = (ushort)Hash256XorUtils.CalculateDistance(new ValueHash256(_testReceiverEnr.NodeId), target);
         ushort[] queryDistances = [dist, (ushort)(dist + 1), (ushort)(dist - 1), (ushort)(dist + 2), (ushort)(dist - 2)];
 
         byte[] queryBytes = SlowSSZ.Serialize(new MessageUnion()

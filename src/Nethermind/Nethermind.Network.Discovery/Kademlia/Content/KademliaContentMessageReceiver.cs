@@ -21,7 +21,7 @@ public class KademliaContentMessageReceiver<TNode, TContentKey, TContent>(
             new FindValueResponse<TNode, TContent>(
                 false,
                 default,
-                kademlia.GetKNeighbour(contentHashProvider.GetHash(contentKey), sender)
+                kademlia.GetKNeighbour(contentHashProvider.GetHash(contentKey), sender, true)
             ));
     }
 }

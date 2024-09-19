@@ -26,8 +26,8 @@ public class Hash256XorUtilsTests
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x000E000000000000000000000000000000000000000000000000000000000000", 244)]
     public void TestDistance(string hash1, string hash2, int expectedDistance)
     {
-        Hash256XORUtils.CalculateDistance(new ValueHash256(hash1), new ValueHash256(hash2)).Should().Be(expectedDistance);
-        Hash256XORUtils.CalculateDistance(new ValueHash256(hash2), new ValueHash256(hash1)).Should().Be(expectedDistance);
+        Hash256XorUtils.CalculateDistance(new ValueHash256(hash1), new ValueHash256(hash2)).Should().Be(expectedDistance);
+        Hash256XorUtils.CalculateDistance(new ValueHash256(hash2), new ValueHash256(hash1)).Should().Be(expectedDistance);
     }
 
     [Test]
@@ -39,8 +39,8 @@ public class Hash256XorUtilsTests
 
         void TestForDistance(int distance)
         {
-            var randHash = Hash256XORUtils.GetRandomHashAtDistance(randomized, distance, rand);
-            Hash256XORUtils.CalculateDistance(randomized, randHash).Should().Be(distance);
+            var randHash = Hash256XorUtils.GetRandomHashAtDistance(randomized, distance, rand);
+            Hash256XorUtils.CalculateDistance(randomized, randHash).Should().Be(distance);
         }
 
         for (int i = 1; i < 256; i++)
@@ -61,7 +61,7 @@ public class Hash256XorUtilsTests
         ValueHash256 h2 = new ValueHash256("0x0110000000000000000000000000000000000000000000000000000000000000");
         ValueHash256 h3 = new ValueHash256("0x0000000000000000000000000000000000000000000000000000000000000000");
 
-        Hash256XORUtils.Compare(h1, h2, h3).Should().BeLessThan(0);
+        Hash256XorUtils.Compare(h1, h2, h3).Should().BeLessThan(0);
     }
 
     [TestCase]

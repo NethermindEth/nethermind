@@ -5,13 +5,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public interface IMessageSender<TNode>
+public interface IKademliaMessageSender<TNode>
 {
     Task Ping(TNode receiver, CancellationToken token);
     Task<TNode[]> FindNeighbours(TNode receiver, ValueHash256 hash, CancellationToken token);
 }
 
-public interface IMessageReceiver<TNode>: IMessageSender<TNode>
+public interface IKademliaMessageReceiver<TNode>: IKademliaMessageSender<TNode>
 {
 }
 

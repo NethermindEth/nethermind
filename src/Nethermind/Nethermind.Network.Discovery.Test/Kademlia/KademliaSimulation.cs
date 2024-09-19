@@ -231,7 +231,7 @@ public class KademliaSimulation
         {
             var nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
             var expectedNodeClosestK = nodeIds
-                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256XORUtils.Compare(n1, n2, targetNode)))
+                .Order(Comparer<ValueHash256>.Create((n1, n2) => Hash256XorUtils.Compare(n1, n2, targetNode)))
                 .Take(_config.KSize)
                 .ToHashSet();
 
@@ -311,12 +311,12 @@ public class KademliaSimulation
         readonly ValueHashNodeHashProvider _nodeHashProvider = new ValueHashNodeHashProvider();
         private readonly Random _random = new Random(0);
 
-        private bool TryGetReceiver(TestNode receiverHash, out IMessageReceiver<TestNode> contentMessageReceiver)
+        private bool TryGetReceiver(TestNode receiverHash, out IKademliaMessageReceiver<TestNode> contentKademliaMessageReceiver)
         {
-            contentMessageReceiver = null!;
+            contentKademliaMessageReceiver = null!;
             if (_nodes.TryGetValue(receiverHash.Hash, out var serviceProvider))
             {
-                contentMessageReceiver = serviceProvider!.GetRequiredService<IMessageReceiver<TestNode>>();
+                contentKademliaMessageReceiver = serviceProvider!.GetRequiredService<IKademliaMessageReceiver<TestNode>>();
                 return true;
             }
 
@@ -362,7 +362,7 @@ public class KademliaSimulation
                 })
                 .AddSingleton<IKademliaContentStore<ValueHash256, ValueHash256>>(new OnlySelfIKademliaContentStore(nodeID))
                 .AddSingleton<IContentMessageSender<TestNode, ValueHash256, ValueHash256>>(new SenderForNode(nodeIDTestNode, this))
-                .AddSingleton<IMessageSender<TestNode>>(new SenderForNode(nodeIDTestNode, this))
+                .AddSingleton<IKademliaMessageSender<TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<Kademlia<TestNode>>()
                 .AddSingleton<KademliaContent<TestNode, ValueHash256, ValueHash256>>()
                 .BuildServiceProvider();
@@ -372,7 +372,7 @@ public class KademliaSimulation
             return serviceProvider.GetRequiredService<Kademlia<TestNode>>();
         }
 
-        private class SenderForNode(TestNode sender, TestFabric fabric) : IMessageSender<TestNode>, IContentMessageSender<TestNode, ValueHash256, ValueHash256>
+        private class SenderForNode(TestNode sender, TestFabric fabric) : IKademliaMessageSender<TestNode>, IContentMessageSender<TestNode, ValueHash256, ValueHash256>
         {
             public async Task Ping(TestNode node, CancellationToken token)
             {
@@ -380,7 +380,7 @@ public class KademliaSimulation
 
                 await fabric.DoSimulateLatency(token);
                 fabric.Debug($"ping from {sender} to {node}");
-                if (fabric.TryGetReceiver(node, out IMessageReceiver<TestNode> receiver))
+                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<TestNode> receiver))
                 {
                     await receiver.Ping(sender, token);
                     return;
@@ -395,7 +395,7 @@ public class KademliaSimulation
 
                 await fabric.DoSimulateLatency(token);
                 fabric.Debug($"findn from {sender} to {node}");
-                if (fabric.TryGetReceiver(node, out IMessageReceiver<TestNode> receiver))
+                if (fabric.TryGetReceiver(node, out IKademliaMessageReceiver<TestNode> receiver))
                 {
                     return (await receiver.FindNeighbours(sender, hash, token)).Select((node) => new TestNode(node.Hash)).ToArray();
                 }
