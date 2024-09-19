@@ -29,7 +29,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes);
+    ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the provided number range",

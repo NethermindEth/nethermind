@@ -330,7 +330,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
         Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash];
         IEnumerable<ExecutionPayloadBodyV2Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByHashV2(blockHashes).Result.Data;
+            rpc.engine_getPayloadBodiesByHashV2(blockHashes).Data;
         ExecutionPayloadBodyV2Result?[] expected = {
             new (Array.Empty<Transaction>(), Array.Empty<Withdrawal>() , deposits, withdrawalRequests),
             null,

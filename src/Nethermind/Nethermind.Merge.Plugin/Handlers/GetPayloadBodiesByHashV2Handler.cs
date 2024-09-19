@@ -16,34 +16,23 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 
-public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager) : GetPayloadBodiesByHashV1Handler(blockTree, logManager), IAsyncHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
+public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager logManager)
+    : GetPayloadBodiesByHashV1Handler(blockTree, logManager), IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>
 {
-    public new Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> HandleAsync(IReadOnlyList<Hash256> blockHashes)
-    {
-        if (!CheckHashCount(blockHashes, out string? error))
-        {
-            return ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error!, MergeErrorCodes.TooLargeRequest);
-        }
+    private readonly IBlockTree _blockTree = blockTree;
 
-        return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success(GetRequests(blockHashes)));
-    }
+    public new ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> Handle(IReadOnlyList<Hash256> blockHashes) =>
+        !CheckHashCount(blockHashes, out string? error)
+            ? ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Fail(error!, MergeErrorCodes.TooLargeRequest)
+            : ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success(GetRequests(blockHashes));
 
     private IEnumerable<ExecutionPayloadBodyV2Result?> GetRequests(IReadOnlyList<Hash256> blockHashes)
     {
         for (int i = 0; i < blockHashes.Count; i++)
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
-
-            if (block is null)
-            {
-                yield return null;
-                continue;
-            }
-
-            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) = block!.Requests?.SplitRequests() ?? (null, null);
-            yield return new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
+            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) = block?.Requests?.SplitRequests() ?? (null, null);
+            yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
         }
-
-        yield break;
     }
 }
