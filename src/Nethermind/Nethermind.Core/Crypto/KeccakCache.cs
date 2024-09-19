@@ -44,6 +44,7 @@ public static unsafe class KeccakCache
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
         Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
         NativeMemory.Clear(Memory, size);
+        GC.AddMemoryPressure((long)size);
     }
 
     [SkipLocalsInit]
