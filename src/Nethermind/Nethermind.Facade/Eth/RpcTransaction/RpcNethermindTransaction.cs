@@ -58,6 +58,8 @@ public abstract class RpcNethermindTransaction
         };
     }
 
+    public abstract void EnsureDefaults(long? gasCap);
+
     public class JsonConverter : JsonConverter<RpcNethermindTransaction>
     {
         private readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];

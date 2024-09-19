@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -77,6 +78,19 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         tx.SenderAddress = From ?? Address.SystemUser;
 
         return tx;
+    }
+
+    // TODO: Can we remove this code?
+    public override void EnsureDefaults(long? gasCap)
+    {
+        if (gasCap is null || gasCap == 0)
+            gasCap = long.MaxValue;
+
+        Gas = Gas is null || Gas == 0
+            ? gasCap
+            : Math.Min(gasCap.Value, Gas.Value);
+
+        From ??= Address.SystemUser;
     }
 
     public static readonly IFromTransaction<RpcLegacyTransaction> Converter = new ConverterImpl();
