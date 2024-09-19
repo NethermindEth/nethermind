@@ -31,7 +31,7 @@ public record RpcAccessList
         public Address Address { get; set; }
 
         [JsonConverter(typeof(StorageCellIndexConverter))]
-        public IEnumerable<UInt256> StorageKeys { get; set; }
+        public IEnumerable<UInt256>? StorageKeys { get; set; }
 
         [JsonConstructor]
         public Item() { }
@@ -54,7 +54,7 @@ public record RpcAccessList
         foreach (Item item in _items)
         {
             builder.AddAddress(item.Address);
-            foreach (UInt256 index in item.StorageKeys)
+            foreach (UInt256 index in item.StorageKeys ?? [])
             {
                 builder.AddStorage(index);
             }
