@@ -69,7 +69,7 @@ public record RpcAccessList
     {
         public override RpcAccessList? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            List<Item> list = JsonSerializer.Deserialize<List<Item>>(ref reader, options);
+            List<Item>? list = JsonSerializer.Deserialize<List<Item>>(ref reader, options);
             return list is null ? null : new RpcAccessList(list);
         }
 
