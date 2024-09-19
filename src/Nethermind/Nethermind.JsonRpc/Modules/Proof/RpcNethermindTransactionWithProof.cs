@@ -6,7 +6,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
-    public class TransactionWithProof
+    public class RpcNethermindTransactionWithProof
     {
         public TransactionForRpc Transaction { get; set; }
 

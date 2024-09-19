@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Eth;
+using System;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -77,6 +78,11 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         tx.Data = Input;
 
         return tx;
+    }
+
+    public override void EnsureDefaults(long? gasCap)
+    {
+        // TODO: Are there any defaults to set in Optimism transactions?
     }
 
     public static readonly IFromTransaction<RpcOptimismTransaction> Converter = new ConverterImpl();
