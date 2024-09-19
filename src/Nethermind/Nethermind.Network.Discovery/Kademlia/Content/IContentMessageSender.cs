@@ -13,7 +13,7 @@ public interface IContentMessageReceiver<TNode, TContentKey, TContent>: IContent
 }
 
 public record FindValueResponse<TNode, TContent>(
-    bool hasValue,
-    TContent? value,
-    TNode[] neighbours
+    bool HasValue,
+    TContent? Value,
+    TNode[] Neighbours
 );

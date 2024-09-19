@@ -40,16 +40,16 @@ public class KademliaContent<TNode, TContentKey, TContent>(
                 {
                     FindValueResponse<TNode, TContent> valueResponse = await contentMessageSender.FindValue(nextNode, contentKey, token);
 
-                    if (valueResponse.hasValue)
+                    if (valueResponse.HasValue)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Value response has value {valueResponse.value}");
+                        if (_logger.IsDebug) _logger.Debug($"Value response has value {valueResponse.Value}");
                         resultWasFound = true;
-                        result = valueResponse.value; // Shortcut so that once it find the value, it should stop.
+                        result = valueResponse.Value; // Shortcut so that once it find the value, it should stop.
                         await cts.CancelAsync();
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Value response has no value. Returning {valueResponse.neighbours.Length} neighbours");
-                    return valueResponse.neighbours;
+                    if (_logger.IsDebug) _logger.Debug($"Value response has no value. Returning {valueResponse.Neighbours.Length} neighbours");
+                    return valueResponse.Neighbours;
                 },
                 token
             );

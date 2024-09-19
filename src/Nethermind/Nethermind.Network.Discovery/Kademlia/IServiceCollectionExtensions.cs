@@ -13,12 +13,12 @@ public static class IServiceCollectionExtensions
     /// Configure the <param name="collection">service collection</param> with kademlia services. The following
     /// dependencies are expected:
     ///
-    /// - <see cref="IKademliaMessageSender{TNode}">IKademliaMessageSender</see>
-    /// - <see cref="KademliaConfig{TNode}">KademliaConfig</see>
-    /// - <see cref="INodeHashProvider{TNode}">INodeHashProvider</see>
-    /// - <see cref="ILogManager">ILogManager</see>
+    /// - <see cref="IKademliaMessageSender{TNode}" />
+    /// - <see cref="KademliaConfig{TNode}" />
+    /// - <see cref="INodeHashProvider{TNode}" />
+    /// - <see cref="ILogManager" />
     ///
-    /// Additionally, the transport layer is expected to call the method in <see cref="IKademliaMessageReceiver{TNode}">IKademliaMessageReceiver</see>
+    /// Additionally, the transport layer is expected to call the method in <see cref="IKademliaMessageReceiver{TNode}" />
     /// when external message is received.
     ///
     /// </summary>

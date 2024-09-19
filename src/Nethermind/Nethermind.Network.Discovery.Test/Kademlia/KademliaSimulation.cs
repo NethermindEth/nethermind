@@ -412,9 +412,9 @@ public class KademliaSimulation
                 if (fabric.TryGetContentReceiver(node, out IContentMessageReceiver<TestNode, ValueHash256, ValueHash256> receiver))
                 {
                     var resp = await receiver.FindValue(sender, hash, token);
-                    fabric.Debug($"Got {resp.hasValue} {resp.value} or {resp.neighbours.Length} next");
+                    fabric.Debug($"Got {resp.HasValue} {resp.Value} or {resp.Neighbours.Length} next");
 
-                    resp = resp with { neighbours = resp.neighbours.Select(node => new TestNode(node.Hash)).ToArray() };
+                    resp = resp with { Neighbours = resp.Neighbours.Select(node => new TestNode(node.Hash)).ToArray() };
                     return resp;
                 }
 

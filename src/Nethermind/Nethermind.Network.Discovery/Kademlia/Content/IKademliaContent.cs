@@ -4,7 +4,7 @@
 namespace Nethermind.Network.Discovery.Kademlia.Content;
 
 /// <summary>
-/// This interface extend <see cref="IKademlia{TNode}">IKademlia</see>> with the ability to lookup content.
+/// This interface extend <see cref="IKademlia{TNode}"/> with the ability to lookup content.
 /// </summary>
 /// <typeparam name="TContentKey"></typeparam>
 /// <typeparam name="TContent"></typeparam>

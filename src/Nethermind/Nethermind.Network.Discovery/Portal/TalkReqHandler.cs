@@ -125,12 +125,12 @@ public class TalkReqHandler(
     {
         if (_logger.IsDebug) _logger.Debug($"Handling find content from {sender.NodeId.ToHexString()}");
         var findValueResult = await kadContentMessageReceiver.FindValue(sender, findContent.ContentKey, CancellationToken.None);
-        if (findValueResult.hasValue)
+        if (findValueResult.HasValue)
         {
             // From the POV of Kademlia, there is no such thing as UTP. So when calling local kad,
             // it always return the full payload without any connection id.
             // But at transport/lantern/discv5 layer, we need to translate it to UTP, or it would be too big.
-            LookupContentResult value = findValueResult.value!;
+            LookupContentResult value = findValueResult.Value!;
             if (value.Payload!.Length > config.MaxContentSizeForTalkReq)
             {
                 value.ConnectionId = InitiateUtpStreamSender(sender, value.Payload);
@@ -147,7 +147,7 @@ public class TalkReqHandler(
             });
         }
 
-        var neighboursAsBytes = findValueResult.neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
+        var neighboursAsBytes = findValueResult.Neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
         var response = new MessageUnion()
         {
             Content = new Content()
