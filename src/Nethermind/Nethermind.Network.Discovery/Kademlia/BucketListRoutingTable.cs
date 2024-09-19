@@ -4,11 +4,13 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
 public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : notnull
 {
+    private readonly ILogger _logger;
     private readonly KBucket<TNode>[] _buckets;
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
@@ -16,8 +18,10 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
     // TODO: Double check and probably make lockless
     private readonly McsLock _lock = new McsLock();
 
-    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider)
+    public BucketListRoutingTable(KademliaConfig<TNode> config, INodeHashProvider<TNode> nodeHashProvider, ILogManager logManager)
     {
+        _logger = logManager.GetClassLogger<BucketListRoutingTable<TNode>>();
+
         // Note: It does not have to be this much. In practice, only like 16 of these bucket get populated.
         _buckets = new KBucket<TNode>[Hash256XORUtils.MaxDistance + 1];
         for (int i = 0; i < Hash256XORUtils.MaxDistance + 1; i++)
@@ -132,5 +136,10 @@ public class BucketListRoutingTable<TNode>: IRoutingTable<TNode> where TNode : n
             left -= 1;
             right += 1;
         }
+    }
+
+    public void LogDebugInfo()
+    {
+        _logger.Debug($"Bucket sizes {string.Join(", ", _buckets.Select(b => b.Count))}");
     }
 }

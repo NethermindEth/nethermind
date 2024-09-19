@@ -2,27 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-/// Single array of kbucket kademlia implementation.
-/// Not even the splitting variant.
-/// With a proper splitting variant, the closest kbucket will be full and less sparse, so the findNeighbour query
-/// is more accurate without having to spill over to other kbucket to fill the query.
-/// This is even more so with tree based kbucket where bucket without currentid can also be splitted down (to a predefined
-/// limit) which makes the lookup even more accurate.
-///
-/// TODO: Switch to tree based kademlia implementation.
 public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentKey, TContent> where TNode : notnull
 {
-    private static readonly TimeSpan FindNeighbourHardTimeout = TimeSpan.FromSeconds(5);
-
     private readonly INodeHashProvider<TNode> _nodeHashProvider;
     private readonly IContentHashProvider<TContentKey> _contentHashProvider;
     private readonly IKademlia<TNode, TContentKey, TContent>.IStore _store;
@@ -89,6 +77,11 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
                 }
             }
         }
+    }
+
+    public void Remove(TNode node)
+    {
+        _routingTable.Remove(_nodeHashProvider.GetHash(node));
     }
 
     private void TryRefresh(TNode toRefresh)
@@ -250,7 +243,11 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             await LookupNodesClosest(nodeToLookup, token);
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Bootstrap completed. Took {sw}. Bucket sizes (from 230) {string.Join(",", Enumerable.Range(200, 56).Select(i => GetAllAtDistance(i).Length))}");
+        if (_logger.IsDebug)
+        {
+            _logger.Debug($"Bootstrap completed. Took {sw}.");
+            _routingTable.LogDebugInfo();
+        }
     }
 
     public TNode[] GetKNeighbour(ValueHash256 hash, TNode? excluding)
@@ -262,13 +259,13 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
 
     public event EventHandler<TNode>? OnNodeAdded;
 
-    private void OnIncomingMessageFrom(TNode sender)
+    public void OnIncomingMessageFrom(TNode sender)
     {
         AddOrRefresh(sender);
         _peerFailures.Delete(_nodeHashProvider.GetHash(sender));
     }
 
-    private void OnRequestFailed(TNode receiver)
+    public void OnRequestFailed(TNode receiver)
     {
         ValueHash256 hash = _nodeHashProvider.GetHash(receiver);
         if (!_peerFailures.TryGet(hash, out var currentFailure))

@@ -22,7 +22,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="utpManager"></param>
 public class TalkReqHandler(
     IPortalContentNetworkStore store,
-    IKademlia<IEnr, byte[], LookupContentResult> kad,
+    IMessageReceiver<IEnr, byte[], LookupContentResult> kadMessageReceiver,
     RadiusTracker radiusTracker,
     IEnrProvider enrProvider,
     IUtpManager utpManager,
@@ -76,14 +76,14 @@ public class TalkReqHandler(
     {
         if (_logger.IsDebug) _logger.Debug($"Handling ping from {sender.NodeId.ToHexString()}");
 
-        // Still need to call kad since the ping is also used to populate bucket.
+        // Still need to call kadMessageReceiver since the ping is also used to populate bucket.
         if (ping.CustomPayload?.Length == 32)
         {
             UInt256 radius = SlowSSZ.Deserialize<UInt256>(ping.CustomPayload);
             radiusTracker.UpdatePeerRadius(sender, radius);
         }
 
-        await kad.Ping(sender, default);
+        await kadMessageReceiver.Ping(sender, default);
 
         return SlowSSZ.Serialize(new MessageUnion()
         {
@@ -105,7 +105,7 @@ public class TalkReqHandler(
         // unfortunately, the protocol said to filter neighbour that is of incorrect distance...
         // which is another weird thing that I'm not sure how to handle.
         ValueHash256 theHash = Hash256XORUtils.GetRandomHashAtDistance(_nodeHashProvider.GetHash(enrProvider.SelfEnr), nodes.Distances[0]);
-        var neighbours = await kad.FindNeighbours(sender, theHash, CancellationToken.None);
+        var neighbours = await kadMessageReceiver.FindNeighbours(sender, theHash, CancellationToken.None);
         var neighboursAsBytes = neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
 
         var response = new MessageUnion()
@@ -122,7 +122,7 @@ public class TalkReqHandler(
     private async Task<byte[]?> HandleFindContent(IEnr sender, FindContent findContent)
     {
         if (_logger.IsDebug) _logger.Debug($"Handling find content from {sender.NodeId.ToHexString()}");
-        var findValueResult = await kad.FindValue(sender, findContent.ContentKey, CancellationToken.None);
+        var findValueResult = await kadMessageReceiver.FindValue(sender, findContent.ContentKey, CancellationToken.None);
         if (findValueResult.hasValue)
         {
             // From the POV of Kademlia, there is no such thing as UTP. So when calling local kad,

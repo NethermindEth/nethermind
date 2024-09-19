@@ -12,6 +12,7 @@ public static class IServiceCollectionExtensions
     {
         return collection
             .AddSingleton<IKademlia<TNode, TContentKey, TContent>, Kademlia<TNode, TContentKey, TContent>>()
+            .AddSingleton<IMessageReceiver<TNode, TContentKey, TContent>, KademliaMessageReceiver<TNode, TContentKey, TContent>>()
             .AddSingleton<NewLookupKNearestNeighbour<TNode>>()
             .AddSingleton<OriginalLookupKNearestNeighbour<TNode>>()
             .AddSingleton<ILookupAlgo<TNode>>(provider =>

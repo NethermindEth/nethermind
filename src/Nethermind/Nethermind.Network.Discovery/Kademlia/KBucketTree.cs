@@ -348,7 +348,7 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
         LogTreeStructureRecursive(node.Right!, indent, true, depth+1, sb);
     }
 
-    public void LogTreeStatistics()
+    private void LogTreeStatistics()
     {
         int totalNodes = 0;
         int totalBuckets = 0;
@@ -374,17 +374,23 @@ public class KBucketTree<TNode>: IRoutingTable<TNode> where TNode : notnull
 
         TraverseTree(_root, 0);
 
-        _logger.Info($"Tree Statistics:\n" +
+        _logger.Debug($"Tree Statistics:\n" +
                      $"Total Nodes: {totalNodes}\n" +
                      $"Total Buckets: {totalBuckets}\n" +
                      $"Max Depth: {maxDepth}\n" +
                      $"Total Items: {totalItems}\n" +
                      $"Average Items per Bucket: {(double)totalItems / totalBuckets:F2}");
     }
-    public void LogTreeStructure()
+    private void LogTreeStructure()
     {
         StringBuilder sb = new StringBuilder();
         LogTreeStructureRecursive(_root, "", true, 0, sb);
         _logger.Info($"Current Tree Structure:\n{sb}");
+    }
+
+    public void LogDebugInfo()
+    {
+        LogTreeStatistics();
+        LogTreeStructure();
     }
 }

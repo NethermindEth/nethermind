@@ -13,4 +13,5 @@ public interface IRoutingTable<TNode>
     TNode[] GetAllAtDistance(int i);
     IEnumerable<ValueHash256> IterateBucketRandomHashes();
     TNode? GetByHash(ValueHash256 nodeId);
+    void LogDebugInfo();
 }
