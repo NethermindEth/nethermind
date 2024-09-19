@@ -22,20 +22,26 @@ public static class IServiceCollectionExtensions
     public static IServiceCollection ConfigureContentNetwork(this IServiceCollection serviceCollection, IServiceProvider baseServiceProvider)
     {
         return serviceCollection
-            .ConfigureKademliaComponents<IEnr, byte[], LookupContentResult>()
+
+            // Kademlia integration configurations
+            .ConfigureKademliaComponents<IEnr>()
+            .ConfigureKademliaContentComponents<IEnr, byte[], LookupContentResult>()
+            .AddSingleton<IContentMessageSender<IEnr, byte[], LookupContentResult>, KademliaContentNetworkContentMessageSender>()
+            .AddSingleton<IMessageSender<IEnr>, KademliaContentNetworkContentMessageSender>()
+            .AddSingleton<IKademliaContent<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
+            .AddSingleton<INodeHashProvider<IEnr>>(EnrNodeHashProvider.Instance)
+            .AddSingleton<IContentHashProvider<byte[]>>(ContentKeyHashProvider.Instance)
+
+            // Content network configuration
             .ForwardServiceAsSingleton<IEnrProvider>(baseServiceProvider)
             .ForwardServiceAsSingleton<ITalkReqTransport>(baseServiceProvider)
             .ForwardServiceAsSingleton<IUtpManager>(baseServiceProvider)
             .ForwardServiceAsSingleton<ILogManager>(baseServiceProvider)
-            .AddSingleton<INodeHashProvider<IEnr>>(EnrNodeHashProvider.Instance)
-            .AddSingleton<IContentHashProvider<byte[]>>(ContentKeyHashProvider.Instance)
             .AddSingleton<ITalkReqProtocolHandler, TalkReqHandler>()
             .AddSingleton<IContentNetworkProtocol, ContentNetworkProtocol>()
             .AddSingleton<IContentDistributor, ContentDistributor>()
             .AddSingleton<ContentLookupService>()
             .AddSingleton<RadiusTracker>()
-            .AddSingleton<IMessageSender<IEnr, byte[], LookupContentResult>, KademliaContentNetworkMessageSender>()
-            .AddSingleton<IKademlia<IEnr, byte[], LookupContentResult>.IStore, PortalContentStoreAdapter>()
             .AddSingleton<IPortalContentNetwork, PortalContentNetwork>();
     }
 }

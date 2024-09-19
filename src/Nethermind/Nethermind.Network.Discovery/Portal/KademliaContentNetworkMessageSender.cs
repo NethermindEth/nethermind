@@ -18,16 +18,16 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="contentNetworkProtocol"></param>
 /// <param name="enrProvider"></param>
 /// <param name="logManager"></param>
-public class KademliaContentNetworkMessageSender(
+public class KademliaContentNetworkContentMessageSender(
     ContentNetworkConfig config,
     RadiusTracker radiusTracker,
     IContentNetworkProtocol contentNetworkProtocol,
     IEnrProvider enrProvider,
     ILogManager logManager
-) : IMessageSender<IEnr, byte[], LookupContentResult>
+) : IContentMessageSender<IEnr, byte[], LookupContentResult>, IMessageSender<IEnr>
 {
     private readonly EnrNodeHashProvider _nodeHashProvider = EnrNodeHashProvider.Instance;
-    private readonly ILogger _logger = logManager.GetClassLogger<KademliaContentNetworkMessageSender>();
+    private readonly ILogger _logger = logManager.GetClassLogger<KademliaContentNetworkContentMessageSender>();
 
     public async Task Ping(IEnr receiver, CancellationToken token)
     {

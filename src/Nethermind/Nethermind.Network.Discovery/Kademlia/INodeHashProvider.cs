@@ -20,8 +20,3 @@ public interface INodeHashProvider<in TNode>
 {
     ValueHash256 GetHash(TNode node);
 }
-
-public interface IContentHashProvider<in TContentKey>
-{
-    ValueHash256 GetHash(TContentKey key);
-}

@@ -18,8 +18,8 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 public class PortalContentNetwork : IPortalContentNetwork
 {
-    private readonly IKademlia<IEnr, byte[], LookupContentResult> _kademlia;
-    private readonly IMessageSender<IEnr, byte[], LookupContentResult> _messageSender;
+    private readonly IKademlia<IEnr> _kademlia;
+    private readonly IMessageSender<IEnr> _messageSender;
     private readonly IContentDistributor _contentDistributor;
     private readonly ILogger _logger1;
     private readonly ContentLookupService _contentLookupService;
@@ -27,10 +27,10 @@ public class PortalContentNetwork : IPortalContentNetwork
 
     public PortalContentNetwork(
         ContentNetworkConfig config,
-        IKademlia<IEnr, byte[], LookupContentResult> kademlia,
+        IKademlia<IEnr> kademlia,
         ITalkReqProtocolHandler talkReqHandler,
         ITalkReqTransport talkReqTransport,
-        IMessageSender<IEnr, byte[], LookupContentResult> messageSender,
+        IMessageSender<IEnr> messageSender,
         IContentDistributor contentDistributor,
         RadiusTracker radiusTracker,
         ContentLookupService contentLookupService,

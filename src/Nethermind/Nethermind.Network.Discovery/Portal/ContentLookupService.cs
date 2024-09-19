@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public class ContentLookupService(
     ContentNetworkConfig config,
     IUtpManager utpManager,
-    IKademlia<IEnr, byte[], LookupContentResult> kademlia,
+    IKademliaContent<IEnr, byte[], LookupContentResult> kademliaContent,
     IContentNetworkProtocol protocol,
     IEnrProvider enrProvider,
     ILogManager logManager
@@ -28,7 +28,7 @@ public class ContentLookupService(
         token = cts.Token;
 
         Stopwatch sw = Stopwatch.StartNew();
-        var result = await kademlia.LookupValue(key, token);
+        var result = await kademliaContent.LookupValue(key, token);
         _logger1.Info($"Lookup {key.ToHexString()} took {sw.Elapsed}");
 
         sw.Restart();

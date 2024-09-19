@@ -22,7 +22,8 @@ namespace Nethermind.Network.Discovery.Portal;
 /// <param name="utpManager"></param>
 public class TalkReqHandler(
     IPortalContentNetworkStore store,
-    IMessageReceiver<IEnr, byte[], LookupContentResult> kadMessageReceiver,
+    IMessageReceiver<IEnr> kadMessageReceiver,
+    IContentMessageReceiver<IEnr, byte[], LookupContentResult> kadContentMessageReceiver,
     RadiusTracker radiusTracker,
     IEnrProvider enrProvider,
     IUtpManager utpManager,
@@ -122,7 +123,7 @@ public class TalkReqHandler(
     private async Task<byte[]?> HandleFindContent(IEnr sender, FindContent findContent)
     {
         if (_logger.IsDebug) _logger.Debug($"Handling find content from {sender.NodeId.ToHexString()}");
-        var findValueResult = await kadMessageReceiver.FindValue(sender, findContent.ContentKey, CancellationToken.None);
+        var findValueResult = await kadContentMessageReceiver.FindValue(sender, findContent.ContentKey, CancellationToken.None);
         if (findValueResult.hasValue)
         {
             // From the POV of Kademlia, there is no such thing as UTP. So when calling local kad,

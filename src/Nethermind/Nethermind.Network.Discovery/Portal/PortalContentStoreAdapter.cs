@@ -11,7 +11,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// Adapter from IPortalContentNetworkStore to Kademlia's store.
 /// </summary>
 /// <param name="sourceStore"></param>
-public class PortalContentStoreAdapter(IPortalContentNetworkStore sourceStore) : IKademlia<IEnr, byte[], LookupContentResult>.IStore
+public class PortalContentStoreAdapter(IPortalContentNetworkStore sourceStore) : IKademliaContent<IEnr, byte[], LookupContentResult>.IStore
 {
     public bool TryGetValue(byte[] contentId, out LookupContentResult? value)
     {

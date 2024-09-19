@@ -8,11 +8,11 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public static class IServiceCollectionExtensions
 {
-    public static IServiceCollection ConfigureKademliaComponents<TNode, TContentKey, TContent>(this IServiceCollection collection) where TNode : notnull
+    public static IServiceCollection ConfigureKademliaComponents<TNode>(this IServiceCollection collection) where TNode : notnull
     {
         return collection
-            .AddSingleton<IKademlia<TNode, TContentKey, TContent>, Kademlia<TNode, TContentKey, TContent>>()
-            .AddSingleton<IMessageReceiver<TNode, TContentKey, TContent>, KademliaMessageReceiver<TNode, TContentKey, TContent>>()
+            .AddSingleton<IKademlia<TNode>, Kademlia<TNode>>()
+            .AddSingleton<IMessageReceiver<TNode>, KademliaMessageReceiver<TNode>>()
             .AddSingleton<NewLookupKNearestNeighbour<TNode>>()
             .AddSingleton<OriginalLookupKNearestNeighbour<TNode>>()
             .AddSingleton<ILookupAlgo<TNode>>(provider =>
@@ -37,5 +37,13 @@ public static class IServiceCollectionExtensions
 
                 return provider.GetRequiredService<BucketListRoutingTable<TNode>>();
             });
+    }
+
+    public static IServiceCollection ConfigureKademliaContentComponents<TNode, TContentKey, TContent>(this IServiceCollection collection) where TNode : notnull
+    {
+        return collection
+            .AddSingleton<IKademliaContent<TNode, TContentKey, TContent>, KademliaContent<TNode, TContentKey, TContent>>()
+            .AddSingleton<IContentMessageReceiver<TNode, TContentKey, TContent>, KademliaContentMessageReceiver<TNode, TContentKey, TContent>>()
+            .AddSingleton<IContentMessageReceiver<TNode, TContentKey, TContent>, KademliaContentMessageReceiver<TNode, TContentKey, TContent>>();
     }
 }

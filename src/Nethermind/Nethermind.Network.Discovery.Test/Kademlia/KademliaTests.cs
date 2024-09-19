@@ -19,8 +19,7 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 [TestFixture(false)]
 public class KademliaTests
 {
-    private readonly IKademlia<ValueHash256, ValueHash256, ValueHash256>.IStore _store = Substitute.For<IKademlia<ValueHash256, ValueHash256, ValueHash256>.IStore>();
-    private readonly IMessageSender<ValueHash256, ValueHash256, ValueHash256> _messageSender = Substitute.For<IMessageSender<ValueHash256, ValueHash256, ValueHash256>>();
+    private readonly IMessageSender<ValueHash256> _messageSender = Substitute.For<IMessageSender<ValueHash256>>();
     private readonly bool _useTreeBasedBucket;
 
     public KademliaTests(bool useTreeBasedBucket)
@@ -28,27 +27,26 @@ public class KademliaTests
         _useTreeBasedBucket = useTreeBasedBucket;
     }
 
-    private Kademlia<ValueHash256, ValueHash256, ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
+    private Kademlia<ValueHash256> CreateKad(KademliaConfig<ValueHash256> config)
     {
         config.UseTreeBasedRoutingTable = _useTreeBasedBucket;
 
         return new ServiceCollection()
-            .ConfigureKademliaComponents<ValueHash256, ValueHash256, ValueHash256>()
+            .ConfigureKademliaComponents<ValueHash256>()
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Trace))
             .AddSingleton<INodeHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton<IContentHashProvider<ValueHash256>>(new ValueHashNodeHashProvider())
             .AddSingleton(config)
-            .AddSingleton(_store)
             .AddSingleton(_messageSender)
-            .AddSingleton<Kademlia<ValueHash256, ValueHash256, ValueHash256>>()
+            .AddSingleton<Kademlia<ValueHash256>>()
             .BuildServiceProvider()
-            .GetRequiredService<Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
+            .GetRequiredService<Kademlia<ValueHash256>>();
     }
 
     [Test]
     public void TestNewNodeAdded()
     {
-        Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 0,
@@ -73,7 +71,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
-        Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 0,
@@ -103,7 +101,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(pingSource.Task);
 
-        Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 0,
@@ -143,7 +141,7 @@ public class KademliaTests
             .Ping(Arg.Any<ValueHash256>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
-        Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
+        Kademlia<ValueHash256> kad = CreateKad(new KademliaConfig<ValueHash256>()
         {
             KSize = 5,
             Beta = 1,

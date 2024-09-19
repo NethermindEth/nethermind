@@ -10,16 +10,13 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Does not assume any transport, need to implement `IMessageReceiver` and `IMessageSender` for that.
 /// The THash is for both node id and content id, which is probably not a good idea since the node id
 /// probably need to store the ip also.
-public interface IKademlia<TNode, TContentKey, TContent>
+public interface IKademlia<TNode>
 {
     /// Add node to the table.
     void AddOrRefresh(TNode node);
 
     /// Remove node to the table.
     void Remove(TNode node);
-
-    /// Initiate a full traversal for finding the value
-    Task<TContent?> LookupValue(TContentKey id, CancellationToken token);
 
     /// Lookup k nearest neighbour closest to the content id
     Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token, int? k = null);
@@ -37,12 +34,22 @@ public interface IKademlia<TNode, TContentKey, TContent>
 
     event EventHandler<TNode> OnNodeAdded;
 
+    void OnIncomingMessageFrom(TNode sender);
+    void OnRequestFailed(TNode receiver);
+}
+
+public interface IKademliaContent
+{
+}
+
+public interface IKademliaContent<TNode, TContentKey, TContent> : IKademliaContent
+{
+    /// Initiate a full traversal for finding the value
+    Task<TContent?> LookupValue(TContentKey id, CancellationToken token);
+
     public interface IStore
     {
         /// Used for serving transport.
         bool TryGetValue(TContentKey hash, out TContent? value);
     }
-
-    void OnIncomingMessageFrom(TNode sender);
-    void OnRequestFailed(TNode receiver);
 }

@@ -15,7 +15,7 @@ using Nethermind.Network.Discovery.Portal.Messages;
 namespace Nethermind.Network.Discovery.Portal;
 
 public class ContentDistributor(
-    IKademlia<IEnr, byte[], LookupContentResult> kad,
+    IKademlia<IEnr> kad,
     RadiusTracker radiusTracker,
     ContentNetworkConfig config,
     IContentNetworkProtocol protocol,

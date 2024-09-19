@@ -9,11 +9,10 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentKey, TContent> where TNode : notnull
+public class Kademlia<TNode> : IKademlia<TNode> where TNode : notnull
 {
+    private readonly IMessageSender<TNode> _messageSender;
     private readonly INodeHashProvider<TNode> _nodeHashProvider;
-    private readonly IContentHashProvider<TContentKey> _contentHashProvider;
-    private readonly IKademlia<TNode, TContentKey, TContent>.IStore _store;
     private readonly IRoutingTable<TNode> _routingTable;
     private readonly ILookupAlgo<TNode> _lookupAlgo;
     private readonly ILogger _logger;
@@ -22,27 +21,22 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private readonly TNode _currentNodeId;
     private readonly ValueHash256 _currentNodeIdAsHash;
     private readonly int _kSize;
-    private readonly IMessageSender<TNode, TContentKey, TContent> _messageSender;
     private readonly LruCache<ValueHash256, int> _peerFailures;
     private readonly TimeSpan _refreshInterval;
 
     public Kademlia(
         INodeHashProvider<TNode> nodeHashProvider,
-        IContentHashProvider<TContentKey> contentHashProvider,
-        IKademlia<TNode, TContentKey, TContent>.IStore store,
-        IMessageSender<TNode, TContentKey, TContent> sender,
+        IMessageSender<TNode> sender,
         IRoutingTable<TNode> routingTable,
         ILookupAlgo<TNode> lookupAlgo,
         ILogManager logManager,
         KademliaConfig<TNode> config)
     {
         _nodeHashProvider = nodeHashProvider;
-        _contentHashProvider = contentHashProvider;
-        _store = store;
         _messageSender = new MessageSenderMonitor(sender, this);
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
-        _logger = logManager.GetClassLogger<Kademlia<TNode, TContentKey, TContent>>();
+        _logger = logManager.GetClassLogger<Kademlia<TNode>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _nodeHashProvider.GetHash(_currentNodeId);
@@ -130,48 +124,6 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
     private bool SameAsSelf(TNode node)
     {
         return _nodeHashProvider.GetHash(node) == _currentNodeIdAsHash;
-    }
-
-    public async Task<TContent?> LookupValue(TContentKey contentKey, CancellationToken token)
-    {
-        TContent? result = default(TContent);
-        if (_store.TryGetValue(contentKey, out result))
-        {
-            return result;
-        }
-
-        bool resultWasFound = false;
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-        token = cts.Token;
-        // TODO: Timeout?
-        ValueHash256 targetHash = _contentHashProvider.GetHash(contentKey);
-
-        try
-        {
-            await LookupNodesClosest(
-                targetHash, _kSize, async (nextNode, token) =>
-                {
-                    FindValueResponse<TNode, TContent> valueResponse = await _messageSender.FindValue(nextNode, contentKey, token);
-                    if (valueResponse.hasValue)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Value response has value {valueResponse.value}");
-                        resultWasFound = true;
-                        result = valueResponse.value; // Shortcut so that once it find the value, it should stop.
-                        await cts.CancelAsync();
-                    }
-
-                    if (_logger.IsDebug) _logger.Debug($"Value response has no value. Returning {valueResponse.neighbours.Length} neighbours");
-                    return valueResponse.neighbours;
-                },
-                token
-            );
-        }
-        catch (OperationCanceledException)
-        {
-            if (!resultWasFound) throw;
-        }
-
-        return result;
     }
 
     public async Task<TNode[]> LookupNodesClosest(ValueHash256 targetHash, CancellationToken token, int? k = null)
@@ -283,40 +235,12 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
         _peerFailures.Set(hash, currentFailure + 1);
     }
 
-    public Task Ping(TNode sender, CancellationToken token)
-    {
-        OnIncomingMessageFrom(sender);
-        return Task.CompletedTask;
-    }
-
-    public Task<TNode[]> FindNeighbours(TNode sender, ValueHash256 hash, CancellationToken token)
-    {
-        return Task.FromResult(GetKNeighbour(hash, sender));
-    }
-
-    public Task<FindValueResponse<TNode, TContent>> FindValue(TNode sender, TContentKey contentKey, CancellationToken token)
-    {
-        OnIncomingMessageFrom(sender);
-
-        if (_store.TryGetValue(contentKey, out TContent? value))
-        {
-            return Task.FromResult(new FindValueResponse<TNode, TContent>(true, value!, Array.Empty<TNode>()));
-        }
-
-        return Task.FromResult(
-            new FindValueResponse<TNode, TContent>(
-                false,
-                default,
-                _routingTable.GetKNearestNeighbour(_contentHashProvider.GetHash(contentKey), _nodeHashProvider.GetHash(sender))
-            ));
-    }
-
     /// <summary>
     /// Monitor requests for success or failure.
     /// </summary>
     /// <param name="implementation"></param>
     /// <param name="kademlia"></param>
-    private class MessageSenderMonitor(IMessageSender<TNode, TContentKey, TContent> implementation, Kademlia<TNode, TContentKey, TContent> kademlia) : IMessageSender<TNode, TContentKey, TContent>
+    private class MessageSenderMonitor(IMessageSender<TNode> implementation, Kademlia<TNode> kademlia) : IMessageSender<TNode>
     {
         public async Task Ping(TNode receiver, CancellationToken token)
         {
@@ -337,21 +261,6 @@ public class Kademlia<TNode, TContentKey, TContent> : IKademlia<TNode, TContentK
             try
             {
                 TNode[] res = await implementation.FindNeighbours(receiver, hash, token);
-                kademlia.OnIncomingMessageFrom(receiver);
-                return res;
-            }
-            catch (OperationCanceledException)
-            {
-                kademlia.OnRequestFailed(receiver);
-                throw;
-            }
-        }
-
-        public Task<FindValueResponse<TNode, TContent>> FindValue(TNode receiver, TContentKey contentKey, CancellationToken token)
-        {
-            try
-            {
-                Task<FindValueResponse<TNode, TContent>> res = implementation.FindValue(receiver, contentKey, token);
                 kademlia.OnIncomingMessageFrom(receiver);
                 return res;
             }
