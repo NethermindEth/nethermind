@@ -20,7 +20,10 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    // NOTE: This field exists only during deserialization according to the Ethereum JSON-RPC spec.
+    // No transaction types include a `From` field when serializing.
+    // For backwards compatibility with previous Nethermind versions we also serialize it.
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? From { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -61,6 +64,7 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     {
         Nonce = transaction.Nonce;
         To = transaction.To;
+        From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
         Input = transaction.Data.AsArray() ?? [];

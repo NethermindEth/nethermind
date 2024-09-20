@@ -60,6 +60,7 @@ public static class RpcLegacyTransactionTests
         json.GetProperty("type").GetString().Should().MatchRegex("^0x0$");
         json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
+        json.GetProperty("from").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
         json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
@@ -72,8 +73,5 @@ public static class RpcLegacyTransactionTests
         json.GetProperty("v").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-
-        // Assert deserialization-only are not serialized
-        json.TryGetProperty("from", out _).Should().BeFalse();
     }
 }
