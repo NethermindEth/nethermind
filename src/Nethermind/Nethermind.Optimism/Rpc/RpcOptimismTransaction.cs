@@ -16,6 +16,8 @@ namespace Nethermind.Optimism.Rpc;
 /// </Remarks>
 public class RpcOptimismTransaction : RpcNethermindTransaction
 {
+    public override TxType? Type => TxType.DepositTx;
+
     public Hash256 SourceHash { get; set; }
 
     public Address From { get; set; }
@@ -52,7 +54,6 @@ public class RpcOptimismTransaction : RpcNethermindTransaction
         // This is a leftover from the original Nethermind Optimism implementation
         Nonce = receipt?.DepositNonce;
 
-        Type = transaction.Type;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
         From = transaction.SenderAddress ?? Address.SystemUser;
         To = transaction.To;

@@ -10,6 +10,8 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 public class RpcBlobTransaction : RpcEIP1559Transaction
 {
+    public override TxType? Type => TxType.Blob;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerBlobGas { get; set; }
 

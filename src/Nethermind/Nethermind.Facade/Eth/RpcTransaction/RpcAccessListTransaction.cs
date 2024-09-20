@@ -14,6 +14,8 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
     public static ulong? DefaultChainId { get; set; }
 
+    public override TxType? Type => TxType.AccessList;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public RpcAccessList? AccessList { get; set; }
 

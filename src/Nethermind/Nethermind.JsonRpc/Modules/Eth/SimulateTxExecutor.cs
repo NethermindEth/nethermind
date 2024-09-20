@@ -45,7 +45,6 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                         // What about `AccessList` transactions?
                         if (callTransactionModel.Type == TxType.Legacy)
                         {
-                            callTransactionModel.Type = TxType.EIP1559;
                             callTransactionModel = (RpcEIP1559Transaction)callTransactionModel;
                         }
 

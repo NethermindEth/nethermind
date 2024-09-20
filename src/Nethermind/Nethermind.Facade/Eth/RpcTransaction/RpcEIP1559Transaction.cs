@@ -10,6 +10,8 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 public class RpcEIP1559Transaction : RpcAccessListTransaction
 {
+    public override TxType? Type => TxType.EIP1559;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxPriorityFeePerGas { get; set; }
 

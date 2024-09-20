@@ -25,7 +25,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 public abstract class RpcNethermindTransaction
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public TxType? Type { get; set; }
+    public virtual TxType? Type => null;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256? Hash { get; set; }
@@ -44,7 +44,6 @@ public abstract class RpcNethermindTransaction
 
     public RpcNethermindTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
     {
-        Type = transaction.Type;
         Hash = transaction.Hash;
         TransactionIndex = txIndex;
         BlockHash = blockHash;
