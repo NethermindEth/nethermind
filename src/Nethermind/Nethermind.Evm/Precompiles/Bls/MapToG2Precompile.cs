@@ -34,23 +34,19 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
             return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
         try
         {
             G2 res = new();
-            if (!BlsExtensions.ValidFp(inputData.Span[..BlsParams.LenFp]) || !BlsExtensions.ValidFp(inputData.Span[BlsParams.LenFp..]))
+            if (!BlsExtensions.ValidUntrimmedFp(inputData.Span[..BlsParams.LenFp]) || !BlsExtensions.ValidUntrimmedFp(inputData.Span[BlsParams.LenFp..]))
             {
-                throw new Exception();
+                return IPrecompile.Failure;
             }
             res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray(), inputData[(BlsParams.LenFp + BlsParams.LenFpPad)..].ToArray());
-            result = (res.Encode(), true);
+            return (res.Encode(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
             return IPrecompile.Failure;
         }
-
-        return result;
     }
 }

@@ -34,8 +34,6 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
             return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
         try
         {
             G2 x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2].Span, out bool xInfinity);
@@ -54,13 +52,11 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
             }
 
             G2 res = x.Add(y);
-            result = (res.Encode(), true);
+            return (res.Encode(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
             return IPrecompile.Failure;
         }
-
-        return result;
     }
 }

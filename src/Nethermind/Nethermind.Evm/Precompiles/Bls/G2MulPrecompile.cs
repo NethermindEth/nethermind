@@ -39,7 +39,6 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         try
         {
             G2 x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2].Span, out bool xInfinity);
-
             if (xInfinity)
             {
                 // x == inf
@@ -48,7 +47,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
             if (!x.InGroup())
             {
-                throw new Exception();
+                return IPrecompile.Failure;
             }
 
             byte[] scalar = inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray();

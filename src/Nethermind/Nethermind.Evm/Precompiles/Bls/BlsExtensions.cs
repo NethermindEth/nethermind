@@ -31,12 +31,12 @@ public static class BlsExtensions
             throw new BlsPrecompileException("G1 point was wrong size.");
         }
 
-        if (!ValidFp(untrimmed[..BlsParams.LenFp]) || !ValidFp(untrimmed[BlsParams.LenFp..]))
+        if (!ValidUntrimmedFp(untrimmed[..BlsParams.LenFp]) || !ValidUntrimmedFp(untrimmed[BlsParams.LenFp..]))
         {
             throw new BlsPrecompileException("Field point was invalid.");
         }
 
-        ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFpTrimmed];
+        ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFp];
         ReadOnlySpan<byte> fp1 = untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..];
         isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
 
@@ -45,7 +45,7 @@ public static class BlsExtensions
             return new();
         }
 
-        Span<byte> trimmed = new byte[BlsParams.LenG1Trimmed];
+        Span<byte> trimmed = stackalloc byte[BlsParams.LenG1Trimmed];
         fp0.CopyTo(trimmed);
         fp1.CopyTo(trimmed[BlsParams.LenFpTrimmed..]);
 
@@ -75,18 +75,21 @@ public static class BlsExtensions
     {
         if (untrimmed.Length != BlsParams.LenG2)
         {
-            throw new Exception();
+            throw new BlsPrecompileException("G2 point was wrong size.");
         }
 
-        ReadOnlySpan<byte> fp0 = untrimmed[..BlsParams.LenFp];
-        ReadOnlySpan<byte> fp1 = untrimmed[BlsParams.LenFp..(2 * BlsParams.LenFp)];
-        ReadOnlySpan<byte> fp2 = untrimmed[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)];
-        ReadOnlySpan<byte> fp3 = untrimmed[(3 * BlsParams.LenFp)..];
-
-        if (!ValidFp(fp0) || !ValidFp(fp1) || !ValidFp(fp2) || !ValidFp(fp3))
+        if (!ValidUntrimmedFp(untrimmed[..BlsParams.LenFp]) ||
+            !ValidUntrimmedFp(untrimmed[BlsParams.LenFp..(2 * BlsParams.LenFp)]) ||
+            !ValidUntrimmedFp(untrimmed[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)]) ||
+            !ValidUntrimmedFp(untrimmed[(3 * BlsParams.LenFp)..]))
         {
-            throw new Exception();
+            throw new BlsPrecompileException("Field point was invalid.");
         }
+
+        ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFp];
+        ReadOnlySpan<byte> fp1 = untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)];
+        ReadOnlySpan<byte> fp2 = untrimmed[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)];
+        ReadOnlySpan<byte> fp3 = untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..];
 
         isInfinity = !fp0.ContainsAnyExcept((byte)0)
             && !fp1.ContainsAnyExcept((byte)0)
@@ -98,7 +101,7 @@ public static class BlsExtensions
             return new();
         }
 
-        Span<byte> trimmed = new byte[BlsParams.LenG2Trimmed];
+        Span<byte> trimmed = stackalloc byte[BlsParams.LenG2Trimmed];
         fp0.CopyTo(trimmed[BlsParams.LenFpTrimmed..]);
         fp1.CopyTo(trimmed);
         fp2.CopyTo(trimmed[(BlsParams.LenFpTrimmed * 3)..]);
@@ -107,7 +110,7 @@ public static class BlsExtensions
         G2 x = new(trimmed);
         if (!x.OnCurve())
         {
-            throw new Exception();
+            throw new BlsPrecompileException("G2 point not on curve.");
         }
         return x;
     }
@@ -128,7 +131,7 @@ public static class BlsExtensions
         return untrimmed;
     }
 
-    public static bool ValidFp(ReadOnlySpan<byte> fp)
+    public static bool ValidUntrimmedFp(ReadOnlySpan<byte> fp)
     {
         if (fp.Length != BlsParams.LenFp)
         {

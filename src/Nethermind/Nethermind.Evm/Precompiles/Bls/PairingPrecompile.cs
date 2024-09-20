@@ -34,8 +34,6 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
         try
         {
             GT acc = GT.One();
@@ -66,13 +64,11 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
                 res[31] = 1;
             }
 
-            result = (res, true);
+            return (res, true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
             return IPrecompile.Failure;
         }
-
-        return result;
     }
 }

@@ -33,23 +33,19 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
             return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
         try
         {
             G1 res = new();
-            if (!BlsExtensions.ValidFp(inputData.Span))
+            if (!BlsExtensions.ValidUntrimmedFp(inputData.Span))
             {
-                throw new Exception();
+                return IPrecompile.Failure;
             }
             res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray());
-            result = (res.Encode(), true);
+            return (res.Encode(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
             return IPrecompile.Failure;
         }
-
-        return result;
     }
 }

@@ -34,8 +34,6 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
             return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
         try
         {
             G1 x = BlsExtensions.DecodeG1(inputData[..BlsParams.LenG1].Span, out bool xInfinity);
@@ -47,7 +45,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
             if (!x.InGroup())
             {
-                throw new Exception();
+                return IPrecompile.Failure;
             }
 
             byte[] scalar = inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray();
@@ -58,13 +56,11 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
             }
 
             G1 res = x.Mult(scalar);
-            result = (res.Encode(), true);
+            return (res.Encode(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
             return IPrecompile.Failure;
         }
-
-        return result;
     }
 }

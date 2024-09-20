@@ -19,7 +19,7 @@ public class BlsMultiMulG1PrecompileTests
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            IPrecompile precompile = G1MultiExpPrecompile.Instance;
+            IPrecompile precompile = G1MultiMulPrecompile.Instance;
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
