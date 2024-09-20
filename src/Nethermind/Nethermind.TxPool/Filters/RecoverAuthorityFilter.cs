@@ -7,7 +7,7 @@ using Nethermind.Crypto;
 namespace Nethermind.TxPool.Filters
 {
     /// <summary>
-    /// Will recover authority from transactions with authority_list and filter any with bad signatures.
+    /// Will recover authority from transactions with authority_list
     /// /// </summary>
     internal sealed class RecoverAuthorityFilter(IEthereumEcdsa ecdsa) : IIncomingTxFilter
     {

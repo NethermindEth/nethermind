@@ -90,11 +90,4 @@ public class CodeInfoRepositoryBenchmark
     {
         sut.InsertFromAuthorizations(_stateProvider, Tuples1k, _accessedAddresses, _spec);
     }
-
-    //[Benchmark]
-    //public void Build10kTuples()
-    //{
-    //    sut.InsertFromAuthorizations(_stateProvider, Tuples10k, _spec);
-    //}
-
 }
