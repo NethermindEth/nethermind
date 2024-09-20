@@ -42,7 +42,7 @@ public class AuthorizationTupleDecoderTests
     }
 
     [Test]
-    public void DecodeValueDecoderContext_CodeAddressIsNull_ThrowsArgumentNullException()
+    public void DecodeValueDecoderContext_CodeAddressIsNull_ThrowsRlpException()
     {
         RlpStream stream = TupleRlpStreamWithNull();
 
@@ -52,7 +52,7 @@ public class AuthorizationTupleDecoderTests
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data);
             sut.Decode(ref decoderContext, RlpBehaviors.None);
         }
-        , Throws.TypeOf<ArgumentNullException>());
+        , Throws.TypeOf<RlpException>());
     }
 
     private static RlpStream TupleRlpStreamWithNull()

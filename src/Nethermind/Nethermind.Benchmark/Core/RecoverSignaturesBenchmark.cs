@@ -152,11 +152,12 @@ namespace Nethermind.Benchmarks.Core
 
             void ResetSigs(Block block)
             {
-                Parallel.ForEach(block.Transactions, (t)=>
+                Parallel.ForEach(block.Transactions, (t) =>
                 {
                     t.SenderAddress = null;
                     t.Hash = null;
-                    Parallel.ForEach(t.AuthorizationList, (tuple) => {
+                    Parallel.ForEach(t.AuthorizationList, (tuple) =>
+                    {
                         tuple.Authority = null;
                     });
                 });
@@ -299,5 +300,5 @@ namespace Nethermind.Benchmarks.Core
                 return false;
             }
         }
-    }    
+    }
 }
