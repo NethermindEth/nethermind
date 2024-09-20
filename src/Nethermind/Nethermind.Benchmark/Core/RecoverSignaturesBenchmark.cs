@@ -13,8 +13,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.TxPool;
 using Nethermind.Int256;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.State;
-using static Microsoft.FSharp.Core.ByRefKinds;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -28,6 +26,8 @@ namespace Nethermind.Benchmarks.Core
         private static EthereumEcdsa _ethereumEcdsa;
         private static RecoverSignatures _sut;
 
+        private Block _block100TxWith100AuthSigs;
+        private Block _block100TxWith10AuthSigs;
         private Block _block100TxWith1AuthSigs;
         private Block _block3TxWith1AuthSigs;
         private Block _block10TxWith0AuthSigs;
@@ -42,6 +42,25 @@ namespace Nethermind.Benchmarks.Core
         {
             _ethereumEcdsa = new(_specProvider.ChainId);
             _sut = new(_ethereumEcdsa, new AlwaysReturnNullTxPool(), _specProvider, NullLogManager.Instance);
+
+            var rnd = new Random();
+
+            _block100TxWith100AuthSigs = Build.A.Block
+                .WithHeader(new BlockHeader()
+                {
+                    Timestamp = ulong.MaxValue,
+                    Number = long.MaxValue
+                })
+                .WithTransactions(CreateTransactions(100, 100))
+                .TestObject;
+            _block100TxWith10AuthSigs = Build.A.Block
+                .WithHeader(new BlockHeader()
+                {
+                    Timestamp = ulong.MaxValue,
+                    Number = long.MaxValue
+                })
+                .WithTransactions(CreateTransactions(100, 10))
+                .TestObject;
 
             _block100TxWith1AuthSigs = Build.A.Block
                 .WithHeader(new BlockHeader()
@@ -79,7 +98,7 @@ namespace Nethermind.Benchmarks.Core
                 .WithTransactions(CreateTransactions(10, 0))
                 .TestObject;
 
-            static Transaction[] CreateTransactions(int txCount, int authPerTx)
+            Transaction[] CreateTransactions(int txCount, int authPerTx)
             {
                 var list = new List<Transaction>();
                 for (int i = 0; i < txCount; i++)
@@ -94,9 +113,9 @@ namespace Nethermind.Benchmarks.Core
                             PrivateKey authority = _privateKeys[i + y + _privateKeys.Length / 2];
                             return CreateAuthorizationTuple(
                             authority,
-                            1,
+                            (ulong)rnd.NextInt64(),
                             Address.Zero,
-                            1);
+                            (ulong)rnd.NextInt64());
                         }).ToArray()
                         )
                         .SignedAndResolved(signer)
@@ -124,6 +143,8 @@ namespace Nethermind.Benchmarks.Core
         [IterationCleanup]
         public void IterationCleanup()
         {
+            ResetSigs(_block100TxWith100AuthSigs);
+            ResetSigs(_block100TxWith10AuthSigs);
             ResetSigs(_block100TxWith1AuthSigs);
             ResetSigs(_block10TxWith10AuthSigs);
             ResetSigs(_block10TxWith0AuthSigs);
@@ -134,16 +155,28 @@ namespace Nethermind.Benchmarks.Core
                 Parallel.ForEach(block.Transactions, (t)=>
                 {
                     t.SenderAddress = null;
-                    foreach (var tuple in t.AuthorizationList)
-                    {
+                    t.Hash = null;
+                    Parallel.ForEach(t.AuthorizationList, (tuple) => {
                         tuple.Authority = null;
-                    }
+                    });
                 });
             }
         }
 
         [Benchmark]
-        public void Recover100TxSignaturesAndAuthoritySignatures()
+        public void Recover100TxSignatureswith100AuthoritySignatures()
+        {
+            _sut.RecoverData(_block100TxWith100AuthSigs);
+        }
+
+        [Benchmark]
+        public void Recover100TxSignatureswith10AuthoritySignatures()
+        {
+            _sut.RecoverData(_block100TxWith10AuthSigs);
+        }
+
+        [Benchmark]
+        public void Recover100TxSignaturesWith1AuthoritySignatures()
         {
             _sut.RecoverData(_block100TxWith1AuthSigs);
         }

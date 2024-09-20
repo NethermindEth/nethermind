@@ -11,7 +11,6 @@ using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using System.Linq;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
-using Nethermind.Benchmarks.Core;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -52,24 +51,22 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Nethermind.EthereumTests.Benchmark.EthereumTests).Assembly,
             };
 
-            BenchmarkRunner.Run<RecoverSignaturesBenchmark>(new DebugInProcessConfig());
+            if (Debugger.IsAttached)
+            {
+                BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
+            }
+            else
+            {
+                foreach (Assembly assembly in additionalJobAssemblies)
+                {
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core80)), args);
+                }
 
-            //if (Debugger.IsAttached)
-            //{
-            //    BenchmarkSwitcher.FromAssemblies(additionalJobAssemblies.Union(simpleJobAssemblies).ToArray()).RunAll(new DebugInProcessConfig());
-            //}
-            //else
-            //{
-            //    foreach (Assembly assembly in additionalJobAssemblies)
-            //    {
-            //        BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core80)), args);
-            //    }
-
-            //    foreach (Assembly assembly in simpleJobAssemblies)
-            //    {
-            //        BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
-            //    }
-            //}
+                foreach (Assembly assembly in simpleJobAssemblies)
+                {
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(), args);
+                }
+            }
         }
     }
 }
