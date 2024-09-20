@@ -79,6 +79,18 @@ namespace Nethermind.Consensus.Processing
                 {
                     tx.SenderAddress = sender;
 
+                    if (tx.HasAuthorizationList)
+                    {
+                        Parallel.For(0, tx.AuthorizationList.Length, (i) =>
+                        {
+                            AuthorizationTuple tuple = tx.AuthorizationList[i];
+                            if (tuple.Authority is null)
+                            {
+                                tuple.Authority = poolTx.AuthorizationList[i].Authority;
+                            }
+                        });
+                    }
+
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
                 }
                 else
