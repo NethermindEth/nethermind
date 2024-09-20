@@ -148,9 +148,11 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
     private void CancelWaitForBlock(ulong slot)
     {
-        _blockWaitTasks.Remove(slot, out BlockWaitTask cancelledWaitTask);
-        cancelledWaitTask.Tcs.TrySetResult(null);
-        cancelledWaitTask.Dispose();
+        if (_blockWaitTasks.Remove(slot, out BlockWaitTask cancelledWaitTask))
+        {
+            cancelledWaitTask.Tcs.TrySetResult(null);
+            cancelledWaitTask.Dispose();
+        }
     }
 
     private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)

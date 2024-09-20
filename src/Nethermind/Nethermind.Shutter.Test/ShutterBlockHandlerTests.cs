@@ -14,28 +14,19 @@ namespace Nethermind.Shutter.Test;
 class ShutterBlockHandlerTests
 {
     [Test]
-    public async Task Can_wait_for_valid_block()
+    public void Can_wait_for_valid_block()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
-
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
         IShutterBlockHandler blockHandler = api.BlockHandler;
 
-        bool waitReturned = false;
-        using CancellationTokenSource source = new();
-        _ = blockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
-            .ContinueWith((_) => waitReturned = true)
-            .WaitAsync(source.Token);
+        CancellationTokenSource source = new();
+        Task<Block?> waitTask = blockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token);
+        Block result = Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject;
+        api.TriggerNewHeadBlock(new(result));
 
-        await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2));
-
-        Assert.That(waitReturned, Is.False);
-
-        api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(ShutterTestsCommon.InitialSlotTimestamp).TestObject));
-
-        await Task.Delay(100);
-        Assert.That(waitReturned);
+        Assert.That(result, Is.EqualTo(waitTask.Result));
     }
 
     [Test]
@@ -45,37 +36,30 @@ class ShutterBlockHandlerTests
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
-        bool waitReturned = false;
         using CancellationTokenSource source = new();
-        _ = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
-            .ContinueWith((_) => waitReturned = true)
-            .WaitAsync(source.Token);
+        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token);
 
         await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2));
 
-        Assert.That(waitReturned, Is.False);
+        Assert.That(waitTask.IsCompleted, Is.False);
 
         await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2) + 100);
 
-        Assert.That(waitReturned);
+        Assert.That(waitTask.IsCompletedSuccessfully);
     }
 
     [Test]
-    public async Task Does_not_wait_after_cutoff()
+    public void Does_not_wait_after_cutoff()
     {
         const ulong blockWaitCutoff = 1333;
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 2 * blockWaitCutoff);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
-        bool waitReturned = false;
         using CancellationTokenSource source = new();
-        _ = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token)
-            .ContinueWith((_) => waitReturned = true)
-            .WaitAsync(source.Token);
+        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token);
 
-        await Task.Delay(100);
-        Assert.That(waitReturned);
+        Assert.That(waitTask.IsCompletedSuccessfully);
     }
 
     [Test]
