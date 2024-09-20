@@ -89,18 +89,23 @@ public abstract class RpcNethermindTransaction
 
         public override RpcNethermindTransaction? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            using var jsonDocument = JsonDocument.ParseValue(ref reader);
+            using var document = JsonDocument.ParseValue(ref reader);
+
+            // TODO: For some reason we might get an object wrapped in a String
+            using JsonDocument jsonObject = document.RootElement.ValueKind == JsonValueKind.String
+                ? JsonDocument.Parse(document.RootElement.GetString()!)
+                : document;
 
             // NOTE: Should we default to a specific TxType?
             TxType discriminator = default;
-            if (jsonDocument.RootElement.TryGetProperty("type", out JsonElement typeProperty))
+            if (jsonObject.RootElement.TryGetProperty("type", out JsonElement typeProperty))
             {
                 discriminator = (TxType?)typeProperty.Deserialize(typeof(TxType), options) ?? default;
             }
 
             Type concreteTxType = _transactionTypes[(byte)discriminator];
 
-            return (RpcNethermindTransaction?)jsonDocument.Deserialize(concreteTxType, options);
+            return (RpcNethermindTransaction?)jsonObject.Deserialize(concreteTxType, options);
         }
 
         public override void Write(Utf8JsonWriter writer, RpcNethermindTransaction value, JsonSerializerOptions options)
