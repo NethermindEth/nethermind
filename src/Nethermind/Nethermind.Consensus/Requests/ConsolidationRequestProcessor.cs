@@ -3,10 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -50,15 +48,19 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
         if (result == null || result.Length == 0)
             yield break;
 
+        Memory<byte> memory = result.AsMemory();
         int sizeOfClass = 20 + 48 + 48;
-        int count = result.Length / sizeOfClass;
+        int count = memory.Length / sizeOfClass;
+
         for (int i = 0; i < count; ++i)
         {
-            ConsolidationRequest request = new();
-            Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
-            request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
-            request.SourcePubkey = span.Slice(20, 48).ToArray();
-            request.TargetPubkey = span.Slice(68, 48).ToArray();
+            int offset = i * sizeOfClass;
+            ConsolidationRequest request = new()
+            {
+                SourceAddress = new Address(memory.Slice(offset, 20).AsArray()),
+                SourcePubkey = memory.Slice(offset + 20, 48),
+                TargetPubkey = memory.Slice(offset + 68, 48)
+            };
 
             yield return request;
         }

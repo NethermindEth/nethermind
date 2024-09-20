@@ -17,14 +17,14 @@ public class ConsolidationRequest : ConsensusRequest
     public Address? SourceAddress { get; set; }
     public Memory<byte>? SourcePubkey { get; set; }
 
-    public byte[]? TargetPubkey { get; set; }
+    public Memory<byte>? TargetPubkey { get; set; }
 
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => @$"{indentation}{nameof(ConsolidationRequest)}
             {{ {nameof(SourceAddress)}: {SourceAddress},
             {nameof(SourcePubkey)}: {SourcePubkey?.Span.ToHexString()},
-            {nameof(TargetPubkey)}: {TargetPubkey?.ToHexString()},
+            {nameof(TargetPubkey)}: {TargetPubkey?.Span.ToHexString()},
             }}";
 
 

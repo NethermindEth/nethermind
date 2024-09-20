@@ -33,15 +33,16 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
         byte[]? result = ExecuteTransaction(block, spec);
         if (result?.Length > 0)
         {
+            Memory<byte> memory = result.AsMemory();
             int count = result.Length / SizeOfClass;
             for (int i = 0; i < count; ++i)
             {
-                Memory<byte> memory = result.AsMemory(i * SizeOfClass, SizeOfClass);
+                int offset = i * SizeOfClass;
                 WithdrawalRequest request = new()
                 {
-                    SourceAddress = new Address(memory.Slice(0, 20).AsArray()),
-                    ValidatorPubkey = memory.Slice(20, 48),
-                    Amount = BinaryPrimitives.ReadUInt64BigEndian(memory.Slice(68, 8).Span)
+                    SourceAddress = new Address(memory.Slice(offset, 20).AsArray()),
+                    ValidatorPubkey = memory.Slice(offset + 20, 48),
+                    Amount = BinaryPrimitives.ReadUInt64BigEndian(memory.Slice(offset + 68, 8).Span)
                 };
                 yield return request;
             }
