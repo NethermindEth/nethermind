@@ -2,14 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Org.BouncyCastle.Crypto.Engines;
 using G1 = Nethermind.Crypto.Bls.P1;
-using Scalar = Nethermind.Crypto.Bls.Scalar;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -45,78 +41,19 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
 
         try
         {
-            // List<G1> points = [];
-            // List<Scalar> scalars = [];
-            // for (int i = 0; i < inputData.Length / ItemSize; i++)
-            // {
-            //     int offset = i * ItemSize;
-            //     G1? p = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)]);
-
-            //     if (!p.HasValue)
-            //     {
-            //         continue;
-            //     }
-
-            //     byte[] scalar = inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray();
-            //     if (scalar.All(x => x == 0))
-            //     {
-            //         continue;
-            //     }
-
-            //     if (!p.Value.InGroup())
-            //     {
-            //         return (Array.Empty<byte>(), false);
-            //     }
-
-            //     points.Add(p.Value);
-            //     scalars.Add(new(scalar));
-            // }
-
-            // if (points.Count == 0)
-            // {
-            //     return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
-            // }
-
-            // G1 res = new();
-            // res.MultiMult(points.ToArray(), scalars.ToArray());
-            // result = (res.Encode(), true);
-
             int nItems = inputData.Length / ItemSize;
 
-            Span<long> rawPoints = stackalloc long[nItems * 18];
-            Span<byte> rawScalars = stackalloc byte[nItems * 32];
+            bool onStack = nItems <= 7;
+            Span<long> rawPoints = onStack ? stackalloc long[nItems * 18] : new long[nItems * 18];
+            Span<byte> rawScalars = onStack ? stackalloc byte[nItems * 32] : new byte[nItems * 32];
 
             int npoints = 0;
             for (int i = 0; i < nItems; i++)
             {
                 int offset = i * ItemSize;
 
-                // G1 p = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)].Span, out bool isInfinity);
-
-                // if (isInfinity)
-                // {
-                //     continue;
-                // }
-
-                // byte[] scalar = inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray();
-                // if (scalar.All(x => x == 0))
-                // {
-                //     continue;
-                // }
-
-                // if (!p.InGroup())
-                // {
-                //     return (Array.Empty<byte>(), false);
-                // }
-
                 ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG1)].Span;
                 ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG1)..(offset + ItemSize)].Span;
-
-                // filter out zero elements
-                // if (!rawPoint.ContainsAnyExcept((byte)0))
-                // {
-                //     continue;
-                // }
 
                 G1 p = BlsExtensions.DecodeG1(rawPoint, out bool isInfinity);
 

@@ -40,7 +40,7 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
             {
                 return IPrecompile.Failure;
             }
-            res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].ToArray());
+            res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].Span);
             return (res.Encode(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)

@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 using G2 = Nethermind.Crypto.Bls.P2;
-using Scalar = Nethermind.Crypto.Bls.Scalar;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -44,43 +42,11 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
 
         try
         {
-            // List<G2> points = [];
-            // List<Scalar> scalars = [];
-            // for (int i = 0; i < inputData.Length / ItemSize; i++)
-            // {
-            //     int offset = i * ItemSize;
-            //     G2? p = BlsExtensions.DecodeG2(inputData[offset..(offset + BlsParams.LenG2)].Span, out bool xInfinity);
-            //     if (!p.HasValue)
-            //     {
-            //         continue;
-            //     }
-
-            //     byte[] scalar = inputData[(offset + BlsParams.LenG2)..(offset + BlsParams.LenG2 + 32)].ToArray();
-            //     if (scalar.All(x => x == 0))
-            //     {
-            //         continue;
-            //     }
-
-            //     if (!p.Value.InGroup())
-            //     {
-            //         return (Array.Empty<byte>(), false);
-            //     }
-
-            //     points.Add(p.Value);
-            //     scalars.Add(new(scalar));
-            // }
-
-            // if (points.Count == 0)
-            // {
-            //     return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-            // }
-
-            // G2 res = new();
-            // res.MultiMult(points.ToArray(), scalars.ToArray());
             int nItems = inputData.Length / ItemSize;
 
-            Span<long> rawPoints = stackalloc long[nItems * 36];
-            Span<byte> rawScalars = stackalloc byte[nItems * 32];
+            bool onStack = nItems <= 4;
+            Span<long> rawPoints = onStack ? stackalloc long[nItems * 36] : new long[nItems * 36];
+            Span<byte> rawScalars = onStack ? stackalloc byte[nItems * 32] : new byte[nItems * 32];
 
             int npoints = 0;
             for (int i = 0; i < nItems; i++)
@@ -115,6 +81,11 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
                 }
 
                 npoints++;
+            }
+
+            if (npoints == 0)
+            {
+                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
             G2 res = G2.Generator().MultiMult(rawPoints, rawScalars, npoints);
