@@ -57,7 +57,7 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
             int offset = i * sizeOfClass;
             ConsolidationRequest request = new()
             {
-                SourceAddress = new Address(memory.Slice(offset, 20).AsArray()),
+                SourceAddress = new Address(memory.Slice(offset, 20).ToArray()),
                 SourcePubkey = memory.Slice(offset + 20, 48),
                 TargetPubkey = memory.Slice(offset + 68, 48)
             };

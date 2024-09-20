@@ -40,7 +40,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
                 int offset = i * SizeOfClass;
                 WithdrawalRequest request = new()
                 {
-                    SourceAddress = new Address(memory.Slice(offset, 20).AsArray()),
+                    SourceAddress = new Address(memory.Slice(offset, 20).ToArray()),
                     ValidatorPubkey = memory.Slice(offset + 20, 48),
                     Amount = BinaryPrimitives.ReadUInt64BigEndian(memory.Slice(offset + 68, 8).Span)
                 };
