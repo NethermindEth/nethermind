@@ -147,13 +147,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Taiko Devnet": {
-      "commandName": "Project",
-      "commandLineArgs": "-c taiko-devnet -dd .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Taiko Hekla": {
       "commandName": "Project",
       "commandLineArgs": "-c taiko-hekla -dd .data",
