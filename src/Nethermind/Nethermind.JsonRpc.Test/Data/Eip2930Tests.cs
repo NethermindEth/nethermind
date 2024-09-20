@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text.Json;
 using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Core;
@@ -46,9 +45,9 @@ public class Eip2930Tests
         RpcNethermindTransaction transactionForRpc = RpcNethermindTransaction.FromTransaction(transaction);
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement.GetProperty("accessList");
-        var expected = JsonDocument.Parse(txJson).RootElement.GetProperty("accessList");
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+        var actual = JObject.Parse(serialized).Property("accessList");
+        var expected = JObject.Parse(txJson).Property("accessList");
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [TestCase(TxType.AccessList, """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","chainId":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x1","0x2","0x3","0x5","0x8"]},{"address":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","storageKeys":["0x2a"]}]}""")]
@@ -131,9 +130,9 @@ public class Eip2930Tests
         var transactionForRpc = RpcNethermindTransaction.FromTransaction(transaction);
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement.GetProperty("accessList");
-        var expected = JsonDocument.Parse(txJson).RootElement.GetProperty("accessList");
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+        var actual = JObject.Parse(serialized).Property("accessList");
+        var expected = JObject.Parse(txJson).Property("accessList");
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -165,9 +164,9 @@ public class Eip2930Tests
         var transactionForRpc = RpcNethermindTransaction.FromTransaction(transaction);
         string serialized = _serializer.Serialize(transactionForRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement.GetProperty("accessList");
-        var expected = JsonDocument.Parse(txJson).RootElement.GetProperty("accessList");
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+        var actual = JObject.Parse(serialized).Property("accessList");
+        var expected = JObject.Parse(txJson).Property("accessList");
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
