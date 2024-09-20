@@ -25,13 +25,20 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         byte[] s = stream.DecodeByteArray();
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
             stream.Check(check);
-        return new AuthorizationTuple(
-            chainId,
-            codeAddress!,
-            nonce,
-            yParity,
-            r,
-            s);
+        try
+        {
+            return new AuthorizationTuple(
+                chainId,
+                codeAddress!,
+                nonce,
+                yParity,
+                r,
+                s);
+        }
+        catch (ArgumentNullException e)
+        {
+            throw InvalidValueRlpException(e);
+        }
     }
 
     public AuthorizationTuple Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -49,13 +56,20 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         byte[] s = decoderContext.DecodeByteArray();
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
             decoderContext.Check(check);
-        return new AuthorizationTuple(
+        try
+        {
+            return new AuthorizationTuple(
             chainId,
             codeAddress!,
             nonce,
             yParity,
             r,
             s);
+        }
+        catch (ArgumentNullException e)
+        {
+            throw InvalidValueRlpException(e);
+        }
     }
 
     public RlpStream Encode(AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -108,8 +122,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         + Rlp.LengthOf(codeAddress)
         + Rlp.LengthOf(nonce);
 
-    [DoesNotReturn]
     [StackTraceHidden]
-    private static UInt256 ThrowInvalidNonceRlpException() =>
-        throw new RlpException("Invalid nonce length in authorization tuple.");
+    private static RlpException InvalidValueRlpException(ArgumentNullException e) =>
+        new RlpException($"Invalid value for '{e.ParamName}' in '{nameof(AuthorizationTuple)}'", e);
 }

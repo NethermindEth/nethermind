@@ -1269,6 +1269,38 @@ public partial class EthRpcModuleTests
         Assert.That(actual.Result, Is.Not.Null);
     }
 
+    [Test]
+    public async Task eth_sendRawTransaction_returns_correct_error_if_AuthorityTuple_has_null_value()
+    {
+        var specProvider = new TestSpecProvider(Prague.Instance);
+        specProvider.AllowTestChainOverride = false;
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        Transaction invalidSetCodeTx = Build.A.Transaction
+          .WithType(TxType.SetCode)
+          .WithNonce(test.State.GetNonce(TestItem.AddressB))
+          .WithMaxFeePerGas(9.GWei())
+          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount)
+          .WithAuthorizationCode(new AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
+          .WithTo(TestItem.AddressA)
+          .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        string result = await test.TestEthRpc("eth_sendRawTransaction", Bytes.ToHexString(Rlp.Encode(invalidSetCodeTx).Bytes));
+
+        JsonRpcErrorResponse actual = new EthereumJsonSerializer().Deserialize<JsonRpcErrorResponse>(result);
+        Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+    }
+    public class AllowNullAuthorizationTuple : AuthorizationTuple
+    {
+        public AllowNullAuthorizationTuple(ulong chainId, Address? codeAddress, ulong nonce, Signature? sig)
+            : base(chainId, Address.Zero, nonce, new Signature(new byte[65]))
+        {
+            CodeAddress = codeAddress!;
+            AuthoritySignature = sig!;
+        }
+    }
+
     private static (byte[] ByteCode, AccessListItemForRpc[] AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
     {
         AccessListItemForRpc[] accessList = allowSystemUser

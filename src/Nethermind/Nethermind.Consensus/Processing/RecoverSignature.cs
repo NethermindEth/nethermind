@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -82,6 +79,18 @@ namespace Nethermind.Consensus.Processing
                 {
                     tx.SenderAddress = sender;
 
+                    if (tx.HasAuthorizationList)
+                    {
+                        Parallel.For(0, tx.AuthorizationList.Length, (i) =>
+                        {
+                            AuthorizationTuple tuple = tx.AuthorizationList[i];
+                            if (tuple.Authority is null)
+                            {
+                                tuple.Authority = poolTx.AuthorizationList[i].Authority;
+                            }
+                        });
+                    }
+
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
                 }
                 else
@@ -104,7 +113,7 @@ namespace Nethermind.Consensus.Processing
                     if (!ShouldRecoverSender(tx)) return;
 
                     tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
-
+                    RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 });
             }
@@ -115,33 +124,31 @@ namespace Nethermind.Consensus.Processing
                     if (!ShouldRecoverSender(tx)) continue;
 
                     tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
-
+                    RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
             }
 
-            if (releaseSpec.IsAuthorizationListEnabled)
+            void RecoverAuthorities(Transaction tx)
             {
-                foreach (Transaction tx in block.Transactions.AsSpan())
+                if (!releaseSpec.IsAuthorizationListEnabled
+                    || !tx.HasAuthorizationList)
                 {
-                    if (!tx.HasAuthorizationList)
-                    {
-                        continue;
-                    }
+                    return;
+                }
 
-                    if (tx.AuthorizationList.Length >= 4)
+                if (tx.AuthorizationList.Length > 3)
+                {
+                    Parallel.ForEach(tx.AuthorizationList, (tuple) =>
                     {
-                        Parallel.ForEach(tx.AuthorizationList, (tuple) =>
-                        {
-                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
-                        });
-                    }
-                    else
+                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                    });
+                }
+                else
+                {
+                    foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                     {
-                        foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
-                        {
-                            tuple.Authority = _ecdsa.RecoverAddress(tuple);
-                        }
+                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
                     }
                 }
             }

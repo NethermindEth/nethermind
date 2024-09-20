@@ -167,6 +167,42 @@ public partial class EngineModuleTests
         }));
     }
 
+
+    [Test]
+    public async Task NewPayloadV4_reject_payload_with_bad_authorization_list_rlp()
+    {
+        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+
+        Transaction invalidSetCodeTx = Build.A.Transaction
+          .WithType(TxType.SetCode)
+          .WithNonce(0)
+          .WithMaxFeePerGas(9.GWei())
+          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithGasLimit(100_000)
+          .WithAuthorizationCode(new JsonRpc.Test.Modules.Eth.EthRpcModuleTests.AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
+          .WithTo(TestItem.AddressA)
+          .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+        Block invalidBlock = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithTimestamp(chain.BlockTree.Head!.Timestamp + 12)
+            .WithTransactions([invalidSetCodeTx])
+            .WithParentBeaconBlockRoot(chain.BlockTree.Head!.ParentBeaconBlockRoot)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .TestObject;
+
+        ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(invalidBlock);
+
+        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot);
+
+        Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
+    }
+
     [TestCase(30)]
     public async Task can_progress_chain_one_by_one_v4(int count)
     {

@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
-            CodeInfoRepository codeInfoRepository = new(0);
+            CodeInfoRepository codeInfoRepository = new(BlockchainIds.Mainnet);
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, LimboLogs.Instance);
 
             _environment = new ExecutionEnvironment
