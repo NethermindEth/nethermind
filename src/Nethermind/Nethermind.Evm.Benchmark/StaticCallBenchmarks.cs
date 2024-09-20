@@ -87,7 +87,7 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
 
             Console.WriteLine(MuirGlacier.Instance);
-            CodeInfoRepository codeInfoRepository = new(0);
+            CodeInfoRepository codeInfoRepository = new(BlockchainIds.Mainnet);
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
 
             _environment = new ExecutionEnvironment
