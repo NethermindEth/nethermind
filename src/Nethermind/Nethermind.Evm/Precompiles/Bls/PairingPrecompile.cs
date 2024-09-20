@@ -45,7 +45,7 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
                 if ((!xInfinity && !x.InGroup()) || (!yInfinity && !y.InGroup()))
                 {
-                    throw new Exception();
+                    return IPrecompile.Failure;
                 }
 
                 // x == inf || y == inf -> e(x, y) = 1
