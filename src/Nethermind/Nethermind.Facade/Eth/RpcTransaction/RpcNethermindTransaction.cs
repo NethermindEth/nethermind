@@ -126,7 +126,7 @@ public abstract class RpcNethermindTransaction
         public RpcNethermindTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         {
             var converter = _converters[(byte)tx.Type] ?? throw new ArgumentException("No converter for transaction type");
-            return converter.FromTransaction(tx);
+            return converter.FromTransaction(tx, extraData);
         }
     }
 
