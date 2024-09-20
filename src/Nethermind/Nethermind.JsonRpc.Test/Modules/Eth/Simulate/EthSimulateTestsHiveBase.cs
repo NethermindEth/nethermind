@@ -5,9 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using ResultType = Nethermind.Core.ResultType;
@@ -70,7 +69,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
     public async Task TestsimulateHive(string name, string data)
     {
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+        SimulatePayload<RpcNethermindTransaction>? payload = serializer.Deserialize<SimulatePayload<RpcNethermindTransaction>>(data);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine($"current test: {name}");
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =

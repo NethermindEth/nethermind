@@ -11,12 +11,10 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using ILogger = Nethermind.Logging.InterfaceLogger;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
@@ -83,7 +81,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
             ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
-            TransactionForRpc.DefaultChainId = chainSpec.ChainId;
+            RpcAccessListTransaction.DefaultChainId = chainSpec.ChainId; // TODO: Figure a proper fix instead of this hack
             return chainSpec;
         }
 

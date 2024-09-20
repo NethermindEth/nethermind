@@ -18,7 +18,7 @@ using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -68,7 +68,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    public ResultWrapper<GethLikeTxTrace> debug_traceCall(RpcNethermindTransaction call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
         call.EnsureDefaults(_jsonRpcConfig.GasCap);

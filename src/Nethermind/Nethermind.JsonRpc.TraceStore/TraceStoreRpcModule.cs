@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -52,10 +52,10 @@ public class TraceStoreRpcModule : ITraceRpcModule
         _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
     }
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<ParityTxTraceFromReplay> trace_call(RpcNethermindTransaction call, string[] traceTypes, BlockParameter? blockParameter = null) =>
         _traceModule.trace_call(call, traceTypes, blockParameter);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(RpcNethermindTransactionWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>

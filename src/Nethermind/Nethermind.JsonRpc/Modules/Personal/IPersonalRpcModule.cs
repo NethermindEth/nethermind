@@ -3,8 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
@@ -27,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         ResultWrapper<Address> personal_newAccount([JsonRpcParameter(ExampleValue = "testPass")] string passphrase);
 
         [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase);
+        ResultWrapper<Hash256> personal_sendTransaction(RpcNethermindTransaction transaction, string passphrase);
 
         [JsonRpcMethod(Description = "ecRecover returns the address associated with the private key that was used to calculate the signature in personal_sign",
             IsImplemented = false,

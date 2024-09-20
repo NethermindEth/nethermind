@@ -1,17 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs.Forks;
@@ -23,11 +19,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         // Single call executor
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
+            : ExecutorBase<TResult, RpcNethermindTransaction, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
             private bool NoBaseFee { get; set; }
 
-            protected override Transaction Prepare(TransactionForRpc call) => call.ToTransaction(_blockchainBridge.GetChainId());
+            protected override Transaction Prepare(RpcNethermindTransaction call)
+            {
+                var tx = call.ToTransaction();
+                tx.ChainId = _blockchainBridge.GetChainId();
+                return tx;
+            }
 
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, CancellationToken token)
             {
@@ -43,12 +44,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(clonedHeader, tx, token);
             }
 
-            private static bool ShouldSetBaseFee(TransactionForRpc t) =>
-                // x?.IsZero == false <=> x > 0
-                t.GasPrice?.IsZero == false || t.MaxFeePerGas?.IsZero == false || t.MaxPriorityFeePerGas?.IsZero == false;
+            // TODO: Should we move this method to `RpcNethermindTransaction` directly?
+            private static bool ShouldSetBaseFee(RpcNethermindTransaction t)
+            {
+                var positiveGasPrice = false;
+                if (t is RpcLegacyTransaction legacy)
+                {
+                    positiveGasPrice = IsPositive(legacy.GasPrice);
+                }
+
+                var positiveMaxFeePerGas = false;
+                var positiveMaxPriorityFeePerGas = false;
+                if (t is RpcEIP1559Transaction eip1559)
+                {
+                    positiveMaxFeePerGas = IsPositive(eip1559.MaxFeePerGas);
+                    positiveMaxPriorityFeePerGas = IsPositive(eip1559.MaxPriorityFeePerGas);
+                }
+
+                return positiveGasPrice || positiveMaxFeePerGas || positiveMaxPriorityFeePerGas;
+
+                // value?.IsZero == false <=> x > 0
+                static bool IsPositive(UInt256? value) => value?.IsZero == false;
+            }
 
             public override ResultWrapper<TResult> Execute(
-                TransactionForRpc transactionCall,
+                RpcNethermindTransaction transactionCall,
                 BlockParameter? blockParameter)
             {
                 NoBaseFee = !ShouldSetBaseFee(transactionCall);
@@ -56,12 +76,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter) => Execute(transactionCall, blockParameter);
+            public ResultWrapper<TResult> ExecuteTx(RpcNethermindTransaction transactionCall, BlockParameter? blockParameter) => Execute(transactionCall, blockParameter);
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
-
-            protected ResultWrapper<TResult> GetInputError(CallOutput result) =>
-                ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
         }
 
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
@@ -87,38 +104,32 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, token);
 
-                if (result.Error is null)
+                return result switch
                 {
-                    return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
+                    { Error: null } => ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent),
+                    { InputError: true } => ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.InvalidInput),
+                    _ => ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError)
+                };
             }
         }
 
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize)
-            : TxExecutor<AccessListForRpc?>(blockchainBridge, blockFinder, rpcConfig)
+            : TxExecutor<RpcAccessListResult?>(blockchainBridge, blockFinder, rpcConfig)
         {
-            protected override ResultWrapper<AccessListForRpc?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<RpcAccessListResult?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
 
-                if (result.Error is null)
+                var rpcAccessListResult = new RpcAccessListResult(
+                    accessList: RpcAccessList.FromAccessList(result.AccessList ?? tx.AccessList),
+                    gasUsed: GetResultGas(tx, result));
+
+                return result switch
                 {
-                    return ResultWrapper<AccessListForRpc?>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
-                }
-
-                return result.InputError
-                    ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
-            }
-
-            private static IEnumerable<AccessListItemForRpc> GetResultAccessList(Transaction tx, CallOutput result)
-            {
-                AccessList? accessList = result.AccessList ?? tx.AccessList;
-                return accessList is null ? Enumerable.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(accessList);
+                    { Error: null } => ResultWrapper<RpcAccessListResult?>.Success(rpcAccessListResult),
+                    { InputError: true } => ResultWrapper<RpcAccessListResult?>.Fail(result.Error, ErrorCodes.InvalidInput),
+                    _ => ResultWrapper<RpcAccessListResult?>.Fail(result.Error, ErrorCodes.ExecutionError),
+                };
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)

@@ -12,11 +12,10 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -53,14 +52,14 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 nextNonceA = ++nonceA;
         Transaction tx = GetTransferTxData(nextNonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 4_000_000);
 
-        SimulatePayload<TransactionForRpc> payload = new()
+        SimulatePayload<RpcNethermindTransaction> payload = new()
         {
             BlockStateCalls =
             [
                 new()
                 {
                     BlockOverrides = new BlockOverride { Number = 10 },
-                    Calls = [new TransactionForRpc(txToFail), new TransactionForRpc(tx)],
+                    Calls = [RpcNethermindTransaction.FromTransaction(txToFail), RpcNethermindTransaction.FromTransaction(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
@@ -104,9 +103,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Transaction txAtoB3 = GetTransferTxData(nonceA + 3, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB4 = GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
-        SimulatePayload<TransactionForRpc> payload = new()
+        SimulatePayload<RpcNethermindTransaction> payload = new()
         {
-            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
+            BlockStateCalls = new List<BlockStateCall<RpcNethermindTransaction>>
             {
                 new()
                 {
@@ -118,7 +117,8 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB1), new TransactionForRpc(txAtoB2) }
+                    Calls = [RpcNethermindTransaction.FromTransaction(txAtoB1), RpcNethermindTransaction.FromTransaction(txAtoB2)
+                    ]
                 },
                 new()
                 {
@@ -130,7 +130,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB3), new TransactionForRpc(txAtoB4) }
+                    Calls = [RpcNethermindTransaction.FromTransaction(txAtoB3), RpcNethermindTransaction.FromTransaction(txAtoB4)]
                 }
             },
             TraceTransfers = true
@@ -181,11 +181,15 @@ public class EthSimulateTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
-        TransactionForRpc transactionForRpc = new(txAtoB2) { Nonce = null };
-        TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
-        SimulatePayload<TransactionForRpc> payload = new()
+
+        RpcLegacyTransaction transactionForRpc = (RpcLegacyTransaction)RpcNethermindTransaction.FromTransaction(txAtoB2);
+        transactionForRpc.Nonce = null;
+        RpcLegacyTransaction transactionForRpc2 = (RpcLegacyTransaction)RpcNethermindTransaction.FromTransaction(txAtoB1);
+        transactionForRpc2.Nonce = null;
+
+        SimulatePayload<RpcNethermindTransaction> payload = new()
         {
-            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
+            BlockStateCalls = new List<BlockStateCall<RpcNethermindTransaction>>
             {
                 new()
                 {
@@ -197,7 +201,7 @@ public class EthSimulateTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { transactionForRpc2 }
+                    Calls = [transactionForRpc2]
                 },
                 new()
                 {
@@ -271,7 +275,7 @@ public class EthSimulateTestsBlocksAndTransactions
                         ]
                        }
                        """;
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        var payload = serializer.Deserialize<SimulatePayload<RpcNethermindTransaction>>(input);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);

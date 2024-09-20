@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
@@ -278,10 +279,19 @@ public partial class EthRpcModule(
         return ResultWrapper<byte[]>.Success(sig.Bytes);
     }
 
-    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(RpcNethermindTransaction rpcTx)
     {
-        Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
-        TxHandlingOptions options = rpcTx.Nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+        Transaction tx = rpcTx.ToTransaction();
+        tx.ChainId = _blockchainBridge.GetChainId();
+
+        // TODO: We might want to lift `Nonce` to `RpcNethermindTransaction`
+        UInt256? nonce = null;
+        if (rpcTx is RpcLegacyTransaction legacyTx)
+        {
+            nonce = legacyTx.Nonce;
+        }
+
+        TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);
     }
 
@@ -322,19 +332,19 @@ public partial class EthRpcModule(
         }
     }
 
-    public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<string> eth_call(RpcNethermindTransaction transactionCall, BlockParameter? blockParameter = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<RpcNethermindTransaction> payload, BlockParameter? blockParameter = null) =>
         new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _secondsPerSlot)
             .Execute(payload, blockParameter);
 
-    public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter) =>
+    public ResultWrapper<UInt256?> eth_estimateGas(RpcNethermindTransaction transactionCall, BlockParameter? blockParameter) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<AccessListForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+    public ResultWrapper<RpcAccessListResult?> eth_createAccessList(RpcNethermindTransaction transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
             .ExecuteTx(transactionCall, blockParameter);
 
@@ -368,18 +378,18 @@ public partial class EthRpcModule(
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
 
-    public ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
+    public ResultWrapper<RpcNethermindTransaction?> eth_getTransactionByHash(Hash256 transactionHash)
     {
         (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
-            return ResultWrapper<TransactionForRpc?>.Success(null);
+            return ResultWrapper<RpcNethermindTransaction?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel = new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
+        RpcNethermindTransaction transactionModel = RpcNethermindTransaction.FromTransaction(transaction, receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, baseFee);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-        return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
+        return ResultWrapper<RpcNethermindTransaction?>.Success(transactionModel);
     }
 
     public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
@@ -396,69 +406,69 @@ public partial class EthRpcModule(
         return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
     }
 
-    public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+    public ResultWrapper<RpcNethermindTransaction[]> eth_pendingTransactions()
     {
         Transaction[] transactions = _txPool.GetPendingTransactions();
-        TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
+        RpcNethermindTransaction[] transactionsModels = new RpcNethermindTransaction[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
         {
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            transactionsModels[i] = new TransactionForRpc(transaction);
+            transactionsModels[i] = RpcNethermindTransaction.FromTransaction(transaction);
             transactionsModels[i].BlockHash = Keccak.Zero;
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
-        return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
+        return ResultWrapper<RpcNethermindTransaction[]>.Success(transactionsModels);
     }
 
-    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
+    public ResultWrapper<RpcNethermindTransaction> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
         UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+            return GetFailureResult<RpcNethermindTransaction, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block block = searchResult.Object;
         if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
         {
-            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+            return ResultWrapper<RpcNethermindTransaction>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
+        RpcNethermindTransaction transactionModel = RpcNethermindTransaction.FromTransaction(transaction,  block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas);
 
-        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+        return ResultWrapper<RpcNethermindTransaction>.Success(transactionModel);
     }
 
-    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
+    public ResultWrapper<RpcNethermindTransaction> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
         UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<TransactionForRpc, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
+            return GetFailureResult<RpcNethermindTransaction, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet());
         }
 
         Block? block = searchResult.Object;
         if (positionIndex < 0 || positionIndex > block!.Transactions.Length - 1)
         {
-            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+            return ResultWrapper<RpcNethermindTransaction>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
+        RpcNethermindTransaction transactionModel = RpcNethermindTransaction.FromTransaction(transaction,  block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas);
 
         if (_logger.IsDebug)
             _logger.Debug(
                 $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
-        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+        return ResultWrapper<RpcNethermindTransaction>.Success(transactionModel);
     }
 
     public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
