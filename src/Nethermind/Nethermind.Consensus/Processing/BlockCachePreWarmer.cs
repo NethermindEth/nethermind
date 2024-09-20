@@ -16,6 +16,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Core.Eip2930;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -115,34 +117,40 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
+        Transaction[] txs = block.Transactions;
+        // Group tx by sender address so nonces are correct (e.g. contract deployment)
+        List<IGrouping<Address, (Transaction, int)>> txGroups = [.. txs
+            .Select((tx, index) => (tx, index))
+            .GroupBy(indexedTx => indexedTx.tx.SenderAddress)
+            .OrderBy(g => g.Min(itx => itx.index))];
+
         int progress = 0;
-        Parallel.For(0, block.Transactions.Length, parallelOptions, _ =>
+        Parallel.For(0, txGroups.Count, parallelOptions, _ =>
         {
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
             IReadOnlyTxProcessorSource env = _envPool.Get();
             SystemTransaction systemTransaction = _systemTransactionPool.Get();
-            Transaction? tx = null;
             try
             {
                 // Process transactions in sequential order, rather than partitioning scheme from Parallel.For
                 // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
-                int i = Interlocked.Increment(ref progress) - 1;
+                int groupId = Interlocked.Increment(ref progress) - 1;
                 // If the transaction has already been processed or being processed, exit early
-                if (block.TransactionProcessed > i) return;
+                IGrouping<Address, (Transaction, int)> group = txGroups[groupId];
 
-                tx = block.Transactions[i];
-                tx.CopyTo(systemTransaction);
+                // Skip if main processing is ahead of last tx in group
+                if (block.TransactionProcessed > group.Last().Item2) return;
+
                 using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-                if (spec.UseTxAccessLists)
+                foreach ((Transaction tx, int i) in group)
                 {
-                    scope.WorldState.WarmUp(tx.AccessList); // eip-2930
+                    tx.CopyTo(systemTransaction);
+                    RunTransaction(spec, block, systemTransaction, scope, i);
                 }
-                TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
-                if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
             }
             catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
+                if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {systemTransaction?.Hash}", ex);
             }
             finally
             {
@@ -150,6 +158,17 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 _envPool.Return(env);
             }
         });
+    }
+
+    private void RunTransaction(IReleaseSpec spec, Block block, SystemTransaction tx, IReadOnlyTxProcessingScope scope, int i)
+    {
+        if (spec.UseTxAccessLists)
+        {
+            scope.WorldState.WarmUp(tx.AccessList); // eip-2930
+        }
+        TransactionResult result = scope.TransactionProcessor.Trace(tx, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+
+        if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, AccessList? systemTxAccessList, BlockCachePreWarmer preWarmer)
