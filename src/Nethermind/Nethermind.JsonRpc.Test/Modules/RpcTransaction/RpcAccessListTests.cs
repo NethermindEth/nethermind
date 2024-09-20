@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-using FluentAssertions;
+using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
@@ -28,12 +28,12 @@ public class RpcAccessListTests
         RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement;
-        var expected = JsonDocument.Parse(
+        var actual = JArray.Parse(serialized);
+        var expected = JArray.Parse(
             """
               [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]
-              """).RootElement;
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+              """);
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -54,12 +54,12 @@ public class RpcAccessListTests
         RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement;
-        var expected = JsonDocument.Parse(
+        var actual = JArray.Parse(serialized);
+        var expected = JArray.Parse(
             """
             [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003"]}]
-            """).RootElement;
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+            """);
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -81,12 +81,12 @@ public class RpcAccessListTests
         RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement;
-        var expected = JsonDocument.Parse(
+        var actual = JArray.Parse(serialized);
+        var expected = JArray.Parse(
             """
             [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000001"]}]
-            """).RootElement;
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+            """);
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -108,12 +108,12 @@ public class RpcAccessListTests
         RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement;
-        var expected = JsonDocument.Parse(
+        var actual = JArray.Parse(serialized);
+        var expected = JArray.Parse(
             """
             [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000003"]}]
-            """).RootElement;
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+            """);
+        actual.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -136,11 +136,11 @@ public class RpcAccessListTests
         RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JsonDocument.Parse(serialized).RootElement;
-        var expected = JsonDocument.Parse(
+        var actual = JArray.Parse(serialized);
+        var expected = JArray.Parse(
             """
             [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000003"]}]
-            """).RootElement;
-        actual.Should().BeEquivalentTo(expected, opt => opt.ComparingByMembers<JsonElement>());
+            """);
+        actual.Should().BeEquivalentTo(expected);
     }
 }
