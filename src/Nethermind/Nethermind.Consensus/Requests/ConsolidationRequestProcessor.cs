@@ -20,6 +20,7 @@ namespace Nethermind.Consensus.Requests;
 public class ConsolidationRequestsProcessor(ITransactionProcessor transactionProcessor)
 {
     private const long GasLimit = 30_000_000L;
+    private const int SizeOfClass = 20 + 48 + 48;
 
     public IEnumerable<ConsolidationRequest> ReadConsolidationRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
@@ -49,12 +50,11 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
             yield break;
 
         Memory<byte> memory = result.AsMemory();
-        int sizeOfClass = 20 + 48 + 48;
-        int count = memory.Length / sizeOfClass;
+        int count = memory.Length / SizeOfClass;
 
         for (int i = 0; i < count; ++i)
         {
-            int offset = i * sizeOfClass;
+            int offset = i * SizeOfClass;
             ConsolidationRequest request = new()
             {
                 SourceAddress = new Address(memory.Slice(offset, 20).ToArray()),
