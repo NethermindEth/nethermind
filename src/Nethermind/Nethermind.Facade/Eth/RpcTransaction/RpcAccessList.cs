@@ -14,7 +14,7 @@ using System;
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 [JsonConverter(typeof(JsonConverterImpl))]
-public record RpcAccessList
+public class RpcAccessList
 {
     private readonly List<Item> _items;
 
