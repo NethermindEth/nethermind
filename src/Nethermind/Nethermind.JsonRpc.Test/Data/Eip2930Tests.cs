@@ -142,6 +142,8 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","accessList":[]}""";
         RpcNethermindTransaction transactionForRpc = _serializer.Deserialize<RpcNethermindTransaction>(json);
 
+        transactionForRpc.Type.Should().Be(TxType.AccessList);
+
         var expected = AccessList.Empty;
         var actual = ((RpcAccessListTransaction)transactionForRpc).AccessList!.ToAccessList();
         actual.Should().BeEquivalentTo(expected);
@@ -174,6 +176,8 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]}""";
         RpcNethermindTransaction transactionForRpc = _serializer.Deserialize<RpcNethermindTransaction>(json);
 
+        transactionForRpc.Type.Should().Be(TxType.AccessList);
+
         AccessList expected = new AccessList.Builder().AddAddress(TestItem.AddressA).Build();
         AccessList actual = ((RpcAccessListTransaction)transactionForRpc).AccessList!.ToAccessList();
         expected.Should().BeEquivalentTo(actual);
@@ -185,6 +189,8 @@ public class Eip2930Tests
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x0","gas":"0x0","input":null,"type":"0x01","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         RpcNethermindTransaction transactionForRpc = _serializer.Deserialize<RpcNethermindTransaction>(json);
 
+        transactionForRpc.Type.Should().Be(TxType.AccessList);
+
         AccessList expected = new AccessList.Builder().AddAddress(TestItem.AddressA).Build();
         AccessList actual = ((RpcAccessListTransaction)transactionForRpc).AccessList!.ToAccessList();
         expected.Should().BeEquivalentTo(actual);
@@ -195,6 +201,8 @@ public class Eip2930Tests
     {
         string json = """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","maxFeePerGas":"0x10","gas":"0x0","input":null,"type":"0x02","accessList":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099"}]}""";
         RpcNethermindTransaction transactionForRpc = _serializer.Deserialize<RpcNethermindTransaction>(json);
+
+        transactionForRpc.Type.Should().Be(TxType.EIP1559);
 
         AccessList expected = new AccessList.Builder().AddAddress(TestItem.AddressA).Build();
         AccessList actual = ((RpcEIP1559Transaction)transactionForRpc).AccessList!.ToAccessList();
