@@ -36,7 +36,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
         try
         {
-            G2 res = new();
+            G2 res = G2.Generator();
             if (!BlsExtensions.ValidUntrimmedFp(inputData.Span[..BlsParams.LenFp]) || !BlsExtensions.ValidUntrimmedFp(inputData.Span[BlsParams.LenFp..]))
             {
                 return IPrecompile.Failure;
