@@ -350,15 +350,18 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private Task _ensureCanonicalTask = Task.CompletedTask;
+        public Task EnsureCanonicalTask { get; private set; } = Task.CompletedTask;
         public void EnsureCanonical(Block block)
         {
-            _ensureCanonicalTask = Task.Run(() => EnsureCanonicalInBackground(block));
+            // We want to capture the current (prior) task; not the closure
+            // of the active task or we will end up waiting for ourselves
+            Task priorCanonicalTask = EnsureCanonicalTask;
+            EnsureCanonicalTask = Task.Run(() => EnsureCanonicalInBackground(block, priorCanonicalTask));
         }
 
-        private async Task EnsureCanonicalInBackground(Block block)
+        private async Task EnsureCanonicalInBackground(Block block, Task priorCanonicalTask)
         {
-            await _ensureCanonicalTask;
+            await priorCanonicalTask;
 
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;

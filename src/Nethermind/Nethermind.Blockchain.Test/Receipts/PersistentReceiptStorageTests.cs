@@ -242,11 +242,12 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void EnsureCanonical_should_change_tx_blockhash(
+        public async Task EnsureCanonical_should_change_tx_blockhash(
             [Values(false, true)] bool ensureCanonical,
             [Values(false, true)] bool isFinalized)
         {
             (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: isFinalized);
+            await _storage.EnsureCanonicalTask;
             _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash!);
 
             Block anotherBlock = Build.A.Block
@@ -257,6 +258,8 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             anotherBlock.Hash.Should().NotBe(block.Hash!);
             _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
+            await _storage.EnsureCanonicalTask;
+
             _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
             Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
