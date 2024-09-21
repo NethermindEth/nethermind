@@ -81,12 +81,12 @@ namespace Nethermind.Blockchain.Receipts
             {
                 RemoveBlockTx(e.PreviousBlock, e.Block);
             }
-            EnsureCanonical(e.Block);
-            ReceiptsInserted?.Invoke(this, e);
 
             // Dont block main loop
             Task.Run(() =>
             {
+                EnsureCanonical(e.Block);
+                ReceiptsInserted?.Invoke(this, e);
 
                 Block newMain = e.Block;
 
