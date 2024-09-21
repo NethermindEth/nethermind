@@ -1602,10 +1602,7 @@ namespace Nethermind.Serialization.Rlp
             return Equals(other as Rlp);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes is not null ? Bytes.GetSimplifiedHashCode() : 0;
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public bool Equals(Rlp? other)
         {

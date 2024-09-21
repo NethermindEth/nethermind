@@ -40,4 +40,4 @@ jobs:
           git commit -am "Auto-update fast sync settings"
           git push origin $head_branch
           gh pr create -B master -H $head_branch -t "Auto-update fast sync settings" \
-            -b "Updated fast sync settings in the configuration files" -l configuration -l sync
+            -b "Updated fast sync settings in config files" -l configuration -l sync
