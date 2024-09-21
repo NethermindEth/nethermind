@@ -59,6 +59,8 @@ namespace Nethermind.TxPool
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
 
+        public event EventHandler<BlockReplacementEventArgs>? TxPoolHeadChanged;
+
         /// <summary>
         /// Indexes transactions
         /// </summary>
@@ -201,8 +203,6 @@ namespace Nethermind.TxPool
             }
         }
 
-        public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
-
         private void ProcessNewHeads()
         {
             Task.Factory.StartNew(async () =>
@@ -238,7 +238,7 @@ namespace Nethermind.TxPool
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
                             _broadcaster.OnNewHead();
-                            HeadChanged?.Invoke(this, args);
+                            TxPoolHeadChanged?.Invoke(this, args);
                             Metrics.TransactionCount = _transactions.Count;
                             Metrics.BlobTransactionCount = _blobTransactions.Count;
                         }

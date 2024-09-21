@@ -215,7 +215,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(tx.SenderAddress, tx.Value);
 
             var headProcessed = new ManualResetEventSlim(false);
-            txPool.HeadChanged += (s, a) => headProcessed.Set();
+            txPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
             _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(Build.A.Block.WithGasLimit(10000000).TestObject));
 
             headProcessed.Wait();
@@ -725,7 +725,7 @@ namespace Nethermind.TxPool.Test
             _txPool.SubmitTx(higherPriorityTx, TxHandlingOptions.PersistentBroadcast);
 
             var headProcessed = new ManualResetEventSlim(false);
-            _txPool.HeadChanged += (s, a) => headProcessed.Set();
+            _txPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
 
