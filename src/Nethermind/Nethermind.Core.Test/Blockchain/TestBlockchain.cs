@@ -425,7 +425,10 @@ public class TestBlockchain : IDisposable
         await WaitAsync(_oneAtATime, "Multiple block produced at once.");
         AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
         Timestamper.Add(TimeSpan.FromSeconds(1));
+        var headProcessed = new ManualResetEventSlim(false);
+        TxPool.TxPoolHeadChanged += (s, a) => headProcessed.Set();
         await BlockProductionTrigger.BuildBlock();
+        headProcessed.Wait();
         return txResults;
     }
 
