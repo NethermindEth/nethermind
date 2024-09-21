@@ -50,11 +50,15 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
                 return IPrecompile.Failure;
             }
 
-            byte[] scalar = inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray();
-
-            if (scalar.All(x => x == 0))
+            if (!inputData[BlsParams.LenG2..].Span.ContainsAnyExcept((byte)0))
             {
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+            }
+
+            Span<byte> scalar = stackalloc byte[32];
+            for (int i = 0; i < 32; i++)
+            {
+                scalar[32 - i - 1] = inputData.Span[BlsParams.LenG2 + i];
             }
 
             G2 res = x.Mult(scalar);

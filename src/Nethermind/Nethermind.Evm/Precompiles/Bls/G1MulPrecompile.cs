@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
@@ -48,11 +49,15 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
                 return IPrecompile.Failure;
             }
 
-            byte[] scalar = inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray();
-
-            if (scalar.All(x => x == 0))
+            if (!inputData.Span[BlsParams.LenG1..].ContainsAnyExcept((byte)0))
             {
                 return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+            }
+
+            Span<byte> scalar = stackalloc byte[32];
+            for (int i = 0; i < 32; i++)
+            {
+                scalar[32 - i - 1] = inputData.Span[BlsParams.LenG1 + i];
             }
 
             G1 res = x.Mult(scalar);
