@@ -59,7 +59,7 @@ namespace Nethermind.TxPool
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
 
-        public event EventHandler<BlockReplacementEventArgs>? TxPoolHeadChanged;
+        public event EventHandler<Block>? TxPoolHeadChanged;
 
         /// <summary>
         /// Indexes transactions
@@ -114,6 +114,7 @@ namespace Nethermind.TxPool
             _updateBucketAdded = UpdateBucketWithAddedTransaction;
 
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
+            TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
@@ -237,8 +238,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
-                            _broadcaster.OnNewHead();
-                            TxPoolHeadChanged?.Invoke(this, args);
+                            TxPoolHeadChanged?.Invoke(this, args.Block);
                             Metrics.TransactionCount = _transactions.Count;
                             Metrics.BlobTransactionCount = _blobTransactions.Count;
                         }
@@ -753,6 +753,7 @@ namespace Nethermind.TxPool
         public void Dispose()
         {
             _timer?.Dispose();
+            TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
