@@ -69,6 +69,9 @@ namespace Nethermind.Core
         /// Output is either StateRoot or StatusCode depending on eip configuration.
         /// </summary>
         public bool SkipStateAndStatusInRlp { get; set; }
+
+        public void CalculateBloom()
+            => Bloom = Logs?.Length == 0 ? Bloom.Empty : new Bloom(Logs);
     }
 
     public ref struct TxReceiptStructRef
