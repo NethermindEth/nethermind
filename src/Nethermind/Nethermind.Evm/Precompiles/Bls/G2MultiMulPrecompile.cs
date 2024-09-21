@@ -85,7 +85,7 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
 
             if (npoints == 0)
             {
-                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
+                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
             G2 res = G2.Generator().MultiMult(rawPoints, rawScalars, npoints);
