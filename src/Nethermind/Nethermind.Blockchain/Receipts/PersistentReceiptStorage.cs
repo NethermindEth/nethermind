@@ -350,10 +350,17 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
+        private Task _ensureCanonicalTask = Task.CompletedTask;
         public void EnsureCanonical(Block block)
         {
-            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
+            _ensureCanonicalTask = Task.Run(() => EnsureCanonicalInBackground(block));
+        }
 
+        private async Task EnsureCanonicalInBackground(Block block)
+        {
+            await _ensureCanonicalTask;
+
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
             if (_receiptConfig.TxLookupLimit == -1) return;
