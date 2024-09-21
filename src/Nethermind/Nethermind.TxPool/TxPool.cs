@@ -207,12 +207,12 @@ namespace Nethermind.TxPool
             {
                 while (await _headBlocksChannel.Reader.WaitToReadAsync())
                 {
-                    _hashCache.ClearCurrentBlockCache();
                     while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                     {
                         // Clear snapshot
                         _transactionSnapshot = null;
                         _blobTransactionSnapshot = null;
+                        _hashCache.ClearCurrentBlockCache();
                         try
                         {
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
