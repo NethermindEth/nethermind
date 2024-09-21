@@ -57,8 +57,9 @@ public partial class BlockProcessor(
     private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
+    private Task _clearTask = Task.CompletedTask;
     private const int MaxUncommittedBlocks = 64;
-    private readonly Func<Task, Task> _clearCaches = _ => preWarmer.ClearCachesInBackground();
+    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -93,10 +94,13 @@ public partial class BlockProcessor(
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
 
+        Task? preWarmTask = null;
         try
         {
             for (int i = 0; i < blocksCount; i++)
             {
+                preWarmTask = null;
+                WaitForCacheClear();
                 Block suggestedBlock = suggestedBlocks[i];
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -111,21 +115,23 @@ public partial class BlockProcessor(
                 Block processedBlock;
                 TxReceipt[] receipts;
 
-                Task? preWarmTask = null;
                 bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
                 if (!skipPrewarming)
                 {
                     using CancellationTokenSource cancellationTokenSource = new();
                     (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
                     preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
-
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                     // Block is processed, we can cancel the prewarm task
-                    preWarmTask = preWarmTask.ContinueWith(_clearCaches).Unwrap();
                     cancellationTokenSource.Cancel();
                 }
                 else
                 {
+                    if (preWarmer?.ClearCaches() ?? false)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Low txs, caches are not empty. Clearing them.");
+                    }
+                    // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
                 }
 
@@ -133,6 +139,8 @@ public partial class BlockProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
+                QueueClearCaches(preWarmer, preWarmTask);
+
                 if (notReadOnly)
                 {
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
@@ -166,13 +174,26 @@ public partial class BlockProcessor(
         }
         catch (Exception ex) // try to restore at all cost
         {
-            _logger.Trace($"Encountered exception {ex} while processing blocks.");
+            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            QueueClearCaches(preWarmer, preWarmTask);
+            preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
             throw;
         }
-        finally
+    }
+
+    private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
+
+    private void QueueClearCaches(IBlockCachePreWarmer preWarmer, Task? preWarmTask)
+    {
+        if (preWarmTask is not null)
         {
-            preWarmer?.ClearCaches();
+            // Can start clearing caches in background
+            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
+        }
+        else if (preWarmer is not null)
+        {
+            _clearTask = Task.Run(() => preWarmer.ClearCaches());
         }
     }
 
