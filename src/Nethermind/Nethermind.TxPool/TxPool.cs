@@ -167,7 +167,7 @@ namespace Nethermind.TxPool
             ProcessNewHeads();
         }
 
-        public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
+        public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
