@@ -5,11 +5,13 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -23,6 +25,8 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
+    // Size not too large that don't retry; but not too small that we retry too often
+    public ClockKeyCache<IDiscoveryManager.IpAddressAsKey> NodesFilter { get; } = new(1024);
 
     private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMsg>> _waitingEvents = new();
     private IMsgSender? _msgSender;
@@ -47,6 +51,8 @@ public class DiscoveryManager : IDiscoveryManager
     {
         set => _msgSender = value;
     }
+
+    public NodeRecord SelfNodeRecord => _nodeLifecycleManagerFactory.SelfNodeRecord;
 
     public void OnIncomingMsg(DiscoveryMsg msg)
     {
@@ -207,7 +213,6 @@ public class DiscoveryManager : IDiscoveryManager
             return false;
         }
 
-        #region
         // port will be different as we dynamically open ports for each socket connection
         // if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
         // {
@@ -226,7 +231,6 @@ public class DiscoveryManager : IDiscoveryManager
         //     // there is no sense to complain here as nodes sent a lot of garbage as their source addresses
         //     // if (_logger.IsWarn) _logger.Warn($"TRACE/WARN Received a message with incorrect source port, message: {message}");
         // }
-        #endregion
 
         return true;
     }

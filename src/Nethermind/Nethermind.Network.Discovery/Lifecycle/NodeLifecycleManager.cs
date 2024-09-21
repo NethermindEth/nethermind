@@ -3,6 +3,7 @@
 
 using System.Net;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -18,6 +19,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 public class NodeLifecycleManager : INodeLifecycleManager
 {
     private readonly static IPAddress _localhost = IPAddress.Parse("127.0.0.1");
+
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
@@ -190,12 +192,30 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
-        foreach (Node node in msg.Nodes)
+        IPAddress? externalIp = _discoveryManager.SelfNodeRecord?.GetObj<IPAddress>(EnrContentKey.Ip);
+        foreach (Node? node in msg.Nodes)
         {
+            if (node is null)
+            {
+                // ports differed between tcp and udp
+                return;
+            }
             if (node.Address.Address == _localhost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
+                continue;
+            }
+            if (node.Address.Address == externalIp)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Received self as node address from: {msg.FarPublicKey}, node: {node}");
+                // Ignore self
+                continue;
+            }
+            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            {
+                // Already seen this node ip recently
                 continue;
             }
 

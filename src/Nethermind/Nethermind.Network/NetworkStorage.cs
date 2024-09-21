@@ -3,8 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
-
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,7 @@ namespace Nethermind.Network
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
+        private readonly Dictionary<IPAddress, NetworkNode> _hosts = new();
         private long _updateCounter;
         private long _removeCounter;
         private NetworkNode[]? _nodes;
@@ -78,13 +80,25 @@ namespace Nethermind.Network
                 try
                 {
                     NetworkNode node = GetNode(nodeRlp);
-                    _nodesDict[node.NodeId] = node;
+                    // Only add one node per IpAddress
+                    if (_hosts.TryAdd(node.HostIp, node))
+                    {
+                        _nodesDict[node.NodeId] = node;
+                    }
+                    else
+                    {
+                        // Remove duplicate node
+                        RemoveNode(node.NodeId);
+                    }
                 }
                 catch (Exception e)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
                 }
             }
+
+            // Clear any duplicates from db
+            Commit();
         }
 
         public void UpdateNode(NetworkNode node)
@@ -99,6 +113,16 @@ namespace Nethermind.Network
         {
             (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
             _updateCounter++;
+
+            ref NetworkNode currentNode = ref CollectionsMarshal.GetValueRefOrAddDefault(_hosts, node.HostIp, out bool exists);
+            if (exists && currentNode.NodeId != node.NodeId)
+            {
+                (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[currentNode.NodeId.Bytes] = null;
+                _removeCounter++;
+                _nodesDict.Remove(currentNode.NodeId);
+            }
+
+            currentNode = node;
 
             if (!_nodesDict.ContainsKey(node.NodeId))
             {

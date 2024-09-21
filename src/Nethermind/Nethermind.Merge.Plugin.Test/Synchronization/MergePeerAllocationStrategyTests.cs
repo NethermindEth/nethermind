@@ -69,7 +69,7 @@ public class MergePeerAllocationStrategyTests
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.IsInitialized.Returns(true);
-            Node node = new Node(publicKeys[i], "192.168.1.18", i);
+            Node node = new Node(publicKeys[i], $"192.168.1.{18 + 1}", i);
             syncPeer.Node.Returns(node);
             syncPeer.TotalDifficulty.Returns(new UInt256(totalDifficulties[i]));
             peers[i] = new PeerInfo(syncPeer);
