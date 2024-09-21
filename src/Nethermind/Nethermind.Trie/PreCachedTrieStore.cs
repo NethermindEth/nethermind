@@ -42,7 +42,6 @@ public class PreCachedTrieStore : ITrieStore
     public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
         _inner.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
-        _preBlockCache.NoResizeClear();
     }
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
