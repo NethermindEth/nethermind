@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -427,7 +428,14 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void ApplyDaoTransition(Block block)
     {
-        if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)
+        long? daoBlockNumber = _specProvider.DaoBlockNumber;
+        if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
+        {
+            ApplyTransition();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void ApplyTransition()
         {
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
