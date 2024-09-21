@@ -108,9 +108,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Adds_and_retrieves_receipts_for_block()
+        public async Task Adds_and_retrieves_receipts_for_block()
         {
-            var (block, receipts) = InsertBlock();
+            var (block, receipts) = await InsertBlock();
 
             _storage.Get(block).Should().BeEquivalentTo(receipts);
             // second should be from cache
@@ -118,9 +118,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        public void Adds_should_prefix_key_with_blockNumber()
+        public async Task Adds_should_prefix_key_with_blockNumber()
         {
-            (Block block, _) = InsertBlock();
+            (Block block, _) = await InsertBlock();
 
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Should_not_cache_empty_non_processed_blocks()
+        public async Task Should_not_cache_empty_non_processed_blocks()
         {
             Block block = Build.A.Block
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
@@ -176,15 +176,15 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
             // can be from cache:
             _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
-            (_, TxReceipt[] receipts) = InsertBlock(block);
+            (_, TxReceipt[] receipts) = await InsertBlock(block);
             // before should not be cached
             _storage.Get(block).Should().BeEquivalentTo(receipts);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
+        public async Task Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
         {
-            var (block, receipts) = InsertBlock();
+            var (block, receipts) = await InsertBlock();
 
             _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
@@ -194,9 +194,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Adds_and_retrieves_receipts_for_block_with_iterator()
+        public async Task Adds_and_retrieves_receipts_for_block_with_iterator()
         {
-            var (block, _) = InsertBlock();
+            var (block, _) = await InsertBlock();
 
             _storage.ClearCache();
             _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
@@ -208,9 +208,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
+        public async Task Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
         {
-            var (block, receipts) = InsertBlock();
+            var (block, receipts) = await InsertBlock();
 
             _storage.ClearCache();
             _storage.Get(block);
@@ -235,9 +235,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void HasBlock_should_returnTrueForKnownHash()
+        public async Task HasBlock_should_returnTrueForKnownHash()
         {
-            var (block, _) = InsertBlock();
+            var (block, _) = await InsertBlock();
             _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
         }
 
@@ -246,7 +246,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             [Values(false, true)] bool ensureCanonical,
             [Values(false, true)] bool isFinalized)
         {
-            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: isFinalized);
+            (Block block, TxReceipt[] receipts) = await InsertBlock(isFinalized: isFinalized);
             await _storage.EnsureCanonicalTask;
             _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash!);
 
@@ -274,9 +274,9 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        public void EnsureCanonical_should_use_blockNumber_if_finalized()
+        public async Task EnsureCanonical_should_use_blockNumber_if_finalized()
         {
-            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            (Block block, TxReceipt[] receipts) = await InsertBlock(isFinalized: true);
             Span<byte> txHashBytes = receipts[0].TxHash!.Bytes;
             if (_receiptConfig.CompactTxIndex)
             {
@@ -289,11 +289,11 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        public void When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
+        public async Task When_TxLookupLimitIs_NegativeOne_DoNotIndexTxHash()
         {
             _receiptConfig.TxLookupLimit = -1;
             CreateStorage();
-            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true);
+            (Block block, TxReceipt[] receipts) = await InsertBlock(isFinalized: true);
             _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
             Thread.Sleep(100);
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
@@ -318,21 +318,21 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        public void When_HeadBlockIsFarAhead_DoNotIndexTxHash()
+        public async Task When_HeadBlockIsFarAhead_DoNotIndexTxHash()
         {
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
-            (Block block, TxReceipt[] receipts) = InsertBlock(isFinalized: true, headNumber: 1001);
+            (Block block, TxReceipt[] receipts) = await InsertBlock(isFinalized: true, headNumber: 1001);
             _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
             Thread.Sleep(100);
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
         }
 
         [Test]
-        public void When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
+        public async Task When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock()
         {
             CreateStorage();
-            (Block block, TxReceipt[] receipts) = InsertBlock();
+            (Block block, TxReceipt[] receipts) = await InsertBlock();
 
             if (_receiptConfig.CompactTxIndex)
             {
@@ -358,7 +358,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             _receiptConfig.CompactTxIndex = _useCompactReceipts;
             CreateStorage();
-            (Block block, TxReceipt[] receipts) = InsertBlock();
+            (Block block, TxReceipt[] receipts) = await InsertBlock();
             Block block2 = Build.A.Block
                 .WithParent(block)
                 .WithNumber(2)
@@ -402,11 +402,11 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
 
         [Test]
-        public void When_NewHeadBlock_ClearOldTxIndex()
+        public async Task When_NewHeadBlock_ClearOldTxIndex()
         {
             _receiptConfig.TxLookupLimit = 1000;
             CreateStorage();
-            (Block block, TxReceipt[] receipts) = InsertBlock();
+            (Block block, TxReceipt[] receipts) = await InsertBlock();
 
             Span<byte> txHashBytes = receipts[0].TxHash!.Bytes;
             if (_receiptConfig.CompactTxIndex)
@@ -459,10 +459,11 @@ namespace Nethermind.Blockchain.Test.Receipts
             return (block, receipts);
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+        private async Task<(Block block, TxReceipt[] receipts)> InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
         {
             (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
             _storage.Insert(block, receipts);
+            await _storage.EnsureCanonicalTask;
             _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts);
 
             return (block, receipts);

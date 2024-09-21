@@ -2,6 +2,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
