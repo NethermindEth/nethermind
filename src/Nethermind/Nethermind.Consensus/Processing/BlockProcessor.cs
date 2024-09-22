@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -12,7 +11,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -282,23 +280,25 @@ public partial class BlockProcessor(
         IBlockTracer blockTracer,
         ProcessingOptions options)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        BlockHeader header = block.Header;
+        IReleaseSpec spec = _specProvider.GetSpec(header);
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
         StoreBeaconRoot(block, spec);
-        _blockhashStore.ApplyBlockhashStateChanges(block.Header);
+        _blockhashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)
         {
-            block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
@@ -311,15 +311,26 @@ public partial class BlockProcessor(
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        if (ShouldComputeStateRoot(block.Header))
+        if (ShouldComputeStateRoot(header))
         {
             _stateProvider.RecalculateStateRoot();
-            block.Header.StateRoot = _stateProvider.StateRoot;
+            header.StateRoot = _stateProvider.StateRoot;
         }
 
-        block.Header.Hash = block.Header.CalculateHash();
+        header.Hash = header.CalculateHash();
 
         return receipts;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CalculateBlooms(TxReceipt[] receipts)
+    {
+        int index = 0;
+        Parallel.For(0, receipts.Length, _ =>
+        {
+            int i = Interlocked.Increment(ref index) - 1;
+            receipts[i].CalculateBloom();
+        });
     }
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
