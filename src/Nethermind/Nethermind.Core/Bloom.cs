@@ -114,10 +114,7 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes.GetSimplifiedHashCode();
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
@@ -278,10 +275,7 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override readonly int GetHashCode()
-        {
-            return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
-        }
+        public override readonly int GetHashCode() => Bytes.FastHash();
 
         public readonly bool Matches(LogEntry logEntry)
         {

@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -34,6 +35,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
+        private readonly IConsensusRequestsProcessor? _consensusRequestsProcessor;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
@@ -48,7 +50,8 @@ namespace Nethermind.Consensus.Producers
             ITxPool txPool,
             ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
         {
             _worldStateManager = worldStateManager;
             _blockTree = blockTree;
@@ -61,6 +64,7 @@ namespace Nethermind.Consensus.Producers
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _logManager = logManager;
+            _consensusRequestsProcessor = consensusRequestsProcessor;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
@@ -150,10 +154,12 @@ namespace Nethermind.Consensus.Producers
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
-                new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
+                readOnlyTxProcessingEnv.TransactionProcessor,
                 new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
+                new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
                 logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)));
-
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),
+                consensusRequestsProcessor: _consensusRequestsProcessor
+            );
     }
 }

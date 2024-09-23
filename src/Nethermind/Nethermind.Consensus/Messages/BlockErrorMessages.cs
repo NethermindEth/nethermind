@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Crypto;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Messages;
 public static class BlockErrorMessages
@@ -116,4 +116,8 @@ public static class BlockErrorMessages
 
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
+
+    public static string MissingRequests => "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.";
+    public static string RequestsNotEnabled => "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
+    public static string InvalidRequestsRoot(Hash256? expected, Hash256? actual) => $"InvalidRequestsRoot: Requests root hash mismatch in block: expected {expected}, got {actual}";
 }
