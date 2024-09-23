@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -22,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -37,12 +39,14 @@ public partial class BlockProcessor(
     IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
     IWorldState? stateProvider,
     IReceiptStorage? receiptStorage,
-    IBlockhashStore? blockHashStore,
+    ITransactionProcessor transactionProcessor,
     IBeaconBlockRootHandler? beaconBlockRootHandler,
+    IBlockhashStore? blockHashStore,
     ILogManager? logManager,
     IWithdrawalProcessor? withdrawalProcessor = null,
     IReceiptsRootCalculator? receiptsRootCalculator = null,
-    IBlockCachePreWarmer? preWarmer = null)
+    IBlockCachePreWarmer? preWarmer = null,
+    IConsensusRequestsProcessor? consensusRequestsProcessor = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -56,7 +60,10 @@ public partial class BlockProcessor(
     private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
+
+    private readonly IConsensusRequestsProcessor _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor(transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
+
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
@@ -263,7 +270,6 @@ public partial class BlockProcessor(
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
-            if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock, error);
         }
 
@@ -301,6 +307,8 @@ public partial class BlockProcessor(
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _consensusRequestsProcessor.ProcessRequests(block, _stateProvider, receipts, spec);
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec, commitStorageRoots: true);
@@ -348,7 +356,7 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done when the BlockAddedToMain event is firec
+        // Setting canonical is done when the BlockAddedToMain event is fired
         _receiptStorage.Insert(block, txReceipts, false);
     }
 
@@ -381,8 +389,9 @@ public partial class BlockProcessor(
             ReceiptsRoot = bh.ReceiptsRoot,
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
+            RequestsRoot = bh.RequestsRoot,
             IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot
         };
 
         if (!ShouldComputeStateRoot(bh))
