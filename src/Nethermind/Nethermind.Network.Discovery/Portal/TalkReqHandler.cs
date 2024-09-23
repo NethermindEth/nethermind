@@ -92,7 +92,7 @@ public class TalkReqHandler(
             Pong = new Pong()
             {
                 EnrSeq = ping.EnrSeq,
-                CustomPayload = ping.CustomPayload!
+                CustomPayload = config.ContentRadius.ToLittleEndian()
             }
         });
     }

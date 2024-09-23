@@ -21,10 +21,13 @@ public class ContentNetworkProtocol(
     {
         if (_logger.IsDebug) _logger.Debug($"Sending Ping to {receiver}");
 
+        // Yes, I'm breaking some rules here a bit...
+        ping.CustomPayload = config.ContentRadius.ToLittleEndian();
+
         byte[] pingBytes =
             SlowSSZ.Serialize(new MessageUnion()
             {
-                Ping = ping
+                Ping = ping,
             });
 
         byte[] responseBytes = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
