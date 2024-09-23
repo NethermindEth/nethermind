@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Json
                 MaxDepth = maxDepth,
                 Converters =
                 {
-                    new LongConverter(),
+                    // new LongConverter(), // cause of issue, now refactor so specific tracers don't use this! then update tests!
                     new UInt256Converter(),
                     new ULongConverter(),
                     new IntConverter(),
