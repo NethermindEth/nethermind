@@ -170,8 +170,9 @@ namespace Ethereum.Test.Base
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                transactionProcessor,
                 new BeaconBlockRootHandler(transactionProcessor),
+                new BlockhashStore(specProvider, stateProvider),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

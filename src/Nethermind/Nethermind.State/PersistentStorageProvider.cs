@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -37,7 +40,7 @@ namespace Nethermind.State
         private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly HashSet<StorageCell> _committedThisRound = new();
-        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<UInt256, byte[]>> _blockCache = new(4_096);
+        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<byte[]>> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
@@ -302,10 +305,10 @@ namespace Nethermind.State
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+            ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
             }
 
             dict[change.StorageCell.Index] = change.Value;
@@ -359,10 +362,10 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
             }
 
             ref byte[]? value = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
@@ -454,10 +457,10 @@ namespace Nethermind.State
         {
             base.ClearStorage(address);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+            ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
             }
 
             dict.SelfDestruct();
@@ -476,10 +479,10 @@ namespace Nethermind.State
                 => new(trieStore, storageRoot, logManager);
         }
 
-        private class SelfDestructDictionary<TKey, TValue>(TValue destructedValue) where TKey : notnull
+        private sealed class SelfDestructDictionary<TValue>(TValue destructedValue)
         {
             private bool _selfDestruct;
-            private readonly Dictionary<TKey, TValue> _dictionary = new();
+            private readonly Dictionary<UInt256, TValue> _dictionary = new(Comparer.Instance);
 
             public void SelfDestruct()
             {
@@ -487,7 +490,7 @@ namespace Nethermind.State
                 _dictionary.Clear();
             }
 
-            public ref TValue? GetValueRefOrAddDefault(TKey storageCellIndex, out bool exists)
+            public ref TValue? GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
             {
                 ref TValue value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
                 if (!exists && _selfDestruct)
@@ -498,9 +501,22 @@ namespace Nethermind.State
                 return ref value;
             }
 
-            public TValue? this[TKey key]
+            public TValue? this[UInt256 key]
             {
                 set => _dictionary[key] = value;
+            }
+
+            private sealed class Comparer : IEqualityComparer<UInt256>
+            {
+                public static Comparer Instance { get; } = new();
+
+                private Comparer() { }
+
+                public bool Equals(UInt256 x, UInt256 y)
+                    => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
+
+                public int GetHashCode([DisallowNull] UInt256 obj)
+                    => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
             }
         }
     }

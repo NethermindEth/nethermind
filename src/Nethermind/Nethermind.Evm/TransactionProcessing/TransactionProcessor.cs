@@ -443,12 +443,12 @@ namespace Nethermind.Evm.TransactionProcessing
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress!, effectiveGasPrice, tx.BlobVersionedHashes!);
 
             ICodeInfo codeInfo = null;
-            byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
+            ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
             if (tx.IsContractCreation)
             {
                 if (CodeInfoFactory.CreateInitCodeInfo(tx.Data ?? default, spec, out codeInfo, out Memory<byte> trailingData))
                 {
-                    inputData = trailingData.ToArray();
+                    inputData = trailingData;
                 }
             }
             else
@@ -457,7 +457,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 codeInfo.AnalyseInBackgroundIfRequired();
             }
 
-            env = new ExecutionEnvironment
+            return new ExecutionEnvironment
             (
                 txExecutionContext: in executionContext,
                 value: tx.Value,
@@ -468,7 +468,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 inputData: inputData,
                 codeInfo: codeInfo
             );
-            return TransactionResult.Ok;
         }
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.NoValidation);
