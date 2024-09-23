@@ -105,17 +105,17 @@ public partial class VerkleTreeStore<TPersistence>
         DictionarySortedSet<byte[], LeafIterator> keyEnumMap = new(Bytes.Comparer);
 
         // TODO: optimize this to start from a specific blockNumber - or better yet get the list of enumerators directly
-        BlockBranchCache.BranchEnumerator blockEnumerator =
-            BlockCache.GetEnumerator(stateRoot);
+        var blockEnumerator =
+            BlockCache.GetEnumerable(stateRoot);
         try
         {
             var iteratorPriority = 0;
-            while (blockEnumerator.MoveNext())
+            foreach (var current in blockEnumerator)
             {
                 // TODO: here we construct a set from the LeafTable so that we can do the GetViewBetween
                 //   obviously this is very un-optimal but the idea is to replace the LeafTable with SortedSet in the
                 //   blockCache itself. The reason we want to use GetViewBetween because this is optimal to do seek
-                DictionarySortedSet<byte[], byte[]> currentSet = blockEnumerator.Current.Data.StateDiff!.LeafTable;
+                DictionarySortedSet<byte[], byte[]> currentSet = current.Data.StateDiff!.LeafTable;
 
                 // construct the iterators that starts for the specific range using GetViewBetween
                 IEnumerator<KeyValuePair<byte[], byte[]>> enumerator = currentSet
@@ -128,14 +128,14 @@ public partial class VerkleTreeStore<TPersistence>
                 var isIteratorUsed = false;
                 while (enumerator.MoveNext())
                 {
-                    KeyValuePair<byte[], byte[]> current = enumerator.Current;
+                    KeyValuePair<byte[], byte[]> currentInner = enumerator.Current;
                     // add the key and corresponding value
-                    if (kvMap.TryAdd(current.Key, new KeyValuePair<int, byte[]>(iteratorPriority, current.Value)))
+                    if (kvMap.TryAdd(currentInner.Key, new KeyValuePair<int, byte[]>(iteratorPriority, currentInner.Value)))
                     {
                         isIteratorUsed = true;
                         iterators.Add(enumerator);
                         // add the new key and the corresponding enumerator
-                        keyEnumMap.Add(current.Key, new LeafIterator(enumerator, iteratorPriority));
+                        keyEnumMap.Add(currentInner.Key, new LeafIterator(enumerator, iteratorPriority));
                         break;
                     }
                 }
@@ -248,17 +248,17 @@ public partial class VerkleTreeStore<TPersistence>
         DictionarySortedSet<byte[], LeafIterator> keyEnumMap = new(Bytes.Comparer);
 
         // TODO: optimize this to start from a specific blockNumber - or better yet get the list of enumerators directly
-        BlockBranchCache.BranchEnumerator blockEnumerator =
-            BlockCache.GetEnumerator(stateRoot);
+        var blockEnumerator =
+            BlockCache.GetEnumerable(stateRoot);
         try
         {
             var iteratorPriority = 0;
-            while (blockEnumerator.MoveNext())
+            foreach (var current in blockEnumerator)
             {
                 // TODO: here we construct a set from the LeafTable so that we can do the GetViewBetween
                 //   obviously this is very un-optimal but the idea is to replace the LeafTable with SortedSet in the
                 //   blockCache itself. The reason we want to use GetViewBetween because this is optimal to do seek
-                DictionarySortedSet<byte[], byte[]> currentSet = blockEnumerator.Current.Data.StateDiff!.LeafTable;
+                DictionarySortedSet<byte[], byte[]> currentSet = current.Data.StateDiff!.LeafTable;
 
                 // construct the iterators that starts for the specific range using GetViewBetween
                 IEnumerator<KeyValuePair<byte[], byte[]>> enumerator = currentSet
@@ -271,14 +271,14 @@ public partial class VerkleTreeStore<TPersistence>
                 var isIteratorUsed = false;
                 while (enumerator.MoveNext())
                 {
-                    KeyValuePair<byte[], byte[]> current = enumerator.Current;
+                    KeyValuePair<byte[], byte[]> currentInner = enumerator.Current;
                     // add the key and corresponding value
-                    if (kvMap.TryAdd(current.Key, new KeyValuePair<int, byte[]>(iteratorPriority, current.Value)))
+                    if (kvMap.TryAdd(currentInner.Key, new KeyValuePair<int, byte[]>(iteratorPriority, currentInner.Value)))
                     {
                         isIteratorUsed = true;
                         iterators.Add(enumerator);
                         // add the new key and the corresponding enumerator
-                        keyEnumMap.Add(current.Key, new LeafIterator(enumerator, iteratorPriority));
+                        keyEnumMap.Add(currentInner.Key, new LeafIterator(enumerator, iteratorPriority));
                         break;
                     }
                 }
