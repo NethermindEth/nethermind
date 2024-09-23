@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(RpcNethermindTransactionWithTraceTypes[] calls, BlockParameter? blockParameter = null);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(Description = "Traces a call to eth_sendRawTransaction without making the call, returning the traces",
             IsImplemented = true,

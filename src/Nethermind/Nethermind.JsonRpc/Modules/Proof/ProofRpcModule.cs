@@ -102,18 +102,18 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
 
-        public ResultWrapper<RpcNethermindTransactionWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
+        public ResultWrapper<TransactionForRpcWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
-                return ResultWrapper<RpcNethermindTransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<TransactionForRpcWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
             }
 
             SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
             if (searchResult.IsError)
             {
-                return ResultWrapper<RpcNethermindTransactionWithProof>.Fail(searchResult);
+                return ResultWrapper<TransactionForRpcWithProof>.Fail(searchResult);
             }
 
             Block block = searchResult.Object;
@@ -121,7 +121,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction[] txs = block.Transactions;
             Transaction transaction = txs[receipt.Index];
 
-            RpcNethermindTransactionWithProof txWithProof = new();
+            TransactionForRpcWithProof txWithProof = new();
             txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas);
             txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
@@ -129,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 txWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;
             }
 
-            return ResultWrapper<RpcNethermindTransactionWithProof>.Success(txWithProof);
+            return ResultWrapper<TransactionForRpcWithProof>.Success(txWithProof);
         }
 
         public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)

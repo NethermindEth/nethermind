@@ -728,14 +728,14 @@ public class TraceRpcModuleTests
         string[] traceTypes2 = { "Trace" };
 
         BlockParameter numberOrTag = new(16);
-        RpcNethermindTransactionWithTraceTypes tr1 = new();
-        RpcNethermindTransactionWithTraceTypes tr2 = new();
+        TransactionForRpcWithTraceTypes tr1 = new();
+        TransactionForRpcWithTraceTypes tr2 = new();
         tr1.Transaction = txForRpc1;
         tr1.TraceTypes = traceTypes1;
         tr2.Transaction = txForRpc2;
         tr2.TraceTypes = traceTypes2;
 
-        RpcNethermindTransactionWithTraceTypes[] a = { tr1, tr2 };
+        TransactionForRpcWithTraceTypes[] a = { tr1, tr2 };
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(a, numberOrTag);
         tr.Data.Should().HaveCount(2);

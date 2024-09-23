@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(clonedHeader, tx, token);
             }
 
-            // TODO: Should we move this method to `RpcNethermindTransaction` directly?
+            // TODO: Should we move this method to `TransactionForRpc` directly?
             private static bool ShouldSetBaseFee(TransactionForRpc t)
             {
                 var positiveGasPrice = false;

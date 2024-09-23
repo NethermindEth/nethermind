@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public async Task Can_get_transaction(bool withHeader)
         {
             Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
-            RpcNethermindTransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
+            TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
             Assert.NotNull(txWithProof.Transaction);
             Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
             if (withHeader)

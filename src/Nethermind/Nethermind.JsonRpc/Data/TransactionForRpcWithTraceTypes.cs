@@ -9,16 +9,16 @@ using Nethermind.Facade.Eth.RpcTransaction;
 namespace Nethermind.JsonRpc.Data;
 
 [JsonConverter(typeof(TransactionForRpcWithTraceTypesConverter))]
-public class RpcNethermindTransactionWithTraceTypes
+public class TransactionForRpcWithTraceTypes
 {
     public TransactionForRpc Transaction { get; set; }
     public string[] TraceTypes { get; set; }
 
-    private class TransactionForRpcWithTraceTypesConverter : JsonConverter<RpcNethermindTransactionWithTraceTypes>
+    private class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
     {
-        public override RpcNethermindTransactionWithTraceTypes? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override TransactionForRpcWithTraceTypes? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            RpcNethermindTransactionWithTraceTypes value = new();
+            TransactionForRpcWithTraceTypes value = new();
 
             if (reader.TokenType != JsonTokenType.StartArray)
             {
@@ -36,7 +36,7 @@ public class RpcNethermindTransactionWithTraceTypes
             return value;
         }
 
-        public override void Write(Utf8JsonWriter writer, RpcNethermindTransactionWithTraceTypes value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, TransactionForRpcWithTraceTypes value, JsonSerializerOptions options)
             => throw new NotSupportedException();
     }
 }

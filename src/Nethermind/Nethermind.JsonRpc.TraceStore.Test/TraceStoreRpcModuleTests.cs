@@ -41,7 +41,7 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        RpcNethermindTransactionWithTraceTypes[] calls = [
+        TransactionForRpcWithTraceTypes[] calls = [
             new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) }
         ];
         test.Module.trace_callMany(calls, BlockParameter.Latest)
@@ -146,7 +146,7 @@ public class TraceStoreRpcModuleTests
             InnerModule.trace_call(Arg.Any<TransactionForRpc>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplayWrapper);
 
-            InnerModule.trace_callMany(Arg.Any<RpcNethermindTransactionWithTraceTypes[]>(), Arg.Any<BlockParameter>())
+            InnerModule.trace_callMany(Arg.Any<TransactionForRpcWithTraceTypes[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplaysWrapper);
 
             InnerModule.trace_rawTransaction(Arg.Any<byte[]>(), Arg.Any<string[]>())

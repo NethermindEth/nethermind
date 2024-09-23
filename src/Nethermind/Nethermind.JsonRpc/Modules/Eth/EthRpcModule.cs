@@ -284,7 +284,7 @@ public partial class EthRpcModule(
         Transaction tx = rpcTx.ToTransaction();
         tx.ChainId = _blockchainBridge.GetChainId();
 
-        // TODO: We might want to lift `Nonce` to `RpcNethermindTransaction`
+        // TODO: We might want to lift `Nonce` to `TransactionForRpc`
         UInt256? nonce = null;
         if (rpcTx is LegacyTransactionForRpc legacyTx)
         {

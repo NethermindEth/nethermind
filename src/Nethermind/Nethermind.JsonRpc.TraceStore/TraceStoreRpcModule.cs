@@ -55,7 +55,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null) =>
         _traceModule.trace_call(call, traceTypes, blockParameter);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(RpcNethermindTransactionWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>

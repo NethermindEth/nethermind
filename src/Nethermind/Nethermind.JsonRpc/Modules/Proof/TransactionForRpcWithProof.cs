@@ -5,7 +5,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.Proof;
 
-public class RpcNethermindTransactionWithProof
+public class TransactionForRpcWithProof
 {
     public TransactionForRpc Transaction { get; set; }
 

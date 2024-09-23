@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces list of transactions. Doesn't charge fees.
         /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(RpcNethermindTransactionWithTraceTypes[] calls, BlockParameter? blockParameter = null)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
         {
             blockParameter ??= BlockParameter.Latest;
 
