@@ -5,6 +5,8 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -46,12 +48,16 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        private static void ComputeKey(in UInt256 index, ref Span<byte> key)
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ComputeKey(in UInt256 index, Span<byte> key)
         {
             index.ToBigEndian(key);
 
-            // in situ calculation
-            KeccakHash.ComputeHashBytesToSpan(key, key);
+            // We can't direct ComputeTo the key as its also the input, so need a separate variable
+            KeccakCache.ComputeTo(key, out ValueHash256 keyHash);
+            // Which we can then directly assign to fast update the key
+            Unsafe.As<byte, ValueHash256>(ref MemoryMarshal.GetReference(key)) = keyHash;
         }
 
         [SkipLocalsInit]
@@ -62,9 +68,15 @@ namespace Nethermind.State
                 return GetArray(Lookup[index], storageRoot);
             }
 
-            Span<byte> key = stackalloc byte[32];
-            ComputeKey(index, ref key);
-            return GetArray(key, storageRoot);
+            return GetWithKeyGenerate(in index, storageRoot);
+
+            [SkipLocalsInit]
+            byte[] GetWithKeyGenerate(in UInt256 index, Hash256 storageRoot)
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, key);
+                return GetArray(key, storageRoot);
+            }
         }
 
         public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
@@ -91,8 +103,14 @@ namespace Nethermind.State
             }
             else
             {
+                SetWithKeyGenerate(in index, value);
+            }
+
+            [SkipLocalsInit]
+            void SetWithKeyGenerate(in UInt256 index, byte[] value)
+            {
                 Span<byte> key = stackalloc byte[32];
-                ComputeKey(index, ref key);
+                ComputeKey(index, key);
                 SetInternal(key, value);
             }
         }

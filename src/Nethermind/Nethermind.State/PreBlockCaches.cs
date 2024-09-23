@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Trie;
 
@@ -58,31 +60,6 @@ public class PreBlockCaches
         private ReadOnlyMemory<byte> Data { get; } = data;
         public bool Equals(PrecompileCacheKey other) => Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is PrecompileCacheKey other && Equals(other);
-        public override int GetHashCode()
-        {
-            uint crc = (uint)Address.GetHashCode();
-            ReadOnlySpan<byte> span = Data.Span;
-            var longSize = span.Length / sizeof(ulong) * sizeof(ulong);
-            if (longSize > 0)
-            {
-                foreach (ulong ul in MemoryMarshal.Cast<byte, ulong>(span[..longSize]))
-                {
-                    crc = BitOperations.Crc32C(crc, ul);
-                }
-                foreach (byte b in span[longSize..])
-                {
-                    crc = BitOperations.Crc32C(crc, b);
-                }
-            }
-            else
-            {
-                foreach (byte b in span)
-                {
-                    crc = BitOperations.Crc32C(crc, b);
-                }
-            }
-
-            return (int)crc;
-        }
+        public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode();
     }
 }
