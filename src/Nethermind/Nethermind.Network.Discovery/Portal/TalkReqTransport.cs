@@ -27,9 +27,9 @@ public class TalkReqTransport(
     /// <summary>
     /// Hard timeout for each call and wait for response.
     /// </summary>
-    private readonly TimeSpan _hardCallTimeout = TimeSpan.FromMilliseconds(500);
+    private readonly TimeSpan _hardCallTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly ConcurrentDictionary<ulong, TaskCompletionSource<TalkRespMessage>> _requestResp = new();
+    private readonly SpanConcurrentDictionary<byte, TaskCompletionSource<TalkRespMessage>> _requestResp = new(Bytes.SpanEqualityComparer);
     private readonly SpanDictionary<byte, ITalkReqProtocolHandler> _protocolHandlers = new(Bytes.SpanEqualityComparer);
 
     public async Task<byte[]?> OnTalkReq(IEnr sender, TalkReqMessage message)
@@ -53,8 +53,7 @@ public class TalkReqTransport(
 
     public void OnTalkResp(IEnr sender, TalkRespMessage message)
     {
-        ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(message.RequestId);
-        if (_requestResp.TryRemove(requestId, out TaskCompletionSource<TalkRespMessage>? resp))
+        if (_requestResp.TryRemove(message.RequestId, out TaskCompletionSource<TalkRespMessage>? resp))
         {
             if (_logger.IsTrace) _logger.Trace($"TalkResp {message.RequestId.ToHexString()} fulfilled");
             resp.TrySetResult(message);
@@ -81,12 +80,11 @@ public class TalkReqTransport(
         cts.CancelAfter(_hardCallTimeout);
 
         TalkReqMessage talkReqMessage = await SendTalkReq(receiver, protocol, message, token);
-        ulong requestId = BinaryPrimitives.ReadUInt64BigEndian(talkReqMessage.RequestId);
 
         try
         {
             var talkReq = new TaskCompletionSource<TalkRespMessage>(cts.Token);
-            if (!_requestResp.TryAdd(requestId, talkReq))
+            if (!_requestResp.TryAdd(talkReqMessage.RequestId, talkReq))
             {
                 return Array.Empty<byte>();
             }
@@ -100,13 +98,13 @@ public class TalkReqTransport(
             if (_logger.IsDebug)
             {
                 var destIpKey = receiver.GetEntry<EntryIp>(EnrEntryKey.Ip);
-                _logger.Debug($"TalkResp to {destIpKey?.Value} with id {requestId} timed out");
+                _logger.Debug($"TalkResp to {destIpKey?.Value} with id {talkReqMessage.RequestId} timed out");
             }
             throw;
         }
         finally
         {
-            _requestResp.TryRemove(requestId, out _);
+            _requestResp.TryRemove(talkReqMessage.RequestId, out _);
         }
     }
 }
