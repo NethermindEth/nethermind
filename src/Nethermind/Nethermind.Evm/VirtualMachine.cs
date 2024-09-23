@@ -412,28 +412,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             InsertCode(code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
-                            gasAvailableForCodeDeposit -= codeDepositGasCost;
 
-                            // TODO: check if here we need to deduct gas from currentGas.GasAvailable or gasForCodeDeposit?
-                            // Are they even different? - yes they are different - currentState.GasAvailable > gasAvailableForCodeDeposit
-                            long gasToBeUsed = gasAvailableForCodeDeposit;
-                            bool isEnough = currentState.Env.Witness.AccessForContractCreated(callCodeOwner, ref gasToBeUsed);
-                            var contractCreationCompleteGas = gasAvailableForCodeDeposit - gasToBeUsed;
-                            if (isEnough)
+                            if (typeof(TTracingActions) == typeof(IsTracing))
                             {
-                                currentState.GasAvailable -= contractCreationCompleteGas;
-                                if (typeof(TTracingActions) == typeof(IsTracing))
-                                {
-                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost - contractCreationCompleteGas, callCodeOwner, callResult.Output);
-                                }
-                            }
-                            else
-                            {
-                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                if (typeof(TTracingActions) == typeof(IsTracing))
-                                {
-                                    _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
-                                }
+                                _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
                             }
 
                         }
