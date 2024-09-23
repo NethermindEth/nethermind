@@ -1,11 +1,9 @@
-using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.Portal.Messages;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
 [SszSerializable]
-public class HistoryContentKey : IUnion
+public class HistoryContentKey
 {
     public HistoryContentType Selector { get; set; }
 
