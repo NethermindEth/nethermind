@@ -9,7 +9,7 @@ namespace Nethermind.Network.Discovery.Portal;
 /// </summary>
 public interface IPortalContentNetworkStore
 {
-    public byte[]? GetContent(byte[] contentKey);
-    bool ShouldAcceptOffer(byte[] offerContentKey);
-    void Store(byte[] contentKey, byte[] content);
+    public byte[]? GetContent(ReadOnlySpan<byte> contentKey);
+    bool ShouldAcceptOffer(ReadOnlySpan<byte> offerContentKey);
+    void Store(ReadOnlySpan<byte> contentKey, ReadOnlySpan<byte> content);
 }

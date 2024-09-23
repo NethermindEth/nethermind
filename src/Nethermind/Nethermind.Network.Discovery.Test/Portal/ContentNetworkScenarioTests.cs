@@ -284,24 +284,24 @@ public class ContentNetworkScenarioTests
         {
             private SpanConcurrentDictionary<byte, byte[]> _contents = new(Bytes.SpanEqualityComparer);
 
-            public byte[]? GetContent(byte[] contentKey)
+            public byte[]? GetContent(ReadOnlySpan<byte> contentKey)
             {
-                return _contents.GetValueOrDefault(contentKey);
+                return _contents.GetValueOrDefault(contentKey.ToArray());
             }
 
-            public bool ShouldAcceptOffer(byte[] offerContentKey)
+            public bool ShouldAcceptOffer(ReadOnlySpan<byte> offerContentKey)
             {
                 return !_contents.ContainsKey(offerContentKey);
             }
 
-            public void Store(byte[] contentKey, byte[] content)
+            public void Store(ReadOnlySpan<byte> contentKey, ReadOnlySpan<byte> content)
             {
-                _contents[contentKey] = content;
+                _contents[contentKey] = content.ToArray();
             }
 
-            public void Set(byte[] contentId, byte[] value)
+            public void Set(ReadOnlySpan<byte> contentId, ReadOnlySpan<byte> value)
             {
-                _contents[contentId] = value;
+                _contents[contentId] = value.ToArray();
             }
         }
 
