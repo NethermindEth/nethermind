@@ -41,20 +41,17 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        // TODO: This is a bit messy since we're changing the transaction type
-                        // What about `AccessList` transactions?
-                        if (callTransactionModel.Type == TxType.Legacy)
+                        callTransactionModel = UpdateTxType(callTransactionModel);
+                        bool hadGasLimitInRequest;
+                        bool hadNonceInRequest;
+
                         {
-                            callTransactionModel = (RpcEIP1559Transaction)callTransactionModel;
+                            RpcLegacyTransaction asLegacy  = callTransactionModel as RpcLegacyTransaction;
+                            hadGasLimitInRequest = asLegacy?.Gas is not null;
+                            hadNonceInRequest = asLegacy?.Nonce is not null;
+                            asLegacy!.EnsureDefaults(_gasCapBudget);
+                            _gasCapBudget -= asLegacy.Gas!.Value;
                         }
-
-                        RpcLegacyTransaction asLegacy  = callTransactionModel as RpcLegacyTransaction;
-
-                        bool hadGasLimitInRequest = asLegacy?.Gas is not null;
-                        bool hadNonceInRequest = asLegacy?.Nonce is not null;
-
-                        asLegacy!.EnsureDefaults(_gasCapBudget);
-                        _gasCapBudget -= asLegacy.Gas!.Value;
 
                         Transaction tx = callTransactionModel.ToTransaction();
                         tx.ChainId = _blockchainBridge.GetChainId();
@@ -73,6 +70,30 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         };
 
         return result;
+    }
+
+    private static RpcNethermindTransaction UpdateTxType(RpcNethermindTransaction rpcTransaction)
+    {
+        // TODO: This is a bit messy since we're changing the transaction type
+        if (rpcTransaction is RpcLegacyTransaction legacy)
+        {
+            rpcTransaction = new RpcEIP1559Transaction
+            {
+                Nonce = legacy.Nonce,
+                To = legacy.To,
+                From = legacy.From,
+                Gas = legacy.Gas,
+                Value = legacy.Value,
+                Input = legacy.Input,
+                GasPrice = legacy.GasPrice,
+                ChainId = legacy.ChainId,
+                V = legacy.V,
+                R = legacy.R,
+                S = legacy.S,
+            };
+        }
+
+        return rpcTransaction;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
