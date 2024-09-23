@@ -13,9 +13,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -142,7 +141,7 @@ public class EthRpcSimulateTestsBase
     {
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
-        TransactionForRpc transactionForRpc = new(transaction);
+        RpcNethermindTransaction transactionForRpc = RpcNethermindTransaction.FromTransaction(transaction);
         ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
         return ParseEcRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
     }
