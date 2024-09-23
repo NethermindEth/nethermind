@@ -43,6 +43,7 @@ public static class IServiceCollectionExtensions
             .AddSingleton<IContentDistributor, ContentDistributor>()
             .AddSingleton<ContentLookupService>()
             .AddSingleton<RadiusTracker>()
+            .AddSingleton<ContentNetworkRpcHandler>()
             .AddSingleton<IPortalContentNetwork, PortalContentNetwork>();
     }
 }

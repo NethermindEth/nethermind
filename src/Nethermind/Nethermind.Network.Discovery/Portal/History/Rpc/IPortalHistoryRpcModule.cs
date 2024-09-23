@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Network.Discovery.Portal.History.Rpc.Model;
+using Nethermind.Network.Discovery.Portal.RpcModel;
 
 namespace Nethermind.Network.Discovery.Portal.History.Rpc;
 

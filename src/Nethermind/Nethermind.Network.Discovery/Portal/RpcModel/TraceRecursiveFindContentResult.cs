@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
+namespace Nethermind.Network.Discovery.Portal.RpcModel;
 
 public class TraceRecursiveFindContentResult
 {

@@ -2,16 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Buffers.Text;
-using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
-namespace Nethermind.Network.Discovery.Portal.History.Rpc.Model;
+namespace Nethermind.Network.Discovery.Portal.RpcModel;
 
 public class PingResult
 {
