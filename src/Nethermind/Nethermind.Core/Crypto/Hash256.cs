@@ -66,19 +66,9 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
 
-        public override int GetHashCode()
-        {
-            return GetChainedHashCode(s_instanceRandom);
-        }
+        public override int GetHashCode() => GetChainedHashCode(s_instanceRandom);
 
-        public int GetChainedHashCode(uint previousHash)
-        {
-            uint hash = BitOperations.Crc32C(previousHash, Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)));
-            hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 1));
-            hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 2));
-            hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 3));
-            return (int)hash;
-        }
+        public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
 
         public int CompareTo(ValueHash256 other)
         {

@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.GC;
+using Nethermind.Merge.Plugin.handlers;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -324,7 +325,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
@@ -357,6 +359,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _api.Config<IMergeConfig>().SimulateBlockProduction),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
+                new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
+                new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                 new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
                 new GetBlobsHandler(_api.TxPool),

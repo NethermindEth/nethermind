@@ -2,7 +2,7 @@
   "profiles": {
     "DocGen": {
       "commandName": "Project",
-      "commandLineArgs": "--dbsize --config --jsonrpc --metrics"
+      "commandLineArgs": "/path/to/docs --config --dbsize --jsonrpc --metrics"
     }
   }
 }
