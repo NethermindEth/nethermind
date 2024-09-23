@@ -50,9 +50,9 @@ internal static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode, ITxTracer tracer)
+    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode)
     {
-        return Task.Run(() => Analysis(codeInfo, mode, tracer));
+        return Task.Run(() => Analysis(codeInfo, mode));
     }
 
     public static (OpcodeInfo[], byte[][]) StripByteCode(ReadOnlySpan<byte> machineCode)
@@ -80,43 +80,57 @@ internal static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode, ITxTracer tracer)
+    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        static FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, ITxTracer tracer)
+        static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
         {
-            string GenerateName(List<OpcodeInfo> segment) => $"ILEVM_PRECOMPILED_({codeInfo.CodeHash.ToShortString()})[{segment[0].ProgramCounter}..{segment[^1].ProgramCounter + segment[^1].Metadata.AdditionalBytes}]";
-
-            Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
-
-            List<OpcodeInfo> segment = [];
-            foreach (var opcode in codeData.Item1)
+            if(codeData.Item1.Length == 0)
             {
-                if (opcode.Operation.IsStateful())
+                return;
+            }
+
+            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.CodeHash.ToShortString()})[{segmentRange.Start}..{segmentRange.End}]";
+
+            int[] statefulOpcodeindex = new int[1 + (codeData.Item1.Length / 5)];
+
+            int j = 0;
+            for (int i = 0; i < codeData.Item1.Length; i++)
+            {
+                if (codeData.Item1[i].Operation.IsStateful())
                 {
-                    if (segment.Count > 0)
-                    {
-                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment(GenerateName(segment), segment.ToArray(), codeData.Item2));
-                        segment.Clear();
-                    }
-                }
-                else
-                {
-                    segment.Add(opcode);
+                    statefulOpcodeindex[j++] = i;
                 }
             }
-            if (segment.Count > 0)
+
+            for (int i = -1; i <= j; i++)
             {
-                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment(GenerateName(segment), segment.ToArray(), codeData.Item2));
+                int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
+                int end = i == j - 1 || i + 1 == statefulOpcodeindex.Length ? codeData.Item1.Length : statefulOpcodeindex[i + 1];
+                if (start > end)
+                {
+                    continue;
+                }
+
+                var segment = codeData.Item1[start..end];
+                if (segment.Length == 0)
+                {
+                    continue;
+                }
+                var firstOp = segment[0];
+                var lastOp = segment[^1];
+                var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
+
+                ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter,CompileSegment(segmentName, segment, codeData.Item2));
             }
-            return opcodeInfos.ToFrozenDictionary();
+
+            ilinfo.Mode |= IlInfo.ILMode.SubsegmentsCompiling;
         }
 
-        static FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode, ITxTracer tracer)
+        static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
         {
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
-            var patternFound = new Dictionary<ushort, InstructionChunk>();
             foreach (var (_, chunkHandler) in Patterns)
             {
                 for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
@@ -129,28 +143,22 @@ internal static class IlAnalyzer
 
                     if (found)
                     {
-                        patternFound.Add((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
+                        ilinfo.Chunks.GetOrAdd((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
                         i += chunkHandler.Pattern.Length - 1;
                     }
                 }
             }
-            return patternFound.ToFrozenDictionary();
+            ilinfo.Mode |= IlInfo.ILMode.PatternMatching;
         }
 
         switch (mode)
         {
             case IlInfo.ILMode.PatternMatching:
-                codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode, tracer));
+                CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
             case IlInfo.ILMode.SubsegmentsCompiling:
-                codeInfo.IlInfo.WithSegments(SegmentCode(codeInfo, StripByteCode(machineCode.Span), tracer));
+                SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo);
                 break;
         }
     }
-
-    /// <summary>
-    /// How many execution a <see cref="CodeInfo"/> should perform before trying to get its opcodes optimized.
-    /// </summary>
-    public static int CompoundOpThreshold = 32;
-    public static int IlCompilerThreshold = 128;
 }

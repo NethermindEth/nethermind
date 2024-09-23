@@ -28,6 +28,9 @@ using System.Reflection;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
+using Nethermind.Evm.CodeAnalysis.IL.Patterns;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -87,180 +90,27 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
     }
 
-    internal class MethodSelector : InstructionChunk
+    internal class TestBlockChain: VirtualMachineTestsBase
     {
-        public string Name => nameof(MethodSelector);
-        public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE, (byte)Instruction.DUP1];
-        public byte CallCount { get; set; } = 0;
-
-        public long GasCost(EvmState vmState, IReleaseSpec spec)
+        protected IVMConfig config;
+        public TestBlockChain(IVMConfig config)
         {
-            long gasCost = GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.VeryLow;
-            return gasCost;
+            this.config = config;
+            Setup();
         }
 
-        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-            ref int programCounter,
-            ref long gasAvailable,
-            ref EvmStack<T> stack,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+        public TestBlockChain()
         {
-            CallCount++;
-
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-                result.ExceptionType = EvmExceptionType.OutOfGas;
-
-            byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
-            byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
-            VirtualMachine<T>.UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, 0, 32);
-            vmState.Memory.SaveByte(location, value);
-            stack.PushUInt256(vmState.Env.Value);
-            stack.PushUInt256(vmState.Env.Value);
-
-            programCounter += 2 + 2 + 1 + 1 + 1;
+            config = new VMConfig();
+            Setup();
         }
-    }
-
-    internal class IsContractCheck : InstructionChunk
-    {
-        public string Name => nameof(IsContractCheck);
-        public byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
-        public byte CallCount { get; set; } = 0;
-
-        public long GasCost(EvmState vmState, IReleaseSpec spec)
-        {
-            long gasCost = spec.GetExtCodeCost() + GasCostOf.VeryLow + GasCostOf.Base;
-            return gasCost;
-        }
-
-        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-            ref int programCounter,
-            ref long gasAvailable,
-            ref EvmStack<T> stack,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
-        {
-            CallCount++;
-
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-                result.ExceptionType = EvmExceptionType.OutOfGas;
-
-            Address address = stack.PopAddress();
-            int contractCodeSize = worldState.GetCode(address).Length;
-            stack.PushUInt32(contractCodeSize);
-            if (contractCodeSize == 0)
-            {
-                stack.PushOne();
-            }
-            else
-            {
-                stack.PushZero();
-            }
-
-            programCounter += 3;
-        }
-
-    }
-    internal class EmulatedStaticJump : InstructionChunk
-    {
-        public string Name => nameof(EmulatedStaticJump);
-        public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
-        public byte CallCount { get; set; } = 0;
-
-        public long GasCost(EvmState vmState, IReleaseSpec spec)
-        {
-            long gasCost = GasCostOf.VeryLow + GasCostOf.Mid;
-            return gasCost;
-        }
-
-        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-            ref int programCounter,
-            ref long gasAvailable,
-            ref EvmStack<T> stack,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
-        {
-            CallCount++;
-
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-                result.ExceptionType = EvmExceptionType.OutOfGas;
-
-            int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
-            if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
-            {
-                programCounter = jumpdestionation;
-            }
-            else
-            {
-                result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
-            }
-        }
-
-    }
-    internal class EmulatedStaticCJump : InstructionChunk
-    {
-        public string Name => nameof(EmulatedStaticCJump);
-        public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
-        public byte CallCount { get; set; } = 0;
-
-        public long GasCost(EvmState vmState, IReleaseSpec spec)
-        {
-            long gasCost = GasCostOf.VeryLow + GasCostOf.High;
-            return gasCost;
-        }
-
-        public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-            ref int programCounter,
-            ref long gasAvailable,
-            ref EvmStack<T> stack,
-            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
-        {
-            CallCount++;
-
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
-                result.ExceptionType = EvmExceptionType.OutOfGas;
-
-            stack.PopUInt256(out UInt256 condition);
-            int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
-            if (!condition.IsZero)
-            {
-                if (jumpdestionation < vmState.Env.CodeInfo.MachineCode.Length && vmState.Env.CodeInfo.MachineCode.Span[jumpdestionation] == (byte)Instruction.JUMPDEST)
-                {
-                    programCounter = jumpdestionation;
-                }
-                else
-                {
-                    result.ExceptionType = EvmExceptionType.InvalidJumpDestination;
-                }
-            }
-            else
-            {
-                programCounter += 4;
-            }
-        }
-    }
-
-
-
-    [TestFixture]
-    internal class IlEvmTests : VirtualMachineTestsBase
-    {
-        private const string AnalyzerField = "_analyzer";
-        private readonly IVMConfig _vmConfig = new VMConfig()
-        {
-            IsJitEnabled = true,
-            IsPatternMatchingEnabled = true,
-
-            PatternMatchingThreshold = 4,
-            JittingThreshold = 256,
-        };
-
-        [SetUp]
         public override void Setup()
         {
             base.Setup();
             ILogManager logManager = GetLogManager();
 
             _blockhashProvider = new TestBlockhashProvider(SpecProvider);
-            Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, _vmConfig);
+            Machine = new VirtualMachine(_blockhashProvider, SpecProvider, CodeInfoRepository, logManager, config);
             _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
 
             var code = Prepare.EvmCode
@@ -279,6 +129,54 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<AbortDestinationPattern>();
         }
 
+        public void Execute<T>(byte[] bytecode, T tracer)
+            where T : ITxTracer
+        {
+            Execute<T>(tracer, bytecode, null, 1_000_000);
+        }
+
+        public Address InsertCode(byte[] bytecode)
+        {
+            var hashcode = Keccak.Compute(bytecode);
+            var address = new Address(hashcode);
+            var spec = Prague.Instance;
+            TestState.CreateAccount(address, 1000000);
+            TestState.InsertCode(address, bytecode, spec);
+            return address;
+        }
+
+        public Hash256 StateRoot
+        {
+            get
+            {
+                TestState.Commit(Spec);
+                TestState.RecalculateStateRoot();
+                return TestState.StateRoot;
+            }
+        }
+
+    }
+
+    [TestFixture]
+    internal class IlEvmTests : TestBlockChain
+    {
+        private const string AnalyzerField = "_analyzer";
+
+        [SetUp]
+        public override void Setup()
+        {
+            base.config = new VMConfig()
+            {
+                IsJitEnabled = true,
+                IsPatternMatchingEnabled = true,
+
+                PatternMatchingThreshold = 4,
+                JittingThreshold = 256,
+            };
+
+            base.Setup();
+        }
+
         [Test]
         public async Task Pattern_Analyzer_Find_All_Instance_Of_Pattern()
         {
@@ -294,7 +192,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching, NullTxTracer.Instance);
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
@@ -323,7 +221,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.SubsegmentsCompiling, NullTxTracer.Instance);
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.SubsegmentsCompiling);
 
             codeInfo.IlInfo.Segments.Count.Should().Be(2);
         }
@@ -357,9 +255,15 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-
+            /*
+            var hashcode = Keccak.Compute(bytecode);
+            var address = new Address(hashcode);
+            var spec = Prague.Instance;
+            TestState.CreateAccount(address, 1000000);
+            TestState.InsertCode(address, bytecode, spec);
+            */
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++)
+            for (int i = 0; i < config.PatternMatchingThreshold * 2; i++)
             {
                 var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode);
@@ -370,9 +274,125 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.Greater(accumulatedTraces.Count, 0);
         }
 
+        [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
+        public void ILVM_JIT_Execution_Equivalence_Tests((Instruction? opcode, byte[] bytecode) testcase)
+        {
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+            var address = standardChain.InsertCode(testcase.bytecode);
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+                JittingThreshold = 9,
+                IsJitEnabled = true
+            });
+            enhancedChain.InsertCode(testcase.bytecode);
+            int repeatCount = 8;
+
+            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            var bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .Call(address, 10)
+                    .POP()
+                    .GAS()
+                    .PushData(1000)
+                    .LT()
+                    .JUMPI(0)
+                    .STOP()
+                    .Done;
+
+            for (var i = 0; i <= repeatCount; i++)
+            {
+                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+            }
+
+            for (var i = 0; i <= repeatCount; i++)
+            {
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
+            }
+
+            var normal_traces = tracer1.BuildResult();
+            var ilvm_traces = tracer2.BuildResult();
+
+            var actual = standardChain.StateRoot;
+            var expected = enhancedChain.StateRoot;
+
+            var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+
+            if(testcase.opcode is not null)
+            {
+                Assert.That(HasIlvmTraces, Is.True);
+            }
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
+
+        [Test, TestCaseSource(nameof(GePatBytecodesSamples))]
+        public void ILVM_Pat_Execution_Equivalence_Tests((Type opcode, byte[] bytecode) testcase)
+        {
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+            var address = standardChain.InsertCode(testcase.bytecode);
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = 9,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = false
+            });
+            enhancedChain.InsertCode(testcase.bytecode);
+
+            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            var bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .Call(address, 10)
+                    .POP()
+                    .GAS()
+                    .PushData(1000)
+                    .LT()
+                    .JUMPI(0)
+                    .STOP()
+                    .Done;
+
+            for (var i = 0; i < 8; i++)
+            {
+                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+            }
+
+            for (var i = 0; i < 8; i++)
+            {
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
+            }
+
+            var normal_traces = tracer1.BuildResult();
+            var ilvm_traces = tracer2.BuildResult();
+
+            var actual = standardChain.StateRoot;
+            var expected = enhancedChain.StateRoot;
+
+            var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+
+            if (testcase.opcode is not null)
+            {
+                Assert.That(HasIlvmTraces, Is.True);
+            }
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
         [Test]
         public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment()
         {
+            var address = InsertCode(Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .ADD()
+                .STOP().Done);
+
             byte[] bytecode =
                 Prepare.EvmCode
                     .JUMPDEST()
@@ -383,7 +403,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
-                    .Call(Address.FromNumber(23), 100)
+                    .Call(address, 100)
                     .POP()
                     .PushSingle(42)
                     .PushSingle(5)
@@ -395,7 +415,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
+            for (int i = 0; i <= config.JittingThreshold * 2; i++)
             {
                 var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode);
@@ -414,10 +434,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string[] desiredTracePattern = new[]
             {
-                "ILEVM_PRECOMPILED_(0x195fe3...9dbe75)[0..46]",
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
                 "ILEVM_PRECOMPILED_(0x3dff15...1db9a1)[0..5]",
-                "ILEVM_PRECOMPILED_(0x195fe3...9dbe75)[48..59]",
-                "ILEVM_PRECOMPILED_(0x195fe3...9dbe75)[0..46]",
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
                 "AbortDestinationPattern"
             };
 
@@ -437,7 +457,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<GethLikeTxTrace>();
-            var numberOfRuns = IlAnalyzer.IlCompilerThreshold * 1024;
+            var numberOfRuns = config.JittingThreshold * 1024;
             for (int i = 0; i < numberOfRuns; i++)
             {
                 var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
@@ -476,7 +496,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= IlAnalyzer.IlCompilerThreshold * 32; i++)
+            for (int i = 0; i <= config.JittingThreshold * 32; i++)
             {
                 var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
                 ExecuteBlock(tracer, bytecode);
@@ -519,8 +539,36 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(notYetImplemented.Count == 0, $"{notYetImplemented.Count} opcodes missing: [{missingOpcodes}]");
         }
 
+        public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
+        {
+            yield return (null, Prepare.EvmCode
+                    .Done);
+            yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
+                    .PUSHx([1])
+                    .PUSHx([0, 7])
+                    .JUMPI()
+                    .JUMPDEST()
+                    .Done);
+            yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
+                    .PUSHx([0, 5])
+                    .JUMP()
+                    .JUMPDEST()
+                    .Done);
+            yield return (typeof(IsContractCheck), Prepare.EvmCode
+                    .PushData(0)
+                    .PushData(23)
+                    .MSTORE()
+                    .CALLVALUE()
+                    .DUPx(1)
+                    .Done);
+            yield return (typeof(MethodSelector), Prepare.EvmCode
+                    .EXTCODESIZE(Address.SystemUser)
+                    .DUPx(1)
+                    .ISZERO()
+                    .Done);    
+        }
 
-        public static IEnumerable<(Instruction?, byte[])> GetBytecodes()
+        public static IEnumerable<(Instruction?, byte[])> GeJitBytecodesSamples()
         {
             yield return (null, Prepare.EvmCode
                     .Done);
@@ -694,10 +742,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done);
 
             yield return (Instruction.RETURN, Prepare.EvmCode
+                    .StoreDataInMemory(0, [2, 3, 5, 7])
                     .RETURN(0, 32)
                     .Done);
 
             yield return (Instruction.REVERT, Prepare.EvmCode
+                    .StoreDataInMemory(0, [2, 3, 5, 7])
                     .REVERT(0, 32)
                     .Done);
 
@@ -871,7 +921,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done);
         }
 
-        [Test, TestCaseSource(nameof(GetBytecodes))]
+        [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
         public void Ensure_Evm_ILvm_Compatibility((Instruction? opcode, byte[] bytecode) testcase)
         {
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -901,6 +951,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
+
             Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 

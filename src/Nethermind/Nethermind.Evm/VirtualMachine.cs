@@ -73,9 +73,6 @@ public class VirtualMachine : IVirtualMachine
         _evm = logger.IsTrace
             ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger)
             : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger);
-
-        IlAnalyzer.CompoundOpThreshold = _config.PatternMatchingThreshold;
-        IlAnalyzer.IlCompilerThreshold = _config.JittingThreshold;
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -640,6 +637,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 _state.IncrementNonce(env.ExecutingAccount);
             }
+
+            if (_vmConfig.IsVmOptimizationEnabled)
+            {
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig);
+            }
         }
 
         if (env.CodeInfo.MachineCode.Length == 0)
@@ -651,10 +653,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             goto Empty;
         }
 
-        if (_vmConfig.IsVmOptimizationEnabled)
-        {
-            vmState.Env.CodeInfo.NoticeExecution(_txTracer);
-        }
 
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
@@ -777,6 +775,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         case EvmExceptionType.StaticCallViolation:
                             goto StaticCallViolation;
                     }
+                }
+
+                if(programCounter >= codeLength)
+                {
+                    goto EmptyReturnNoTrace;
                 }
             }
 

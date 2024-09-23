@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
+using NonBlocking;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static Nethermind.Evm.VirtualMachine;
 
@@ -40,50 +41,38 @@ internal class IlInfo
     public static IlInfo Empty => new();
 
     /// <summary>
-    /// Represents what mode of IL-EVM is used. 0 is the default. [0 = Pattern matching, 1 = subsegments compiling]
+    /// Represents what mode of IL-EVM is used. 0 is the default. [0 = No ILVM optimizations, 1 = Pattern matching, 2 = subsegments compiling]
     /// </summary>
-    public static readonly ILMode Mode = ILMode.PatternMatching;
+    public ILMode Mode = ILMode.NoIlvm;
     public bool IsEmpty => Chunks.Count == 0 && Segments.Count == 0;
     /// <summary>
     /// No overrides.
     /// </summary>
     private IlInfo()
     {
-        Chunks = FrozenDictionary<ushort, InstructionChunk>.Empty;
-        Segments = FrozenDictionary<ushort, SegmentExecutionCtx>.Empty;
+        Chunks = new ConcurrentDictionary<ushort, InstructionChunk>();
+        Segments = new ConcurrentDictionary<ushort, SegmentExecutionCtx>();
     }
 
-    public IlInfo WithChunks(FrozenDictionary<ushort, InstructionChunk> chunks)
-    {
-        Chunks = chunks;
-        return this;
-    }
-
-    public IlInfo WithSegments(FrozenDictionary<ushort, SegmentExecutionCtx> segments)
-    {
-        Segments = segments;
-        return this;
-    }
-
-    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, FrozenDictionary<ushort, SegmentExecutionCtx> segments)
+    public IlInfo(ConcurrentDictionary<ushort, InstructionChunk> mappedOpcodes, ConcurrentDictionary<ushort, SegmentExecutionCtx> segments)
     {
         Chunks = mappedOpcodes;
         Segments = segments;
     }
 
     // assumes small number of ILed
-    public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
-    public FrozenDictionary<ushort, SegmentExecutionCtx> Segments { get; set; }
+    public ConcurrentDictionary<ushort, InstructionChunk> Chunks { get; } = new();
+    public ConcurrentDictionary<ushort, SegmentExecutionCtx> Segments { get; } = new();
 
     public bool TryExecute<TTracingInstructions>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         result = null;
-        if (programCounter > ushort.MaxValue)
+        if (programCounter > ushort.MaxValue || Mode == ILMode.NoIlvm)
             return false;
 
         var executionResult = new ILChunkExecutionResult();
-        if (Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
+        if (Mode.HasFlag(ILMode.SubsegmentsCompiling) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Name, vmState.Env);
@@ -104,7 +93,7 @@ internal class IlInfo
             vmState.DataStackHead = ilvmState.StackHead;
             stack.Head = ilvmState.StackHead;
         }
-        else if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+        else if (Mode.HasFlag(ILMode.PatternMatching) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.Name, vmState.Env);

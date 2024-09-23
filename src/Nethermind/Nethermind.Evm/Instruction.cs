@@ -242,7 +242,6 @@ namespace Nethermind.Evm
                 [Instruction.JUMPDEST] = new(GasCostOf.JumpDest, 0, 0, 0),
                 [Instruction.JUMP] = new(GasCostOf.Mid, 0, 1, 0),
                 [Instruction.JUMPI] = new(GasCostOf.High, 0, 2, 0),
-                [Instruction.SUB] = new(GasCostOf.VeryLow, 0, 2, 1),
 
                 [Instruction.DUP1] = new(GasCostOf.VeryLow, 0, 1, 2),
                 [Instruction.DUP2] = new(GasCostOf.VeryLow, 0, 2, 3),

@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Nethermind.Evm.Config;
 
 namespace Nethermind.Evm.Test;
 
@@ -136,9 +137,9 @@ public class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
+    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null, long gasLimit = 100000) where T : ITxTracer
     {
-        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, gasLimit, code);
         _processor.Execute(transaction, block.Header, tracer);
         return tracer;
     }
