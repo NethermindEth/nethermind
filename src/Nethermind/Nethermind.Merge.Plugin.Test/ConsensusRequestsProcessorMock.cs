@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class ConsensusRequestsProcessorMock : IConsensusRequestsProcessor
 {
-    public ConsensusRequest[] Requests =
+    public static ConsensusRequest[] Requests =
     [
         TestItem.DepositA_1Eth,
         TestItem.DepositB_2Eth,
