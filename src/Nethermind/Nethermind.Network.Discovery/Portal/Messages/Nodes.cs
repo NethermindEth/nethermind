@@ -11,12 +11,12 @@ public class Nodes
     public byte Total { get; set; } = 1;
 
     [SszList(64000)] // TODO: Check limit
-    public Enr[] Enrs { get; set; } = null!;
+    public Enr[] Enrs { get; set; } = [];
 }
 
 [SszSerializable(isCollectionItself: true)]
 public class Enr
 {
     [SszList(1024)]
-    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public byte[] Data { get; set; } = [];
 }

@@ -132,13 +132,13 @@ public partial class SszEncoding
         return length;
     }}
 {Whitespace}
-    public static ReadOnlySpan<byte> Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static byte[] Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
             return [];
         }")}
-        Span<byte> buf = new byte[GetLength(container)];
+        byte[] buf = new byte[GetLength(container)];
         Encode(buf, container);
         return buf;
     }}
@@ -287,13 +287,13 @@ public partial class SszEncoding
         return length;" : $"return container.Count * {(decl.StaticLength)};")}
     }}
 {Whitespace}
-    public static ReadOnlySpan<byte> Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static byte[] Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
             return [];
         }")}
-        Span<byte> buf = new byte[GetLength(container)];
+        byte[] buf = new byte[GetLength(container)];
         Encode(buf, container);
         return buf;
     }}
@@ -482,13 +482,13 @@ public partial class SszEncoding
         return length;
     }}
 {Whitespace}
-    public static ReadOnlySpan<byte> Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    public static byte[] Encode({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)
         {
             return [];
         }")}
-        Span<byte> buf = new byte[GetLength(container)];
+        byte[] buf = new byte[GetLength(container)];
         Encode(buf, container);
         return buf;
     }}

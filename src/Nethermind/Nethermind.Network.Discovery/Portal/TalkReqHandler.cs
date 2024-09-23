@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Kademlia.Content;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -44,7 +45,7 @@ public class TalkReqHandler(
     {
         try
         {
-            MessageUnion message = SlowSSZ.Deserialize<MessageUnion>(talkReqMessage.Request);
+            SszEncoding.Decode(talkReqMessage.Request, out MessageUnion message);
 
             if (message.Ping is { } ping)
             {
@@ -81,14 +82,15 @@ public class TalkReqHandler(
         // Still need to call kadMessageReceiver since the ping is also used to populate bucket.
         if (ping.CustomPayload?.Length == 32)
         {
-            UInt256 radius = SlowSSZ.Deserialize<UInt256>(ping.CustomPayload);
+            UInt256 radius = new UInt256(ping.CustomPayload, isBigEndian: false);
             radiusTracker.UpdatePeerRadius(sender, radius);
         }
 
         await kadKademliaMessageReceiver.Ping(sender, default);
 
-        return SlowSSZ.Serialize(new MessageUnion()
+        return SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.Pong,
             Pong = new Pong()
             {
                 EnrSeq = ping.EnrSeq,
@@ -112,19 +114,20 @@ public class TalkReqHandler(
 
         var response = new MessageUnion()
         {
+            Selector = MessageType.Nodes,
             Nodes = new Nodes()
             {
                 Enrs = neighboursAsBytes.Select(enr => new Messages.Enr { Data = enr }).ToArray()
             }
         };
 
-        return SlowSSZ.Serialize(response);
+        return SszEncoding.Encode(response);
     }
 
     private async Task<byte[]?> HandleFindContent(IEnr sender, FindContent findContent)
     {
         if (_logger.IsDebug) _logger.Debug($"Handling find content from {sender.NodeId.ToHexString()}");
-        var findValueResult = await kadContentMessageReceiver.FindValue(sender, findContent.ContentKey, CancellationToken.None);
+        var findValueResult = await kadContentMessageReceiver.FindValue(sender, findContent.ContentKey.Data, CancellationToken.None);
         if (findValueResult.HasValue)
         {
             // From the POV of Kademlia, there is no such thing as UTP. So when calling local kad,
@@ -133,16 +136,24 @@ public class TalkReqHandler(
             LookupContentResult value = findValueResult.Value!;
             if (value.Payload!.Length > config.MaxContentSizeForTalkReq)
             {
-                value.ConnectionId = InitiateUtpStreamSender(sender, value.Payload);
-                value.Payload = null;
+                return SszEncoding.Encode(new MessageUnion()
+                {
+                    Selector = MessageType.Content,
+                    Content = new Content()
+                    {
+                        Selector = ContentType.ConnectionId,
+                        ConnectionId = InitiateUtpStreamSender(sender, value.Payload),
+                    }
+                });
             }
 
-            return SlowSSZ.Serialize(new MessageUnion()
+            return SszEncoding.Encode(new MessageUnion()
             {
+                Selector = MessageType.Content,
                 Content = new Content()
                 {
+                    Selector = ContentType.Payload,
                     Payload = value.Payload,
-                    ConnectionId = value.ConnectionId ?? default
                 }
             });
         }
@@ -150,13 +161,15 @@ public class TalkReqHandler(
         var neighboursAsBytes = findValueResult.Neighbours.Select<IEnr, byte[]>(ienr => ienr.EncodeRecord()).ToArray();
         var response = new MessageUnion()
         {
+            Selector = MessageType.Content,
             Content = new Content()
             {
+                Selector = ContentType.Enrs,
                 Enrs = neighboursAsBytes.Select(enr => new Messages.Enr { Data = enr }).ToArray()
             }
         };
 
-        return SlowSSZ.Serialize(response);
+        return SszEncoding.Encode(response);
     }
 
     private ushort InitiateUtpStreamSender(IEnr nodeId, byte[] valuePayload)
@@ -191,12 +204,12 @@ public class TalkReqHandler(
         bool hasAccept = false;
         for (var i = 0; i < toAccept.Count; i++)
         {
-            if (!radiusTracker.IsContentInRadius(offer.ContentKeys[i]))
+            if (!radiusTracker.IsContentInRadius(offer.ContentKeys[i].Data))
             {
-                if (_logger.IsTrace) _logger.Trace($"Content {offer.ContentKeys[i].ToHexString()} not in radius");
+                if (_logger.IsTrace) _logger.Trace($"Content {offer.ContentKeys[i].Data.ToHexString()} not in radius");
                 continue;
             }
-            if (store.ShouldAcceptOffer(offer.ContentKeys[i]))
+            if (store.ShouldAcceptOffer(offer.ContentKeys[i].Data))
             {
                 toAccept[i] = true;
                 hasAccept = true;
@@ -213,8 +226,9 @@ public class TalkReqHandler(
         ushort connectionId = (ushort)Random.Shared.Next();
         _ = RunOfferAccept(sender, offer, toAccept, connectionId);
 
-        return Task.FromResult<byte[]?>(SlowSSZ.Serialize(new MessageUnion()
+        return Task.FromResult<byte[]?>(SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.Accept,
             Accept = new Accept()
             {
                 ConnectionId = connectionId,

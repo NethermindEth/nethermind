@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Portal.History;
@@ -17,7 +18,8 @@ public class HistoryNetworkEncoderDecoder
 
     public BlockHeader DecodeHeader(byte[] payload)
     {
-        byte[] headerBytes = SlowSSZ.Deserialize<PortalBlockHeaderWithProof>(payload).Header!;
+        SszEncoding.Decode(payload, out PortalBlockHeaderWithProof headerWithProof);
+        byte[] headerBytes = headerWithProof.Header!;
         BlockHeader header = _headerDecoder.Decode(new RlpStream(headerBytes))!;
         return header;
     }
@@ -26,9 +28,9 @@ public class HistoryNetworkEncoderDecoder
     {
         // TODO: Need to know if post or pre shanghai.
         // And for that need to get the header first.
-        PortalBlockBodyPostShanghai body = SlowSSZ.Deserialize<PortalBlockBodyPostShanghai>(payload);
-        byte[][] transactionBytes = body.Transactions;
-        Transaction[] transactions = transactionBytes.Select((bytes) => _txDecoder.Decode(new RlpStream(bytes))!).ToArray();
+        SszEncoding.Decode(payload, out PortalBlockBodyPostShanghai body);
+        Transaction[] transactions = body.Transactions
+            .Select((tx) => _txDecoder.Decode(new RlpStream(tx.Data))!).ToArray();
         // Does not work. Dont know why.
         // BlockHeader[] uncles = Rlp.Decode<BlockHeader[]>(body.Uncles!);
 
@@ -41,7 +43,7 @@ public class HistoryNetworkEncoderDecoder
         byte[]? headerBytes = _headerDecoder.Encode(header).Bytes;
 
         // TODO: Proof
-        return SlowSSZ.Serialize(new PortalBlockHeaderWithProof()
+        return SszEncoding.Encode(new PortalBlockHeaderWithProof()
         {
             Header = headerBytes
         });
@@ -49,10 +51,11 @@ public class HistoryNetworkEncoderDecoder
 
     public byte[]? EncodeBlockBody(BlockBody blockBody)
     {
-        byte[][] transactionBytes = blockBody.Transactions.Select((tx) => _txDecoder.Encode(tx).Bytes).ToArray();
+        SszTransaction[] transactionBytes = blockBody.Transactions
+            .Select((tx) => new SszTransaction() { Data = _txDecoder.Encode(tx).Bytes }).ToArray();
 
         // TODO: Uncles widthrawals
-        return SlowSSZ.Serialize(new PortalBlockBodyPostShanghai()
+        return SszEncoding.Encode(new PortalBlockBodyPostShanghai()
         {
             Transactions = transactionBytes
         });

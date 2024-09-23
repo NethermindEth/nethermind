@@ -96,7 +96,7 @@ public class KademliaContentNetworkContentKademliaMessageSender(
             ContentKey = new ContentKey { Data = contentKey }
         }, token);
 
-        if (message.ConnectionId == default && message.Payload == null)
+        if (message.Selector == ContentType.Enrs)
         {
             IEnr[] enrs = message.Enrs!.Select(enr => enrProvider.Decode(enr.Data)).ToArray();
             return new FindValueResponse<IEnr, LookupContentResult>(false, null, enrs);

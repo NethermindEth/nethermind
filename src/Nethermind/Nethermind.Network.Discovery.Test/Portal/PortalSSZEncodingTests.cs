@@ -10,23 +10,23 @@ using Nethermind.Core.Extensions;
 using NUnit.Framework;
 using Nethermind.Int256;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Test.Portal;
 
-public class SlowSSZTests
+public class PortalSSZEncodingTests
 {
 
     public static IEnumerable<(string, MessageUnion)> TestVectors()
     {
         {
-            var customPayload = SlowSSZ.Serialize(UInt256.MaxValue - 1);
             var pingMessage = new MessageUnion()
             {
                 Selector = MessageType.Ping,
                 Ping = new Ping()
                 {
                     EnrSeq = 1,
-                    CustomPayload = customPayload
+                    CustomPayload = (UInt256.MaxValue - 1).ToLittleEndian()
                 }
             };
 
@@ -34,14 +34,13 @@ public class SlowSSZTests
         }
 
         {
-            var customPayload = SlowSSZ.Serialize(UInt256.MaxValue / 2);
             var pongMessage = new MessageUnion()
             {
                 Selector = MessageType.Pong,
                 Pong = new Pong()
                 {
                     EnrSeq = 1,
-                    CustomPayload = customPayload
+                    CustomPayload = (UInt256.MaxValue / 2).ToLittleEndian()
                 }
             };
 
@@ -203,11 +202,11 @@ public class SlowSSZTests
     }
 
     [TestCaseSource(nameof(TestVectors))]
-    public void TestSSZDecoding((string, object) test)
+    public void TestSSZDecoding((string, MessageUnion) test)
     {
-        (string Encoding, object Object) = test;
+        (string Encoding, MessageUnion Object) = test;
 
-        MessageUnion decodedValue = SlowSSZ.Deserialize<MessageUnion>(Bytes.FromHexString(Encoding));
+        SszEncoding.Decode(Bytes.FromHexString(Encoding), out MessageUnion decodedValue);
 
         decodedValue.Should().BeEquivalentTo(Object);
     }

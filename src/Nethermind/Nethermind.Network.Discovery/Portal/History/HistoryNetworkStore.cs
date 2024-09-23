@@ -5,9 +5,11 @@ using System.Collections.Concurrent;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
@@ -27,19 +29,19 @@ public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): 
         }
         _logger.Info($"Content {contentKey.ToHexString()} not in test store");
 
-        ContentKey key = SlowSSZ.Deserialize<ContentKey>(contentKey);
+        SszEncoding.Decode(contentKey, out HistoryContentKey key);
 
-        if (key.HeaderKey != null)
+        if (key.Selector == HistoryContentType.HeaderByHash)
         {
-            BlockHeader? header = blockTree.FindHeader(key.HeaderKey!);
+            BlockHeader? header = blockTree.FindHeader(new Hash256(key.HeaderByHash));
             if (header == null) return null;
 
             return _encoderDecoder.EncodeHeader(header!);
         }
 
-        if (key.BodyKey != null)
+        if (key.Selector == HistoryContentType.BodyByHash)
         {
-            Block? block = blockTree.FindBlock(key.BodyKey!);
+            Block? block = blockTree.FindBlock(new Hash256(key.BodyByHash));
             if (block == null) return null;
 
             return _encoderDecoder.EncodeBlockBody(block.Body!);
