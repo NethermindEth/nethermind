@@ -46,7 +46,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                         bool hadNonceInRequest;
 
                         {
-                            LegacyTransactionForRpc asLegacy  = callTransactionModel as LegacyTransactionForRpc;
+                            LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
                             hadGasLimitInRequest = asLegacy?.Gas is not null;
                             hadNonceInRequest = asLegacy?.Nonce is not null;
                             asLegacy!.EnsureDefaults(_gasCapBudget);

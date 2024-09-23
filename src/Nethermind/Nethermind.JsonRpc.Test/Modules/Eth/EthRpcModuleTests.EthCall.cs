@@ -90,10 +90,10 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
-            {
-                From = TestItem.AddressA,
-                Input = [1, 2, 3]
-            };
+        {
+            From = TestItem.AddressA,
+            Input = [1, 2, 3]
+        };
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
@@ -135,7 +135,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_ok()
     {
         using Context ctx = await Context.Create();
-        LegacyTransactionForRpc transaction = new(new Transaction(), 1,  Keccak.Zero, 1L)
+        LegacyTransactionForRpc transaction = new(new Transaction(), 1, Keccak.Zero, 1L)
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB

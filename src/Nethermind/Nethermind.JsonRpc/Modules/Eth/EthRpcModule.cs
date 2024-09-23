@@ -440,7 +440,7 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction,  block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas);
 
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
     }
@@ -463,7 +463,7 @@ public partial class EthRpcModule(
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction,  block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas);
+        TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, (int)positionIndex, block.BaseFeePerGas);
 
         if (_logger.IsDebug)
             _logger.Debug(
