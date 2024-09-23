@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 {
     public class StatsAnalyzer
     {
+
+        public double Error => _sketchBuffer.Sum(sketch => sketch?.errorPerItem ?? 0);
+        public double Confidence => _sketchBuffer[0].confidence;
 
         public NGrams ngrams => _ngrams;
 
@@ -54,7 +58,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
                 else
                 {
                     // buffer is full we reuse sketches
-                    _currentSketch = (_currentSketch + 1) % _sketchBuffer.Length;
+                    _sketchBufferPos = (_sketchBufferPos + 1) % _sketchBuffer.Length;
                     sketchResetError *= 2; // double the error
                 }
             }
