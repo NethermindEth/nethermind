@@ -651,11 +651,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             result = vmState.Env.Witness.AccessCodeHash(address, ref gasAvailable);
                             witnessGasCharged = gasBefore != gasAvailable;
                         }
-                        else
-                        {
-                            witnessGasCharged = true;
-                        }
-
                         break;
                     }
             }
@@ -677,7 +672,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 vmState.WarmUp(address);
             }
-            else if (vmState.IsCold(address) && !address.IsPrecompile(spec))
+            else if (vmState.IsCold(address) && !address.IsPrecompile(spec) && !address.IsSystemContract(spec))
             {
                 // after verkle is enabled, we don't charge cold cost as it is replaced by verkle access costs
                 result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
@@ -1549,6 +1544,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                        Console.WriteLine($"ECC: {a} {b} {result}");
 
                         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
@@ -1567,13 +1563,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 _txTracer.ReportMemoryChange((long)a, in slice);
                             }
 
-                            int actualCodeLength = code.Length;
+                            int actualCodeLength = externalCode.Length;
 
                             int startIncluded;
                             int endNotIncluded;
                             if (b >= actualCodeLength)
                             {
-                                startIncluded = endNotIncluded = code.Length;
+                                startIncluded = endNotIncluded = externalCode.Length;
                             }
                             else
                             {
@@ -2445,16 +2441,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             if (!vmState.Env.Witness.AccessForValueTransfer(caller, target, ref gasAvailable))
                 return EvmExceptionType.OutOfGas;
+            vmState.WarmUp(caller);
+            vmState.WarmUp(target);
         }
 
-        if (!codeSource.IsPrecompile(spec))
-        {
-            var gasBefore = gasAvailable;
-            if (!vmState.Env.Witness.AccessAccountData(codeSource, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-            if (gasBefore == gasAvailable && !UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable))
-                return EvmExceptionType.OutOfGas;
-        }
-
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
@@ -2747,7 +2738,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
         // for the collision check, we need on check the existence of the account and no need to write to it
-        if (!env.Witness.AccessForContractCreationCheck(contractAddress, ref gasAvailable))
+        if (!env.Witness.AccessForContractCreationCheck(contractAddress, ref callGas))
         {
             return (EvmExceptionType.OutOfGas, null);
         }
@@ -2782,7 +2773,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (!spec.IsVerkleTreeEipEnabled) _state.ClearStorage(contractAddress);
         }
 
-        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref gasAvailable))
+        if (!env.Witness.AccessForContractCreationInit(contractAddress, ref callGas))
         {
             return (EvmExceptionType.OutOfGas, null);
         }
