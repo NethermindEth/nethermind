@@ -4,29 +4,33 @@
 using System.ComponentModel;
 using System.Reflection;
 using Nethermind.Config;
+using Spectre.Console;
 
 namespace Nethermind.DocGen;
 
 internal static class ConfigGenerator
 {
-    internal static void Generate()
+    internal static void Generate(string path)
     {
+        path = Path.Join(path, "docs", "fundamentals");
+
         var startMark = "<!--[start autogen]-->";
         var endMark = "<!--[end autogen]-->";
-        var fileName = "configuration.md";
         var excluded = Enumerable.Empty<string>();
-
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFrom(a).GetExportedTypes())
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);
+        var fileName = Path.Join(path, "configuration.md");
+        var tempFileName = Path.Join(path, "~configuration.md");
 
-        File.Delete($"~{fileName}");
+        // Delete the temp file if it exists
+        File.Delete(tempFileName);
 
         using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite($"~{fileName}"));
+        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
@@ -63,9 +67,10 @@ internal static class ConfigGenerator
         readStream.Close();
         writeStream.Close();
 
-        File.Move($"~{fileName}", fileName, true);
+        File.Move(tempFileName, fileName, true);
+        File.Delete(tempFileName);
 
-        Console.WriteLine($"Updated {fileName}");
+        AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
 
     private static void WriteMarkdown(StreamWriter file, Type configType)

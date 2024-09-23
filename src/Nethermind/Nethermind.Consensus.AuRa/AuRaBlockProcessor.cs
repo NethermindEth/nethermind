@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -18,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -45,11 +47,13 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            IAuRaValidator? auRaValidator = null,
+            ITransactionProcessor transactionProcessor,
+            IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null)
+            IBlockCachePreWarmer? preWarmer = null,
+            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -57,11 +61,13 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                new BlockhashStore(specProvider, stateProvider),
+                transactionProcessor,
                 beaconBlockRootHandler,
+                new BlockhashStore(specProvider, stateProvider),
                 logManager,
                 withdrawalProcessor,
-                preWarmer: preWarmer)
+                preWarmer: preWarmer,
+                consensusRequestsProcessor: consensusRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

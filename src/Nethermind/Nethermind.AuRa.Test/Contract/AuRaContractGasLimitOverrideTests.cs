@@ -101,9 +101,9 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null,
-                null,
-                GasLimitCalculator as AuRaContractGasLimitOverride,
+                TxProcessor,
+                auRaValidator: null,
+                gasLimitOverride: GasLimitCalculator as AuRaContractGasLimitOverride,
                 preWarmer: CreateBlockCachePreWarmer());
         }
 

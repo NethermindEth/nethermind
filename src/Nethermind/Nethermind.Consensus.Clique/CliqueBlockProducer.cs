@@ -15,6 +15,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -497,7 +498,8 @@ public class CliqueBlockProducer : IBlockProducer
             header,
             selectedTxs,
             Array.Empty<BlockHeader>(),
-            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null,
+            spec.ConsensusRequestsEnabled ? Enumerable.Empty<ConsensusRequest>() : null
         );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;
