@@ -265,20 +265,6 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             base.BeforeReturn();
-
-            // Some TxTypes expect certain values to be present, thus we initialize them to sane defaults here
-            // TODO: This should be removed when we have a proper Transaction type hierarchy
-            if (TestObjectInternal.SupportsBlobs)
-            {
-                TestObjectInternal.BlobVersionedHashes ??= [];
-                TestObjectInternal.MaxFeePerBlobGas ??= 0;
-            }
-
-            if (TestObjectInternal.SupportsAccessList)
-            {
-                TestObjectInternal.AccessList ??= AccessList.Empty;
-            }
-
             if (TestObjectInternal.IsSigned)
             {
                 TestObjectInternal.Hash = TestObjectInternal.CalculateHash();

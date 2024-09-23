@@ -13,7 +13,12 @@ namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
 public static class RpcBlobTransactionTests
 {
-    private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.Blob);
+    private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction
+        .WithType(TxType.Blob)
+        // NOTE: We require to initialize these properties to non-null values
+        .WithMaxFeePerBlobGas(UInt256.Zero)
+        .WithBlobVersionedHashes([]);
+
     public static readonly Transaction[] Transactions =
     [
         Build.TestObject,
