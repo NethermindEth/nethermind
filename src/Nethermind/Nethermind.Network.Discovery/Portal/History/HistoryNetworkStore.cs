@@ -20,7 +20,7 @@ public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): 
 
     private readonly SpanConcurrentDictionary<byte, byte[]> _testStore = new(Bytes.SpanEqualityComparer);
 
-    public byte[]? GetContent(byte[] contentKey)
+    public byte[]? GetContent(ReadOnlySpan<byte> contentKey)
     {
         if (_testStore.TryGetValue(contentKey, out byte[]? value))
         {
@@ -51,17 +51,17 @@ public class HistoryNetworkStore(IBlockTree blockTree, ILogManager logManager): 
         return null;
     }
 
-    public bool ShouldAcceptOffer(byte[] offerContentKey)
+    public bool ShouldAcceptOffer(ReadOnlySpan<byte> offerContentKey)
     {
         // Note: Just testing
         return true;
     }
 
-    public void Store(byte[] contentKey, byte[] content)
+    public void Store(ReadOnlySpan<byte> contentKey, ReadOnlySpan<byte> content)
     {
         // Note: Just testing
         _logger.Info($"Got content {contentKey.ToHexString()} of size {content.Length} from portal network");
 
-        _testStore[contentKey] = content;
+        _testStore[contentKey] = content.ToArray();
     }
 }
