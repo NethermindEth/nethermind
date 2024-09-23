@@ -13,8 +13,7 @@ namespace Nethermind.Consensus.Clique
         public long Number { get; set; }
         public Hash256 Hash { get; set; }
         public SortedList<Address, long> Signers { get; }
-
-        public List<Vote> Votes;
+        public List<Vote> Votes { get; init; }
         internal Dictionary<Address, Tally> Tally { get; }
 
         internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers, Dictionary<Address, Tally> tally)
@@ -31,12 +30,14 @@ namespace Nethermind.Consensus.Clique
         {
         }
 
-        public object Clone()
-        {
-            Snapshot clone = new Snapshot(Number, Hash, new SortedList<Address, long>(Signers, AddressComparer.Instance), new Dictionary<Address, Tally>(Tally));
-            clone.Votes = new List<Vote>(Votes);
-            return clone;
-        }
+        public object Clone() =>
+            new Snapshot(Number,
+                Hash,
+                new SortedList<Address, long>(Signers, AddressComparer.Instance),
+                new Dictionary<Address, Tally>(Tally))
+            {
+                Votes = [..Votes]
+            };
 
         public long SignerLimit => Signers.Count / 2 + 1;
     }
