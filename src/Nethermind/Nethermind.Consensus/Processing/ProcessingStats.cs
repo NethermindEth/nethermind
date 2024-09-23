@@ -84,6 +84,9 @@ namespace Nethermind.Consensus.Processing
             Metrics.BlockchainHeight = block.Header.Number;
             Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
 
+            // Inform interested about the stats update
+            StatsUpdated?.Invoke(this, EventArgs.Empty);
+
             _blockProcessingMicroseconds = _processingStopwatch.ElapsedMicroseconds();
             _runningMicroseconds = _runStopwatch.ElapsedMicroseconds();
             _runMicroseconds = (_runningMicroseconds - _lastElapsedRunningMicroseconds);
@@ -103,6 +106,8 @@ namespace Nethermind.Consensus.Processing
                 GenerateReport();
             }
         }
+
+        public event EventHandler<EventArgs> StatsUpdated;
 
         private void GenerateReport() => ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
 
