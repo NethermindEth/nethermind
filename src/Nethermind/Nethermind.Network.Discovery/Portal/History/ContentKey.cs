@@ -13,4 +13,7 @@ public class ContentKey: IUnion
 
     [Selector(2)]
     public ValueHash256? ReceiptKey { get; set; }
+
+    [Selector(3)]
+    public ulong? HeaderKeyByBlockNumber { get; set; }
 }
