@@ -13,7 +13,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -29,7 +28,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.State.Tracing;
 using NSubstitute;
 
@@ -89,7 +88,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public async Task Can_get_transaction(bool withHeader)
         {
             Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
-            TransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
+            RpcNethermindTransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
             Assert.NotNull(txWithProof.Transaction);
             Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
             if (withHeader)
@@ -252,7 +251,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new()
+            RpcNethermindTransaction tx = new RpcLegacyTransaction
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -277,7 +276,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new()
+            RpcNethermindTransaction tx = new RpcLegacyTransaction
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -301,7 +300,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new()
+            RpcNethermindTransaction tx = new RpcLegacyTransaction
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -781,7 +780,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new()
+            RpcNethermindTransaction tx = new RpcLegacyTransaction
             {
                 From = from,
                 To = TestItem.AddressB,
@@ -828,7 +827,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            TransactionForRpc tx = new()
+            RpcNethermindTransaction tx = new RpcLegacyTransaction
             {
                 // we are testing system transaction here when From is null
                 From = from,
