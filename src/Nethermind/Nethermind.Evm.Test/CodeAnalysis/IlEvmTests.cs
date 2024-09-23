@@ -277,17 +277,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
         public void ILVM_JIT_Execution_Equivalence_Tests((Instruction? opcode, byte[] bytecode) testcase)
         {
+            int repeatCount = 32;
+
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
             var address = standardChain.InsertCode(testcase.bytecode);
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
-                JittingThreshold = 9,
+                JittingThreshold = repeatCount + 1,
                 IsJitEnabled = true
             });
             enhancedChain.InsertCode(testcase.bytecode);
-            int repeatCount = 8;
 
             var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
@@ -333,11 +334,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GePatBytecodesSamples))]
         public void ILVM_Pat_Execution_Equivalence_Tests((Type opcode, byte[] bytecode) testcase)
         {
+            int repeatCount = 32;
+
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
             var address = standardChain.InsertCode(testcase.bytecode);
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = 9,
+                PatternMatchingThreshold = repeatCount + 1,
                 IsPatternMatchingEnabled = true,
                 JittingThreshold = int.MaxValue,
                 IsJitEnabled = false
@@ -359,12 +362,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            for (var i = 0; i < 8; i++)
+            for (var i = 0; i <= repeatCount; i++)
             {
                 standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
             }
 
-            for (var i = 0; i < 8; i++)
+            for (var i = 0; i <= repeatCount; i++)
             {
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
             }
