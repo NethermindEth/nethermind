@@ -21,10 +21,9 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -667,7 +666,7 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
 
-        TransactionForRpc transactionRpc = new(transaction2);
+        RpcNethermindTransaction transactionRpc = RpcNethermindTransaction.FromTransaction(transaction2);
 
         string[] traceTypes = { "trace" };
 
@@ -718,25 +717,25 @@ public class TraceRpcModuleTests
 
         Transaction transaction1 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        TransactionForRpc txForRpc1 = new(transaction1);
+        RpcNethermindTransaction txForRpc1 = RpcNethermindTransaction.FromTransaction(transaction1);
         string[] traceTypes1 = { "Trace" };
 
         Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressD)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction1, transaction2);
 
-        TransactionForRpc txForRpc2 = new(transaction2);
+        RpcNethermindTransaction txForRpc2 = RpcNethermindTransaction.FromTransaction(transaction2);
         string[] traceTypes2 = { "Trace" };
 
         BlockParameter numberOrTag = new(16);
-        TransactionForRpcWithTraceTypes tr1 = new();
-        TransactionForRpcWithTraceTypes tr2 = new();
+        RpcNethermindTransactionWithTraceTypes tr1 = new();
+        RpcNethermindTransactionWithTraceTypes tr2 = new();
         tr1.Transaction = txForRpc1;
         tr1.TraceTypes = traceTypes1;
         tr2.Transaction = txForRpc2;
         tr2.TraceTypes = traceTypes2;
 
-        TransactionForRpcWithTraceTypes[] a = { tr1, tr2 };
+        RpcNethermindTransactionWithTraceTypes[] a = { tr1, tr2 };
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(a, numberOrTag);
         tr.Data.Should().HaveCount(2);
