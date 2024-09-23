@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Clique
                 new SortedList<Address, long>(Signers, AddressComparer.Instance),
                 new Dictionary<Address, Tally>(Tally))
             {
-                Votes = [..Votes]
+                Votes = [.. Votes]
             };
 
         public long SignerLimit => Signers.Count / 2 + 1;
