@@ -7,14 +7,13 @@ using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Eth;
-using System;
 
 namespace Nethermind.Optimism.Rpc;
 
 /// <Remarks>
 /// Defined in https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
 /// </Remarks>
-public class RpcOptimismTransaction : TransactionForRpc
+public class OptimismTransactionForRpc : TransactionForRpc
 {
     public override TxType? Type => TxType.DepositTx;
 
@@ -44,10 +43,10 @@ public class RpcOptimismTransaction : TransactionForRpc
 
 #pragma warning disable CS8618
     [JsonConstructor]
-    public RpcOptimismTransaction() { }
+    public OptimismTransactionForRpc() { }
 #pragma warning restore CS8618
 
-    public RpcOptimismTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
+    public OptimismTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
         // TODO: `Nonce === 0` according to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79
@@ -89,11 +88,11 @@ public class RpcOptimismTransaction : TransactionForRpc
         // TODO: Are there any defaults to set in Optimism transactions?
     }
 
-    public static readonly IFromTransaction<RpcOptimismTransaction> Converter = new ConverterImpl();
+    public static readonly IFromTransaction<OptimismTransactionForRpc> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IFromTransaction<RpcOptimismTransaction>
+    private class ConverterImpl : IFromTransaction<OptimismTransactionForRpc>
     {
-        public RpcOptimismTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public OptimismTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
     }
 }

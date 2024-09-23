@@ -14,15 +14,15 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Optimism.Test.Rpc;
 
-public class RpcOptimismTransactionTests
+public class OptimismTransactionForRpcTests
 {
     private readonly IJsonSerializer _serializer = new EthereumJsonSerializer([
         new TransactionForRpc.JsonConverter()
-            .RegisterTransactionType(TxType.DepositTx, typeof(RpcOptimismTransaction))
+            .RegisterTransactionType(TxType.DepositTx, typeof(OptimismTransactionForRpc))
     ]);
 
     private readonly IFromTransaction<TransactionForRpc> _converter = new TransactionForRpc.TransactionConverter()
-        .RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter);
+        .RegisterConverter(TxType.DepositTx, OptimismTransactionForRpc.Converter);
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
     public static readonly Transaction[] Transactions = [
