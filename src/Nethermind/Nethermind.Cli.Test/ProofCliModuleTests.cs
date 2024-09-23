@@ -7,10 +7,9 @@ using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
@@ -81,7 +80,7 @@ namespace Nethermind.Cli.Test
         public void Call()
         {
             Hash256 blockHash = TestItem.KeccakA;
-            TransactionForRpc tx = new()
+            RpcLegacyTransaction tx = new()
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB
