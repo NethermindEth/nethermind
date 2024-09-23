@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
@@ -287,23 +286,25 @@ public partial class BlockProcessor(
         IBlockTracer blockTracer,
         ProcessingOptions options)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        BlockHeader header = block.Header;
+        IReleaseSpec spec = _specProvider.GetSpec(header);
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
         StoreBeaconRoot(block, spec);
-        _blockhashStore.ApplyBlockhashStateChanges(block.Header);
+        _blockhashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)
         {
-            block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         _consensusRequestsProcessor.ProcessRequests(block, _stateProvider, receipts, spec);
@@ -318,15 +319,26 @@ public partial class BlockProcessor(
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        if (ShouldComputeStateRoot(block.Header))
+        if (ShouldComputeStateRoot(header))
         {
             _stateProvider.RecalculateStateRoot();
-            block.Header.StateRoot = _stateProvider.StateRoot;
+            header.StateRoot = _stateProvider.StateRoot;
         }
 
-        block.Header.Hash = block.Header.CalculateHash();
+        header.Hash = header.CalculateHash();
 
         return receipts;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void CalculateBlooms(TxReceipt[] receipts)
+    {
+        int index = 0;
+        Parallel.For(0, receipts.Length, _ =>
+        {
+            int i = Interlocked.Increment(ref index) - 1;
+            receipts[i].CalculateBloom();
+        });
     }
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
@@ -436,7 +448,14 @@ public partial class BlockProcessor(
     // TODO: block processor pipeline
     private void ApplyDaoTransition(Block block)
     {
-        if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)
+        long? daoBlockNumber = _specProvider.DaoBlockNumber;
+        if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
+        {
+            ApplyTransition();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void ApplyTransition()
         {
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
