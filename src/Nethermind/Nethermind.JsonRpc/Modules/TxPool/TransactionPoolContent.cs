@@ -15,11 +15,11 @@ namespace Nethermind.JsonRpc.Modules.TxPool
     {
         public TxPoolContent(TxPoolInfo info)
         {
-            Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => RpcNethermindTransaction.FromTransaction(v.Value)));
-            Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => RpcNethermindTransaction.FromTransaction(v.Value)));
+            Pending = info.Pending.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => TransactionForRpc.FromTransaction(v.Value)));
+            Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => TransactionForRpc.FromTransaction(v.Value)));
         }
 
-        public Dictionary<AddressAsKey, Dictionary<ulong, RpcNethermindTransaction>> Pending { get; set; }
-        public Dictionary<AddressAsKey, Dictionary<ulong, RpcNethermindTransaction>> Queued { get; set; }
+        public Dictionary<AddressAsKey, Dictionary<ulong, TransactionForRpc>> Pending { get; set; }
+        public Dictionary<AddressAsKey, Dictionary<ulong, TransactionForRpc>> Queued { get; set; }
     }
 }

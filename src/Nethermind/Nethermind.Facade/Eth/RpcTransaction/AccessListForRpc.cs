@@ -14,14 +14,14 @@ using System;
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 [JsonConverter(typeof(JsonConverterImpl))]
-public class RpcAccessList
+public class AccessListForRpc
 {
     private readonly List<Item> _items;
 
     [JsonConstructor]
-    public RpcAccessList() { }
+    public AccessListForRpc() { }
 
-    private RpcAccessList(List<Item> items)
+    private AccessListForRpc(List<Item> items)
     {
         _items = items;
     }
@@ -43,10 +43,10 @@ public class RpcAccessList
         }
     }
 
-    public static RpcAccessList FromAccessList(AccessList? accessList) =>
+    public static AccessListForRpc FromAccessList(AccessList? accessList) =>
         accessList is null
-        ? new RpcAccessList([])
-        : new RpcAccessList(accessList.Select(item => new Item(item.Address, [.. item.StorageKeys])).ToList());
+        ? new AccessListForRpc([])
+        : new AccessListForRpc(accessList.Select(item => new Item(item.Address, [.. item.StorageKeys])).ToList());
 
     public AccessList ToAccessList()
     {
@@ -63,15 +63,15 @@ public class RpcAccessList
         return builder.Build();
     }
 
-    public class JsonConverterImpl : JsonConverter<RpcAccessList>
+    public class JsonConverterImpl : JsonConverter<AccessListForRpc>
     {
-        public override RpcAccessList? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override AccessListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             List<Item>? list = JsonSerializer.Deserialize<List<Item>>(ref reader, options);
-            return list is null ? null : new RpcAccessList(list);
+            return list is null ? null : new AccessListForRpc(list);
         }
 
-        public override void Write(Utf8JsonWriter writer, RpcAccessList value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options)
         {
             JsonSerializer.Serialize(writer, value._items, options);
         }

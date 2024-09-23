@@ -13,7 +13,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
-public class RpcAccessListTests
+public class AccessListForRpcTests
 {
     private readonly EthereumJsonSerializer _serializer = new();
 
@@ -25,7 +25,7 @@ public class RpcAccessListTests
             .AddAddress(address)
             .Build();
 
-        RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
+        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
         var actual = JArray.Parse(serialized);
@@ -51,7 +51,7 @@ public class RpcAccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
+        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
         var actual = JArray.Parse(serialized);
@@ -78,7 +78,7 @@ public class RpcAccessListTests
             .AddStorage(storageKey1)
             .Build();
 
-        RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
+        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
         var actual = JArray.Parse(serialized);
@@ -105,7 +105,7 @@ public class RpcAccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
+        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
         var actual = JArray.Parse(serialized);
@@ -133,7 +133,7 @@ public class RpcAccessListTests
             .AddStorage(storageKey3)
             .Build();
 
-        RpcAccessList forRpc = RpcAccessList.FromAccessList(accessList);
+        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
         var actual = JArray.Parse(serialized);

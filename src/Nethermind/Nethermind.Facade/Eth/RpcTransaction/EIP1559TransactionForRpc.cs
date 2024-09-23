@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class RpcEIP1559Transaction : RpcAccessListTransaction
+public class EIP1559TransactionForRpc : AccessListTransactionForRpc
 {
     public override TxType? Type => TxType.EIP1559;
 
@@ -19,9 +19,9 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
     public UInt256? MaxFeePerGas { get; set; }
 
     [JsonConstructor]
-    public RpcEIP1559Transaction() { }
+    public EIP1559TransactionForRpc() { }
 
-    public RpcEIP1559Transaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
+    public EIP1559TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
         MaxFeePerGas = transaction.MaxFeePerGas;
@@ -41,11 +41,11 @@ public class RpcEIP1559Transaction : RpcAccessListTransaction
         return tx;
     }
 
-    public new static readonly IFromTransaction<RpcEIP1559Transaction> Converter = new ConverterImpl();
+    public new static readonly IFromTransaction<EIP1559TransactionForRpc> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IFromTransaction<RpcEIP1559Transaction>
+    private class ConverterImpl : IFromTransaction<EIP1559TransactionForRpc>
     {
-        public RpcEIP1559Transaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public EIP1559TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
     }
 }

@@ -1112,7 +1112,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
-        RpcNethermindTransaction rpcTx = RpcNethermindTransaction.FromTransaction(tx);
+        TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
         // TODO: actual test missing now
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
@@ -1131,7 +1131,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.TestObject;
-        RpcLegacyTransaction rpcTx = (RpcLegacyTransaction)RpcNethermindTransaction.FromTransaction(tx);
+        LegacyTransactionForRpc rpcTx = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(tx);
         rpcTx.Nonce = null;
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
 
@@ -1144,7 +1144,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         Transaction tx = Build.A.Transaction.WithValue(10000).SignedAndResolved(new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001")).WithNonce(0).TestObject;
-        RpcNethermindTransaction txForRpc = RpcNethermindTransaction.FromTransaction(tx);
+        TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(tx);
 
         string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
 
@@ -1178,9 +1178,9 @@ public partial class EthRpcModuleTests
     {
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
 
-        (byte[] code, RpcAccessList _) = GetTestAccessList(loads);
+        (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
-        RpcAccessListTransaction transaction = test.JsonSerializer.Deserialize<RpcAccessListTransaction>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
+        AccessListTransactionForRpc transaction = test.JsonSerializer.Deserialize<AccessListTransactionForRpc>($"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
 
         if (accessListProvided != AccessListProvided.None)
         {
@@ -1195,7 +1195,7 @@ public partial class EthRpcModuleTests
     [TestCase(0)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
     {
-        RpcLegacyTransaction rpcTx = new RpcLegacyTransaction();
+        LegacyTransactionForRpc rpcTx = new LegacyTransactionForRpc();
 
         rpcTx.EnsureDefaults(gasCap);
 
@@ -1209,14 +1209,14 @@ public partial class EthRpcModuleTests
     {
         long toTransactionWitDefaultsGasLimit;
         {
-            var rpcTx = new RpcLegacyTransaction();
+            var rpcTx = new LegacyTransactionForRpc();
             Transaction tx = rpcTx.ToTransaction();
             toTransactionWitDefaultsGasLimit = tx.GasLimit;
         }
 
         long ensureDefaultsGasLimit;
         {
-            var rpcTx = new RpcLegacyTransaction();
+            var rpcTx = new LegacyTransactionForRpc();
             rpcTx.EnsureDefaults(gasCap);
             var tx = rpcTx.ToTransaction();
             ensureDefaultsGasLimit = tx.GasLimit;
@@ -1263,7 +1263,7 @@ public partial class EthRpcModuleTests
         })), Is.EqualTo(result));
     }
 
-    private static (byte[] ByteCode, RpcAccessList AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
+    private static (byte[] ByteCode, AccessListForRpc AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
     {
         var builder = new AccessList.Builder();
         if (allowSystemUser)
@@ -1298,7 +1298,7 @@ public partial class EthRpcModuleTests
             .PushData(0)
             .Op(Instruction.RETURN)
             .Done;
-        return (byteCode, RpcAccessList.FromAccessList(accessList));
+        return (byteCode, AccessListForRpc.FromAccessList(accessList));
     }
 
 

@@ -666,7 +666,7 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
 
-        RpcNethermindTransaction transactionRpc = RpcNethermindTransaction.FromTransaction(transaction2);
+        TransactionForRpc transactionRpc = TransactionForRpc.FromTransaction(transaction2);
 
         string[] traceTypes = { "trace" };
 
@@ -717,14 +717,14 @@ public class TraceRpcModuleTests
 
         Transaction transaction1 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        RpcNethermindTransaction txForRpc1 = RpcNethermindTransaction.FromTransaction(transaction1);
+        TransactionForRpc txForRpc1 = TransactionForRpc.FromTransaction(transaction1);
         string[] traceTypes1 = { "Trace" };
 
         Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressD)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction1, transaction2);
 
-        RpcNethermindTransaction txForRpc2 = RpcNethermindTransaction.FromTransaction(transaction2);
+        TransactionForRpc txForRpc2 = TransactionForRpc.FromTransaction(transaction2);
         string[] traceTypes2 = { "Trace" };
 
         BlockParameter numberOrTag = new(16);

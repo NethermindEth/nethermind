@@ -23,7 +23,7 @@ public class CliqueContext(CliqueState state) : TestContextBase<CliqueContext, C
             () => client.PostAsync<string>("clique_discard", [address]));
     }
 
-    public CliqueContext SendTransaction(RpcNethermindTransaction tx)
+    public CliqueContext SendTransaction(TransactionForRpc tx)
     {
         IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
         return AddJsonRpc($"send tx to {TestBuilder.CurrentNode.HttpPort}", "eth_sendTransaction",

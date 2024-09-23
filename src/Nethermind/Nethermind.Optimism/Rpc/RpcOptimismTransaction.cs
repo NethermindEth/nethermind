@@ -14,7 +14,7 @@ namespace Nethermind.Optimism.Rpc;
 /// <Remarks>
 /// Defined in https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
 /// </Remarks>
-public class RpcOptimismTransaction : RpcNethermindTransaction
+public class RpcOptimismTransaction : TransactionForRpc
 {
     public override TxType? Type => TxType.DepositTx;
 

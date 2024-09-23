@@ -37,10 +37,10 @@ public class EthSimulateTestsPrecompilesWithRedirection
             GasPrice = 20.GWei()
         };
 
-        RpcNethermindTransaction transactionForRpc = RpcNethermindTransaction.FromTransaction(systemTransactionForModifiedVm);
-        ((RpcLegacyTransaction)transactionForRpc).Nonce = null;
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(systemTransactionForModifiedVm);
+        ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
-        SimulatePayload<RpcNethermindTransaction> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
             [
@@ -144,7 +144,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         Assert.That(headHash != chain.BlockFinder.Head!.Hash!);
         chain.State.StateRoot = chain.BlockFinder.Head!.StateRoot!;
 
-        RpcNethermindTransaction transactionForRpc = RpcNethermindTransaction.FromTransaction(new Transaction
+        TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(new Transaction
         {
             Data = transactionData,
             To = contractAddress,
@@ -152,9 +152,9 @@ public class EthSimulateTestsPrecompilesWithRedirection
             GasLimit = 3_500_000,
             GasPrice = 20.GWei()
         });
-        ((RpcLegacyTransaction)transactionForRpc).Nonce = null;
+        ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
-        SimulatePayload<RpcNethermindTransaction> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
             [

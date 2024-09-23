@@ -30,7 +30,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         test.Module.trace_call(
-                call: RpcNethermindTransaction.FromTransaction(Build.A.Transaction.TestObject),
+                call: TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject),
                 traceTypes: [ParityTraceTypes.Trace.ToString()],
                 blockParameter: BlockParameter.Latest)
             .Should().BeEquivalentTo(ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(test.NonDbTraces[0])));
@@ -42,7 +42,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         RpcNethermindTransactionWithTraceTypes[] calls = [
-            new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = RpcNethermindTransaction.FromTransaction(Build.A.Transaction.TestObject) }
+            new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) }
         ];
         test.Module.trace_callMany(calls, BlockParameter.Latest)
             .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(t => new ParityTxTraceFromReplay(t))));
@@ -143,7 +143,7 @@ public class TraceStoreRpcModuleTests
             ResultWrapper<ParityTxTraceFromReplay> nonDbReplayWrapper = ResultWrapper<ParityTxTraceFromReplay>.Success(new(NonDbTraces[0]));
             ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> nonDbReplaysWrapper = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(NonDbTraces.Select(t => new ParityTxTraceFromReplay(t)));
 
-            InnerModule.trace_call(Arg.Any<RpcNethermindTransaction>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
+            InnerModule.trace_call(Arg.Any<TransactionForRpc>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplayWrapper);
 
             InnerModule.trace_callMany(Arg.Any<RpcNethermindTransactionWithTraceTypes[]>(), Arg.Any<BlockParameter>())

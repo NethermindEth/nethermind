@@ -251,7 +251,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            RpcNethermindTransaction tx = new RpcLegacyTransaction
+            TransactionForRpc tx = new LegacyTransactionForRpc
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -276,7 +276,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            RpcNethermindTransaction tx = new RpcLegacyTransaction
+            TransactionForRpc tx = new LegacyTransactionForRpc
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -300,7 +300,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            RpcNethermindTransaction tx = new RpcLegacyTransaction
+            TransactionForRpc tx = new LegacyTransactionForRpc
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB,
@@ -780,7 +780,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            RpcNethermindTransaction tx = new RpcLegacyTransaction
+            TransactionForRpc tx = new LegacyTransactionForRpc
             {
                 From = from,
                 To = TestItem.AddressB,
@@ -827,7 +827,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             // would need to setup state root somehow...
 
-            RpcNethermindTransaction tx = new RpcLegacyTransaction
+            TransactionForRpc tx = new LegacyTransactionForRpc
             {
                 // we are testing system transaction here when From is null
                 From = from,

@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 [Parallelizable(ParallelScope.Self)]
 [TestFixture]
-public class RpcNethermindTransactionTests : SerializationTestBase
+public class TransactionForRpcTests : SerializationTestBase
 {
     [Test]
     public void R_and_s_are_quantity_and_not_data()
@@ -30,7 +30,7 @@ public class RpcNethermindTransactionTests : SerializationTestBase
             Signature = new Signature(r, s, 27)
         };
 
-        var txForRpc = RpcNethermindTransaction.FromTransaction(tx);
+        var txForRpc = TransactionForRpc.FromTransaction(tx);
 
         EthereumJsonSerializer serializer = new();
         string serialized = serializer.Serialize(txForRpc);

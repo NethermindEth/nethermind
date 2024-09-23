@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
     public interface IProofRpcModule : IRpcModule
     {
         [JsonRpcMethod(IsImplemented = false, Description = "This function returns the same result as `eth_getTransactionByHash` and also a tx proof and a serialized block header.", IsSharable = false)]
-        ResultWrapper<CallResultWithProof> proof_call(RpcNethermindTransaction tx, BlockParameter blockParameter);
+        ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "This function returns the same result as `eth_getTransactionReceipt` and also a tx proof, receipt proof and serialized block headers.",

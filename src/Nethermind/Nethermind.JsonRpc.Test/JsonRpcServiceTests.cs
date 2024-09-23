@@ -95,7 +95,7 @@ public class JsonRpcServiceTests
     [Test]
     public void CanRunEthSimulateV1Empty()
     {
-        SimulatePayload<RpcNethermindTransaction> payload = new() { BlockStateCalls = new List<BlockStateCall<RpcNethermindTransaction>>() };
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>() };
         string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(_ =>
@@ -109,9 +109,9 @@ public class JsonRpcServiceTests
     public void CanHandleOptionalArguments()
     {
         EthereumJsonSerializer serializer = new();
-        string serialized = serializer.Serialize(new RpcLegacyTransaction());
+        string serialized = serializer.Serialize(new LegacyTransactionForRpc());
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<RpcNethermindTransaction>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x1"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x1"));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x1"));
     }
@@ -174,9 +174,9 @@ public class JsonRpcServiceTests
     {
         EthereumJsonSerializer serializer = new();
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<RpcNethermindTransaction>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
 
-        string serialized = serializer.Serialize(new RpcLegacyTransaction());
+        string serialized = serializer.Serialize(new LegacyTransactionForRpc());
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));
@@ -188,9 +188,9 @@ public class JsonRpcServiceTests
     {
         EthereumJsonSerializer serializer = new();
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<RpcNethermindTransaction>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
 
-        string serialized = serializer.Serialize(new RpcLegacyTransaction());
+        string serialized = serializer.Serialize(new LegacyTransactionForRpc());
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized, nullValue!) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));

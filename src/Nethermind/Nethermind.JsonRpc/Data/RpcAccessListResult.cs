@@ -8,11 +8,11 @@ namespace Nethermind.JsonRpc.Data;
 
 public readonly struct RpcAccessListResult
 {
-    public RpcAccessList AccessList { get; init; }
+    public AccessListForRpc AccessList { get; init; }
 
     public UInt256 GasUsed { get; init; }
 
-    public RpcAccessListResult(RpcAccessList accessList, in UInt256 gasUsed)
+    public RpcAccessListResult(AccessListForRpc accessList, in UInt256 gasUsed)
     {
         AccessList = accessList;
         GasUsed = gasUsed;

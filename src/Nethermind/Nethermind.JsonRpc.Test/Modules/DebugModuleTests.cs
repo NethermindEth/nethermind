@@ -349,7 +349,7 @@ public class DebugModuleTests
         GethTraceOptions gtOptions = new();
 
         Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
-        RpcNethermindTransaction txForRpc = RpcNethermindTransaction.FromTransaction(transaction);
+        TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(transaction);
 
         debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 

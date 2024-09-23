@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
-public static class RpcLegacyTransactionTests
+public static class LegacyTransactionForRpcTests
 {
     private static TransactionBuilder<Transaction> BuildALegacyTransaction => Build.A.Transaction.WithType(TxType.Legacy);
     public static readonly Transaction[] Transactions =

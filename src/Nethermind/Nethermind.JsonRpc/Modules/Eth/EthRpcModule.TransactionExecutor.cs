@@ -19,11 +19,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         // Single call executor
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            : ExecutorBase<TResult, RpcNethermindTransaction, Transaction>(blockchainBridge, blockFinder, rpcConfig)
+            : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
             private bool NoBaseFee { get; set; }
 
-            protected override Transaction Prepare(RpcNethermindTransaction call)
+            protected override Transaction Prepare(TransactionForRpc call)
             {
                 var tx = call.ToTransaction();
                 tx.ChainId = _blockchainBridge.GetChainId();
@@ -45,17 +45,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             // TODO: Should we move this method to `RpcNethermindTransaction` directly?
-            private static bool ShouldSetBaseFee(RpcNethermindTransaction t)
+            private static bool ShouldSetBaseFee(TransactionForRpc t)
             {
                 var positiveGasPrice = false;
-                if (t is RpcLegacyTransaction legacy)
+                if (t is LegacyTransactionForRpc legacy)
                 {
                     positiveGasPrice = IsPositive(legacy.GasPrice);
                 }
 
                 var positiveMaxFeePerGas = false;
                 var positiveMaxPriorityFeePerGas = false;
-                if (t is RpcEIP1559Transaction eip1559)
+                if (t is EIP1559TransactionForRpc eip1559)
                 {
                     positiveMaxFeePerGas = IsPositive(eip1559.MaxFeePerGas);
                     positiveMaxPriorityFeePerGas = IsPositive(eip1559.MaxPriorityFeePerGas);
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             public override ResultWrapper<TResult> Execute(
-                RpcNethermindTransaction transactionCall,
+                TransactionForRpc transactionCall,
                 BlockParameter? blockParameter)
             {
                 NoBaseFee = !ShouldSetBaseFee(transactionCall);
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(RpcNethermindTransaction transactionCall, BlockParameter? blockParameter) => Execute(transactionCall, blockParameter);
+            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter) => Execute(transactionCall, blockParameter);
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
         }
@@ -121,7 +121,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
 
                 var rpcAccessListResult = new RpcAccessListResult(
-                    accessList: RpcAccessList.FromAccessList(result.AccessList ?? tx.AccessList),
+                    accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
                     gasUsed: GetResultGas(tx, result));
 
                 return result switch

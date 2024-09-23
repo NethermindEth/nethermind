@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class RpcLegacyTransaction : RpcNethermindTransaction
+public class LegacyTransactionForRpc : TransactionForRpc
 {
     public override TxType? Type => TxType.Legacy;
 
@@ -57,9 +57,9 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
     public UInt256? S { get; set; }
 
     [JsonConstructor]
-    public RpcLegacyTransaction() { }
+    public LegacyTransactionForRpc() { }
 
-    public RpcLegacyTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    public LegacyTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
         Nonce = transaction.Nonce;
@@ -105,11 +105,11 @@ public class RpcLegacyTransaction : RpcNethermindTransaction
         From ??= Address.SystemUser;
     }
 
-    public static readonly IFromTransaction<RpcLegacyTransaction> Converter = new ConverterImpl();
+    public static readonly IFromTransaction<LegacyTransactionForRpc> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IFromTransaction<RpcLegacyTransaction>
+    private class ConverterImpl : IFromTransaction<LegacyTransactionForRpc>
     {
-        public RpcLegacyTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public LegacyTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
     }
 }

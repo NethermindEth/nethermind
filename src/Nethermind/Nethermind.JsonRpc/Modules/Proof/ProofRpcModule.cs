@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public ResultWrapper<CallResultWithProof> proof_call(RpcNethermindTransaction tx, BlockParameter blockParameter)
+        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
             SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
             if (searchResult.IsError)
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = txs[receipt.Index];
 
             RpcNethermindTransactionWithProof txWithProof = new();
-            txWithProof.Transaction = RpcNethermindTransaction.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas);
+            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas);
             txWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {

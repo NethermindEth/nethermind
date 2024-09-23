@@ -52,7 +52,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
     }
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_call(RpcNethermindTransaction call, string[] traceTypes, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null) =>
         _traceModule.trace_call(call, traceTypes, blockParameter);
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(RpcNethermindTransactionWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>

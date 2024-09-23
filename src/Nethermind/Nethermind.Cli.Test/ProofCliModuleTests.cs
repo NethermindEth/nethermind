@@ -80,7 +80,7 @@ namespace Nethermind.Cli.Test
         public void Call()
         {
             Hash256 blockHash = TestItem.KeccakA;
-            RpcLegacyTransaction tx = new()
+            LegacyTransactionForRpc tx = new()
             {
                 From = TestItem.AddressA,
                 To = TestItem.AddressB

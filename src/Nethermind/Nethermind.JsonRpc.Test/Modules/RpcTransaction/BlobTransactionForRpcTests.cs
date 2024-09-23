@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
-public static class RpcBlobTransactionTests
+public static class BlobTransactionForRpcTests
 {
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction
         .WithType(TxType.Blob)

@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class RpcAccessListTransaction : RpcLegacyTransaction
+public class AccessListTransactionForRpc : LegacyTransactionForRpc
 {
     // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
@@ -17,7 +17,7 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     public override TxType? Type => TxType.AccessList;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public RpcAccessList? AccessList { get; set; }
+    public AccessListForRpc? AccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? YParity { get; set; }
@@ -26,12 +26,12 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
     public override ulong? ChainId { get; set; }
 
     [JsonConstructor]
-    public RpcAccessListTransaction() { }
+    public AccessListTransactionForRpc() { }
 
-    public RpcAccessListTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    public AccessListTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
-        AccessList = RpcAccessList.FromAccessList(transaction.AccessList);
+        AccessList = AccessListForRpc.FromAccessList(transaction.AccessList);
         YParity = transaction.Signature?.RecoveryId ?? 0;
         ChainId = transaction.ChainId ?? DefaultChainId ?? BlockchainIds.Mainnet;
         V = YParity ?? 0;
@@ -46,11 +46,11 @@ public class RpcAccessListTransaction : RpcLegacyTransaction
         return tx;
     }
 
-    public new static readonly IFromTransaction<RpcAccessListTransaction> Converter = new ConverterImpl();
+    public new static readonly IFromTransaction<AccessListTransactionForRpc> Converter = new ConverterImpl();
 
-    private class ConverterImpl : IFromTransaction<RpcAccessListTransaction>
+    private class ConverterImpl : IFromTransaction<AccessListTransactionForRpc>
     {
-        public RpcAccessListTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
             => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
     }
 }

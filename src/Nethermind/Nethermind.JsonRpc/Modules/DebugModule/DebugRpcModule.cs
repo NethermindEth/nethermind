@@ -68,7 +68,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceCall(RpcNethermindTransaction call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
         call.EnsureDefaults(_jsonRpcConfig.GasCap);

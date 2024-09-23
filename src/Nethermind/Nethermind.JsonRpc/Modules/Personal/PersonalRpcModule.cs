@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Hash256> personal_sendTransaction(RpcNethermindTransaction transaction, string passphrase)
+        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
         {
             throw new NotImplementedException();
         }

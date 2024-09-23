@@ -19,7 +19,7 @@ namespace Nethermind.Cli.Modules
         {
             long blockNumber = NodeManager.Post<long>("eth_blockNumber").Result;
 
-            RpcLegacyTransaction tx = new()
+            LegacyTransactionForRpc tx = new()
             {
                 Value = amountInWei,
                 Gas = Transaction.BaseTxGasCost,

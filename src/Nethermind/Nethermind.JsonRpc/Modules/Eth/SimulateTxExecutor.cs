@@ -16,13 +16,13 @@ using Nethermind.Facade.Simulate;
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
-    : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<RpcNethermindTransaction>,
+    : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
 
-    protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<RpcNethermindTransaction> call)
+    protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
     {
         SimulatePayload<TransactionWithSourceDetails> result = new()
         {
@@ -46,7 +46,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                         bool hadNonceInRequest;
 
                         {
-                            RpcLegacyTransaction asLegacy  = callTransactionModel as RpcLegacyTransaction;
+                            LegacyTransactionForRpc asLegacy  = callTransactionModel as LegacyTransactionForRpc;
                             hadGasLimitInRequest = asLegacy?.Gas is not null;
                             hadNonceInRequest = asLegacy?.Nonce is not null;
                             asLegacy!.EnsureDefaults(_gasCapBudget);
@@ -72,12 +72,12 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         return result;
     }
 
-    private static RpcNethermindTransaction UpdateTxType(RpcNethermindTransaction rpcTransaction)
+    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
     {
         // TODO: This is a bit messy since we're changing the transaction type
-        if (rpcTransaction is RpcLegacyTransaction legacy)
+        if (rpcTransaction is LegacyTransactionForRpc legacy)
         {
-            rpcTransaction = new RpcEIP1559Transaction
+            rpcTransaction = new EIP1559TransactionForRpc
             {
                 Nonce = legacy.Nonce,
                 To = legacy.To,
@@ -97,7 +97,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
-        SimulatePayload<RpcNethermindTransaction> call,
+        SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
         if (call.BlockStateCalls is null)
@@ -130,7 +130,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
             long lastBlockNumber = -1;
             ulong lastBlockTime = 0;
 
-            foreach (BlockStateCall<RpcNethermindTransaction>? blockToSimulate in call.BlockStateCalls)
+            foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
                 ulong givenNumber = blockToSimulate.BlockOverrides?.Number ??
                                     (lastBlockNumber == -1 ? (ulong)header.Number + 1 : (ulong)lastBlockNumber + 1);
@@ -192,13 +192,13 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 .. call.BlockStateCalls.Select(b => (long)(b.BlockOverrides?.Number ?? ulong.MinValue))
             ];
 
-            List<BlockStateCall<RpcNethermindTransaction>> completeBlockStateCalls = call.BlockStateCalls;
+            List<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = call.BlockStateCalls;
 
             for (long blockNumber = minBlockNumber; blockNumber <= maxBlockNumber; blockNumber++)
             {
                 if (!existingBlockNumbers.Contains(blockNumber))
                 {
-                    completeBlockStateCalls.Add(new BlockStateCall<RpcNethermindTransaction>
+                    completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
                     {
                         BlockOverrides = new BlockOverride { Number = (ulong)blockNumber },
                         StateOverrides = null,

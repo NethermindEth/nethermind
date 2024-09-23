@@ -15,14 +15,14 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// </summary>
 /// <remarks>
 /// Input:
-/// <para>JSON -> <see cref="RpcNethermindTransaction"></see> (through <see cref="JsonConverter"/>, a registry of [<see cref="TxType"/> => <see cref="RpcNethermindTransaction"/> subtypes)</para>
-/// <para><see cref="RpcNethermindTransaction"/> -> <see cref="Transaction"/> (through an overloaded <see cref="ToTransaction"> method)</para>
+/// <para>JSON -> <see cref="TransactionForRpc"></see> (through <see cref="JsonConverter"/>, a registry of [<see cref="TxType"/> => <see cref="TransactionForRpc"/> subtypes)</para>
+/// <para><see cref="TransactionForRpc"/> -> <see cref="Transaction"/> (through an overloaded <see cref="ToTransaction"> method)</para>
 /// Output:
-/// <para><see cref="Transaction"/> -> <see cref="RpcNethermindTransaction"/> (through <see cref="TransactionConverter"/>, a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
-/// <para><see cref="RpcNethermindTransaction"/> -> JSON (Derived by <c>System.Text.JSON</c> using the runtime type)</para>
+/// <para><see cref="Transaction"/> -> <see cref="TransactionForRpc"/> (through <see cref="TransactionConverter"/>, a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
+/// <para><see cref="TransactionForRpc"/> -> JSON (Derived by <c>System.Text.JSON</c> using the runtime type)</para>
 /// </remarks>
 [JsonConverter(typeof(JsonConverter))]
-public abstract class RpcNethermindTransaction
+public abstract class TransactionForRpc
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual TxType? Type => null;
@@ -40,9 +40,9 @@ public abstract class RpcNethermindTransaction
     public long? BlockNumber { get; set; }
 
     [JsonConstructor]
-    public RpcNethermindTransaction() { }
+    public TransactionForRpc() { }
 
-    public RpcNethermindTransaction(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    public TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
     {
         Hash = transaction.Hash;
         TransactionIndex = txIndex;
@@ -60,33 +60,33 @@ public abstract class RpcNethermindTransaction
 
     public abstract void EnsureDefaults(long? gasCap);
 
-    public class JsonConverter : JsonConverter<RpcNethermindTransaction>
+    public class JsonConverter : JsonConverter<TransactionForRpc>
     {
         private readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];
 
         // TODO: Refactoring transition code
         public JsonConverter()
         {
-            RegisterTransactionType(TxType.Legacy, typeof(RpcLegacyTransaction));
-            RegisterTransactionType(TxType.AccessList, typeof(RpcAccessListTransaction));
-            RegisterTransactionType(TxType.EIP1559, typeof(RpcEIP1559Transaction));
-            RegisterTransactionType(TxType.Blob, typeof(RpcBlobTransaction));
+            RegisterTransactionType(TxType.Legacy, typeof(LegacyTransactionForRpc));
+            RegisterTransactionType(TxType.AccessList, typeof(AccessListTransactionForRpc));
+            RegisterTransactionType(TxType.EIP1559, typeof(EIP1559TransactionForRpc));
+            RegisterTransactionType(TxType.Blob, typeof(BlobTransactionForRpc));
             // TODO: Add Optimism:
             // RegisterTransactionType(TxType.DepositTx, typeof(RpcOptimismTransaction))
         }
 
         public JsonConverter RegisterTransactionType(TxType type, Type @class)
         {
-            if (!@class.IsSubclassOf(typeof(RpcNethermindTransaction)))
+            if (!@class.IsSubclassOf(typeof(TransactionForRpc)))
             {
-                throw new ArgumentException($"{@class.FullName} is not a subclass of ${nameof(RpcNethermindTransaction)}");
+                throw new ArgumentException($"{@class.FullName} is not a subclass of ${nameof(TransactionForRpc)}");
             }
 
             _transactionTypes[(byte)type] = @class;
             return this;
         }
 
-        public override RpcNethermindTransaction? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             using var document = JsonDocument.ParseValue(ref reader);
 
@@ -104,26 +104,26 @@ public abstract class RpcNethermindTransaction
 
             Type concreteTxType = _transactionTypes[(byte)discriminator];
 
-            return (RpcNethermindTransaction?)jsonObject.Deserialize(concreteTxType, options);
+            return (TransactionForRpc?)jsonObject.Deserialize(concreteTxType, options);
         }
 
-        public override void Write(Utf8JsonWriter writer, RpcNethermindTransaction value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
         {
             JsonSerializer.Serialize(writer, value, value.GetType(), options);
         }
     }
 
-    public class TransactionConverter : IFromTransaction<RpcNethermindTransaction>
+    public class TransactionConverter : IFromTransaction<TransactionForRpc>
     {
-        private readonly IFromTransaction<RpcNethermindTransaction>?[] _converters = new IFromTransaction<RpcNethermindTransaction>?[Transaction.MaxTxType + 1];
+        private readonly IFromTransaction<TransactionForRpc>?[] _converters = new IFromTransaction<TransactionForRpc>?[Transaction.MaxTxType + 1];
 
-        public TransactionConverter RegisterConverter(TxType txType, IFromTransaction<RpcNethermindTransaction> converter)
+        public TransactionConverter RegisterConverter(TxType txType, IFromTransaction<TransactionForRpc> converter)
         {
             _converters[(byte)txType] = converter;
             return this;
         }
 
-        public RpcNethermindTransaction FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         {
             var converter = _converters[(byte)tx.Type] ?? throw new ArgumentException("No converter for transaction type");
             return converter.FromTransaction(tx, extraData);
@@ -132,14 +132,14 @@ public abstract class RpcNethermindTransaction
 
     #region Refactoring transition code
     public static readonly TransactionConverter GlobalConverter = new TransactionConverter()
-        .RegisterConverter(TxType.Legacy, RpcLegacyTransaction.Converter)
-        .RegisterConverter(TxType.AccessList, RpcAccessListTransaction.Converter)
-        .RegisterConverter(TxType.EIP1559, RpcEIP1559Transaction.Converter)
-        .RegisterConverter(TxType.Blob, RpcBlobTransaction.Converter);
+        .RegisterConverter(TxType.Legacy, LegacyTransactionForRpc.Converter)
+        .RegisterConverter(TxType.AccessList, AccessListTransactionForRpc.Converter)
+        .RegisterConverter(TxType.EIP1559, EIP1559TransactionForRpc.Converter)
+        .RegisterConverter(TxType.Blob, BlobTransactionForRpc.Converter);
     // TODO: Add Optimism:
     // `.RegisterConverter(TxType.DepositTx, RpcOptimismTransaction.Converter)`
 
-    public static RpcNethermindTransaction FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null)
+    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null)
     {
         var extraData = new TransactionConverterExtraData
         {

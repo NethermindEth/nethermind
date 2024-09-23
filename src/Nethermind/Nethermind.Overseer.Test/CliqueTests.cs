@@ -71,7 +71,7 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task Clique_transaction_broadcast()
         {
-            var tx = new RpcLegacyTransaction
+            var tx = new LegacyTransactionForRpc
             {
                 Value = 2.Ether(),
                 GasPrice = 20.GWei(),

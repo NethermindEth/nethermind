@@ -79,7 +79,7 @@ public class BlockForRpc
         Timestamp = block.Timestamp;
         TotalDifficulty = block.TotalDifficulty ?? 0;
         Transactions = includeFullTransactionData
-            ? block.Transactions.Select((t, idx) => RpcNethermindTransaction.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas)).ToArray()
+            ? block.Transactions.Select((t, idx) => TransactionForRpc.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas)).ToArray()
             : block.Transactions.Select(t => t.Hash).OfType<object>().ToArray();
         TransactionsRoot = block.TxRoot;
         Uncles = block.Uncles.Select(o => o.Hash);

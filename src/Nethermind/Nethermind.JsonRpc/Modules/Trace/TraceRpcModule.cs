@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. Doesn't charge fees.
         /// </summary>
-        public ResultWrapper<ParityTxTraceFromReplay> trace_call(RpcNethermindTransaction call, string[] traceTypes, BlockParameter? blockParameter = null)
+        public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null)
         {
             blockParameter ??= BlockParameter.Latest;
             call.EnsureDefaults(_jsonRpcConfig.GasCap);

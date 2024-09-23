@@ -11,7 +11,7 @@ namespace Nethermind.JsonRpc.Data;
 [JsonConverter(typeof(TransactionForRpcWithTraceTypesConverter))]
 public class RpcNethermindTransactionWithTraceTypes
 {
-    public RpcNethermindTransaction Transaction { get; set; }
+    public TransactionForRpc Transaction { get; set; }
     public string[] TraceTypes { get; set; }
 
     private class TransactionForRpcWithTraceTypesConverter : JsonConverter<RpcNethermindTransactionWithTraceTypes>
@@ -27,7 +27,7 @@ public class RpcNethermindTransactionWithTraceTypes
 
             reader.Read();
 
-            value.Transaction = JsonSerializer.Deserialize<RpcNethermindTransaction>(ref reader, options);
+            value.Transaction = JsonSerializer.Deserialize<TransactionForRpc>(ref reader, options);
             reader.Read();
             value.TraceTypes = JsonSerializer.Deserialize<string[]>(ref reader, options);
 
