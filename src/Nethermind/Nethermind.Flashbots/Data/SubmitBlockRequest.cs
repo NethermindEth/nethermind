@@ -6,7 +6,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Flashbots.Data;
 
-public readonly struct SubmitBlockRequest
+public class SubmitBlockRequest
 {
     private readonly ExecutionPayload _executionPayload;
     private readonly BlobsBundleV1 _blobsBundle;
@@ -17,7 +17,7 @@ public readonly struct SubmitBlockRequest
         _blobsBundle = blobsBundle;
         Message = message;
     }
-    public readonly ExecutionPayload ExecutionPayload => _executionPayload;
-    public readonly BlobsBundleV1 BlobsBundle => _blobsBundle;
+    public ExecutionPayload ExecutionPayload => _executionPayload;
+    public BlobsBundleV1 BlobsBundle => _blobsBundle;
     public BidTrace Message { get; }
 }

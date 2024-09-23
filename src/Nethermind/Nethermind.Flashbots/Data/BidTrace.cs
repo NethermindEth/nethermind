@@ -7,15 +7,23 @@ using Nethermind.Int256;
 
 namespace Nethermind.Flashbots.Data;
 
-public readonly struct BidTrace
+public class BidTrace(
+    ulong slot,
+    Hash256 blockHash,
+    PublicKey builderPublicKey,
+    PublicKey proposerPublicKey,
+    Address proposerFeeRecipient,
+    long gasLimit,
+    long gasUsed,
+    UInt256 value)
 {
-    public ulong Slot { get; }
-    public Hash256 ParentHash { get; }
-    public Hash256 BlockHash { get; }
-    public PublicKey BuilderPublicKey { get; }
-    public PublicKey ProposerPublicKey { get; }
-    public Address ProposerFeeRecipient { get; }
-    public long GasLimit { get; }
-    public long GasUsed { get; }
-    public UInt256 Value { get; }
+    public ulong Slot { get; } = slot;
+    public required Hash256 ParentHash { get; set; }
+    public Hash256 BlockHash { get; } = blockHash;
+    public PublicKey BuilderPublicKey { get; } = builderPublicKey;
+    public PublicKey ProposerPublicKey { get; } = proposerPublicKey;
+    public Address ProposerFeeRecipient { get; } = proposerFeeRecipient;
+    public long GasLimit { get; } = gasLimit;
+    public long GasUsed { get; } = gasUsed;
+    public UInt256 Value { get; } = value;
 }

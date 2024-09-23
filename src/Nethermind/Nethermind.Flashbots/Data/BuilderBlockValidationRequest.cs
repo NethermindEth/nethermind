@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Flashbots.Data;
 
@@ -19,5 +20,5 @@ public class BuilderBlockValidationRequest
     public long RegisterGasLimit { get; set; }
 
     [JsonRequired]
-    public SubmitBlockRequest BlockRequest { get; set; }
+    public required SubmitBlockRequest BlockRequest { get; set; }
 }
