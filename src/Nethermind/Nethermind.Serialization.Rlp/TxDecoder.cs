@@ -3,17 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Collections.Generic;
-using System.IO;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp.TxDecoders;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
-using Nethermind.Serialization.Rlp.Eip2930;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Serialization.Rlp;
 

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -19,7 +18,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Tracing;
-using static Nethermind.Core.Extensions.MemoryExtensions;
 
 using static Nethermind.Evm.VirtualMachine;
 
@@ -153,12 +151,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             HashSet<Address> accessedAddresses = new();
             int delegationRefunds = 0;
-            if (spec.IsEip7702Enabled)
+            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
-                if (tx.HasAuthorizationList)
-                {
-                    delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, accessedAddresses, spec);
-                }
+                delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, accessedAddresses, spec);
             }
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessedAddresses);
