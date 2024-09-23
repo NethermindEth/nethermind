@@ -3,7 +3,7 @@
 
 namespace Nethermind.Network.Discovery;
 
-public enum UTPPacketType: byte
+public enum UTPPacketType : byte
 {
     StData = 0,
     StFin = 1,

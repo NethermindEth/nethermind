@@ -110,7 +110,7 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
         {
             Nodes = new Nodes()
             {
-                Enrs = resultEnrs
+                Enrs = resultEnrs.Select(enr => new Discovery.Portal.Messages.Enr { Data = enr }).ToArray()
             }
         });
 

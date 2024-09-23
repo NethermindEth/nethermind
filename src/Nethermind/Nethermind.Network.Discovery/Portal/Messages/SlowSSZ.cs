@@ -12,7 +12,7 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Portal.Messages;
 
-public interface IUnion {}
+public interface IUnion { }
 
 public class SelectorAttribute(byte selectorByte) : System.Attribute
 {
@@ -374,7 +374,7 @@ public class SlowSSZ
             Array resultArray = Array.CreateInstance(elementType, numElement);
             for (int i = 0; i < numElement; i++)
             {
-                object result = Deserialize(span[(i*perItemLength)..], elementType);
+                object result = Deserialize(span[(i * perItemLength)..], elementType);
                 resultArray.SetValue(result, i);
             }
 
@@ -397,7 +397,7 @@ public class SlowSSZ
             int[] offsets = new int[numElement];
             for (int i = 0; i < numElement; i++)
             {
-                offsets[i] = Deserialize<int>(span[(i*BYTES_PER_LENGTH_OFFSET)..]);
+                offsets[i] = Deserialize<int>(span[(i * BYTES_PER_LENGTH_OFFSET)..]);
             }
 
             Array resultArray = Array.CreateInstance(elementType, numElement);

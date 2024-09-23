@@ -238,7 +238,7 @@ public class UTPTests
                 if (baseDelayMs != 0)
                     await Task.Delay(baseDelayMs, token);
                 if (randomDelayMs != 0)
-                    await Task.Delay( _random.Next() % randomDelayMs, token);
+                    await Task.Delay(_random.Next() % randomDelayMs, token);
 
                 bool lockTaken = false;
                 try

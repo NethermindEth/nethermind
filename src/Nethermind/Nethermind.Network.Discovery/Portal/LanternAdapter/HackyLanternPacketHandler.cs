@@ -140,7 +140,7 @@ public class HacklyLanternPacketHandler : OrdinaryPacketHandler
             }
             else
             {
-                var talkResp = (TalkRespMessage) decodedMessage;
+                var talkResp = (TalkRespMessage)decodedMessage;
                 _rawTalkReqResponder.OnTalkResp(enr, talkResp);
 
                 // So that it wont disconnect the peer

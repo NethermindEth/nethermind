@@ -24,7 +24,7 @@ public class LanternTalkReqSender(
     IPacketManager packetManager,
     IMessageDecoder messageDecoder,
     ILogManager logManager
-): IRawTalkReqSender
+) : IRawTalkReqSender
 {
     private ILogger _logger = logManager.GetClassLogger<LanternTalkReqSender>();
 

@@ -23,15 +23,15 @@ public class RollingWindowAvgTests
     [Test]
     public void TestDefault()
     {
-         var avg = new FixedRollingAvg(5, 99, 100);
-         Assert.That(avg.GetAvg(99), Is.EqualTo(99));
+        var avg = new FixedRollingAvg(5, 99, 100);
+        Assert.That(avg.GetAvg(99), Is.EqualTo(99));
     }
 
     [Test]
     public void GetAvgFixed16PrecisionDefaultValueWithRandomInput()
     {
 
-        var rollingAvg  = new FixedRollingAvg(5, 100, 1000);
+        var rollingAvg = new FixedRollingAvg(5, 100, 1000);
         int avg = rollingAvg.GetAvg((uint)Random.Shared.Next());
 
         Assert.That(avg, Is.EqualTo(100));
@@ -50,7 +50,7 @@ public class RollingWindowAvgTests
     [Test]
     public void testDelayExceedsExpiry()
     {
-        var rollingAvg  = new FixedRollingAvg(5, 100, 1000);
+        var rollingAvg = new FixedRollingAvg(5, 100, 1000);
         uint now = 0;
         rollingAvg.Observe(500, now);
         now += 2000;
@@ -62,7 +62,7 @@ public class RollingWindowAvgTests
     [Test]
     public void Observe_MoreThanCapacity_GetAvg_ReturnsCorrectAverage()
     {
-        var rollingAvg  = new FixedRollingAvg(5, 100, 1000);
+        var rollingAvg = new FixedRollingAvg(5, 100, 1000);
         uint now = 0;
 
         // Observe more than capacity

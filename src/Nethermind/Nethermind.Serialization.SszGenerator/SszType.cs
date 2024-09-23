@@ -97,11 +97,13 @@ class SszType
 
     public bool IsVariable => Members is not null && Members.Any(x => x.IsVariable);
 
+    public bool IsSszListItself { get; private set; }
+
+
     public const int PointerLength = 4;
 
     internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
     {
-
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
 
@@ -145,6 +147,12 @@ class SszType
         {
             result.IsStruct = true;
         }
+
+        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List, HandledByStd: true })
+        {
+            result.IsSszListItself = GetIsCollectionItselfValue(type);
+        }
+
         return result;
     }
 
@@ -160,5 +168,14 @@ class SszType
     public override string ToString()
     {
         return $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
+    }
+
+    private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
+    {
+        object? attrValue = typeSymbol
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszSerializableAttribute")?
+            .ConstructorArguments.FirstOrDefault().Value;
+
+        return attrValue is not null && (bool)attrValue;
     }
 }

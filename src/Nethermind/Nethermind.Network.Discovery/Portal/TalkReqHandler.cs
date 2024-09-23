@@ -114,7 +114,7 @@ public class TalkReqHandler(
         {
             Nodes = new Nodes()
             {
-                Enrs = neighboursAsBytes
+                Enrs = neighboursAsBytes.Select(enr => new Messages.Enr { Data = enr }).ToArray()
             }
         };
 
@@ -142,7 +142,7 @@ public class TalkReqHandler(
                 Content = new Content()
                 {
                     Payload = value.Payload,
-                    ConnectionId = value.ConnectionId
+                    ConnectionId = value.ConnectionId ?? default
                 }
             });
         }
@@ -152,7 +152,7 @@ public class TalkReqHandler(
         {
             Content = new Content()
             {
-                Enrs = neighboursAsBytes
+                Enrs = neighboursAsBytes.Select(enr => new Messages.Enr { Data = enr }).ToArray()
             }
         };
 
@@ -244,7 +244,7 @@ public class TalkReqHandler(
                 byte[] buffer = new byte[length];
                 await stream.ReadExactlyAsync(buffer, token);
 
-                store.Store(contentKey, buffer);
+                store.Store(contentKey.Data, buffer);
             }
         }, token);
 
