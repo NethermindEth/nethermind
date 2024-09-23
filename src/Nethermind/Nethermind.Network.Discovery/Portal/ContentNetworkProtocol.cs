@@ -5,6 +5,7 @@ using Lantern.Discv5.Enr;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -24,15 +25,15 @@ public class ContentNetworkProtocol(
         // Yes, I'm breaking some rules here a bit...
         ping.CustomPayload = config.ContentRadius.ToLittleEndian();
 
-        byte[] pingBytes =
-            SlowSSZ.Serialize(new MessageUnion()
-            {
-                Ping = ping,
-            });
+        byte[] pingBytes = SszEncoding.Encode(new MessageUnion()
+        {
+            Selector = MessageType.Ping,
+            Ping = ping,
+        }).ToArray();
 
         byte[] responseBytes = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, pingBytes, token);
 
-        MessageUnion response = SlowSSZ.Deserialize<MessageUnion>(responseBytes);
+        SszEncoding.Decode(responseBytes, out MessageUnion response);
 
         return response.Pong!;
     }
@@ -41,13 +42,16 @@ public class ContentNetworkProtocol(
     {
         if (_logger.IsDebug) _logger.Debug($"Sending FindNodes to {receiver}");
 
-        byte[] findNodesBytes = SlowSSZ.Serialize(new MessageUnion()
+        byte[] findNodesBytes = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.FindNodes,
             FindNodes = findNodes
         });
 
         byte[] response = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, findNodesBytes, token);
-        Nodes nodes = SlowSSZ.Deserialize<MessageUnion>(response).Nodes!;
+
+        SszEncoding.Decode(response, out MessageUnion messageUnion);
+        Nodes nodes = messageUnion.Nodes!;
 
         if (_logger.IsDebug) _logger.Debug($"Received {nodes.Enrs.Length} from {receiver}");
         return nodes;
@@ -57,8 +61,9 @@ public class ContentNetworkProtocol(
     {
         if (_logger.IsDebug) _logger.Debug($"Sending FindContent to {receiver}");
 
-        byte[] findContentBytes = SlowSSZ.Serialize(new MessageUnion()
+        byte[] findContentBytes = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.FindContent,
             FindContent = findContent
         });
 
@@ -67,7 +72,7 @@ public class ContentNetworkProtocol(
         Content message;
         try
         {
-            union = SlowSSZ.Deserialize<MessageUnion>(response);
+            SszEncoding.Decode(response, out union);
             message = union.Content!;
         }
         catch (Exception e)
@@ -83,12 +88,14 @@ public class ContentNetworkProtocol(
     {
         if (_logger.IsDebug) _logger.Debug($"Sending Offer to {receiver}");
 
-        var message = SlowSSZ.Serialize(new MessageUnion()
+        var message = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.Offer,
             Offer = offer
         });
 
         var responseByte = await talkReqTransport.CallAndWaitForResponse(receiver, _protocol, message, token);
-        return SlowSSZ.Deserialize<MessageUnion>(responseByte).Accept!;
+        SszEncoding.Decode(responseByte, out MessageUnion union);
+        return union.Accept!;
     }
 }

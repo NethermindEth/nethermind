@@ -114,7 +114,7 @@ public class ContentNetworkRpcHandler(
         IEnr[] enrs = new IEnr[nodes.Enrs.Length];
         for (var i = 0; i < nodes.Enrs.Length; i++)
         {
-            enrs[i] = enrProvider.Decode(nodes.Enrs[i]);
+            enrs[i] = enrProvider.Decode(nodes.Enrs[i].Data);
         }
 
         string[] enrStrs = enrs.Select(it => it.ToString()!).ToArray();

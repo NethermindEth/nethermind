@@ -84,7 +84,7 @@ public class ContentDistributor(
 
         Accept accept = await protocol.Offer(enr, new Offer()
         {
-            ContentKeys = [contentKey]
+            ContentKeys = [new ContentKey { Data = contentKey }]
         }, token);
 
         if (accept.AcceptedBits.Length == 0 || !accept.AcceptedBits[0]) return;

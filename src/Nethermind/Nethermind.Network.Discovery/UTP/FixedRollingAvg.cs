@@ -35,7 +35,7 @@ public class FixedRollingAvg
             if (_rollingWindowSetTime[(_tailIdx + 1) % _capacity] + _expiry > now) break;
 
             _tailIdx++;
-            _tailIdx%=_capacity;
+            _tailIdx %= _capacity;
             _size--;
             _sum -= _rollingWindow[_tailIdx];
         }
@@ -54,7 +54,7 @@ public class FixedRollingAvg
         if (_size == _capacity) // Full
         {
             _tailIdx++;
-            _tailIdx%=_capacity;
+            _tailIdx %= _capacity;
             _sum -= _rollingWindow[_tailIdx];
             _size--;
         }

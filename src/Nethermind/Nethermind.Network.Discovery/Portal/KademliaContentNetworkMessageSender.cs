@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Kademlia.Content;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal;
 
@@ -68,13 +69,13 @@ public class KademliaContentNetworkContentKademliaMessageSender(
             if (nowUpper && upper < 255)
             {
                 upper++;
-                queryDistance[i+1] = upper;
+                queryDistance[i + 1] = upper;
                 nowUpper = false;
             }
             else if (lower > 0)
             {
                 lower--;
-                queryDistance[i+1] = lower;
+                queryDistance[i + 1] = lower;
                 nowUpper = true;
             }
         }
@@ -85,19 +86,19 @@ public class KademliaContentNetworkContentKademliaMessageSender(
             Distances = queryDistance
         }, token);
 
-        return message.Enrs.Select(enrProvider.Decode).ToArray();
+        return message.Enrs.Select(enr => enrProvider.Decode(enr.Data)).ToArray();
     }
 
     public async Task<FindValueResponse<IEnr, LookupContentResult>> FindValue(IEnr receiver, byte[] contentKey, CancellationToken token)
     {
         Content message = await contentNetworkProtocol.FindContent(receiver, new FindContent()
         {
-            ContentKey = contentKey
+            ContentKey = new ContentKey { Data = contentKey }
         }, token);
 
-        if (message.ConnectionId == null && message.Payload == null)
+        if (message.Selector == ContentType.Enrs)
         {
-            IEnr[] enrs = message.Enrs!.Select(enrProvider.Decode).ToArray();
+            IEnr[] enrs = message.Enrs!.Select(enr => enrProvider.Decode(enr.Data)).ToArray();
             return new FindValueResponse<IEnr, LookupContentResult>(false, null, enrs);
         }
 

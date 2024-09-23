@@ -1,19 +1,37 @@
+using Nethermind.Serialization.Ssz;
+
 namespace Nethermind.Network.Discovery.Portal.Messages;
 
-public class MessageUnion: IUnion
+[SszSerializable]
+public class MessageUnion
 {
-    [Selector(0)] public Ping? Ping { get; set; }
+    public MessageType Selector { get; set; }
 
-    [Selector(1)] public Pong? Pong { get; set; }
+    public Ping? Ping { get; set; }
 
-    [Selector(2)] public FindNodes? FindNodes { get; set; }
+    public Pong? Pong { get; set; }
 
-    [Selector(3)] public Nodes? Nodes { get; set; }
+    public FindNodes? FindNodes { get; set; }
 
-    [Selector(4)] public FindContent? FindContent { get; set; }
+    public Nodes? Nodes { get; set; }
 
-    [Selector(5)] public Content? Content { get; set; }
+    public FindContent? FindContent { get; set; }
 
-    [Selector(6)] public Offer? Offer { get; set; }
-    [Selector(7)] public Accept? Accept { get; set; }
+    public Content? Content { get; set; }
+
+    public Offer? Offer { get; set; }
+
+    public Accept? Accept { get; set; }
+}
+
+public enum MessageType
+{
+    Ping = 0,
+    Pong = 1,
+    FindNodes = 2,
+    Nodes = 3,
+    FindContent = 4,
+    Content = 5,
+    Offer = 6,
+    Accept = 7,
 }

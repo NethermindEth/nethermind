@@ -20,7 +20,7 @@ namespace Nethermind.Network.Discovery.Portal;
 public class TalkReqTransport(
     IRawTalkReqSender rawTalkReqSender,
     ILogManager logManager
-): ITalkReqTransport
+) : ITalkReqTransport
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TalkReqTransport>();
 

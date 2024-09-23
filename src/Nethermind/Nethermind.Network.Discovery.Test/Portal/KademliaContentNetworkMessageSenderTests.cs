@@ -14,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,8 +48,9 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
     [Test]
     public async Task OnPing_ShouldSendTalkReq()
     {
-        byte[] resultBytes = SlowSSZ.Serialize(new MessageUnion()
+        byte[] resultBytes = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.Pong,
             Pong = new Pong() { }
         });
 
@@ -64,10 +66,12 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
     public async Task OnFindValue_ShouldSendTalkReqAndParseResponseCorrectly()
     {
         byte[] contentKey = [1, 2, 3, 4, 5];
-        byte[] resultBytes = SlowSSZ.Serialize(new MessageUnion()
+        byte[] resultBytes = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.Content,
             Content = new Content()
             {
+                Selector = ContentType.ConnectionId,
                 ConnectionId = 0x1234
             }
         });
@@ -78,7 +82,10 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
 
         Content result = await _protocol.FindContent(_testReceiverEnr, new FindContent()
         {
-            ContentKey = contentKey
+            ContentKey = new ContentKey()
+            {
+                Data = contentKey
+            }
         }, default);
 
         result.ConnectionId.Should().Be(0x1234);
@@ -91,23 +98,25 @@ public class KademliaContentNetworkContentKademliaMessageSenderTests
         ushort dist = (ushort)Hash256XorUtils.CalculateDistance(new ValueHash256(_testReceiverEnr.NodeId), target);
         ushort[] queryDistances = [dist, (ushort)(dist + 1), (ushort)(dist - 1), (ushort)(dist + 2), (ushort)(dist - 2)];
 
-        byte[] queryBytes = SlowSSZ.Serialize(new MessageUnion()
+        byte[] queryBytes = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.FindNodes,
             FindNodes = new FindNodes()
             {
                 Distances = queryDistances
             }
         });
 
-        byte[][] resultEnrs = new IEnr[] {
+        Discovery.Portal.Messages.Enr[] resultEnrs = new IEnr[] {
             TestUtils.CreateEnr(TestItem.PrivateKeyA),
             TestUtils.CreateEnr(TestItem.PrivateKeyB),
             TestUtils.CreateEnr(TestItem.PrivateKeyC),
             TestUtils.CreateEnr(TestItem.PrivateKeyD),
             TestUtils.CreateEnr(TestItem.PrivateKeyE),
-        }.Select((enr) => enr.EncodeRecord()).ToArray();
-        byte[] resultBytes = SlowSSZ.Serialize(new MessageUnion()
+        }.Select((enr) => new Discovery.Portal.Messages.Enr() { Data = enr.EncodeRecord() }).ToArray();
+        byte[] resultBytes = SszEncoding.Encode(new MessageUnion()
         {
+            Selector = MessageType.Nodes,
             Nodes = new Nodes()
             {
                 Enrs = resultEnrs

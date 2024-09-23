@@ -26,7 +26,7 @@ public class SessionManagerNormalizer(
     SessionOptions options,
     IAesCrypto aesCrypto,
     ISessionCrypto sessionCrypto,
-    ILoggerFactory loggerFactory): ISessionManager
+    ILoggerFactory loggerFactory) : ISessionManager
 {
     private readonly ISessionKeys _sessionKeys = options.SessionKeys;
 

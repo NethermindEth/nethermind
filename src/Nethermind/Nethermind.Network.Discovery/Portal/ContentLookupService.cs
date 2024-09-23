@@ -55,19 +55,22 @@ public class ContentLookupService(
 
         Content value = await protocol.FindContent(node, new FindContent()
         {
-            ContentKey = contentKey
+            ContentKey = new ContentKey()
+            {
+                Data = contentKey
+            },
         }, token);
 
-        if (value.Payload == null && value.ConnectionId == null)
+        if (value.Selector == ContentType.Enrs)
         {
-            IEnr[] enrs = value.Enrs!.Select(enrProvider.Decode).ToArray();
+            IEnr[] enrs = value.Enrs!.Select((enr) => enrProvider.Decode(enr.Data)).ToArray();
             return (null, false, enrs);
         }
 
-        if (value.Payload != null) return (value.Payload, false, null);
+        if (value.Selector == ContentType.Payload) return (value.Payload, false, null);
 
         MemoryStream stream = new MemoryStream();
-        await utpManager.ReadContentFromUtp(node, true, value.ConnectionId!.Value, stream, token);
+        await utpManager.ReadContentFromUtp(node, true, value.ConnectionId!, stream, token);
         var asBytes = stream.ToArray();
         return (asBytes, true, null);
     }

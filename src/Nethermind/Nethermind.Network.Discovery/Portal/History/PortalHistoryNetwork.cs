@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Portal.Messages;
+using Nethermind.Serialization;
 
 namespace Nethermind.Network.Discovery.Portal.History;
 
@@ -28,9 +29,10 @@ public class PortalHistoryNetwork: IPortalHistoryNetwork
     {
         _logger.Info($"Looking up header {hash}");
 
-        byte[]? asBytes = await _contentNetwork.LookupContent(SlowSSZ.Serialize(new ContentKey()
+        byte[]? asBytes = await _contentNetwork.LookupContent(SszEncoding.Encode(new HistoryContentKey()
         {
-            HeaderKey = hash
+            Selector = HistoryContentType.HeaderByHash,
+            HeaderByHash = hash.ToByteArray()
         }), token);
 
         return asBytes == null ? null : _encoderDecoder.DecodeHeader(asBytes!);
@@ -40,9 +42,10 @@ public class PortalHistoryNetwork: IPortalHistoryNetwork
     {
         _logger.Info($"Looking up body {hash}");
 
-        byte[]? asBytes = await _contentNetwork.LookupContent(SlowSSZ.Serialize(new ContentKey()
+        byte[]? asBytes = await _contentNetwork.LookupContent(SszEncoding.Encode(new HistoryContentKey()
         {
-            BodyKey = hash
+            Selector = HistoryContentType.BodyByHash,
+            BodyByHash = hash.ToByteArray()
         }), token);
 
         return asBytes == null ? null : _encoderDecoder.DecodeBody(asBytes!);
@@ -52,9 +55,10 @@ public class PortalHistoryNetwork: IPortalHistoryNetwork
     {
         _logger.Info($"Looking up body {hash}");
 
-        byte[]? asBytes = await _contentNetwork.LookupContentFrom(enr, SlowSSZ.Serialize(new ContentKey()
+        byte[]? asBytes = await _contentNetwork.LookupContentFrom(enr, SszEncoding.Encode(new HistoryContentKey()
         {
-            BodyKey = hash
+            Selector = HistoryContentType.BodyByHash,
+            BodyByHash = hash.ToByteArray()
         }), token);
 
         return asBytes == null ? null : _encoderDecoder.DecodeBody(asBytes!);
