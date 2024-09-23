@@ -76,18 +76,18 @@ namespace Nethermind.Overseer.Test
                 Value = 2.Ether(),
                 GasPrice = 20.GWei(),
                 Gas = 21000,
-                From = new PrivateKey([
+                From = new PrivateKey(new byte[32] {
                     0,0,0,0,0,0,0,0,
                     0,0,0,0,0,0,0,0,
                     0,0,0,0,0,0,0,0,
                     0,0,0,0,0,0,0,3
-                ]).Address,
-                To = new PrivateKey([
+                }).Address,
+                To = new PrivateKey(new byte[32] {
                     0,0,0,0,0,0,0,0,
                     0,0,0,0,0,0,0,0,
                     0,0,0,0,0,0,0,0,
                     0,0,0,0,0,0,0,1
-                ]).Address
+                }).Address
             };
 
             StartCliqueMiner("cliqueval1d")
