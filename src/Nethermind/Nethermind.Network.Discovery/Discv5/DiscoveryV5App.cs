@@ -34,6 +34,7 @@ using Nethermind.Network.Discovery.Portal.History.Rpc;
 using Nethermind.Network.Discovery.Portal.LanternAdapter;
 using Nethermind.Network.Enr;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
+using IServiceCollectionExtensions = Nethermind.Network.Discovery.Portal.LanternAdapter.IServiceCollectionExtensions;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
@@ -79,7 +80,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .AddSingleton(sessionOptions.Signer)
             .AddSingleton(logManager);
 
-        EnrEntryRegistry registry = new EnrEntryRegistry();
+        IEnrEntryRegistry registry = new IServiceCollectionExtensions.AllEnrEntryRegistry();
         EnrFactory enrFactory = new(registry);
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
@@ -114,6 +115,7 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
+            .WithEnrEntryRegistry(registry)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
             .WithServices((components) =>
             {

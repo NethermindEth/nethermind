@@ -7,6 +7,9 @@
 
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Aliases="BouncyCastleCryptography"/>
+    <ProjectReference Include="..\Lantern\src\Lantern.Discv5.Enr\Lantern.Discv5.Enr.csproj" />
+    <ProjectReference Include="..\Lantern\src\Lantern.Discv5.Rlp\Lantern.Discv5.Rlp.csproj" />
+    <ProjectReference Include="..\Lantern\src\Lantern.Discv5.WireProtocol\Lantern.Discv5.WireProtocol.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
@@ -17,7 +20,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="PierTwo.Lantern.Discv5.WireProtocol" />
   </ItemGroup>
 
 </Project>
