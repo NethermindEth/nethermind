@@ -306,14 +306,38 @@ public class BlockValidator(
             return false;
         }
 
-        if (!ValidateRequestsHashMatches(block, out Hash256 depositsRoot))
+        if (!ValidateRequestsHashMatches(block, out Hash256 requestsRoot))
         {
-            error = BlockErrorMessages.InvalidRequestsRoot(block.Header.RequestsRoot, depositsRoot);
-            if (_logger.IsWarn) _logger.Warn($"DepositsRoot root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.RequestsRoot}, got {depositsRoot}");
+            error = BlockErrorMessages.InvalidRequestsRoot(block.Header.RequestsRoot, requestsRoot);
+            if (_logger.IsWarn) _logger.Warn($"DepositsRoot root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.RequestsRoot}, got {requestsRoot}");
 
             return false;
         }
 
+        // validate that the requests types are in ascending order
+        if (!ValidateRequestsOrder(block, out error))
+        {
+            if (_logger.IsWarn) _logger.Warn(error);
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    public static bool ValidateRequestsOrder(Block block, out string? error)
+    {
+        if (block.Requests is not null)
+        {
+            for (int i = 1; i < block.Requests.Length; i++)
+            {
+                if (block.Requests[i].Type < block.Requests[i - 1].Type)
+                {
+                    error = BlockErrorMessages.InvalidRequestsOrder;
+                    return false;
+                }
+            }
+        }
         error = null;
         return true;
     }
@@ -431,10 +455,10 @@ public class BlockValidator(
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
-    public static bool ValidateRequestsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
-        ValidateRequestsHashMatches(block.Header, block.Body, out withdrawalsRoot);
+    public static bool ValidateRequestsHashMatches(Block block, out Hash256? requestsRoot) =>
+        ValidateRequestsHashMatches(block.Header, block.Body, out requestsRoot);
 
-    public static bool ValidateRequestsHashMatches(BlockHeader header, BlockBody body, out Hash256? requestsRoot)
+    private static bool ValidateRequestsHashMatches(BlockHeader header, BlockBody body, out Hash256? requestsRoot)
     {
         if (body.Requests == null)
         {

@@ -15,6 +15,7 @@ public class WithdrawalRequest : ConsensusRequest
     public WithdrawalRequest()
     {
         Type = ConsensusRequestsType.WithdrawalRequest;
+        Amount = 0;
     }
     public Address? SourceAddress
     {
