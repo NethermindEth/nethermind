@@ -457,7 +457,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 codeInfo.AnalyseInBackgroundIfRequired();
             }
 
-            return new ExecutionEnvironment
+            env = new ExecutionEnvironment
             (
                 txExecutionContext: in executionContext,
                 value: tx.Value,
@@ -468,6 +468,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 inputData: inputData,
                 codeInfo: codeInfo
             );
+
+            return TransactionResult.Ok;
         }
 
         protected virtual bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.NoValidation);
