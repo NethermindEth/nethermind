@@ -777,7 +777,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 }
 
-                if(programCounter >= codeLength)
+                if (programCounter >= codeLength)
                 {
                     goto EmptyReturnNoTrace;
                 }

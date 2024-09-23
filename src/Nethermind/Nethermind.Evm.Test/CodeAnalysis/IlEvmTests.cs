@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
     }
 
-    internal class TestBlockChain: VirtualMachineTestsBase
+    internal class TestBlockChain : VirtualMachineTestsBase
     {
         protected IVMConfig config;
         public TestBlockChain(IVMConfig config)
@@ -322,7 +322,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
-            if(testcase.opcode is not null)
+            if (testcase.opcode is not null)
             {
                 Assert.That(HasIlvmTraces, Is.True);
             }
@@ -467,7 +467,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
 
             var failedTraces = accumulatedTraces.Where(tr => tr.Failed && tr.Entries.Any(subtr => subtr.Error == EvmExceptionType.BadInstruction.ToString())).ToList();
-           Assert.That(failedTraces.Count, Is.EqualTo(numberOfRuns));
+            Assert.That(failedTraces.Count, Is.EqualTo(numberOfRuns));
         }
 
         [Test]
@@ -565,7 +565,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .EXTCODESIZE(Address.SystemUser)
                     .DUPx(1)
                     .ISZERO()
-                    .Done);    
+                    .Done);
         }
 
         public static IEnumerable<(Instruction?, byte[])> GeJitBytecodesSamples()

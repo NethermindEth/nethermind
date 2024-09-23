@@ -100,7 +100,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
 
     public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
-        if(IsTracingCompiledSegments)
+        if (IsTracingCompiledSegments)
             return;
 
         if (CurrentTraceEntry is not null)

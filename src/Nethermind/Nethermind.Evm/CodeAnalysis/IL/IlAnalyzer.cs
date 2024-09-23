@@ -86,7 +86,7 @@ internal static class IlAnalyzer
 
         static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
         {
-            if(codeData.Item1.Length == 0)
+            if (codeData.Item1.Length == 0)
             {
                 return;
             }
@@ -122,7 +122,7 @@ internal static class IlAnalyzer
                 var lastOp = segment[^1];
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
-                ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter,CompileSegment(segmentName, segment, codeData.Item2));
+                ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter, CompileSegment(segmentName, segment, codeData.Item2));
             }
 
             ilinfo.Mode |= IlInfo.ILMode.SubsegmentsCompiling;

@@ -37,7 +37,7 @@ namespace Nethermind.Evm.CodeAnalysis
                         ? IlInfo.ILMode.SubsegmentsCompiling
                         : IlInfo.ILMode.NoIlvm;
 
-            if(mode == IlInfo.ILMode.NoIlvm)
+            if (mode == IlInfo.ILMode.NoIlvm)
                 return;
 
             await IlAnalyzer.StartAnalysis(this, mode).ConfigureAwait(false);
