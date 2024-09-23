@@ -114,21 +114,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize)
-            : TxExecutor<RpcAccessListResult?>(blockchainBridge, blockFinder, rpcConfig)
+            : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig)
         {
-            protected override ResultWrapper<RpcAccessListResult?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
 
-                var rpcAccessListResult = new RpcAccessListResult(
+                var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
                     gasUsed: GetResultGas(tx, result));
 
                 return result switch
                 {
-                    { Error: null } => ResultWrapper<RpcAccessListResult?>.Success(rpcAccessListResult),
-                    { InputError: true } => ResultWrapper<RpcAccessListResult?>.Fail(result.Error, ErrorCodes.InvalidInput),
-                    _ => ResultWrapper<RpcAccessListResult?>.Fail(result.Error, ErrorCodes.ExecutionError),
+                    { Error: null } => ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult),
+                    { InputError: true } => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.InvalidInput),
+                    _ => ResultWrapper<AccessListResultForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError),
                 };
             }
 
