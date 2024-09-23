@@ -350,7 +350,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private bool AccessAccountSubTree<TGasCharge>(Address address, UInt256 treeIndex, byte subIndex, ref long gasAvailable, bool isWrite = false)
         where TGasCharge: struct, IGasCharge
     {
-        // if (address.IsPrecompile(Osaka.Instance)) return true;
         return AccessKey<TGasCharge>(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), ref gasAvailable, isWrite);
     }
 
@@ -365,6 +364,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private bool AccessKey<TGasCharge>(Hash256 key, ref long gasAvailable, bool isWrite = false)
         where TGasCharge: struct, IGasCharge
     {
+        Console.WriteLine($"AccesKey: {key}");
         // TODO: do we need a SpanHashSet so that we can at least use the span to do the `Contains` check?
         byte[] subTreeStem = key.Bytes[..31].ToArray();
         long requiredGas = 0;
