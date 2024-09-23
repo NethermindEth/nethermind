@@ -50,32 +50,34 @@ public class OpcodeStatsTracerTests : VirtualMachineTestsBase
             .PushData(0)
             .Done;
 
-        string callTrace = ExecuteStatsTrace(code);
-        const string expectedCallTrace = """
+        string trace = ExecuteStatsTrace(code);
+        const string expectedTrace = """
             {
               "initialBlockNumber": "0x0",
               "currentBlockNumber": "0x0",
               "errorPerItem": 0.006,
               "confidence": 0.9375,
-              "stats": {
-                "pattern": "PUSH1 PUSH1",
-                "bytes": [
-                  96,
-                  96
-                ],
-                "count": "0x2"
-              },
-              {
-                "pattern": "PUSH1 PUSH1 PUSH1",
-                "bytes": [
-                  96,
-                  96,
-                  96
-                ],
-                "count": "0x1"
-              }
+              "stats": [
+                {
+                  "pattern": "PUSH1 PUSH1",
+                  "bytes": [
+                    96,
+                    96
+                  ],
+                  "count": "0x2"
+                },
+                {
+                  "pattern": "PUSH1 PUSH1 PUSH1",
+                  "bytes": [
+                    96,
+                    96,
+                    96
+                  ],
+                  "count": "0x1"
+                }
+              ]
             }
             """;
-       Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+       Assert.That(trace, Is.EqualTo(expectedTrace));
     }
 }

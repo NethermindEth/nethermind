@@ -39,7 +39,7 @@ public class OpcodeStatsTraceConvertor : JsonConverter<OpcodeStatsTxTrace>
             if (value.Entries is not null)
             {
                 writer.WritePropertyName("stats"u8);
-
+                writer.WriteStartArray();
                 foreach (var OpCodePattern in value.Entries)
                 {
                     writer.WriteStartObject();
@@ -57,6 +57,7 @@ public class OpcodeStatsTraceConvertor : JsonConverter<OpcodeStatsTxTrace>
                     writer.WriteEndObject();
 
                 }
+                writer.WriteEndArray();
 
             }
 
