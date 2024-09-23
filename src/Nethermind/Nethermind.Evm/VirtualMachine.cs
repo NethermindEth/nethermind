@@ -476,7 +476,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, bool chargeForDelegation, IReleaseSpec spec, bool chargeForWarm = true)
     {
-        // Console.WriteLine($"Accessing {address}");
         if (!spec.UseHotAndColdStorage)
         {
             return true;
