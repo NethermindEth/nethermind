@@ -4,8 +4,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Overseer.Test.Framework;
 using NUnit.Framework;
 
@@ -72,23 +71,24 @@ namespace Nethermind.Overseer.Test
         [Test]
         public async Task Clique_transaction_broadcast()
         {
-            TransactionForRpc tx = new TransactionForRpc();
-            tx.Value = 2.Ether();
-            tx.GasPrice = 20.GWei();
-            tx.Gas = 21000;
-            tx.From = new PrivateKey(new byte[32] {
-                0,0,0,0,0,0,0,0,
-                0,0,0,0,0,0,0,0,
-                0,0,0,0,0,0,0,0,
-                0,0,0,0,0,0,0,3
-            }).Address;
-
-            tx.To = new PrivateKey(new byte[32] {
-                0,0,0,0,0,0,0,0,
-                0,0,0,0,0,0,0,0,
-                0,0,0,0,0,0,0,0,
-                0,0,0,0,0,0,0,1
-            }).Address;
+            var tx = new RpcLegacyTransaction
+            {
+                Value = 2.Ether(),
+                GasPrice = 20.GWei(),
+                Gas = 21000,
+                From = new PrivateKey([
+                    0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,3
+                ]).Address,
+                To = new PrivateKey([
+                    0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,0,
+                    0,0,0,0,0,0,0,1
+                ]).Address
+            };
 
             StartCliqueMiner("cliqueval1d")
                 .StartCliqueMiner("cliqueval2d")
