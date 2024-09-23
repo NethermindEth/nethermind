@@ -28,7 +28,6 @@ namespace Nethermind.Api
         IConnectionsPool? DiscoveryConnections { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IDiscoveryApp? DiscoveryV5App { get; set; }
-        IServiceProvider? PortalNetworkServiceProvider { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }

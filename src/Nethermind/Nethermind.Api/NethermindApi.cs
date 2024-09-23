@@ -130,7 +130,6 @@ namespace Nethermind.Api
         public IConnectionsPool? DiscoveryConnections { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public IDiscoveryApp? DiscoveryV5App { get; set; }
-        public IServiceProvider? PortalNetworkServiceProvider { get; set; }
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }

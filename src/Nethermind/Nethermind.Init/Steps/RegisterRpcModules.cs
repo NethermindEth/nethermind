@@ -199,11 +199,6 @@ public class RegisterRpcModules : IStep
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 
-        if (_api.PortalNetworkServiceProvider is not null)
-        {
-            rpcModuleProvider.RegisterSingle(_api.PortalNetworkServiceProvider!.GetRequiredService<IPortalHistoryRpcModule>());
-        }
-
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
 
