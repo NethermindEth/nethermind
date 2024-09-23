@@ -9,9 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -29,7 +27,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
@@ -44,7 +42,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         ctx.Test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
@@ -58,7 +56,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
@@ -72,7 +70,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         Address someAccount = new("0x0001020304050607080910111213141516171819");
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
@@ -88,15 +86,15 @@ public partial class EthRpcModuleTests
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
-        (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(loads);
+        (byte[] code, _) = GetTestAccessList(loads);
 
-        TransactionForRpc transaction =
-            test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcAccessListTransaction transaction =
+            test.JsonSerializer.Deserialize<RpcAccessListTransaction>(
                 $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         string serializedCreateAccessList = await test.TestEthRpc("eth_createAccessList",
             test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
 
-        transaction.AccessList = test.JsonSerializer.Deserialize<AccessListItemForRpc[]>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
+        transaction.AccessList = test.JsonSerializer.Deserialize<RpcAccessList>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
         string serializedEstimateGas =
             await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
 
@@ -117,10 +115,10 @@ public partial class EthRpcModuleTests
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
             .Build(new TestSpecProvider(Berlin.Instance));
 
-        (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, senderAccessList);
+        (byte[] code, RpcAccessList accessList) = GetTestAccessList(2, senderAccessList);
 
-        TransactionForRpc transaction =
-            test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcAccessListTransaction transaction =
+            test.JsonSerializer.Deserialize<RpcAccessListTransaction>(
                 $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         string serialized = await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
         Assert.That(
@@ -138,11 +136,11 @@ public partial class EthRpcModuleTests
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
-        (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, true);
-        (byte[] _, AccessListItemForRpc[] optimizedAccessList) = GetTestAccessList(2, false);
+        (byte[] code, RpcAccessList accessList) = GetTestAccessList(2, true);
+        (byte[] _, RpcAccessList optimizedAccessList) = GetTestAccessList(2, false);
 
-        TransactionForRpc transaction =
-            test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcAccessListTransaction transaction =
+            test.JsonSerializer.Deserialize<RpcAccessListTransaction>(
                 $"{{\"type\":\"0x1\", \"data\": \"{code.ToHexString(true)}\"}}");
         transaction.AccessList = accessList;
         string serialized = await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
@@ -159,7 +157,7 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_without_gas_pricing()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
@@ -169,7 +167,7 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_with_gas_pricing()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
@@ -179,7 +177,7 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_without_gas_pricing_after_1559_legacy()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
@@ -189,7 +187,7 @@ public partial class EthRpcModuleTests
     public async Task Estimate_gas_without_gas_pricing_after_1559_new_type_of_transaction()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
@@ -215,9 +213,10 @@ public partial class EthRpcModuleTests
             .Done;
 
         string dataStr = code.ToHexString();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
-        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
+        var parameters = ctx.Test.JsonSerializer.Serialize(transaction);
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", parameters);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}"));
     }
@@ -234,7 +233,7 @@ public partial class EthRpcModuleTests
             .Done;
 
         string dataStr = code.ToHexString();
-        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+        RpcNethermindTransaction transaction = ctx.Test.JsonSerializer.Deserialize<RpcNethermindTransaction>(
             $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(
@@ -249,9 +248,11 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(specProvider);
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
+        RpcLegacyTransaction transaction = new RpcLegacyTransaction(tx, 1, Keccak.Zero, 1L)
+        {
+            To = TestItem.AddressB
+        };
         ctx.Test.State.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
-        transaction.To = TestItem.AddressB;
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_estimateGas", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
