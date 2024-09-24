@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// <remarks>
 /// Input:
 /// <para>JSON -> <see cref="TransactionForRpc"></see> (through <see cref="JsonConverter"/>, a registry of [<see cref="TxType"/> => <see cref="TransactionForRpc"/> subtypes)</para>
-/// <para><see cref="TransactionForRpc"/> -> <see cref="Transaction"/> (through an overloaded <see cref="ToTransaction"> method)</para>
+/// <para><see cref="TransactionForRpc"/> -> <see cref="Transaction"/> (through an overloaded <see cref="ToTransaction">method</see>)</para>
 /// Output:
 /// <para><see cref="Transaction"/> -> <see cref="TransactionForRpc"/> (through <see cref="TransactionConverter"/>, a registry of [<see cref="TxType"/> => <see cref="IFromTransaction{T}"/>)</para>
 /// <para><see cref="TransactionForRpc"/> -> JSON (Derived by <c>System.Text.JSON</c> using the runtime type)</para>
@@ -64,7 +64,7 @@ public abstract class TransactionForRpc
     {
         // NOTE: Should we default to a specific TxType?
         private const TxType DefaultTxType = TxType.Legacy;
-        private static readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];
+        private static readonly Type[] _types = new Type[Transaction.MaxTxType + 1];
 
         public JsonConverter()
         {
@@ -75,7 +75,7 @@ public abstract class TransactionForRpc
         }
 
         internal static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped
-            => _transactionTypes[(int)T.TxType] = typeof(T);
+            => _types[(int)T.TxType] = typeof(T);
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -92,7 +92,7 @@ public abstract class TransactionForRpc
                 discriminator = (TxType?)typeProperty.Deserialize(typeof(TxType), options) ?? DefaultTxType;
             }
 
-            return _transactionTypes.TryGetByTxType(discriminator, out Type concreteTxType)
+            return _types.TryGetByTxType(discriminator, out Type concreteTxType)
                 ? (TransactionForRpc?)jsonObject.Deserialize(concreteTxType, options)
                 : throw new JsonException("Unknown transaction type");
         }
@@ -107,7 +107,7 @@ public abstract class TransactionForRpc
     {
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
 
-        private static readonly FromTransactionFunc?[]? _converters = new FromTransactionFunc?[Transaction.MaxTxType + 1];
+        private static readonly FromTransactionFunc?[] _fromTransactionFuncs = new FromTransactionFunc?[Transaction.MaxTxType + 1];
 
         static TransactionConverter()
         {
@@ -118,11 +118,11 @@ public abstract class TransactionForRpc
         }
 
         internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
-            => _converters[(byte)T.TxType] = T.FromTransaction;
+            => _fromTransactionFuncs[(byte)T.TxType] = T.FromTransaction;
 
         internal static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         {
-            return _converters.TryGetByTxType(tx.Type, out var FromTransaction)
+            return _fromTransactionFuncs.TryGetByTxType(tx.Type, out var FromTransaction)
                 ? FromTransaction(tx, extraData)
                 : throw new ArgumentException("No converter for transaction type");
         }
