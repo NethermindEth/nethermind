@@ -53,8 +53,8 @@ public class OpcodeStatsTracerTests : VirtualMachineTestsBase
         string trace = ExecuteStatsTrace(code);
         const string expectedTrace = """
             {
-              "initialBlockNumber": "0x0",
-              "currentBlockNumber": "0x0",
+              "initialBlockNumber": "0xed14f3",
+              "currentBlockNumber": "0xed14f3",
               "errorPerItem": 0.006,
               "confidence": 0.9375,
               "stats": [
@@ -78,6 +78,7 @@ public class OpcodeStatsTracerTests : VirtualMachineTestsBase
               ]
             }
             """;
-       Assert.That(trace, Is.EqualTo(expectedTrace));
+
+        Assert.That(trace, Is.EqualTo(expectedTrace));
     }
 }

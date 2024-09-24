@@ -15,14 +15,31 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private int? _sketchNumberOfHashFunctions = null;
         private double? _confidence = null;
 
+        public CMSketch Build(CMSketchConfig config)
+        {
+            if (config.Buckets.HasValue && config.MaxError.HasValue)
+                throw new InvalidOperationException("Found values for buckets and max error. Only one property out of the two must be not both.");
+            if (config.HashFunctions.HasValue && config.MinConfidence.HasValue)
+                throw new InvalidOperationException("Found values for hash functions and  min confidence. Only one property out of the two must be not both.");
+            if (config.Buckets.HasValue) SetBuckets(config.Buckets.Value);
+            if (config.MaxError.HasValue) SetMaxError(config.MaxError.Value);
+            if (config.HashFunctions.HasValue) SetHashFunctions(config.HashFunctions.Value);
+            if (config.MinConfidence.HasValue) SetMinConfidence(config.MinConfidence.Value);
+            return Build();
+
+        }
         public CMSketch Build()
         {
             if ((_sketchBuckets.HasValue && _sketchNumberOfHashFunctions.HasValue))
-                return new CMSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
-            if (_confidence.HasValue && _sketchError.HasValue)
-                return new CMSketch(_sketchError.Value, _confidence.Value);
-
-            throw new InvalidOperationException("Either sketch buckets and hash functions must be set or error and probability of error must be set.");
+            {
+                CMSketch sketch = new CMSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
+                if (_sketchError.HasValue)
+                    Debug.Assert(sketch.error <= _sketchError, $" expected sketch error to be initialized to at most {_sketchError} found {sketch.error}");
+                if (_confidence.HasValue)
+                    Debug.Assert(sketch.confidence >= _confidence, $" expected sketch confidence to be at least {_confidence} found {sketch.confidence}");
+                return sketch;
+            }
+            throw new InvalidOperationException("(buckets or max error) and (hash functions or min confidence) must be set.");
         }
 
         public CMSketchBuilder SetBuckets(int buckets)
@@ -39,6 +56,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public CMSketchBuilder SetMinConfidence(double probability)
         {
+            _sketchNumberOfHashFunctions = (int)Math.Ceiling(Math.Log2(1.0d / (1.0d - probability)));
             _confidence = probability;
             return this;
         }
@@ -46,6 +64,7 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         public CMSketchBuilder SetMaxError(double error)
         {
             _sketchError = error;
+            _sketchBuckets = (int)Math.Ceiling((2.0d / error));
             return this;
         }
 

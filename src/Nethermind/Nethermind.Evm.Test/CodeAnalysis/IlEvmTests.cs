@@ -447,7 +447,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
 
             var failedTraces = accumulatedTraces.Where(tr => tr.Failed && tr.Entries.Any(subtr => subtr.Error == EvmExceptionType.BadInstruction.ToString())).ToList();
-           Assert.That(failedTraces.Count, Is.EqualTo(numberOfRuns));
+            Assert.That(failedTraces.Count, Is.EqualTo(numberOfRuns));
         }
 
         [Test]

@@ -146,13 +146,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis.Stats
         }
 
 
-        [TestCase(2, 100,500)]
-        [TestCase(2, 100,50)]
-        [TestCase(4, 1000,1000)]
+        [TestCase(2, 100, 500)]
+        [TestCase(2, 100, 50)]
+        [TestCase(4, 1000, 1000)]
         [TestCase(4, 10, 1)]
-        [TestCase(3, 10,5)]
-        [TestCase(1, 1,20)]
-        [TestCase(4, 10,100)]
+        [TestCase(3, 10, 5)]
+        [TestCase(1, 1, 20)]
+        [TestCase(4, 10, 100)]
         public void validate_confidence(int hashFunctions, int buckets, int numberOfItemsInStream = 1)
         {
             Random random = new Random();

@@ -14,10 +14,10 @@ namespace Nethermind.Evm.Tracing.OpcodeStats;
 public class OpcodeStatsTxTrace
 {
 
-    public long  InitialBlockNumber { get; set; }
-    public long  CurrentBlockNumber { get; set; }
+    public long InitialBlockNumber { get; set; }
+    public long CurrentBlockNumber { get; set; }
     public double ErrorPerItem { get; set; }
-    public double Confidence { get; set;}
+    public double Confidence { get; set; }
 
 
     public OpcodeStatsTxTrace() { }

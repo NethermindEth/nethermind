@@ -29,8 +29,13 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         private ulong _minSupport;
         private ulong _max = 1;
 
-        public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, ulong minSupport, int sketchBufferSize = 100, double sketchResetError = 0.001) : this(topN, new CMSketch(numberOfHashFunctions, buckets), capacity, minSupport, sketchBufferSize, sketchResetError)
+        //  public StatsAnalyzer(int topN, int buckets, int numberOfHashFunctions, int capacity, ulong minSupport, int sketchBufferSize = 100, double sketchResetError = 0.001) : this(topN, new CMSketch(numberOfHashFunctions, buckets), capacity, minSupport, sketchBufferSize, sketchResetError)
+        //  {
+        //  }
+
+        public StatsAnalyzer(StatsAnalyzerConfig config) : this(config.TopN, new CMSketchBuilder().Build(config.Sketch), config.Capacity, config.MinSupport, config.BufferSizeForSketches, config.SketchResetOrReuseThreshold)
         {
+
         }
 
         public StatsAnalyzer(int topN, CMSketch sketch, int capacity, ulong minSupport, int sketchBufferSize, double sketchResetError)

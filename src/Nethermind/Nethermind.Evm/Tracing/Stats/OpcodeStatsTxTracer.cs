@@ -16,30 +16,39 @@ public class OpcodeStatsTxTracer : TxTracer
 
     private StatsAnalyzer _statsAnalyzer;
     private OpcodeStatsQueue? _queue = null;
+    OpcodeStatsTracer _blockTracer;
+    private McsLock _processingLock;
 
-    public OpcodeStatsTxTracer(OpcodeStatsQueue queue, StatsAnalyzer statsAnalyzer)
+    //  public OpcodeStatsTxTracer(OpcodeStatsTracer blockTracer, OpcodeStatsQueue queue, StatsAnalyzer statsAnalyzer)
+    //  {
+    //      _statsAnalyzer = statsAnalyzer;
+    //      _queue= queue;
+    //      _blockTracer = blockTracer;
+    //      IsTracingInstructions = true;
+    //  }
+
+    public OpcodeStatsTxTracer(OpcodeStatsTracer blockTracer, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
     {
         _statsAnalyzer = statsAnalyzer;
-        _queue= queue;
+        _processingLock = processingLock;
+        _queue = new(size, statsAnalyzer, processingLock);
+        _blockTracer = blockTracer;
         IsTracingInstructions = true;
     }
 
-    public OpcodeStatsTxTracer(int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
-    {
-        _statsAnalyzer = statsAnalyzer;
-        _queue=new(size, statsAnalyzer, processingLock);
-        IsTracingInstructions = true;
-    }
 
-    private void postProcess(StatsAnalyzer statsAnalyzer)
+    public void AddTxEndMarker()
     {
+        _queue.Enqueue(NGrams.RESET);
     }
 
     private void DisposeQueue()
     {
         using (var q = _queue)
         {
-            _queue=null;
+            _queue = null;
+            _queue = new(q.Size, _statsAnalyzer, _processingLock);
+            q.Dispose();
         }
     }
 
@@ -68,7 +77,7 @@ public class OpcodeStatsTxTracer : TxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-      _queue.Enqueue(opcode);
+        if (opcode != Instruction.JUMPDEST) _queue.Enqueue(opcode);
     }
 }
 

@@ -22,53 +22,64 @@ public class OpcodeStatsTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeStats
     long _initialBlock = 0;
     long _currentBlock = 0;
     private OpcodeStatsTxTracer _tracer;
-    private int _bufferSize;
-    private OpcodeStatsQueue _queue;
+    protected int _bufferSize;
     private StatsAnalyzer _statsAnalyzer;
     private McsLock _processingLock = new();
-
+    private static readonly object _lock = new object();
 
     public OpcodeStatsTracer(int bufferSize, StatsAnalyzer statsAnalyzer) : base()
     {
-        _bufferSize=bufferSize;
+        _bufferSize = bufferSize;
         _statsAnalyzer = statsAnalyzer;
 
-        //_queue = new(bufferSize,_statsAnalyzer, _processingLock);
-        _queue = new OpcodeStatsQueue(_bufferSize, statsAnalyzer, _processingLock);
-        _tracer = new OpcodeStatsTxTracer(_queue,statsAnalyzer);
-      //  _serializerOptions.Converters.Add(new GethLikeTxTraceJsonLinesConverter());
+        _tracer = new OpcodeStatsTxTracer(this, _bufferSize, _processingLock, _statsAnalyzer);
     }
 
     private void resetQueue()
     {
-        _queue = new OpcodeStatsQueue(_bufferSize, _statsAnalyzer, _processingLock);
     }
 
 
     public override void EndTxTrace()
     {
-        _queue.Enqueue(NGrams.RESET);
+        _tracer.AddTxEndMarker();
     }
 
     public override void EndBlockTrace()
     {
-        base.EndBlockTrace();
-        resetQueue();
-        OpcodeStatsTxTrace trace = _tracer.BuildResult();
-        trace.InitialBlockNumber = _initialBlock;
-        trace.CurrentBlockNumber = _currentBlock;
-        AddTrace(_tracer.BuildResult());
+        OpcodeStatsTxTracer tracer;
+
+        long InitialBlockNumber;
+        long CurrentBlockNumber;
+        lock (_lock)
+        {
+            tracer = _tracer;
+            InitialBlockNumber = _initialBlock;
+            CurrentBlockNumber = _currentBlock;
+            _tracer = new OpcodeStatsTxTracer(this, _bufferSize, _processingLock, _statsAnalyzer);
+        }
+        OpcodeStatsTxTrace trace = tracer.BuildResult();
+        trace.InitialBlockNumber = InitialBlockNumber;
+        trace.CurrentBlockNumber = CurrentBlockNumber;
+
+        lock (_lock)
+        {
+            AddTrace(trace);
+        }
     }
 
     public OpcodeStatsTxTracer StartNewTxTrace(Transaction? tx) => _tracer;
 
     public override void StartNewBlockTrace(Block block)
     {
-        base.StartNewBlockTrace(block);
-        var number = block.Header.Number;
-        if (_initialBlock == 0)
-            _initialBlock = number;
-        _currentBlock = number;
+        lock (_lock)
+        {
+            base.StartNewBlockTrace(block);
+            var number = block.Header.Number;
+            if (_initialBlock == 0)
+                _initialBlock = number;
+            _currentBlock = number;
+        }
 
     }
 

@@ -49,7 +49,7 @@ public class OpcodeStatsTraceConvertor : JsonConverter<OpcodeStatsTxTrace>
                     writer.WritePropertyName("bytes"u8);
                     writer.WriteStartArray();
                     foreach (var opCode in OpCodePattern.Bytes)
-                            writer.WriteNumberValue((byte)opCode);
+                        writer.WriteNumberValue((byte)opCode);
                     writer.WriteEndArray();
 
                     writer.WritePropertyName("count"u8);

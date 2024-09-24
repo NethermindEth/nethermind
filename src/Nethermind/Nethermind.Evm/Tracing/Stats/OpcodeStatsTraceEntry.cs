@@ -5,17 +5,17 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.Tracing.OpcodeStats;
 
-public class  OpcodeStatsTraceEntry
+public class OpcodeStatsTraceEntry
 {
-     public OpcodeStatsTraceEntry()
-     {
-     }
+    public OpcodeStatsTraceEntry()
+    {
+    }
 
     [JsonPropertyName("pattern")]
     public string Pattern { get; set; }
 
     [JsonPropertyName("bytes")]
-    public byte[] Bytes{ get; set; }
+    public byte[] Bytes { get; set; }
 
     [JsonPropertyName("count")]
     [JsonConverter(typeof(ULongConverter))]
