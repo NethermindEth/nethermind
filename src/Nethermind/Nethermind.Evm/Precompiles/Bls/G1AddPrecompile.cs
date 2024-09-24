@@ -24,9 +24,9 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 500L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         const int expectedInputLength = 2 * BlsParams.LenG1;
         if (inputData.Length != expectedInputLength)
