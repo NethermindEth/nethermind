@@ -78,7 +78,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         {
             Logs = logEntries,
             TxType = transaction.Type,
-            Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries),
+            // Bloom calculated in parallel with other receipts
             GasUsedTotal = Block.GasUsed,
             StatusCode = statusCode,
             Recipient = transaction.IsContractCreation ? null : recipient,

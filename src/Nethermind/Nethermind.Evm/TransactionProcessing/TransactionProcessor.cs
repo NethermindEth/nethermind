@@ -443,7 +443,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
-            byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
+            ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
 
             return new ExecutionEnvironment
             (
