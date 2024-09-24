@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.Extensions.CommandLineUtils;
+using McMaster.Extensions.CommandLineUtils;
 using Nethermind.Cli;
 using Nethermind.Cli.Console;
 using Nethermind.Consensus;
@@ -29,25 +29,25 @@ internal static class SetupCli
         CommandOption maxPriorityFeeGasOption = app.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
         CommandOption waitOption = app.Option("--wait", "(Optional) Wait for tx inclusion.", CommandOptionType.NoValue);
 
-        app.OnExecute(async () =>
+        app.OnExecuteAsync(async cancellationToken =>
         {
-            string rpcUrl = rpcUrlOption.Value();
+            string? rpcUrl = rpcUrlOption.Value();
             (int count, int blobCount, string @break)[] blobTxCounts = ParseTxOptions(blobTxOption.Value());
 
             PrivateKey[] privateKeys;
 
             if (privateKeyFileOption.HasValue())
-                privateKeys = File.ReadAllLines(privateKeyFileOption.Value()).Select(k => new PrivateKey(k)).ToArray();
+                privateKeys = File.ReadAllLines(privateKeyFileOption.Value()!).Select(k => new PrivateKey(k)).ToArray();
             else if (privateKeyOption.HasValue())
-                privateKeys = [new PrivateKey(privateKeyOption.Value())];
+                privateKeys = [new PrivateKey(privateKeyOption.Value()!)];
             else
             {
                 Console.WriteLine("Missing private key argument.");
                 app.ShowHelp();
-                return 1;
+                return;
             }
 
-            string receiver = receiverOption.Value();
+            string? receiver = receiverOption.Value();
 
             UInt256? maxFeePerBlobGas = null;
             if (maxFeePerBlobGasOption.HasValue())
@@ -79,8 +79,6 @@ internal static class SetupCli
                 feeMultiplier,
                 maxPriorityFeeGasArgs,
                 wait);
-
-            return 0;
         });
     }
 
@@ -154,8 +152,6 @@ internal static class SetupCli
 
                 FundsDistributor distributor = new FundsDistributor(nodeManager, chainId, keyFileOption.Value(), SimpleConsoleLogManager.Instance);
                 IEnumerable<string> hashes = await distributor.DitributeFunds(signer, keysToMake, maxFee, maxPriorityFee);
-
-                return 0;
             });
         });
     }
@@ -187,8 +183,6 @@ internal static class SetupCli
 
                 FundsDistributor distributor = new FundsDistributor(nodeManager, chainId, keyFileOption.Value(), SimpleConsoleLogManager.Instance);
                 IEnumerable<string> hashes = await distributor.ReclaimFunds(beneficiary, maxFee, maxPriorityFee);
-
-                return 0;
             });
         });
     }
@@ -220,7 +214,7 @@ internal static class SetupCli
             CommandOption maxPriorityFeeGasOption = command.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
             CommandOption waitOption = app.Option("--wait", "(Optional) Wait for tx inclusion.", CommandOptionType.NoValue);
 
-            command.OnExecute(async () =>
+            command.OnExecuteAsync(async cancellationToken =>
             {
                 string rpcUrl = rpcUrlOption.Value();
 
@@ -232,7 +226,7 @@ internal static class SetupCli
                 {
                     Console.WriteLine("Missing private key argument.");
                     app.ShowHelp();
-                    return 1;
+                    return;
                 }
 
                 string receiver = receiverOption.Value();
@@ -267,8 +261,6 @@ internal static class SetupCli
                     feeMultiplier,
                     maxPriorityFeeGas,
                     wait);
-
-                return 0;
             });
         });
     }

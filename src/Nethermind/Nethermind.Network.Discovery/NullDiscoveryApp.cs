@@ -17,8 +17,9 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
     }
 
-    public void Start()
+    public Task StartAsync()
     {
+        return Task.CompletedTask;
     }
 
     public Task StopAsync()
