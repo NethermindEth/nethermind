@@ -1,14 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
@@ -597,6 +603,80 @@ namespace Nethermind.TxPool.Test
             tx2.Should().BeEquivalentTo(txsA[1], options => options
                 .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
                 .Excluding(t => t.PoolIndex));      // ...as well as PoolIndex
+        }
+
+        [Test]
+        public void should_index_blobs_when_adding_txs([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool uniqueBlobs)
+        {
+            const int poolSize = 10;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                PersistentBlobStorageSize = isPersistentStorage ? poolSize : 0,
+                InMemoryBlobPoolSize = isPersistentStorage ? 0 : poolSize
+            };
+
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+
+            BlobTxDistinctSortedPool blobPool = isPersistentStorage
+                ? new PersistentBlobTxDistinctSortedPool(new BlobTxStorage(), txPoolConfig, comparer, LimboLogs.Instance)
+                : new BlobTxDistinctSortedPool(txPoolConfig.InMemoryBlobPoolSize, comparer, LimboLogs.Instance);
+
+            Transaction[] blobTxs = new Transaction[poolSize * 2];
+
+            // adding 2x more txs than pool capacity. First half will be evicted
+            for (int i = 0; i < poolSize * 2; i++)
+            {
+                EnsureSenderBalance(TestItem.Addresses[i], UInt256.MaxValue);
+
+                blobTxs[i] = Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields()
+                    .WithMaxFeePerGas(1.GWei() + (UInt256)i)
+                    .WithMaxPriorityFeePerGas(1.GWei() + (UInt256)i)
+                    .WithMaxFeePerBlobGas(1000.Wei() + (UInt256)i)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                // making blobs unique. Otherwise, all txs have the same blob
+                if (uniqueBlobs
+                    && blobTxs[i].NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                {
+                    wrapper.Blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob];
+                    wrapper.Blobs[0][0] = (byte)(i % 256);
+
+                    KzgPolynomialCommitments.KzgifyBlob(
+                        wrapper.Blobs[0],
+                        wrapper.Commitments[0],
+                        wrapper.Proofs[0],
+                        blobTxs[i].BlobVersionedHashes[0].AsSpan());
+                }
+
+                blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();
+            }
+
+            blobPool.BlobIndex.Count.Should().Be(uniqueBlobs ? poolSize : 1);
+
+            // first half of txs (0, poolSize - 1) was evicted and should be removed from index
+            // second half (poolSize, 2x poolSize - 1) should be indexed
+            for (int i = 0; i < poolSize * 2; i++)
+            {
+                // if blobs are unique, we expect index to have 10 keys (poolSize, 2x poolSize - 1) with 1 value each
+                if (uniqueBlobs)
+                {
+                    blobPool.BlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> txHashes).Should().Be(i >= poolSize);
+                    if (i >= poolSize)
+                    {
+                        txHashes.Count.Should().Be(1);
+                        txHashes[0].Should().Be(blobTxs[i].Hash);
+                    }
+                }
+                // if blobs are not unique, we expect index to have 1 key with 10 values (poolSize, 2x poolSize - 1)
+                else
+                {
+                    blobPool.BlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> values).Should().BeTrue();
+                    values.Count.Should().Be(poolSize);
+                    values.Contains(blobTxs[i].Hash).Should().Be(i >= poolSize);
+                }
+            }
         }
 
         private Transaction GetTx(PrivateKey sender)

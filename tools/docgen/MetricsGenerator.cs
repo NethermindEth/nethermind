@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Spectre.Console;
 
 namespace Nethermind.DocGen;
 
@@ -11,24 +12,27 @@ internal static partial class MetricsGenerator
 {
     private static readonly Regex _regex = TransformRegex();
 
-    internal static void Generate()
+    internal static void Generate(string path)
     {
+        path = Path.Join(path, "docs", "monitoring", "metrics");
+
         var startMark = "<!--[start autogen]-->";
         var endMark = "<!--[end autogen]-->";
-        var fileName = "metrics.md";
-        var excluded = new[] { "AccountAbstraction", "Mev" };
-
+        var excluded = Array.Empty<string>();
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
             .Where(t => t.Name.Equals("Metrics", StringComparison.Ordinal) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => GetNamespace(t.FullName));
+        var fileName = Path.Join(path, "metrics.md");
+        var tempFileName = Path.Join(path, "~metrics.md");
 
-        File.Delete($"~{fileName}");
+        // Delete the temp file if it exists
+        File.Delete(tempFileName);
 
         using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite($"~{fileName}"));
+        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
@@ -65,9 +69,10 @@ internal static partial class MetricsGenerator
         readStream.Close();
         writeStream.Close();
 
-        File.Move($"~{fileName}", fileName, true);
+        File.Move(tempFileName, fileName, true);
+        File.Delete(tempFileName);
 
-        Console.WriteLine($"Updated {fileName}");
+        AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
 
     private static void WriteMarkdown(StreamWriter file, Type metricsType)

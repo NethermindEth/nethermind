@@ -14,7 +14,7 @@ namespace Nethermind.Network.Discovery.Portal.History;
 public class HistoryNetworkEncoderDecoder
 {
     private HeaderDecoder _headerDecoder = new HeaderDecoder();
-    private TxDecoder<Transaction> _txDecoder = new TxDecoder();
+    private TxDecoder<Transaction> _txDecoder = TxDecoder.Instance;
 
     public BlockHeader DecodeHeader(byte[] payload)
     {

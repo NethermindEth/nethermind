@@ -8,6 +8,7 @@ using System.Security;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -62,7 +63,7 @@ public partial class EthRpcModule(
     protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
     protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-    protected readonly ITxPool _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
+    protected readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
     protected readonly ITxSender _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
     protected readonly IWallet _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -184,7 +185,7 @@ public partial class EthRpcModule(
     {
         if (blockParameter == BlockParameter.Pending)
         {
-            UInt256 pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
+            UInt256 pendingNonce = _txPool.GetLatestPendingNonce(address);
             return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
         }
 
@@ -367,31 +368,37 @@ public partial class EthRpcModule(
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
 
-    public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Hash256 transactionHash)
+    public ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        UInt256? baseFee = null;
-        _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
-        TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
+        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
-            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
-            if (transaction is null)
-            {
-                return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
-            }
+            return ResultWrapper<TransactionForRpc?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        TransactionForRpc transactionModel =
-            new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
-        if (_logger.IsTrace)
-            _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-        return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
+        TransactionForRpc transactionModel = new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
+        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+        return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
+    }
+
+    public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash)
+    {
+        Transaction? transaction = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true).Transaction;
+        if (transaction is null)
+        {
+            return ResultWrapper<string?>.Success(null);
+        }
+
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.None));
+        using NettyRlpStream stream = new(buffer);
+        TxDecoder.Instance.Encode(stream, transaction);
+        return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
     }
 
     public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
     {
-        Transaction[] transactions = _txPoolBridge.GetPendingTransactions();
+        Transaction[] transactions = _txPool.GetPendingTransactions();
         TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
         for (int i = 0; i < transactions.Length; i++)
         {

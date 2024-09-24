@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
@@ -13,12 +14,13 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
     }
 
-    public void InitializeChannel(IDatagramChannel channel)
+    public void InitializeChannel(IChannel channel)
     {
     }
 
-    public void Start()
+    public Task StartAsync()
     {
+        return Task.CompletedTask;
     }
 
     public Task StopAsync()

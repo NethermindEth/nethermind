@@ -175,30 +175,19 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        [TestCase("010203")]
-        public async Task ForwardsUnrecognizedMessageToNextHandler(string msgHex)
+        public void ForwardsUnrecognizedMessageToNextHandler()
         {
-            ResetMetrics();
+            byte[] data = [1, 2, 3];
+            var from = IPEndPoint.Parse("127.0.0.1:10000");
+            var to = IPEndPoint.Parse("127.0.0.1:10003");
+            var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
 
-            NeighborsMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
-            {
-                FarAddress = _address2
-            };
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+            _discoveryHandlers[0].ChannelRead(ctx, packet);
 
-            await _discoveryHandlers[0].SendMsg(msg);
-            await SleepWhileWaiting();
-            _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
-
-            NeighborsMsg msg2 = new(_privateKey.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new List<Node>().ToArray())
-            {
-                FarAddress = _address,
-            };
-
-            await _discoveryHandlers[1].SendMsg(msg2);
-            await SleepWhileWaiting();
-            _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
-
-            AssertMetrics(210);
+            ctx.FireChannelRead(Arg.Is<DatagramPacket>(
+                p => p.Content.ReadAllBytesAsArray().SequenceEqual(data)
+            ));
         }
 
         private static void ResetMetrics()

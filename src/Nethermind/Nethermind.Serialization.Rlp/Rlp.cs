@@ -334,15 +334,8 @@ namespace Nethermind.Serialization.Rlp
             return Encode(transaction, false);
         }
 
-        public static Rlp Encode(
-            Transaction transaction,
-            bool forSigning,
-            bool isEip155Enabled = false,
-            ulong chainId = 0)
-        {
-            return TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled,
-                chainId);
-        }
+        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
+            TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled, chainId);
 
         public static Rlp Encode(int value)
         {
@@ -1609,10 +1602,7 @@ namespace Nethermind.Serialization.Rlp
             return Equals(other as Rlp);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes is not null ? Bytes.GetSimplifiedHashCode() : 0;
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public bool Equals(Rlp? other)
         {

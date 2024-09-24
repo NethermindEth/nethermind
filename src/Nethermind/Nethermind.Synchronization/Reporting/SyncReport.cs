@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(10);
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
+            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders && FastBlocksHeaders.HasStarted)
             {
                 string headersReport = GenerateReport("Old Headers ", FastBlocksHeaders.CurrentValue, _fastBlocksPivotNumber, HeadersInQueue.CurrentValue, FastBlocksHeaders.CurrentPerSecond);
                 if (!EqualsIgnoringSpeed(_lastHeadersReport, headersReport))
@@ -296,7 +296,7 @@ namespace Nethermind.Synchronization.Reporting
                 FastBlocksHeaders.SetMeasuringPoint();
             }
 
-            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
+            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies && FastBlocksBodies.HasStarted)
             {
                 string bodiesReport = GenerateReport("Old Bodies  ", FastBlocksBodies.CurrentValue, _amountOfBodiesToDownload, BodiesInQueue.CurrentValue, FastBlocksBodies.CurrentPerSecond);
                 if (!EqualsIgnoringSpeed(_lastBodiesReport, bodiesReport))
@@ -307,7 +307,7 @@ namespace Nethermind.Synchronization.Reporting
                 FastBlocksBodies.SetMeasuringPoint();
             }
 
-            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
+            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts && FastBlocksReceipts.HasStarted)
             {
                 string receiptsReport = GenerateReport("Old Receipts", FastBlocksReceipts.CurrentValue, _amountOfReceiptsToDownload, ReceiptsInQueue.CurrentValue, FastBlocksReceipts.CurrentPerSecond);
                 if (!EqualsIgnoringSpeed(_lastReceiptsReport, receiptsReport))

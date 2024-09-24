@@ -202,6 +202,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.BlockValidator);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
+        ArgumentNullException.ThrowIfNull(_api.TxPool);
 
         ArgumentNullException.ThrowIfNull(_beaconSync);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
@@ -233,7 +234,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -268,6 +269,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
+            new GetBlobsHandler(_api.TxPool),
             _api.SpecProvider,
             new GCKeeper(
                 initConfig.DisableGcOnNewPayload

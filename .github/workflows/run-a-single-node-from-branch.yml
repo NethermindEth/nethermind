@@ -236,7 +236,7 @@ jobs:
           WORKFLOW_ID: "publish-docker.yml"
           MAX_WAIT_MINUTES: "5"
           INTERVAL: "5"
-          TIMEOUT: "10"
+          TIMEOUT: '20'
           ORG_NAME: ${{ env.ORG_NAME }}
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ inputs.nethermind_repo_ref || github.ref }}
@@ -337,6 +337,12 @@ jobs:
       - name: Display machine specs content
         run: |
           FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Details of node from branch: ${{ env.CLEAN_REF }}</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "downloaded-artifacts/machine-details/$FILE" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+          
           cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
           rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
           echo "RPC URL extracted is: $rpc_url"

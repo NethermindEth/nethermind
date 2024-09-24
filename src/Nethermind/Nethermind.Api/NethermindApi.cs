@@ -57,6 +57,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
+using Nethermind.Consensus.Processing.CensorshipDetector;
 
 namespace Nethermind.Api
 {
@@ -127,10 +128,7 @@ namespace Nethermind.Api
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
-        public IConnectionsPool? DiscoveryConnections { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
-        public IDiscoveryApp? DiscoveryV5App { get; set; }
-        public IServiceProvider? PortalNetworkServiceProvider { get; set; }
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
@@ -212,7 +210,7 @@ namespace Nethermind.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
-        public ITxValidator? TxValidator { get; set; }
+        public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
@@ -223,6 +221,7 @@ namespace Nethermind.Api
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
+        public CensorshipDetector CensorshipDetector { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

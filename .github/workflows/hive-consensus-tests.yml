@@ -98,9 +98,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.gh-app.outputs.token }}
           WORKFLOW_ID: 'publish-docker.yml'
-          MAX_WAIT_MINUTES: '5'
+          MAX_WAIT_MINUTES: '20'
           INTERVAL: '5'
-          TIMEOUT: '10'
+          TIMEOUT: '20'
           ORG_NAME: ${{ env.ORG_NAME }}
           REPO_NAME: ${{ env.REPO_NAME }}
           REF: ${{ github.ref }}

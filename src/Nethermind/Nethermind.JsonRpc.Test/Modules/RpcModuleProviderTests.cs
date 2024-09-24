@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class RpcModuleProviderTests
     {
-        private RpcModuleProvider _moduleProvider = null!;
+        private IRpcModuleProvider _moduleProvider = null!;
         private IFileSystem _fileSystem = null!;
         private JsonRpcContext _context = null!;
 
