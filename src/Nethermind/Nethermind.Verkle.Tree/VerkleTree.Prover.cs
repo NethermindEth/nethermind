@@ -23,13 +23,13 @@ public partial class VerkleTree
     private Dictionary<byte[], FrE[]> ProofBranchPolynomialCache { get; } = new(Bytes.EqualityComparer);
     private Dictionary<Stem, SuffixPoly> ProofStemPolynomialCache { get; } = new();
 
-    public ExecutionWitness GenerateExecutionWitnessFromStore(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitnessFromStore(Hash256[] keys, out Banderwagon rootPoint)
     {
         VerkleTree tree = new(VerkleStateStore, LimboLogs.Instance);
         return tree.GenerateExecutionWitness(keys, out rootPoint);
     }
 
-    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitness(Hash256[] keys, out Banderwagon rootPoint)
     {
         if (keys.Length == 0)
         {
@@ -40,10 +40,11 @@ public partial class VerkleTree
         VerkleProof proof = CreateVerkleProof(keys, out rootPoint);
 
         SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiff = new(Bytes.SpanEqualityComparer);
-        foreach (var key in keys)
+        foreach (Hash256? keyHash in keys)
         {
+            Span<byte> key = keyHash.Bytes;
             SuffixStateDiff suffixData = new() { Suffix = key[31], CurrentValue = Get(key) };
-            Span<byte> keyStem = key.AsSpan()[..31];
+            Span<byte> keyStem = key[..31];
             if (!stemStateDiff.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
             {
                 suffixStateDiffList = [];
@@ -78,7 +79,7 @@ public partial class VerkleTree
         });
     }
 
-    public VerkleProof CreateVerkleProof(byte[][] keys, out Banderwagon rootPoint)
+    public VerkleProof CreateVerkleProof(Hash256[] keys, out Banderwagon rootPoint)
     {
         if (keys.Length == 0)
         {
@@ -96,10 +97,11 @@ public partial class VerkleTree
         Dictionary<byte[], HashSet<byte>> neededOpenings = new(Bytes.EqualityComparer);
         HashSet<byte[]> stemList = new(Bytes.EqualityComparer);
 
-        foreach (var key in keys)
+        foreach (var keyHash in keys)
             for (var i = 0; i < 32; i++)
             {
-                var parentPath = key[..i];
+                var key = keyHash.Bytes;
+                var parentPath = key[..i].ToArray();
                 InternalNode? node = GetInternalNode(parentPath);
                 if (node != null)
                 {
@@ -111,7 +113,7 @@ public partial class VerkleTree
                             neededOpenings[parentPath].Add(key[i]);
                             continue;
                         case VerkleNodeType.StemNode:
-                            Stem keyStem = key[..31];
+                            Stem keyStem = key[..31].ToArray();
                             CreateStemProofPolynomialIfNotExist(keyStem, null);
                             neededOpenings.TryAdd(parentPath, []);
                             bool newStem = stemList.Add(parentPath);

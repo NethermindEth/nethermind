@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Witness;
@@ -64,7 +65,7 @@ public interface IExecutionWitness
     bool AccessForBlockhashInsertionWitness(Address address, UInt256 key);
 
     bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable);
-    byte[][] GetAccessedKeys();
+    Hash256[] GetAccessedKeys();
 
     bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable);
 

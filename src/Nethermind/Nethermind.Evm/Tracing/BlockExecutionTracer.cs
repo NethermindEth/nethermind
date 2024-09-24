@@ -276,8 +276,8 @@ public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
 
         if (_witnessKeys.Count > 0)
         {
-            _aggregatedWitnessKeys = new SortedSet<byte[]>(Bytes.Comparer);
-            foreach (IReadOnlyList<byte[]>? keys in _witnessKeys)
+            _aggregatedWitnessKeys = new SortedSet<Hash256>(Bytes.HashComparer);
+            foreach (IReadOnlyList<Hash256>? keys in _witnessKeys)
             {
                 _aggregatedWitnessKeys.AddRange(keys);
             }
@@ -289,12 +289,11 @@ public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
         _otherTracer = blockTracer;
     }
 
-    private readonly List<IReadOnlyList<byte[]>> _witnessKeys = new();
-    private SortedSet<byte[]> _aggregatedWitnessKeys = new(Bytes.Comparer);
-    public SortedSet<byte[]> WitnessKeys => _aggregatedWitnessKeys;
-    public IReadOnlyList<byte[]> LastWitness => _witnessKeys[^1];
+    private readonly List<IReadOnlyList<Hash256>> _witnessKeys = new();
+    private SortedSet<Hash256> _aggregatedWitnessKeys = new(Bytes.HashComparer);
+    public SortedSet<Hash256> WitnessKeys => _aggregatedWitnessKeys;
 
-    public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
     {
         if (traceWitness)
             _witnessKeys.Add(verkleWitnessKeys);

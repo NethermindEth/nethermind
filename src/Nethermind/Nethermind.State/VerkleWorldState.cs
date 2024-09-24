@@ -131,7 +131,7 @@ public class VerkleWorldState : IWorldState
         set => _tree.StateRoot = value;
     }
 
-    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitness(Hash256[] keys, out Banderwagon rootPoint)
     {
         return _tree.GenerateExecutionWitnessFromStore(keys, out rootPoint);
     }

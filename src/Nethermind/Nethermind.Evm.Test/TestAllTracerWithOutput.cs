@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
             Refund += refund;
         }
 
-        public override void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
+        public override void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
         {
         }
     }

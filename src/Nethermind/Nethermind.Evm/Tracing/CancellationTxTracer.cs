@@ -446,7 +446,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingAccessWitness)

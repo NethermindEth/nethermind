@@ -222,9 +222,9 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
 
-    public byte[][] GetAccessedKeys()
+    public Hash256[] GetAccessedKeys()
     {
-        return _accessedLeaves.Select(x => x.BytesToArray()).ToArray();
+        return _accessedLeaves.ToArray();
     }
 
     public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable)

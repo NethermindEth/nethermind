@@ -366,7 +366,7 @@ namespace Nethermind.Evm.Test
             throw new NotImplementedException();
         }
 
-        public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
+        public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
         {
         }
 

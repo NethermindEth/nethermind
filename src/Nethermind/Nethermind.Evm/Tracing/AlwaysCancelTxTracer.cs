@@ -96,6 +96,6 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
-    public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys) => throw new OperationCanceledException(ErrorMessage);
     public void Dispose() { }
 }
