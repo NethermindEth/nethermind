@@ -49,7 +49,7 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
             long[] rawPoints = new long[nItems * 18];
             byte[] rawScalars = new byte[nItems * 32];
             using ArrayPoolList<int> pointDestinations = new(nItems);
-            
+
             int npoints = 0;
             for (int i = 0; i < nItems; i++)
             {
@@ -67,7 +67,8 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
             }
 
             bool fail = false;
-            Parallel.ForEach(pointDestinations, (dest, state, i) => {
+            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            {
                 if (dest != -1)
                 {
                     int offset = (int)i * ItemSize;

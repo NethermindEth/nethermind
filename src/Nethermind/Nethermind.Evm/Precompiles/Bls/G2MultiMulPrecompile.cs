@@ -67,7 +67,8 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
             }
 
             bool fail = false;
-            Parallel.ForEach(pointDestinations, (dest, state, i) => {
+            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            {
                 if (dest != -1)
                 {
                     int offset = (int)i * ItemSize;
