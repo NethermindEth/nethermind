@@ -182,6 +182,11 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof)
+            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             try
@@ -731,6 +736,10 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
+        public Transaction? GetBestTx() => _transactions.GetBest();
+
+        public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
+
         public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
@@ -765,7 +774,7 @@ namespace Nethermind.TxPool
 
         internal void ResetAddress(Address address)
         {
-            ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
+            using ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
             arrayPoolList.Add(address);
             _accountCache.RemoveAccounts(arrayPoolList);
         }

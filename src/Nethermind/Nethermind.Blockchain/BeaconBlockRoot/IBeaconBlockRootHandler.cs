@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Specs;
 using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 
-namespace Nethermind.Consensus.BeaconBlockRoot;
+namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState state);
+    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true);
+    void StoreBeaconRoot(Block block, IReleaseSpec spec);
 }

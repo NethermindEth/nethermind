@@ -1132,7 +1132,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
                         bytes = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+
+                        // Compute the KECCAK256 directly to the stack slot
+                        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushBytesRef()));
                         break;
                     }
                 case Instruction.ADDRESS:
@@ -1261,6 +1263,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
+                            // Thrown away result
+                            if (nextInstruction == Instruction.POP)
+                            {
+                                programCounter++;
+                                // Add gas cost for POP
+                                gasAvailable -= GasCostOf.Base;
+                                break;
+                            }
                             // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {

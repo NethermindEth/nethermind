@@ -296,10 +296,10 @@ namespace Nethermind.AuRa.Test.Contract
         {
             protected override async Task AddBlocksOnStart()
             {
-                EthereumEcdsa ecdsa = new(ChainSpec.ChainId, LimboLogs.Instance);
+                EthereumEcdsa ecdsa = new(ChainSpec.ChainId);
 
                 await AddBlock(
-                    SignTransactions(ecdsa, TestItem.PrivateKeyA, 0,
+                    SignTransactions(ecdsa, TestItem.PrivateKeyA, 1,
                         TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature2, UInt256.One),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 10),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature2, 4),

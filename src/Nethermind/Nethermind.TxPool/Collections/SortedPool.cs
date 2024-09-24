@@ -196,6 +196,14 @@ namespace Nethermind.TxPool.Collections
         }
 
         /// <summary>
+        /// Returns best overall element as per supplied comparer order.
+        /// </summary>
+        public TValue? GetBest()
+        {
+            return GetFirsts().Min;
+        }
+
+        /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
         public bool TryGetLast(out TValue? last)

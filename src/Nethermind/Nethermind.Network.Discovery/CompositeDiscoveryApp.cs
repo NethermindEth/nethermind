@@ -7,6 +7,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -17,6 +18,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.Enr;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -28,24 +30,43 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 {
     private const string DiscoveryNodesDbPath = "discoveryNodes";
 
-    private readonly IApiWithNetwork _api;
-    private readonly ILogger _logger;
-    private readonly SameKeyGenerator _privateKeyProvider;
+    private readonly ProtectedPrivateKey _nodeKey;
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig;
-    private IConnectionsPool _connections { get; set; }
+    private readonly IInitConfig _initConfig;
+    private readonly IEthereumEcdsa _ethereumEcdsa;
+    private readonly IMessageSerializationService _serializationService;
+    private readonly ILogManager _logManager;
+    private readonly ITimestamper _timestamper;
+    private readonly ICryptoRandom? _cryptoRandom;
+    private readonly INodeStatsManager _nodeStatsManager;
+    private readonly IIPResolver _ipResolver;
+    private readonly IPeerManager? _peerManager;
+    private readonly IConnectionsPool _connections;
 
     private IDiscoveryApp? _v4;
     private IDiscoveryApp? _v5;
 
-    public CompositeDiscoveryApp(IApiWithNetwork api, ILogger logger, SameKeyGenerator privateKeyProvider)
+    public CompositeDiscoveryApp(ProtectedPrivateKey? nodeKey,
+        INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
+        IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
+        ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IPeerManager? peerManager
+    )
     {
-        _api = api;
-        _logger = logger;
-        _privateKeyProvider = privateKeyProvider;
-        _networkConfig = api.Config<INetworkConfig>();
-        _discoveryConfig = api.Config<IDiscoveryConfig>();
-        _connections = new DiscoveryConnectionsPool(_logger, _networkConfig, _discoveryConfig);
+        _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
+        _networkConfig = networkConfig;
+        _discoveryConfig = discoveryConfig;
+        _initConfig = initConfig;
+        _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
+        _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+        _cryptoRandom = cryptoRandom;
+        _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+        _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
+        _peerManager = peerManager;
+        _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded
@@ -78,14 +99,16 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
     public void Initialize(PublicKey masterPublicKey)
     {
+        var nodeKeyProvider = new SameKeyGenerator(_nodeKey.Unprotect());
+
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
-            InitDiscoveryV4(_discoveryConfig, _privateKeyProvider);
+            InitDiscoveryV4(_discoveryConfig, nodeKeyProvider);
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
-            InitDiscoveryV5(_privateKeyProvider);
+            InitDiscoveryV5(nodeKeyProvider);
     }
 
-    public void InitializeChannel(IDatagramChannel channel)
+    public void InitializeChannel(IChannel channel)
     {
         _v4?.InitializeChannel(channel);
         _v5?.InitializeChannel(channel);
@@ -127,11 +150,11 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
     private void InitDiscoveryV4(IDiscoveryConfig discoveryConfig, SameKeyGenerator privateKeyProvider)
     {
-        NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa!);
+        NodeIdResolver nodeIdResolver = new(_ethereumEcdsa);
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
-            _api.MessageSerializationService,
-            _api.EthereumEcdsa!,
+            _serializationService,
+            _ethereumEcdsa,
             privateKeyProvider,
             nodeIdResolver);
 
@@ -139,78 +162,78 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
         NodeDistanceCalculator nodeDistanceCalculator = new(discoveryConfig);
 
-        NodeTable nodeTable = new(nodeDistanceCalculator, discoveryConfig, _networkConfig, _api.LogManager);
-        EvictionManager evictionManager = new(nodeTable, _api.LogManager);
+        NodeTable nodeTable = new(nodeDistanceCalculator, discoveryConfig, _networkConfig, _logManager);
+        EvictionManager evictionManager = new(nodeTable, _logManager);
 
         NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
             nodeTable,
             evictionManager,
-            _api.NodeStatsManager!,
+            _nodeStatsManager,
             selfNodeRecord,
             discoveryConfig,
-            _api.Timestamper,
-            _api.LogManager);
+            _timestamper,
+            _logManager);
 
         // ToDo: DiscoveryDB is registered outside dbProvider - bad
         SimpleFilePublicKeyDb discoveryDb = new(
             "DiscoveryDB",
-            DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-            _api.LogManager);
+            DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
+            _logManager);
 
         NetworkStorage discoveryStorage = new(
             discoveryDb,
-            _api.LogManager);
+            _logManager);
 
         DiscoveryManager discoveryManager = new(
             nodeLifeCycleFactory,
             nodeTable,
             discoveryStorage,
             discoveryConfig,
-            _api.LogManager
+            _logManager
         );
 
         NodesLocator nodesLocator = new(
             nodeTable,
             discoveryManager,
             discoveryConfig,
-            _api.LogManager);
+            _logManager);
 
         _v4 = new DiscoveryApp(
             nodesLocator,
             discoveryManager,
             nodeTable,
-            _api.MessageSerializationService,
-            _api.CryptoRandom,
+            _serializationService,
+            _cryptoRandom,
             discoveryStorage,
             _networkConfig,
             discoveryConfig,
-            _api.Timestamper,
-            _api.LogManager);
+            _timestamper,
+            _logManager);
 
-        _v4.Initialize(_api.NodeKey!.PublicKey);
+        _v4.Initialize(_nodeKey.PublicKey);
     }
 
     private void InitDiscoveryV5(SameKeyGenerator privateKeyProvider)
     {
         SimpleFilePublicKeyDb discv5DiscoveryDb = new(
             "EnrDiscoveryDB",
-            DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
-            _api.LogManager);
+            DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
+            _logManager);
 
-        _v5 = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _api.LogManager);
-        _v5.Initialize(_api.NodeKey!.PublicKey);
+        _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _peerManager, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
+        _v5.Initialize(_nodeKey.PublicKey);
     }
 
     private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
     {
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
-        selfNodeRecord.SetEntry(new IpEntry(_api.IpResolver!.ExternalIp));
+        selfNodeRecord.SetEntry(new IpEntry(_ipResolver.ExternalIp));
         selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
         selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
-        selfNodeRecord.SetEntry(new Secp256K1Entry(_api.NodeKey!.CompressedPublicKey));
+        selfNodeRecord.SetEntry(new Secp256K1Entry(_nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = 1;
-        NodeRecordSigner enrSigner = new(_api.EthereumEcdsa, privateKeyProvider.Generate());
+        NodeRecordSigner enrSigner = new(_ethereumEcdsa, privateKeyProvider.Generate());
         enrSigner.Sign(selfNodeRecord);
         if (!enrSigner.Verify(selfNodeRecord))
         {

@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void SetUp()
         {
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
+            EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId);
             _receiptConfig = new ReceiptConfig();
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
@@ -56,6 +56,12 @@ namespace Nethermind.Blockchain.Test.Receipts
             _blockTree = Substitute.For<IBlockTree>();
             _blockStore = Substitute.For<IBlockStore>();
             CreateStorage();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _receiptsDb.Dispose();
         }
 
         private void CreateStorage()

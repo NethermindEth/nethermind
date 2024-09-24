@@ -3,6 +3,7 @@
 
 using System.Net.NetworkInformation;
 using DotNetty.Handlers.Logging;
+using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -139,7 +140,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    public void InitializeChannel(IDatagramChannel channel)
+    public void InitializeChannel(IChannel channel)
     {
         _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService,
             _timestamper, _logManager);

@@ -130,13 +130,15 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
     {
         if (_sequencerRpcClient is null)
         {
-            return ResultWrapper<Hash256>.Fail("No sequencer url in the config");
+            return await base.eth_sendRawTransaction(transaction);
         }
+
         Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
         if (result is null)
         {
             return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
         }
+
         return ResultWrapper<Hash256>.Success(result);
     }
 
@@ -161,18 +163,18 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
             new(txHash, (OptimismTxReceipt)receipt, gasInfo.Value, l1GasInfo.GetTxGasInfo(block.Transactions.First(tx => tx.Hash == txHash)), logIndexStart));
     }
 
-    public new Task<ResultWrapper<OptimismTransactionForRpc?>> eth_getTransactionByHash(Hash256 transactionHash)
+    public new ResultWrapper<OptimismTransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
         (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
-            return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(null!));
+            return ResultWrapper<OptimismTransactionForRpc?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
         OptimismTransactionForRpc transactionModel = new(receipt?.BlockHash, receipt as OptimismTxReceipt, transaction, baseFee);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-        return Task.FromResult(ResultWrapper<OptimismTransactionForRpc?>.Success(transactionModel));
+        return ResultWrapper<OptimismTransactionForRpc?>.Success(transactionModel);
     }
 
     public new ResultWrapper<OptimismTransactionForRpc?> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,

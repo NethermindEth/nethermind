@@ -51,15 +51,16 @@ namespace Nethermind.Specs
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
-        public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
 
         // used only in testing
-        public ReleaseSpec Clone()
+        public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
+
+        public bool IsEip1559Enabled
         {
-            return (ReleaseSpec)MemberwiseClone();
+            get => _isEip1559Enabled || IsEip4844Enabled;
+            set => _isEip1559Enabled = value;
         }
 
-        public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
         public bool IsEip3607Enabled { get; set; }
@@ -96,6 +97,8 @@ namespace Nethermind.Specs
         public bool IsEip7709Enabled { get; set; }
 
         private Address _eip2935ContractAddress;
+        private bool _isEip1559Enabled;
+
         public Address Eip2935ContractAddress
         {
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;

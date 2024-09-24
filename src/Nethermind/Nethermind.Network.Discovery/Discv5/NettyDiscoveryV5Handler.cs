@@ -9,7 +9,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Lantern.Discv5.WireProtocol.Connection;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery;
@@ -17,31 +17,33 @@ namespace Nethermind.Network.Discovery;
 /// <summary>
 /// Adapter, integrating DotNetty externally-managed <see cref="IChannel"/> with Lantern.Discv5
 /// </summary>
-public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacket>, IUdpConnection
+public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
 {
-    private readonly ILogger<NettyDiscoveryV5Handler> _logger;
+    private const int MaxMessagesBuffered = 1024;
+
+    private readonly ILogger _logger;
     private readonly Channel<UdpReceiveResult> _inboundQueue;
 
     private IChannel? _nettyChannel;
 
-    public NettyDiscoveryV5Handler(ILoggerFactory loggerFactory)
+    public NettyDiscoveryV5Handler(ILogManager loggerManager) : base(loggerManager)
     {
-        _logger = loggerFactory.CreateLogger<NettyDiscoveryV5Handler>();
-        _inboundQueue = Channel.CreateUnbounded<UdpReceiveResult>();
+        _logger = loggerManager.GetClassLogger<NettyDiscoveryV5Handler>();
+        _inboundQueue = Channel.CreateBounded<UdpReceiveResult>(MaxMessagesBuffered);
     }
 
     public void InitializeChannel(IChannel channel) => _nettyChannel = channel;
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        _logger.LogDebug("Received datagram of size {msg}", msg.Content.ReadableBytes);
         var udpPacket = new UdpReceiveResult(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
-        _inboundQueue.Writer.TryWrite(udpPacket);
+        if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsWarn)
+            _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
     }
 
     public async Task SendAsync(byte[] data, IPEndPoint destination)
     {
-        if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized.");
+        if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized");
 
         var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), destination);
 
@@ -51,7 +53,7 @@ public class NettyDiscoveryV5Handler : SimpleChannelInboundHandler<DatagramPacke
         }
         catch (SocketException exception)
         {
-            _logger.LogError(exception, "Error sending data");
+            if (_logger.IsError) _logger.Error("Error sending data", exception);
             throw;
         }
     }
