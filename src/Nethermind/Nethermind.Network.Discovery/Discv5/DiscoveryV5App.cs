@@ -20,10 +20,18 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Db;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Text;
 using DotNetty.Transport.Channels;
+using Lantern.Discv5.Rlp;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
+using Nethermind.Blockchain;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Network.Discovery.Portal;
+using Nethermind.Network.Discovery.Portal.History;
+using Nethermind.Network.Discovery.Portal.History.Rpc;
+using Nethermind.Network.Discovery.Portal.LanternAdapter;
 
 namespace Nethermind.Network.Discovery;
 
@@ -39,7 +47,17 @@ public class DiscoveryV5App : IDiscoveryApp
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, IPeerManager? peerManager, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(
+        IBlockTree blockTree,
+        IRpcModuleProvider rpcModuleProvider,
+        SameKeyGenerator privateKeyProvider,
+        IIPResolver? ipResolver,
+        IPeerManager? peerManager,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        IDb discoveryDb,
+        ILogManager logManager
+    )
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 
@@ -61,10 +79,14 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IServiceCollection services = new ServiceCollection()
            .AddSingleton<ILoggerFactory, NullLoggerFactory>()
+           .AddSingleton(blockTree)
+           .AddSingleton(logManager)
            .AddSingleton(_sessionOptions.Verifier)
            .AddSingleton(_sessionOptions.Signer);
 
-        EnrFactory enrFactory = new(new EnrEntryRegistry());
+        // IEnrEntryRegistry registry = new AllEnrEntryRegistry();
+        IEnrEntryRegistry registry = new EnrEntryRegistry();
+        EnrFactory enrFactory = new(registry);
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
             .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
@@ -72,7 +94,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
             // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
+            // .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
@@ -91,11 +113,14 @@ public class DiscoveryV5App : IDiscoveryApp
             .WithSessionOptions(_sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
+            .WithEnrEntryRegistry(registry)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
             .WithServices(s =>
             {
-                s.AddSingleton(logManager);
                 NettyDiscoveryV5Handler.Register(s);
+                s
+                    .ConfigurePortalNetworkCommonServices()
+                    .ConfigureLanternPortalAdapter();
             });
 
         _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
@@ -104,7 +129,34 @@ public class DiscoveryV5App : IDiscoveryApp
 
         _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
+
+        string[] bootNodesStr =
+        [
+            // Trin bootstrap nodes
+            // "enr:-Jy4QIs2pCyiKna9YWnAF0zgf7bT0GzlAGoF8MEKFJOExmtofBIqzm71zDvmzRiiLkxaEJcs_Amr7XIhLI74k1rtlXICY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhKEjVaWJc2VjcDI1NmsxoQLSC_nhF1iRwsCw0n3J4jRjqoaRxtKgsEe5a-Dz7y0JloN1ZHCCIyg",
+            // "enr:-Jy4QKSLYMpku9F0Ebk84zhIhwTkmn80UnYvE4Z4sOcLukASIcofrGdXVLAUPVHh8oPCfnEOZm1W1gcAxB9kV2FJywkCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJO2oc6Jc2VjcDI1NmsxoQLMSGVlxXL62N3sPtaV-n_TbZFCEM5AR7RDyIwOadbQK4N1ZHCCIyg",
+            // "enr:-Jy4QH4_H4cW--ejWDl_W7ngXw2m31MM2GT8_1ZgECnfWxMzZTiZKvHDgkmwUS_l2aqHHU54Q7hcFSPz6VGzkUjOqkcCY5Z0IDAuMS4xLWFscGhhLjEtMTEwZjUwgmlkgnY0gmlwhJ31OTWJc2VjcDI1NmsxoQPC0eRkjRajDiETr_DRa5N5VJRm-ttCWDoO1QAMMCg5pIN1ZHCCIyg",
+
+            // Fluffy bootstrap nodes
+            // "enr:-Ia4QLBxlH0Y8hGPQ1IRF5EStZbZvCPHQ2OjaJkuFMz0NRoZIuO2dLP0L-W_8ZmgnVx5SwvxYCXmX7zrHYv0FeHFFR0TY2aCaWSCdjSCaXCEwiErIIlzZWNwMjU2azGhAnnTykipGqyOy-ZRB9ga9pQVPF-wQs-yj_rYUoOqXEjbg3VkcIIjjA",
+            // "enr:-Ia4QM4amOkJf5z84Lv5Fl0RgWeSSDUekwnOPRn6XA1eMWgrHwWmn_gJGtOeuVfuX7ywGuPMRwb0odqQ9N_w_2Qc53gTY2aCaWSCdjSCaXCEwiErIYlzZWNwMjU2azGhAzaQEdPmz9SHiCw2I5yVAO8sriQ-mhC5yB7ea1u4u5QZg3VkcIIjjA",
+            // "enr:-Ia4QKVuHjNafkYuvhU7yCvSarNIVXquzJ8QOp5YbWJRIJw_EDVOIMNJ_fInfYoAvlRCHEx9LUQpYpqJa04pUDU21uoTY2aCaWSCdjSCaXCEwiErQIlzZWNwMjU2azGhA47eAW5oIDJAqxxqI0sL0d8ttXMV0h6sRIWU4ZwS4pYfg3VkcIIjjA",
+            // "enr:-Ia4QIU9U3zrP2DM7sfpgLJbbYpg12sWeXNeYcpKN49-6fhRCng0IUoVRI2E51mN-2eKJ4tbTimxNLaAnbA7r7fxVjcTY2aCaWSCdjSCaXCEwiErQYlzZWNwMjU2azGhAxOroJ3HceYvdD2yK1q9w8c9tgrISJso8q_JXI6U0Xwng3VkcIIjjA",
+
+            // Ultralight bootstrap nodes
+            // "enr:-IS4QFV_wTNknw7qiCGAbHf6LxB-xPQCktyrCEZX-b-7PikMOIKkBg-frHRBkfwhI3XaYo_T-HxBYmOOQGNwThkBBHYDgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQKHPt5CQ0D66ueTtSUqwGjfhscU_LiwS28QvJ0GgJFd-YN1ZHCCE4k",
+            // "enr:-IS4QDpUz2hQBNt0DECFm8Zy58Hi59PF_7sw780X3qA0vzJEB2IEd5RtVdPUYZUbeg4f0LMradgwpyIhYUeSxz2Tfa8DgmlkgnY0gmlwhKRc9_OJc2VjcDI1NmsxoQJd4NAVKOXfbdxyjSOUJzmA4rjtg43EDeEJu1f8YRhb_4N1ZHCCE4o",
+            // "enr:-IS4QGG6moBhLW1oXz84NaKEHaRcim64qzFn1hAG80yQyVGNLoKqzJe887kEjthr7rJCNlt6vdVMKMNoUC9OCeNK-EMDgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQLJhXByb3LmxHQaqgLDtIGUmpANXaBbFw3ybZWzGqb9-IN1ZHCCE4k",
+            // "enr:-IS4QA5hpJikeDFf1DD1_Le6_ylgrLGpdwn3SRaneGu9hY2HUI7peHep0f28UUMzbC0PvlWjN8zSfnqMG07WVcCyBhADgmlkgnY0gmlwhKRc9-KJc2VjcDI1NmsxoQJMpHmGj1xSP1O-Mffk_jYIHVcg6tY5_CjmWVg1gJEsPIN1ZHCCE4o "
+        ];
+        IEnr[] historyNetworkBootnodes = bootNodesStr.Select((str) => enrFactory.CreateFromString(str, identityVerifier)).ToArray();
+
+        IServiceProvider historyNetworkServiceProvider = _serviceProvider.CreateHistoryNetworkServiceProvider(historyNetworkBootnodes);
+        _historyNetwork = historyNetworkServiceProvider.GetRequiredService<IPortalHistoryNetwork>();
+        rpcModuleProvider.RegisterSingle(historyNetworkServiceProvider.GetRequiredService<IPortalHistoryRpcModule>());
     }
+
+    private IPortalHistoryNetwork _historyNetwork;
 
     private void NodeAddedByDiscovery(IEnr newEntry)
     {
@@ -204,6 +256,22 @@ public class DiscoveryV5App : IDiscoveryApp
         var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
+
+        Task.Run(async () =>
+        {
+            _logger.Info("lantern adapter registration");
+
+            CancellationToken token = default;
+
+            try
+            {
+                await _historyNetwork.Run(token);
+            }
+            catch (Exception e)
+            {
+                _logger.Error("It crashed", e);
+            }
+        });
     }
 
     public Task StartAsync()
@@ -354,4 +422,43 @@ public class DiscoveryV5App : IDiscoveryApp
             return hash.ToHashCode();
         }
     }
+
+    class AllEnrEntryRegistry : IEnrEntryRegistry
+    {
+        private IEnrEntryRegistry _enrEntryRegistryImplementation = new EnrEntryRegistry();
+        public void RegisterEntry(string key, Func<byte[], IEntry> entryCreator)
+        {
+            _enrEntryRegistryImplementation.RegisterEntry(key, entryCreator);
+        }
+
+        public void UnregisterEntry(string key)
+        {
+            _enrEntryRegistryImplementation.UnregisterEntry(key);
+        }
+
+        public IEntry? GetEnrEntry(string stringKey, byte[] value)
+        {
+            IEntry? entry = _enrEntryRegistryImplementation.GetEnrEntry(stringKey, value);
+            if (entry == null)
+            {
+                Console.Error.WriteLine($"Unknown enr entry key {stringKey}");
+                entry = new RawEntry(stringKey, value);
+            }
+
+            return entry;
+        }
+
+        public class RawEntry(string key, byte[] value) : IEntry
+        {
+            public IEnumerable<byte> EncodeEntry()
+            {
+                return ByteArrayUtils.JoinByteArrays(
+                    RlpEncoder.EncodeString(Key, Encoding.ASCII),
+                    RlpEncoder.EncodeBytes(value));
+            }
+
+            public EnrEntryKey Key { get; } = key;
+        }
+    }
+
 }

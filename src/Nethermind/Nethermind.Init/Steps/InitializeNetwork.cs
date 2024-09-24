@@ -298,7 +298,7 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        _api.DiscoveryApp = new CompositeDiscoveryApp(_api.NodeKey,
+        _api.DiscoveryApp = new CompositeDiscoveryApp(_api.BlockTree!, _api.RpcModuleProvider!, _api.NodeKey,
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
