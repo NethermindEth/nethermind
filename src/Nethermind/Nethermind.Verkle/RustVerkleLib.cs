@@ -3,21 +3,19 @@
 
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Runtime.Loader;
 
 namespace Nethermind.Verkle;
 
 public static partial class RustVerkleLib
 {
-    private static int _initialized;
     private const string LibraryName = "c_verkle";
+    private static readonly int _initialized;
     private static string? _libraryFallbackPath;
+
     static RustVerkleLib()
     {
         if (Interlocked.Exchange(ref _initialized, 1) == 0)
-        {
             NativeLibrary.SetDllImportResolver(typeof(RustVerkleLib).Assembly, ResolveNativeLibrary);
-        }
     }
 
     [LibraryImport("c_verkle", EntryPoint = "context_new")]
@@ -30,7 +28,7 @@ public static partial class RustVerkleLib
     public static partial void PedersenHash(IntPtr ct, byte[] address, byte[] treeIndexLe, byte[] outHash);
 
     [LibraryImport("c_verkle", EntryPoint = "pedersen_hash_flat")]
-    public static partial void PedersenHashFlat(IntPtr ct, byte[] addAndTreeIndexLe, byte[] outHash);
+    public static unsafe partial void PedersenHashFlat(IntPtr ct, byte* addAndTreeIndexLe, byte[] outHash);
 
     [LibraryImport("c_verkle", EntryPoint = "multi_scalar_mul")]
     public static partial void MultiScalarMul(IntPtr ct, byte[] input, UIntPtr length, byte[] outHash);
@@ -94,9 +92,11 @@ public static partial class RustVerkleLib
                 platform = "win";
             }
             else
+            {
                 throw new PlatformNotSupportedException();
+            }
 
-            string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+            var arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
 
             _libraryFallbackPath = Path.Combine("runtimes", $"{platform}-{arch}", "native", libraryName);
         }

@@ -16,13 +16,20 @@ public static class PedersenHash
 
     public static byte[] HashRust(byte[] address, UInt256 treeIndex)
     {
-        byte[] data = new byte[64];
-        Span<byte> dataSpan = data;
-        address.CopyTo(data, address.Length == 20 ? 12 : 0);
-        treeIndex.ToLittleEndian(dataSpan[32..]);
+        Span<byte> data = stackalloc byte[64];
+        address.CopyTo(data[(address.Length == 20 ? 12 : 0)..]);
+        treeIndex.ToLittleEndian(data[32..]);
 
         var hash = new byte[32];
         VerkleCrypto.PedersenHashFlat(data, hash);
         return hash;
+    }
+
+    public static void HashRust(byte[] address, UInt256 treeIndex, Span<byte> outHash)
+    {
+        Span<byte> data = stackalloc byte[64];
+        address.CopyTo(data[(address.Length == 20 ? 12 : 0)..]);
+        treeIndex.ToLittleEndian(data[32..]);
+        VerkleCrypto.PedersenHashFlat(data, outHash);
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Fields.FrEElement;
 
@@ -21,12 +22,26 @@ public class BanderwagonTests
             rand.MoveNext();
         }
 
+
+
         Console.WriteLine(res.Count);
         Console.WriteLine(Convert.ToHexString(res.ToArray()));
 
-        var data = Banderwagon.MultiScalarMul(CRS.Instance.BasisG, _a);
+        Banderwagon data = Banderwagon.Generator;
 
-        Console.WriteLine($"{Convert.ToHexString(data.ToBytes())}");
+        for (int i = 0; i < 10; i++)
+        {
+            data = Banderwagon.MultiScalarMul(CRS.Instance.BasisG, _a);
+        }
+
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < 100; i++)
+        {
+            data = Banderwagon.MultiScalarMul(CRS.Instance.BasisG, _a);
+        }
+        Console.WriteLine($"Elapsed time: {sw.Elapsed} ms");
+
+        Console.WriteLine($"{Convert.ToHexString(data!.ToBytes())}");
 
 
     }
@@ -51,7 +66,17 @@ public class BanderwagonTests
         Console.WriteLine(res.Count);
         Console.WriteLine(Convert.ToHexString(res.ToArray()));
         var outhash = new byte[32];
-        RustVerkleLib.MultiScalarMul(context, res.ToArray(), (UIntPtr)res.Count, outhash);
+        for (int i = 0; i < 10; i++)
+        {
+            RustVerkleLib.MultiScalarMul(context, res.ToArray(), (UIntPtr)res.Count, outhash);
+        }
+
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < 100; i++)
+        {
+            RustVerkleLib.MultiScalarMul(context, res.ToArray(), (UIntPtr)res.Count, outhash);
+        }
+        Console.WriteLine($"Elapsed time: {sw.Elapsed} ms");
 
         Console.WriteLine($"{Convert.ToHexString(outhash)}");
 

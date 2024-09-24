@@ -17,17 +17,18 @@ namespace Nethermind.Verkle.Tree.Test
         public void BenchPedersenHash()
         {
             byte[] key = new byte[32];
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 1000; i++)
             {
                 Random.NextBytes(key);
                 PedersenHash.HashRust(key, UInt256.Zero);
             }
 
             var sw = Stopwatch.StartNew();
+            Span<byte> outhash = stackalloc byte[32];
             for (int i = 0; i < 1000; i++)
             {
                 Random.NextBytes(key);
-                byte[] hash = PedersenHash.HashRust(key, UInt256.Zero);
+                PedersenHash.HashRust(key, UInt256.Zero, outhash);
                 // Console.WriteLine(hash.ToHexString());
             }
             Console.WriteLine($"Elapsed time: {sw.Elapsed} ms");
