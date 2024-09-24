@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
+using System.Threading.Tasks;
 
 using G2 = Nethermind.Crypto.Bls.P2;
 
@@ -44,49 +46,53 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
         {
             int nItems = inputData.Length / ItemSize;
 
-            bool onStack = nItems <= 4;
-            Span<long> rawPoints = onStack ? stackalloc long[nItems * 36] : new long[nItems * 36];
-            Span<byte> rawScalars = onStack ? stackalloc byte[nItems * 32] : new byte[nItems * 32];
+            long[] rawPoints = new long[nItems * 36];
+            byte[] rawScalars = new byte[nItems * 32];
+            using ArrayPoolList<int> pointDestinations = new(nItems);
 
             int npoints = 0;
             for (int i = 0; i < nItems; i++)
             {
                 int offset = i * ItemSize;
                 ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG2)].Span;
-                ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG2)..(offset + ItemSize)].Span;
 
-                G2 p = new(rawPoints[(npoints * 36)..]);
-                p.DecodeRaw(rawPoint);
-
-                if (p.IsInf())
-                {
-                    continue;
-                }
-
-                if (!p.InGroup())
-                {
-                    return IPrecompile.Failure;
-                }
-
-                // G2.Decode(
-                //     rawPoints[(npoints * 36)..],
-                //     rawPoint[BlsParams.LenFpPad..BlsParams.LenFp],
-                //     rawPoint[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)],
-                //     rawPoint[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)],
-                //     rawPoint[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]
-                // );
-
-                for (int j = 0; j < 32; j++)
-                {
-                    rawScalars[(npoints * 32) + j] = rawScalar[31 - j];
-                }
-
-                npoints++;
+                // exclude infinity points
+                int dest = rawPoint.ContainsAnyExcept((byte)0) ? npoints++ : -1;
+                pointDestinations.Add(dest);
             }
 
             if (npoints == 0)
             {
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
+            }
+
+            bool fail = false;
+            Parallel.ForEach(pointDestinations, (dest, state, i) => {
+                if (dest != -1)
+                {
+                    int offset = (int)i * ItemSize;
+                    ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG2)].Span;
+                    ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG2)..(offset + ItemSize)].Span;
+
+                    G2 p = new(rawPoints.AsSpan()[(dest * 36)..]);
+                    p.DecodeRaw(rawPoint);
+
+                    if (!p.InGroup())
+                    {
+                        fail = true;
+                        state.Break();
+                    }
+
+                    for (int j = 0; j < 32; j++)
+                    {
+                        rawScalars[(dest * 32) + j] = rawScalar[31 - j];
+                    }
+                }
+            });
+
+            if (fail)
+            {
+                return IPrecompile.Failure;
             }
 
             G2 res = new G2().MultiMult(rawPoints, rawScalars, npoints);

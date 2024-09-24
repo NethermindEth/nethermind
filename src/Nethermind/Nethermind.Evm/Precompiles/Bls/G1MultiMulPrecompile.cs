@@ -5,11 +5,10 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using G1 = Nethermind.Crypto.Bls.P1;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
+
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -68,19 +67,20 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
             }
 
             bool fail = false;
-            Parallel.ForEach(pointDestinations, (dest, _, i) => {
+            Parallel.ForEach(pointDestinations, (dest, state, i) => {
                 if (dest != -1)
                 {
                     int offset = (int)i * ItemSize;
                     ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG1)].Span;
                     ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG1)..(offset + ItemSize)].Span;
 
-                    G1 p = new(rawPoints.AsSpan()[((int)i * 18)..]);
+                    G1 p = new(rawPoints.AsSpan()[((int)dest * 18)..]);
                     p.DecodeRaw(rawPoint);
 
                     if (!p.InGroup())
                     {
                         fail = true;
+                        state.Break();
                     }
 
                     for (int j = 0; j < 32; j++)
