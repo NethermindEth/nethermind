@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
-    private readonly AbiSignature _depositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    private readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
@@ -40,7 +40,7 @@ public class DepositsProcessor : IDepositsProcessor
 
         Deposit DecodeDeposit(LogEntry log)
         {
-            object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, _depositEventAbi, log.Data);
+            object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, _depositEventABI, log.Data);
 
             return new Deposit
             {

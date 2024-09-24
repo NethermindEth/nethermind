@@ -341,7 +341,7 @@ public partial class EngineModuleTests
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
         };
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
+            rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
