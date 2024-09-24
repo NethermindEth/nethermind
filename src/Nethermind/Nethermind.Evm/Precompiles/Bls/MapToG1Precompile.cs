@@ -35,13 +35,13 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
         try
         {
-            G1 res = G1.Generator();
-            if (!BlsExtensions.ValidUntrimmedFp(inputData.Span))
+            G1 res = new G1(stackalloc long[G1.Sz]);
+            if (!BlsExtensions.ValidRawFp(inputData.Span))
             {
                 return IPrecompile.Failure;
             }
             res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].Span);
-            return (res.Encode(), true);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {

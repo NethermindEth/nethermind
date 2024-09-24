@@ -55,9 +55,10 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
                 ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG2)].Span;
                 ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG2)..(offset + ItemSize)].Span;
 
-                G2 p = BlsExtensions.DecodeG2(rawPoint, out bool isInfinity);
+                G2 p = new(rawPoints[(npoints * 36)..]);
+                p.DecodeRaw(rawPoint);
 
-                if (isInfinity)
+                if (p.IsInf())
                 {
                     continue;
                 }
@@ -67,13 +68,13 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
                     return IPrecompile.Failure;
                 }
 
-                G2.Decode(
-                    rawPoints[(npoints * 36)..],
-                    rawPoint[BlsParams.LenFpPad..BlsParams.LenFp],
-                    rawPoint[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)],
-                    rawPoint[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)],
-                    rawPoint[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]
-                );
+                // G2.Decode(
+                //     rawPoints[(npoints * 36)..],
+                //     rawPoint[BlsParams.LenFpPad..BlsParams.LenFp],
+                //     rawPoint[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)],
+                //     rawPoint[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)],
+                //     rawPoint[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]
+                // );
 
                 for (int j = 0; j < 32; j++)
                 {
@@ -88,9 +89,9 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
-            G2 res = G2.Generator().MultiMult(rawPoints, rawScalars, npoints);
+            G2 res = new G2().MultiMult(rawPoints, rawScalars, npoints);
 
-            return (res.Encode(), true);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {

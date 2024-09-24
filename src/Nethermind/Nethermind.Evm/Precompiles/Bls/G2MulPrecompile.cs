@@ -38,10 +38,11 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
         try
         {
-            G2 x = BlsExtensions.DecodeG2(inputData[..BlsParams.LenG2].Span, out bool xInfinity);
-            if (xInfinity)
+            G2 x = new G2(stackalloc long[G2.Sz]);
+            x.DecodeRaw(inputData[..BlsParams.LenG2].Span);
+
+            if (x.IsInf())
             {
-                // x == inf
                 return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
             }
 
@@ -62,7 +63,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
             }
 
             G2 res = x.Mult(scalar);
-            return (res.Encode(), true);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {

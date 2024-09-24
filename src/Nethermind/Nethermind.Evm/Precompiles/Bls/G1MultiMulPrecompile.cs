@@ -47,6 +47,12 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
             Span<long> rawPoints = onStack ? stackalloc long[nItems * 18] : new long[nItems * 18];
             Span<byte> rawScalars = onStack ? stackalloc byte[nItems * 32] : new byte[nItems * 32];
 
+            if (onStack)
+            {
+                rawPoints.Clear();
+                rawScalars.Clear();
+            }
+
             int npoints = 0;
             for (int i = 0; i < nItems; i++)
             {
@@ -55,9 +61,10 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
                 ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG1)].Span;
                 ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG1)..(offset + ItemSize)].Span;
 
-                G1 p = BlsExtensions.DecodeG1(rawPoint, out bool isInfinity);
+                G1 p = new(rawPoints[(npoints * 18)..]);
+                p.DecodeRaw(rawPoint);
 
-                if (isInfinity)
+                if (p.IsInf())
                 {
                     continue;
                 }
@@ -66,8 +73,6 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
                 {
                     return IPrecompile.Failure;
                 }
-
-                G1.Decode(rawPoints[(npoints * 18)..], rawPoint[BlsParams.LenFpPad..BlsParams.LenFp], rawPoint[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
 
                 for (int j = 0; j < 32; j++)
                 {
@@ -82,8 +87,8 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
                 return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
-            G1 res = G1.Generator().MultiMult(rawPoints, rawScalars, npoints);
-            return (res.Encode(), true);
+            G1 res = new G1().MultiMult(rawPoints, rawScalars, npoints);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {

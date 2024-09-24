@@ -37,10 +37,11 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
         try
         {
-            G1 x = BlsExtensions.DecodeG1(inputData[..BlsParams.LenG1].Span, out bool xInfinity);
-            if (xInfinity)
+            G1 x = new G1(stackalloc long[G1.Sz]);
+            x.DecodeRaw(inputData[..BlsParams.LenG1].Span);
+
+            if (x.IsInf())
             {
-                // x == inf
                 return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
             }
 
@@ -61,7 +62,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
             }
 
             G1 res = x.Mult(scalar);
-            return (res.Encode(), true);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {

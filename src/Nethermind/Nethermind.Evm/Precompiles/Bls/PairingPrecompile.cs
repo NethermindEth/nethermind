@@ -34,14 +34,21 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             return IPrecompile.Failure;
         }
 
+        G1 x = new(stackalloc long[G1.Sz]);
+        G2 y = new(stackalloc long[G2.Sz]);
+
         try
         {
             GT acc = GT.One();
             for (int i = 0; i < inputData.Length / PairSize; i++)
             {
                 int offset = i * PairSize;
-                G1 x = BlsExtensions.DecodeG1(inputData[offset..(offset + BlsParams.LenG1)].Span, out bool xInfinity);
-                G2 y = BlsExtensions.DecodeG2(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)].Span, out bool yInfinity);
+
+                x.DecodeRaw(inputData[offset..(offset + BlsParams.LenG1)].Span);
+                bool xInfinity = x.IsInf();
+
+                y.DecodeRaw(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)].Span);
+                bool yInfinity = y.IsInf();
 
                 if ((!xInfinity && !x.InGroup()) || (!yInfinity && !y.InGroup()))
                 {

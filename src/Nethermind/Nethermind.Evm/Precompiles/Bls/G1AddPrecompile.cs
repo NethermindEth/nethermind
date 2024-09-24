@@ -36,23 +36,24 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
         try
         {
-            G1 x = BlsExtensions.DecodeG1(inputData[..BlsParams.LenG1].Span, out bool xInfinity);
-            G1 y = BlsExtensions.DecodeG1(inputData[BlsParams.LenG1..].Span, out bool yInfinity);
+            G1 x = new G1(stackalloc long[G1.Sz]);
+            x.DecodeRaw(inputData[..BlsParams.LenG1].Span);
 
-            if (xInfinity)
+            G1 y = new G1(stackalloc long[G1.Sz]);
+            y.DecodeRaw(inputData[BlsParams.LenG1..].Span);
+
+            if (x.IsInf())
             {
-                // x == inf
                 return (inputData[BlsParams.LenG1..], true);
             }
 
-            if (yInfinity)
+            if (y.IsInf())
             {
-                // y == inf
                 return (inputData[..BlsParams.LenG1], true);
             }
 
             G1 res = x.Add(y);
-            return (res.Encode(), true);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
