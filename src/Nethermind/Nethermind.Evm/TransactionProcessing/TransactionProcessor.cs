@@ -605,9 +605,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (spec.UseHotAndColdStorage) // eip-2929
             {
-                foreach (Address authorized in accessedAddresses)
+                foreach (Address accessed in accessedAddresses)
                 {
-                    state.WarmUp(authorized);
+                    state.WarmUp(accessed);
                 }
             }
 
