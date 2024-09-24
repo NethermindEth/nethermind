@@ -29,7 +29,16 @@ namespace Ethereum.Test.Base
 
         protected void RunCITest(EofTest test)
         {
-            Assert.That(RunTest(test, NullTxTracer.Instance), Is.EqualTo(test.Result.Success));
+            var result = RunTest(test, NullTxTracer.Instance);
+
+            if (result != test.Result.Success)
+            {
+                _logger.Info($"Spec: {test.Spec}");
+                _logger.Info(test.Description);
+                _logger.Info($"Url: {test.Url}");
+            }
+
+            Assert.That(result, Is.EqualTo(test.Result.Success));
         }
 
         protected bool RunTest(EofTest test)

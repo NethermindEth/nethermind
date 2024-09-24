@@ -25,4 +25,7 @@ public class EofTest : IEthereumTest
     public string? Category { get; set; }
     public string? LoadFailure { get; set; }
     public Result Result { get; internal set; }
+    public string? Description { get; set; }
+    public string? Url { get; set; }
+    public string? Spec { get; set; }
 }

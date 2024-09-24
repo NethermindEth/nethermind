@@ -293,6 +293,17 @@ namespace Ethereum.Test.Base
                 var name = namedTest.Key.Substring(index + 5);
                 string category = namedTest.Key.Substring(0, index).Replace("tests/prague/eip7692_eof_v1/", "");
 
+                string? description = null;
+                string? url = null;
+                string? spec = null;
+                var info = namedTest.Value?.Info;
+                if (info is not null)
+                {
+                    description = info.Description;
+                    url = info.Url;
+                    spec = info.Spec;
+                }
+
                 foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
                 {
                     VectorTestJson vectorJson = pair.Value;
@@ -304,7 +315,10 @@ namespace Ethereum.Test.Base
                         EofTest test = new()
                         {
                             Name = $"{name}",
-                            Category = $"{category} [{result.Key}]"
+                            Category = $"{category} [{result.Key}]",
+                            Url = url,
+                            Description = description,
+                            Spec = spec
                         };
                         test.Vector = vector;
 
