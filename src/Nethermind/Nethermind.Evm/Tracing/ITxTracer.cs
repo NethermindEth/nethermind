@@ -278,7 +278,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable, IILVMTracer
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(long offset, byte data)
+    void ReportMemoryChange(UInt256 offset, byte data)
     {
         ReportMemoryChange(offset, new[] { data });
     }
@@ -289,7 +289,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable, IILVMTracer
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
+    void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         ReportMemoryChange(offset, data.ToArray());
     }
