@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Witness;
@@ -29,9 +30,9 @@ public interface IExecutionWitness
     /// <returns></returns>
     bool AccessForGasBeneficiary(Address gasBeneficiary);
 
-    bool AccessForCodeOpCodes(Address caller, ref long gasAvailable);
+    bool AccessAccountData(Address caller, ref long gasAvailable);
     bool AccessForBalanceOpCode(Address address, ref long gasAvailable);
-    bool AccessForCodeHash(Address address, ref long gasAvailable);
+    bool AccessCodeHash(Address address, ref long gasAvailable);
 
     /// <summary>
     ///     When SLOAD and SSTORE opcodes are called with a given address
@@ -60,17 +61,14 @@ public interface IExecutionWitness
 
     bool AccessForAbsentAccount(Address address, ref long gasAvailable);
 
-    /// <summary>
-    ///     When you have to access the complete account
-    /// </summary>
-    /// <param name="address"></param>
-    /// <param name="gasAvailable"></param>
-    /// <param name="isWrite"></param>
-    /// <returns></returns>
-    bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false);
     bool AccessAccountForWithdrawal(Address address);
     bool AccessForBlockhashInsertionWitness(Address address, UInt256 key);
 
     bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable);
-    byte[][] GetAccessedKeys();
+    Hash256[] GetAccessedKeys();
+
+    bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable);
+
+    bool AccessForContractCreationCheck(Address contractAddress, ref long gasAvailable);
+
 }

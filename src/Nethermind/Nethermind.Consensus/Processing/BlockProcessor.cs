@@ -342,7 +342,7 @@ public partial class BlockProcessor : IBlockProcessor
         // generate and add execution witness to the block
         if (!block.IsGenesis && options.ContainsFlag(ProcessingOptions.ProducingBlock) && spec.IsVerkleTreeEipEnabled)
         {
-            byte[][] witnessKeys = ExecutionTracer.WitnessKeys.ToArray();
+            Hash256[] witnessKeys = ExecutionTracer.WitnessKeys.ToArray();
             var verkleWorldState = worldState as VerkleWorldState;
             ExecutionWitness witness = witnessKeys.Length == 0
                 ? new ExecutionWitness()

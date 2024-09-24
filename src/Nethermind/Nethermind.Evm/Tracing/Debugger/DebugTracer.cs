@@ -280,7 +280,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportStorageRead(in StorageCell storageCell)
         => InnerTracer.ReportStorageRead(storageCell);
 
-    public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys) =>
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys) =>
         InnerTracer.ReportAccessWitness(verkleWitnessKeys);
 
     public void Dispose()

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Witness;
@@ -19,11 +20,11 @@ public class NoExecWitness : IExecutionWitness
 
     public bool AccessForGasBeneficiary(Address gasBeneficiary) => true;
 
-    public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable) => true;
+    public bool AccessAccountData(Address caller, ref long gasAvailable) => true;
 
     public bool AccessForBalanceOpCode(Address address, ref long gasAvailable) => true;
 
-    public bool AccessForCodeHash(Address address, ref long gasAvailable) => true;
+    public bool AccessCodeHash(Address address, ref long gasAvailable) => true;
 
     public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable) => true;
     public bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable) => true;
@@ -41,5 +42,7 @@ public class NoExecWitness : IExecutionWitness
     public bool AccessForBlockhashInsertionWitness(Address address, UInt256 key) => true;
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero,
         bool inheritorExist, ref long gasAvailable) => true;
-    public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
+    public Hash256[] GetAccessedKeys() => [];
+    public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable) => true;
+    public bool AccessForContractCreationCheck(Address contractAddress, ref long gasAvailable) => true;
 }

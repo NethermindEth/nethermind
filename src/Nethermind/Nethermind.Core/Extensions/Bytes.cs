@@ -27,6 +27,7 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
+        public static readonly Hash256Comparer HashComparer = new();
         public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
 
@@ -61,6 +62,23 @@ namespace Nethermind.Core.Extensions
             public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
 
             public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
+        }
+
+        public class Hash256Comparer : Comparer<Hash256>
+        {
+            public override int Compare(Hash256? x, Hash256? y)
+            {
+                if (x is null)
+                {
+                    return y is null ? 0 : 1;
+                }
+
+                if (y is null)
+                {
+                    return -1;
+                }
+                return BytesComparer.Compare(x.Bytes, y.Bytes);
+            }
         }
 
         public class BytesComparer : Comparer<byte[]>

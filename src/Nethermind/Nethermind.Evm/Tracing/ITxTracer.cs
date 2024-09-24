@@ -433,5 +433,5 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="verkleWitnessKeys"></param>
     /// <remarks>Depends on <see cref="IsTracingAccessWitness"/></remarks>
-    void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys);
+    void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys);
 }

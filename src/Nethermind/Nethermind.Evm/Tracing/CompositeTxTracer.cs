@@ -487,7 +487,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
