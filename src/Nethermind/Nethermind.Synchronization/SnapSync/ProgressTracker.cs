@@ -8,7 +8,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -57,6 +59,11 @@ namespace Nethermind.Synchronization.SnapSync
 
 
         private readonly Pivot _pivot;
+
+        public ProgressTracker(IBlockTree blockTree, [FromKeyedServices(DbNames.State)] IDb db, ILogManager logManager, ISyncConfig syncConfig)
+            : this(blockTree, db, logManager, syncConfig.MaxProcessingThreads)
+        {
+        }
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
         {

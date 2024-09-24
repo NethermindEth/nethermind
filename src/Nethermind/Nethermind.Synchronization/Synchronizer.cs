@@ -123,13 +123,16 @@ namespace Nethermind.Synchronization
                 .AddSingleton<IFullStateFinder, FullStateFinder>()
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => _dbProvider.MetadataDb)
                 .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => _dbProvider.CodeDb)
+                .AddKeyedSingleton<IDb>(DbNames.State, (sp, _) => _dbProvider.StateDb)
                 .AddKeyedSingleton<IDbMeta>(DbNames.Blocks, (sp, _) => _dbProvider.BlocksDb)
                 .AddSingleton(_syncReport)
                 .AddSingleton(syncConfig);
 
-            if (_syncConfig.FastSync && _syncConfig.SnapSync) RegisterSnapComponent(serviceCollection);
+            if (_syncConfig.FastSync && _syncConfig.SnapSync)
+                RegisterSnapComponent(serviceCollection);
 
-            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync) RegisterHeaderSyncComponent(serviceCollection);
+            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync)
+                RegisterHeaderSyncComponent(serviceCollection);
 
             if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync && _syncConfig.DownloadBodiesInFastSync &&
                 _syncConfig.DownloadReceiptsInFastSync)
@@ -161,18 +164,8 @@ namespace Nethermind.Synchronization
                 .AddSingleton<ISyncFeed<SnapSyncBatch>>(sp => sp.GetRequiredService<SnapSyncFeed>())
                 .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
                 .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
-                .AddSingleton((sp) => new ProgressTracker(
-                    sp.GetRequiredService<IBlockTree>(),
-                    sp.GetRequiredService<IDbProvider>().StateDb,
-                    sp.GetRequiredService<ILogManager>(),
-                    sp.GetRequiredService<ISyncConfig>().SnapSyncAccountRangePartitionCount
-                ))
-                .AddSingleton<ISnapProvider>((sp) => new SnapProvider(
-                    sp.GetRequiredService<ProgressTracker>(),
-                    sp.GetRequiredService<IDbProvider>().CodeDb,
-                    sp.GetRequiredService<INodeStorage>(),
-                    sp.GetRequiredService<ILogManager>()
-                ));
+                .AddSingleton<ProgressTracker>()
+                .AddSingleton<ISnapProvider, SnapProvider>();
 
             RegisterDispatcher<SnapSyncBatch>(serviceCollection);
         }
