@@ -331,7 +331,7 @@ public class TestSyncRangesInAHugeVerkleTree
             remoteTree.Commit();
             remoteTree.CommitTree(blockNumber);
 
-            executionWitness = remoteTree.GenerateExecutionWitness(update.ToArray(), out root);
+            executionWitness = remoteTree.GenerateExecutionWitness(update.Select(x => new Hash256(x)).ToArray(), out root);
         }
 
         endHashIndex = startingHashIndex + 1000;

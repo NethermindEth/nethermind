@@ -71,7 +71,7 @@ public class StatelessTreeTest
         initTree.CommitTree(0);
         Console.WriteLine($"Commit init tree for block 0: {initTree.StateRoot}");
 
-        ExecutionWitness execWitness = initTree.GenerateExecutionWitness(pathPool[start..end].AsEnumerable().Select(x => x.Bytes.ToArray()).ToArray(), out Banderwagon rootPoint);
+        ExecutionWitness execWitness = initTree.GenerateExecutionWitness(pathPool[start..end].ToArray(), out Banderwagon rootPoint);
         Console.WriteLine($"generated execution witness");
 
 
