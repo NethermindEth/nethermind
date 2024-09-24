@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,10 +18,9 @@ namespace Nethermind.Evm.Witness;
 
 public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleWorldState) : IExecutionWitness
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
-
     private readonly HashSet<Hash256> _accessedLeaves = new();
     private readonly HashSet<byte[]> _accessedSubtrees = new(Bytes.EqualityComparer);
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     private readonly HashSet<Hash256> _modifiedLeaves = new();
     private readonly HashSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
@@ -34,11 +32,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
 
     /// <summary>
-    /// When:
-    /// 1. a non-precompile address is the target of a *CALL, SELFDESTRUCT, EXTCODESIZE, or EXTCODECOPY opcode,
-    /// 2. a non-precompile address is the target address of a contract creation whose initcode starts execution,
-    /// 3. any address is the target of the BALANCE opcode
-    /// 4. a deployed contract calls CODECOPY
+    ///     When:
+    ///     1. a non-precompile address is the target of a *CALL, SELFDESTRUCT, EXTCODESIZE, or EXTCODECOPY opcode,
+    ///     2. a non-precompile address is the target address of a contract creation whose initcode starts execution,
+    ///     3. any address is the target of the BALANCE opcode
+    ///     4. a deployed contract calls CODECOPY
     /// </summary>
     /// <param name="caller"></param>
     /// <param name="gasAvailable"></param>
@@ -49,7 +47,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
@@ -61,20 +58,17 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
     public bool AccessForBalanceOpCode(Address address, ref long gasAvailable)
     {
-        return AccessBasicData<Gas>(address, ref gasAvailable, false);
+        return AccessBasicData<Gas>(address, ref gasAvailable);
     }
 
 
     /// <summary>
-    ///     When SLOAD and SSTORE opcodes are called with a given address
-    ///     and key.
     /// </summary>
     /// <param name="address"></param>
     /// <param name="key"></param>
@@ -83,12 +77,10 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <returns></returns>
     public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return true;
         return AccessKey<Gas>(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), ref gasAvailable, isWrite);
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="key"></param>
@@ -100,7 +92,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="programCounter"></param>
@@ -112,7 +103,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="startIncluded"></param>
@@ -120,27 +110,21 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="isWrite"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable)
+    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite,
+        ref long gasAvailable)
     {
         if (startIncluded == endNotIncluded) return true;
 
         UInt256 startChunkId = CalculateCodeChunkIdFromPc(startIncluded);
         UInt256 endChunkId = CalculateCodeChunkIdFromPc(endNotIncluded - 1);
 
-        long gasBefore = gasAvailable;
         for (UInt256 ch = startChunkId; ch <= endChunkId; ch++)
-        {
-            if (!AccessCodeChunk(address, ch, isWrite, ref gasAvailable)) return false;
-        }
-        long gasAfter = gasAvailable;
-        long accGas = gasBefore - gasAfter;
-
-        if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForCodeSlice: {address} {accGas} {startIncluded} {endNotIncluded} {isWrite} {gasAvailable}");
+            if (!AccessCodeChunk(address, ch, isWrite, ref gasAvailable))
+                return false;
         return true;
     }
 
     /// <summary>
-    ///     When the code chunk chunk_id is accessed
     /// </summary>
     /// <param name="address"></param>
     /// <param name="chunkId"></param>
@@ -149,14 +133,12 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <returns></returns>
     public bool AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite, ref long gasAvailable)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return true;
         Hash256? key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
         return AccessKey<Gas>(key, ref gasAvailable, isWrite);
     }
 
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
@@ -167,7 +149,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="contract"></param>
     /// <param name="inheritor"></param>
@@ -175,17 +156,19 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="inheritorExist"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable)
+    public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist,
+        ref long gasAvailable)
     {
         // access the basic data for the contract calling the selfdestruct
         if (!AccessBasicData<Gas>(contract, ref gasAvailable)) return false;
 
+        // TODO: move precompile check to outside
         // if the inheritor is a pre-compile and there is no balance transfer, there is nothing else to do
         if (inheritor.IsPrecompile(Osaka.Instance) && balanceIsZero) return true;
 
         // now if the contract and inheritor is not the same, then access the inheritor basic data
         // here this is charged because we need gas to check if the inheritor exists or not
-        bool contractNotSameAsBeneficiary = contract != inheritor;
+        var contractNotSameAsBeneficiary = contract != inheritor;
         if (contractNotSameAsBeneficiary && !AccessBasicData<Gas>(inheritor, ref gasAvailable)) return false;
 
         // now access for write when the balance is non-zero
@@ -197,18 +180,18 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
             if (inheritorExist)
             {
-                if(!AccessBasicData<Gas>(inheritor, ref gasAvailable, true)) return false;
+                if (!AccessBasicData<Gas>(inheritor, ref gasAvailable, true)) return false;
             }
             else
             {
-                if(!AccessCompleteAccount<Gas>(inheritor, ref gasAvailable, true)) return false;
+                if (!AccessCompleteAccount<Gas>(inheritor, ref gasAvailable, true)) return false;
             }
         }
+
         return true;
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="contractAddress"></param>
     /// <param name="gasAvailable"></param>
@@ -219,7 +202,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="contractAddress"></param>
     /// <param name="gasAvailable"></param>
@@ -230,7 +212,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="contractAddress"></param>
     /// <param name="gasAvailable"></param>
@@ -241,16 +222,15 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
 
-
     public byte[][] GetAccessedKeys()
     {
         return _accessedLeaves.Select(x => x.BytesToArray()).ToArray();
     }
+
     public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable)
     {
         return AccessBasicData<Gas>(from, ref gasAvailable, true) && AccessBasicData<Gas>(to, ref gasAvailable, true);
     }
-
 
 
     /// <summary>
@@ -279,7 +259,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     }
 
     /// <summary>
-    ///     When you are starting to execute a transaction.
     /// </summary>
     /// <param name="originAddress"></param>
     /// <param name="destinationAddress"></param>
@@ -293,11 +272,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
         if (destinationAddress is null) return true;
 
-        return AccessBasicData<NoGas>(destinationAddress, ref fakeGas, isValueTransfer) && AccessCodeHash<NoGas>(destinationAddress, ref fakeGas);
+        return AccessBasicData<NoGas>(destinationAddress, ref fakeGas, isValueTransfer) &&
+               AccessCodeHash<NoGas>(destinationAddress, ref fakeGas);
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
@@ -305,13 +284,13 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <typeparam name="TGasCharge"></typeparam>
     /// <returns></returns>
     private bool AccessBasicData<TGasCharge>(Address address, ref long gasAvailable, bool isWrite = false)
-        where TGasCharge: struct, IGasCharge
+        where TGasCharge : struct, IGasCharge
     {
-        return AccessAccountSubTree<TGasCharge>(address, UInt256.Zero, AccountHeader.BasicDataLeafKey, ref gasAvailable, isWrite);
+        return AccessAccountSubTree<TGasCharge>(address, UInt256.Zero, AccountHeader.BasicDataLeafKey, ref gasAvailable,
+            isWrite);
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
@@ -319,26 +298,26 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <typeparam name="TGasCharge"></typeparam>
     /// <returns></returns>
     private bool AccessCodeHash<TGasCharge>(Address address, ref long gasAvailable, bool isWrite = false)
-        where TGasCharge: struct, IGasCharge
+        where TGasCharge : struct, IGasCharge
     {
-        return AccessAccountSubTree<TGasCharge>(address, UInt256.Zero, AccountHeader.CodeHash, ref gasAvailable, isWrite);
+        return AccessAccountSubTree<TGasCharge>(address, UInt256.Zero, AccountHeader.CodeHash, ref gasAvailable,
+            isWrite);
     }
 
     /// <summary>
-    ///     When you have to access the complete account
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
     /// <param name="isWrite"></param>
     /// <returns></returns>
     private bool AccessCompleteAccount<TGasCharge>(Address address, ref long gasAvailable, bool isWrite = false)
-        where TGasCharge: struct, IGasCharge
+        where TGasCharge : struct, IGasCharge
     {
-        return AccessBasicData<TGasCharge>(address, ref gasAvailable, isWrite) && AccessCodeHash<TGasCharge>(address, ref gasAvailable, isWrite);
+        return AccessBasicData<TGasCharge>(address, ref gasAvailable, isWrite) &&
+               AccessCodeHash<TGasCharge>(address, ref gasAvailable, isWrite);
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="address"></param>
     /// <param name="treeIndex"></param>
@@ -347,14 +326,15 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="isWrite"></param>
     /// <typeparam name="TGasCharge"></typeparam>
     /// <returns></returns>
-    private bool AccessAccountSubTree<TGasCharge>(Address address, UInt256 treeIndex, byte subIndex, ref long gasAvailable, bool isWrite = false)
-        where TGasCharge: struct, IGasCharge
+    private bool AccessAccountSubTree<TGasCharge>(Address address, UInt256 treeIndex, byte subIndex,
+        ref long gasAvailable, bool isWrite = false)
+        where TGasCharge : struct, IGasCharge
     {
-        return AccessKey<TGasCharge>(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), ref gasAvailable, isWrite);
+        return AccessKey<TGasCharge>(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), ref gasAvailable,
+            isWrite);
     }
 
     /// <summary>
-    ///
     /// </summary>
     /// <param name="key"></param>
     /// <param name="gasAvailable"></param>
@@ -362,13 +342,14 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <typeparam name="TGasCharge"></typeparam>
     /// <returns></returns>
     private bool AccessKey<TGasCharge>(Hash256 key, ref long gasAvailable, bool isWrite = false)
-        where TGasCharge: struct, IGasCharge
+        where TGasCharge : struct, IGasCharge
     {
-        Console.WriteLine($"AccesKey: {key}");
         // TODO: do we need a SpanHashSet so that we can at least use the span to do the `Contains` check?
-        byte[] subTreeStem = key.Bytes[..31].ToArray();
+        var subTreeStem = key.Bytes[..31].ToArray();
         long requiredGas = 0;
-        bool wasPreviouslyNotAccessed = false;
+        var wasPreviouslyNotAccessed = false;
+
+        // read check
         if (TGasCharge.ChargeGas)
         {
             wasPreviouslyNotAccessed = !_accessedLeaves.Contains(key);
@@ -376,15 +357,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             {
                 requiredGas += GasCostOf.WitnessChunkRead;
                 // if the key is already in `_accessedLeaves`, then checking `_accessedSubtrees` will be redundant
-                if (!_accessedSubtrees.Contains(subTreeStem))
-                {
-                    requiredGas += GasCostOf.WitnessBranchRead;
-                }
+                if (!_accessedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchRead;
             }
 
             if (requiredGas > gasAvailable) return false;
             gasAvailable -= requiredGas;
-
         }
 
         _accessedLeaves.Add(key);
@@ -393,6 +370,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (!isWrite) return true;
 
 
+        // write check
         if (TGasCharge.ChargeGas)
         {
             requiredGas = 0;
@@ -402,15 +380,10 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
                 requiredGas += GasCostOf.WitnessChunkWrite;
                 // if key is already in `_modifiedLeaves`, then we should not check if key is present in the tree
                 if (ChargeFillCost && !_verkleWorldState.ValuePresentInTree(key))
-                {
                     requiredGas += GasCostOf.WitnessChunkFill;
-                }
 
                 // if key is already in `_modifiedLeaves`, then checking `_modifiedSubtrees` will be redundant
-                if (!_modifiedSubtrees.Contains(subTreeStem))
-                {
-                    requiredGas += GasCostOf.WitnessBranchWrite;
-                }
+                if (!_modifiedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchWrite;
             }
 
             if (requiredGas > gasAvailable) return false;
@@ -425,7 +398,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
     private static UInt256 CalculateCodeChunkIdFromPc(int pc)
     {
-        int chunkId = pc / 31;
+        var chunkId = pc / 31;
         return (UInt256)chunkId;
     }
 
@@ -444,6 +417,3 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         public static bool ChargeGas => true;
     }
 }
-
-
-
