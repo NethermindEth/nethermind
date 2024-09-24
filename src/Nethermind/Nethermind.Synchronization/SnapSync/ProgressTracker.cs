@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly Pivot _pivot;
 
         public ProgressTracker(IBlockTree blockTree, [FromKeyedServices(DbNames.State)] IDb db, ILogManager logManager, ISyncConfig syncConfig)
-            : this(blockTree, db, logManager, syncConfig.MaxProcessingThreads)
+            : this(blockTree, db, logManager, syncConfig.SnapSyncAccountRangePartitionCount)
         {
         }
 

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -24,6 +25,18 @@ namespace Nethermind.Synchronization.ParallelSync
         private ISyncPeerPool SyncPeerPool { get; }
 
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
+
+        public SyncDispatcher(
+            ISyncConfig syncConfig,
+            ISyncFeed<T>? syncFeed,
+            ISyncDownloader<T>? downloader,
+            ISyncPeerPool? syncPeerPool,
+            IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
+            ILogManager? logManager)
+            :this (syncConfig.MaxProcessingThreads, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
+        {
+
+        }
 
         public SyncDispatcher(
             int maxNumberOfProcessingThread,

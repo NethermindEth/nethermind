@@ -147,14 +147,7 @@ namespace Nethermind.Synchronization
 
         protected static void RegisterDispatcher<T>(IServiceCollection serviceCollection)
         {
-            serviceCollection
-                .AddSingleton<SyncDispatcher<T>>((sp) => new(
-                    sp.GetRequiredService<ISyncConfig>().MaxProcessingThreads,
-                    sp.GetRequiredService<ISyncFeed<T>>(),
-                    sp.GetRequiredService<ISyncDownloader<T>>(),
-                    sp.GetRequiredService<ISyncPeerPool>(),
-                    sp.GetRequiredService<IPeerAllocationStrategyFactory<T>>(),
-                    sp.GetRequiredService<ILogManager>()));
+            serviceCollection.AddSingleton<SyncDispatcher<T>>();
         }
 
         private static void RegisterSnapComponent(IServiceCollection serviceCollection)
