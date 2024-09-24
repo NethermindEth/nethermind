@@ -57,23 +57,7 @@ public class CRS
         return new CRS(points);
     }
 
-    public Banderwagon CommitSparse(Dictionary<int, FrE> values)
-    {
-        if (values.Count == 0) return Banderwagon.Identity;
-
-        List<Banderwagon> points = new(values.Count);
-        List<FrE> scalars = new(values.Count);
-        foreach (KeyValuePair<int, FrE> keyVal in values)
-        {
-            points.Add(BasisG[keyVal.Key]);
-            scalars.Add(keyVal.Value);
-        }
-
-        Banderwagon commitment =
-            Banderwagon.MultiScalarMul(CollectionsMarshal.AsSpan(points), CollectionsMarshal.AsSpan(scalars));
-        return commitment;
-    }
-
+    // TODO: replace this with rust msm
     public Banderwagon Commit(in Span<FrE> values)
     {
         Span<Banderwagon> elements = BasisG;

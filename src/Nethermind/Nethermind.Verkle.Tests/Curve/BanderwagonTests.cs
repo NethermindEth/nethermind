@@ -51,7 +51,7 @@ public class BanderwagonTests
         Console.WriteLine(res.Count);
         Console.WriteLine(Convert.ToHexString(res.ToArray()));
         var outhash = new byte[32];
-        RustVerkleLib.VerkleMSM(context, res.ToArray(), (UIntPtr)res.Count, outhash);
+        RustVerkleLib.MultiScalarMul(context, res.ToArray(), (UIntPtr)res.Count, outhash);
 
         Console.WriteLine($"{Convert.ToHexString(outhash)}");
 

@@ -12,7 +12,7 @@ public readonly partial struct Banderwagon
     private static void BatchNormalize(in ReadOnlySpan<Banderwagon> points, in Span<AffinePoint> normalizedPoints)
     {
         int numOfPoints = points.Length;
-        FpE[] zs = new FpE[numOfPoints];
+        var zs = new FpE[numOfPoints];
         for (int i = 0; i < numOfPoints; i++) zs[i] = points[i].Z;
 
         FpE[] inverses = FpE.MultiInverse(zs);
@@ -21,7 +21,7 @@ public readonly partial struct Banderwagon
 
     public static Banderwagon MultiScalarMul(in ReadOnlySpan<Banderwagon> points, Span<FrE> scalars, int threadCount = 0)
     {
-        AffinePoint[] normalizedPoint = new AffinePoint[points.Length];
+        var normalizedPoint = new AffinePoint[points.Length];
         BatchNormalize(points, normalizedPoint);
         return MultiScalarMulFast(normalizedPoint, scalars.ToArray(), threadCount);
     }

@@ -315,7 +315,7 @@ public class MultiProofTests
 
         IntPtr ctx = RustVerkleLib.VerkleContextNew();
         byte[] output = new byte[576];
-        RustVerkleLib.VerkleProve(ctx, input.ToArray(), (UIntPtr)input.Count, output);
+        RustVerkleLib.Prove(ctx, input.ToArray(), (UIntPtr)input.Count, output);
 
         VerkleProofStruct proof = prover.MakeMultiProof(proverTranscript, new List<VerkleProverQuery>(proverQueries));
         output.Should().BeEquivalentTo(proof.Encode());
@@ -382,7 +382,7 @@ public class MultiProofTests
 
         IntPtr ctx = RustVerkleLib.VerkleContextNew();
 
-        bool result = RustVerkleLib.VerkleVerify(ctx, input.ToArray(), (UIntPtr)input.Count);
+        bool result = RustVerkleLib.Verify(ctx, input.ToArray(), (UIntPtr)input.Count);
         Assert.That(result, Is.True);
     }
 
@@ -408,7 +408,7 @@ public class MultiProofTests
         IntPtr ctx = RustVerkleLib.VerkleContextNew();
 
         byte[] output = new byte[576];
-        RustVerkleLib.VerkleProve(ctx, input.ToArray(), (UIntPtr)input.Count, output);
+        RustVerkleLib.Prove(ctx, input.ToArray(), (UIntPtr)input.Count, output);
 
         VerkleVerifierQuery[] verifierQueries = proverQueries
             .Select(x => new VerkleVerifierQuery(x.NodeCommitPoint, x.ChildIndex, x.ChildHash)).ToArray();
@@ -422,7 +422,7 @@ public class MultiProofTests
             input.AddRange(query.ChildHash.ToBytes());
         }
 
-        bool result = RustVerkleLib.VerkleVerify(ctx, input.ToArray(), (UIntPtr)input.Count);
+        bool result = RustVerkleLib.Verify(ctx, input.ToArray(), (UIntPtr)input.Count);
         Assert.That(result, Is.True);
     }
 

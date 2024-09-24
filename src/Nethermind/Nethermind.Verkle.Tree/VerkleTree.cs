@@ -180,6 +180,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
         return leafDeltaCommitment;
     }
 
+    // used during syncing, we download the entire tree from scratch - there is not existing value
     private static Banderwagon GetLeafDelta(byte[] newValue, byte index)
     {
         byte[] data = new byte[64];

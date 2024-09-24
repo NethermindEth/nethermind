@@ -8,25 +8,25 @@ public static class VerkleCrypto
     private static readonly IntPtr ContextPtr = RustVerkleLib.VerkleContextNew();
 
     public static void PedersenHash(byte[] address, byte[] treeIndexLe, byte[] outHas) =>
-        RustVerkleLib.VerklePedersenhash(ContextPtr, address, treeIndexLe, outHas);
+        RustVerkleLib.PedersenHash(ContextPtr, address, treeIndexLe, outHas);
 
     public static void PedersenHashFlat(byte[] addAndTreeIndexLe, byte[] outHas) =>
-        RustVerkleLib.VerklePedersenhashFlat(ContextPtr, addAndTreeIndexLe, outHas);
+        RustVerkleLib.PedersenHashFlat(ContextPtr, addAndTreeIndexLe, outHas);
 
-    public static void MSM(byte[] input, UIntPtr length, byte[] outHash) =>
-        RustVerkleLib.VerkleMSM(ContextPtr, input, length, outHash);
+    public static void MultiScalarMul(byte[] input, UIntPtr length, byte[] outHash) =>
+        RustVerkleLib.MultiScalarMul(ContextPtr, input, length, outHash);
 
     public static void Prove(byte[] input, UIntPtr length, byte[] outHash) =>
-        RustVerkleLib.VerkleProve(ContextPtr, input, length, outHash);
+        RustVerkleLib.Prove(ContextPtr, input, length, outHash);
 
 
-    public static void Verify(byte[] input, UIntPtr length) => RustVerkleLib.VerkleVerify(ContextPtr, input, length);
+    public static void Verify(byte[] input, UIntPtr length) => RustVerkleLib.Verify(ContextPtr, input, length);
 
     public static void ProveUncompressed(byte[] input, UIntPtr length, byte[] outHash) =>
-        RustVerkleLib.VerkleProveUncompressed(ContextPtr, input, length, outHash);
+        RustVerkleLib.ProveUncompressed(ContextPtr, input, length, outHash);
 
     public static void VerifyUncompressed(byte[] input, UIntPtr length) =>
-        RustVerkleLib.VerkleVerifyUncompressed(ContextPtr, input, length);
+        RustVerkleLib.VerifyUncompressed(ContextPtr, input, length);
 
     public static void GetLeafDeltaBothValue(byte subIndex, byte[] oldValue, byte[] newValue, byte[] output) =>
         RustVerkleLib.GetLeafDeltaBothValue(ContextPtr, subIndex, oldValue, newValue, output);

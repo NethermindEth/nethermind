@@ -51,7 +51,7 @@ namespace Nethermind.Verkle.Tree.Test
                 var data = UInt256.Zero.ToBigEndian();
                 Random.NextBytes(key);
                 byte[] hash = new byte[32];
-                RustVerkleLib.VerklePedersenhash(xx, key, data, hash);
+                RustVerkleLib.PedersenHash(xx, key, data, hash);
             }
             Console.WriteLine($"Elapsed time: {sw.Elapsed} ms");
         }

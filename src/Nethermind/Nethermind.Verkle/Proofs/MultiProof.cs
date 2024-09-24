@@ -155,7 +155,7 @@ public class MultiProof(CRS cRs, PreComputedWeights preComp)
         IntPtr ctx = RustVerkleLib.VerkleContextNew();
 
         byte[] output = new byte[1120];
-        RustVerkleLib.VerkleProveUncompressed(ctx, input, (UIntPtr)input.Length, output);
+        RustVerkleLib.ProveUncompressed(ctx, input, (UIntPtr)input.Length, output);
 
         byte[] d = output[0..64];
 
@@ -239,6 +239,6 @@ public class MultiProof(CRS cRs, PreComputedWeights preComp)
 
         IntPtr ctx = RustVerkleLib.VerkleContextNew();
 
-        return RustVerkleLib.VerkleVerifyUncompressed(ctx, input, (UIntPtr)input.Length);
+        return RustVerkleLib.VerifyUncompressed(ctx, input, (UIntPtr)input.Length);
     }
 }
