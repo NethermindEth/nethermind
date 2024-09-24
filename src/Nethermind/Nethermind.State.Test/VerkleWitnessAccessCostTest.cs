@@ -113,7 +113,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1;
 
-        bool result = witness.AccessForCodeOpCodes(TestItem.AddressA, ref expectedGas);
+        bool result = witness.AccessAccountData(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -140,7 +140,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead
                            + GasCostOf.WitnessBranchRead;
 
-        bool result = witness.AccessForCodeHash(TestItem.AddressA, ref expectedGas);
+        bool result = witness.AccessAccountData(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -282,7 +282,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead * 2
                            + GasCostOf.WitnessBranchRead;
 
-        bool result = witness.AccessCompleteAccount(TestItem.AddressA, ref expectedGas);
+        bool result = witness.AccessCompleteAccount<VerkleExecWitness.Gas>(TestItem.AddressA, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -299,7 +299,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite
                            + GasCostOf.WitnessChunkFill * 2;
 
-        bool result = witness.AccessCompleteAccount(TestItem.AddressA, ref expectedGas, true);
+        bool result = witness.AccessCompleteAccount<VerkleExecWitness.Gas>(TestItem.AddressA, ref expectedGas, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -318,7 +318,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessChunkWrite * 2
                            + GasCostOf.WitnessBranchWrite;
 
-        bool result = witness.AccessCompleteAccount(TestItem.AddressA, ref expectedGas, true);
+        bool result = witness.AccessCompleteAccount<VerkleExecWitness.Gas>(TestItem.AddressA, ref expectedGas, true);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));

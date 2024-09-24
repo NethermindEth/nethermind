@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 
+[assembly: InternalsVisibleTo("Nethermind.State.Test")]
 namespace Nethermind.Evm.Witness;
 
 public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleWorldState) : IExecutionWitness
@@ -310,7 +312,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="gasAvailable"></param>
     /// <param name="isWrite"></param>
     /// <returns></returns>
-    private bool AccessCompleteAccount<TGasCharge>(Address address, ref long gasAvailable, bool isWrite = false)
+    internal bool AccessCompleteAccount<TGasCharge>(Address address, ref long gasAvailable, bool isWrite = false)
         where TGasCharge : struct, IGasCharge
     {
         return AccessBasicData<TGasCharge>(address, ref gasAvailable, isWrite) &&
@@ -402,17 +404,17 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return (UInt256)chunkId;
     }
 
-    private interface IGasCharge
+    internal interface IGasCharge
     {
         public static abstract bool ChargeGas { get; }
     }
 
-    private readonly struct Gas : IGasCharge
+    internal readonly struct Gas : IGasCharge
     {
         public static bool ChargeGas => true;
     }
 
-    private readonly struct NoGas : IGasCharge
+    internal readonly struct NoGas : IGasCharge
     {
         public static bool ChargeGas => true;
     }
