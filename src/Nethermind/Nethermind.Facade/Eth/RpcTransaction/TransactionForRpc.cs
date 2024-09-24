@@ -74,17 +74,7 @@ public abstract class TransactionForRpc
             RegisterTransactionType<BlobTransactionForRpc>();
         }
 
-        public static void RegisterTransactionType<T>() where T : ITxTyped => RegisterTransactionType(T.TxType, typeof(T));
-
-        public static void RegisterTransactionType(TxType type, Type @class)
-        {
-            if (!@class.IsSubclassOf(typeof(TransactionForRpc)))
-            {
-                throw new ArgumentException($"{@class.FullName} is not a subclass of ${nameof(TransactionForRpc)}");
-            }
-
-            _transactionTypes[(byte)type] = @class;
-        }
+        public static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped => _transactionTypes[(int)T.TxType] = typeof(T);
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -120,13 +110,6 @@ public abstract class TransactionForRpc
         public TransactionConverter RegisterConverter<T>() where T : TransactionForRpc, IFromTransactionSource<T>
         {
             _converters[(byte)T.TxType] = T.Converter;
-            return this;
-        }
-
-
-        public TransactionConverter RegisterConverter(TxType txType, IFromTransaction<TransactionForRpc> converter)
-        {
-            _converters[(byte)txType] = converter;
             return this;
         }
 

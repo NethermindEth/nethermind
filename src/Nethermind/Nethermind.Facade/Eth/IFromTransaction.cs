@@ -8,11 +8,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth;
 
-public interface ITxTyped
-{
-    static abstract TxType TxType { get; }
-}
-
 public interface IFromTransactionSource<out T> : ITxTyped where T : TransactionForRpc
 {
     static abstract IFromTransaction<T> Converter { get; }
