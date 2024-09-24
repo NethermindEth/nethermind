@@ -153,64 +153,43 @@ namespace Nethermind.Synchronization
         private static void RegisterSnapComponent(IServiceCollection serviceCollection)
         {
             serviceCollection
-                .AddSingleton<SnapSyncFeed>()
-                .AddSingleton<ISyncFeed<SnapSyncBatch>>(sp => sp.GetRequiredService<SnapSyncFeed>())
-                .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
-                .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
                 .AddSingleton<ProgressTracker>()
                 .AddSingleton<ISnapProvider, SnapProvider>();
 
-            RegisterDispatcher<SnapSyncBatch>(serviceCollection);
+            RegisterSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
         }
 
         private static void RegisterHeaderSyncComponent(IServiceCollection serviceCollection)
         {
-            serviceCollection
-                .AddSingleton<HeadersSyncFeed>()
-                .AddSingleton<ISyncFeed<HeadersSyncBatch?>>(sp => sp.GetRequiredService<HeadersSyncFeed>())
-                .AddSingleton<ISyncDownloader<HeadersSyncBatch>, HeadersSyncDownloader>()
-                .AddSingleton<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
-
-            RegisterDispatcher<HeadersSyncBatch>(serviceCollection);
+            RegisterSyncFeed<HeadersSyncBatch, HeadersSyncFeed, HeadersSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
         }
 
         private static void RegisterReceiptSyncComponent(IServiceCollection serviceCollection)
         {
-            serviceCollection
-                .AddSingleton<ReceiptsSyncFeed>()
-                .AddSingleton<ISyncFeed<ReceiptsSyncBatch?>>(sp => sp.GetRequiredService<ReceiptsSyncFeed>())
-                .AddSingleton<ISyncDownloader<ReceiptsSyncBatch>, ReceiptsSyncDispatcher>()
-                .AddSingleton<IPeerAllocationStrategyFactory<ReceiptsSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
-
-            RegisterDispatcher<ReceiptsSyncBatch>(serviceCollection);
+            RegisterSyncFeed<ReceiptsSyncBatch, ReceiptsSyncFeed, ReceiptsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
         }
 
         private static void RegisterBodiesSyncComponent(IServiceCollection serviceCollection)
         {
-            serviceCollection
-                .AddSingleton<BodiesSyncFeed>()
-                .AddSingleton<ISyncFeed<BodiesSyncBatch?>>(sp => sp.GetRequiredService<BodiesSyncFeed>())
-                .AddSingleton<ISyncDownloader<BodiesSyncBatch>, BodiesSyncDownloader>()
-                .AddSingleton<IPeerAllocationStrategyFactory<BodiesSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
+            RegisterSyncFeed<BodiesSyncBatch, BodiesSyncFeed, BodiesSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
+        }
 
-            RegisterDispatcher<BodiesSyncBatch>(serviceCollection);
+        private static void RegisterSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(IServiceCollection serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>
+        {
+            serviceCollection
+                .AddSingleton<TFeed>()
+                .AddSingleton<ISyncFeed<TBatch?>>(sp => sp.GetRequiredService<TFeed>())
+                .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()
+                .AddSingleton<IPeerAllocationStrategyFactory<TBatch>, TAllocationStrategy>()
+                .AddSingleton<SyncDispatcher<TBatch>>();
         }
 
         private static void RegisterStateSyncComponent(IServiceCollection serviceCollection)
         {
             serviceCollection
-                .AddSingleton<TreeSync>(sp => new(
-                    SyncMode.StateNodes,
-                    sp.GetService<IDbProvider>().CodeDb,
-                    sp.GetService<INodeStorage>(),
-                    sp.GetService<IBlockTree>(),
-                    sp.GetService<ILogManager>()))
-                .AddSingleton<StateSyncFeed>()
-                .AddSingleton<ISyncFeed<StateSyncBatch>>(sp => sp.GetRequiredService<StateSyncFeed>())
-                .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
-                .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>();
+                .AddSingleton<TreeSync>();
 
-            RegisterDispatcher<StateSyncBatch>(serviceCollection);
+            RegisterSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
         }
 
         public virtual void Start()
