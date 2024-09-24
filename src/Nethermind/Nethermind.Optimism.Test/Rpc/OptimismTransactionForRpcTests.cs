@@ -70,5 +70,6 @@ public class OptimismTransactionForRpcTests
             isSystemTx.GetBoolean();
         }
         json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
+        json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
     }
 }

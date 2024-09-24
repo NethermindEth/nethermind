@@ -11,7 +11,9 @@ using Nethermind.Facade.Eth;
 namespace Nethermind.Optimism.Rpc;
 
 /// <Remarks>
-/// Defined in https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
+/// Defined in:
+/// - https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
+/// - https://specs.optimism.io/protocol/deposits.html#the-deposited-transaction-type
 /// </Remarks>
 public class OptimismTransactionForRpc : TransactionForRpc
 {
@@ -49,10 +51,6 @@ public class OptimismTransactionForRpc : TransactionForRpc
     public OptimismTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
-        // TODO: `Nonce === 0` according to https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L79
-        // This is a leftover from the original Nethermind Optimism implementation
-        Nonce = receipt?.DepositNonce;
-
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
         From = transaction.SenderAddress ?? Address.SystemUser;
         To = transaction.To;
@@ -62,6 +60,7 @@ public class OptimismTransactionForRpc : TransactionForRpc
         Gas = (ulong)transaction.GasLimit;
         IsSystemTx = transaction.IsOPSystemTransaction;
         Input = transaction.Data?.ToArray() ?? [];
+        Nonce = receipt?.DepositNonce ?? 0;
 
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
