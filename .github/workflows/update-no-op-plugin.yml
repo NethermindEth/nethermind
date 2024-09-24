@@ -1,0 +1,38 @@
+name: Remove OP Plugin
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  remove-op-plugin:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create or checkout no-op-plugin branch
+        run: git checkout -b no-op-plugin || git checkout no-op-plugin
+
+      - name: Remove Nethermind.Optimism directory
+        run: rm -rf src/Nethermind/Nethermind.Optimism
+
+      - name: Remove Nethermind.Optimism.Test directory
+        run: rm -rf src/Nethermind/Nethermind.Optimism.Test
+
+      - name: Remove references from Nethermind.sln
+        run: |
+          sed -i '/Nethermind.Optimism/d' src/Nethermind/Nethermind.sln
+          sed -i '/Nethermind.Optimism.Test/d' src/Nethermind/Nethermind.sln
+
+      - name: Commit changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m 'Remove Nethermind.Optimism and Nethermind.Optimism.Test directories and references from solution file' || echo "No changes to commit"
+
+      - name: Push changes
+        run: git push origin no-op-plugin || echo "Nothing to push"
