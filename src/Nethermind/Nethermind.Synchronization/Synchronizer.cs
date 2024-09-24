@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -19,15 +20,13 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
-using Nethermind.Synchronization.FastBlocks
-    ;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie;
 
 namespace Nethermind.Synchronization
 {
@@ -38,18 +37,17 @@ namespace Nethermind.Synchronization
         private static MallocTrimmer? s_trimmer;
         private static SyncDbTuner? s_dbTuner;
 
-        private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockDownloaderFactory _blockDownloaderFactory;
         private readonly INodeStatsManager _nodeStatsManager;
 
         protected readonly ILogger _logger;
-        protected readonly IBlockTree _blockTree;
+        private readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
         protected readonly ISyncPeerPool _syncPeerPool;
         protected readonly ILogManager _logManager;
         protected readonly ISyncReport _syncReport;
-        protected readonly IPivot _pivot;
+        private readonly IPivot _pivot;
 
         protected CancellationTokenSource? _syncCancellation = new();
 
@@ -58,41 +56,16 @@ namespace Nethermind.Synchronization
 
         private readonly IDbProvider _dbProvider;
         private FastSyncFeed? _fastSyncFeed;
-        private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
         private readonly IProcessExitSource _exitSource;
         protected IBetterPeerStrategy _betterPeerStrategy;
         private readonly ChainSpec _chainSpec;
 
-        public ISnapProvider SnapProvider { get; }
-
-        private HeadersSyncFeed? _headersSyncFeed;
-        private HeadersSyncFeed? HeadersSyncFeed => _headersSyncFeed ??= CreateHeadersSyncFeed();
-
-        private ReceiptsSyncFeed? _receiptsSyncFeed;
-        private ReceiptsSyncFeed? ReceiptsSyncFeed => _receiptsSyncFeed ??= CreateReceiptsSyncFeed();
-
-        private BodiesSyncFeed? _bodiesSyncFeed;
-        private BodiesSyncFeed? BodiesSyncFeed => _bodiesSyncFeed ??= CreateBodiesSyncFeed();
-
-        private SnapSyncFeed? _snapSyncFeed;
-        private SnapSyncFeed? SnapSyncFeed => _snapSyncFeed ??= CreateSnapSyncFeed();
-
-        private ISyncProgressResolver? _syncProgressResolver;
-        public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
-            _blockTree,
-            new FullStateFinder(_blockTree, _stateReader),
-            _syncConfig,
-            HeadersSyncFeed,
-            BodiesSyncFeed,
-            ReceiptsSyncFeed,
-            SnapSyncFeed,
-            _logManager);
+        public ISyncProgressResolver SyncProgressResolver => _serviceProvider.GetRequiredService<ISyncProgressResolver>();
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
-        private readonly INodeStorage _nodeStorage;
-        private readonly ProgressTracker _progressTracker;
+        private readonly ServiceProvider _serviceProvider;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
@@ -121,9 +94,7 @@ namespace Nethermind.Synchronization
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -139,12 +110,121 @@ namespace Nethermind.Synchronization
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
-            _progressTracker = new(
-                blockTree,
-                dbProvider.StateDb,
-                logManager,
-                _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(_progressTracker, dbProvider.CodeDb, nodeStorage, logManager);
+            var serviceCollection = new ServiceCollection()
+                .AddSingleton(blockTree)
+                .AddSingleton(dbProvider)
+                .AddSingleton(nodeStorage)
+                .AddSingleton(peerPool)
+                .AddSingleton(logManager)
+                .AddSingleton(specProvider)
+                .AddSingleton(receiptStorage)
+                .AddSingleton(stateReader)
+                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
+                .AddSingleton<IFullStateFinder, FullStateFinder>()
+                .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => _dbProvider.MetadataDb)
+                .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => _dbProvider.CodeDb)
+                .AddKeyedSingleton<IDbMeta>(DbNames.Blocks, (sp, _) => _dbProvider.BlocksDb)
+                .AddSingleton(_syncReport)
+                .AddSingleton(syncConfig);
+
+            if (_syncConfig.FastSync && _syncConfig.SnapSync) RegisterSnapComponent(serviceCollection);
+
+            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync) RegisterHeaderSyncComponent(serviceCollection);
+
+            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync && _syncConfig.DownloadBodiesInFastSync &&
+                _syncConfig.DownloadReceiptsInFastSync)
+                RegisterReceiptSyncComponent(serviceCollection);
+
+            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync && _syncConfig.DownloadBodiesInFastSync)
+                RegisterBodiesSyncComponent(serviceCollection);
+
+            RegisterStateSyncComponent(serviceCollection);
+            _serviceProvider = serviceCollection.BuildServiceProvider();
+        }
+
+        protected static void RegisterDispatcher<T>(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<SyncDispatcher<T>>((sp) => new(
+                    sp.GetRequiredService<ISyncConfig>().MaxProcessingThreads,
+                    sp.GetRequiredService<ISyncFeed<T>>(),
+                    sp.GetRequiredService<ISyncDownloader<T>>(),
+                    sp.GetRequiredService<ISyncPeerPool>(),
+                    sp.GetRequiredService<IPeerAllocationStrategyFactory<T>>(),
+                    sp.GetRequiredService<ILogManager>()));
+        }
+
+        private static void RegisterSnapComponent(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<SnapSyncFeed>()
+                .AddSingleton<ISyncFeed<SnapSyncBatch>>(sp => sp.GetRequiredService<SnapSyncFeed>())
+                .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
+                .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
+                .AddSingleton((sp) => new ProgressTracker(
+                    sp.GetRequiredService<IBlockTree>(),
+                    sp.GetRequiredService<IDbProvider>().StateDb,
+                    sp.GetRequiredService<ILogManager>(),
+                    sp.GetRequiredService<ISyncConfig>().SnapSyncAccountRangePartitionCount
+                ))
+                .AddSingleton<ISnapProvider>((sp) => new SnapProvider(
+                    sp.GetRequiredService<ProgressTracker>(),
+                    sp.GetRequiredService<IDbProvider>().CodeDb,
+                    sp.GetRequiredService<INodeStorage>(),
+                    sp.GetRequiredService<ILogManager>()
+                ));
+
+            RegisterDispatcher<SnapSyncBatch>(serviceCollection);
+        }
+
+        private static void RegisterHeaderSyncComponent(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<HeadersSyncFeed>()
+                .AddSingleton<ISyncFeed<HeadersSyncBatch?>>(sp => sp.GetRequiredService<HeadersSyncFeed>())
+                .AddSingleton<ISyncDownloader<HeadersSyncBatch>, HeadersSyncDownloader>()
+                .AddSingleton<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
+
+            RegisterDispatcher<HeadersSyncBatch>(serviceCollection);
+        }
+
+        private static void RegisterReceiptSyncComponent(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<ReceiptsSyncFeed>()
+                .AddSingleton<ISyncFeed<ReceiptsSyncBatch?>>(sp => sp.GetRequiredService<ReceiptsSyncFeed>())
+                .AddSingleton<ISyncDownloader<ReceiptsSyncBatch>, ReceiptsSyncDispatcher>()
+                .AddSingleton<IPeerAllocationStrategyFactory<ReceiptsSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
+
+            RegisterDispatcher<ReceiptsSyncBatch>(serviceCollection);
+        }
+
+        private static void RegisterBodiesSyncComponent(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<BodiesSyncFeed>()
+                .AddSingleton<ISyncFeed<BodiesSyncBatch?>>(sp => sp.GetRequiredService<BodiesSyncFeed>())
+                .AddSingleton<ISyncDownloader<BodiesSyncBatch>, BodiesSyncDownloader>()
+                .AddSingleton<IPeerAllocationStrategyFactory<BodiesSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
+
+            RegisterDispatcher<BodiesSyncBatch>(serviceCollection);
+        }
+
+        private static void RegisterStateSyncComponent(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<TreeSync>(sp => new(
+                    SyncMode.StateNodes,
+                    sp.GetService<IDbProvider>().CodeDb,
+                    sp.GetService<INodeStorage>(),
+                    sp.GetService<IBlockTree>(),
+                    sp.GetService<ILogManager>()))
+                .AddSingleton<StateSyncFeed>()
+                .AddSingleton<ISyncFeed<StateSyncBatch>>(sp => sp.GetRequiredService<StateSyncFeed>())
+                .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
+                .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>();
+
+            RegisterDispatcher<StateSyncBatch>(serviceCollection);
         }
 
         public virtual void Start()
@@ -186,37 +266,13 @@ namespace Nethermind.Synchronization
             SyncModeSelector.Changed += _syncReport.SyncModeSelectorOnChanged;
         }
 
-        private HeadersSyncFeed? CreateHeadersSyncFeed()
-        {
-            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync) return null;
-            return new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-        }
-
-        private BodiesSyncFeed? CreateBodiesSyncFeed()
-        {
-            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
-            return new BodiesSyncFeed(_specProvider, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _dbProvider.MetadataDb, _logManager);
-        }
-
-        private ReceiptsSyncFeed? CreateReceiptsSyncFeed()
-        {
-            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
-            return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.MetadataDb, _logManager);
-        }
-
-        private SnapSyncFeed? CreateSnapSyncFeed()
-        {
-            if (!_syncConfig.FastSync || !_syncConfig.SnapSync) return null;
-            return new SnapSyncFeed(SnapProvider, _logManager);
-        }
-
         private void SetupDbOptimizer()
         {
             s_dbTuner ??= new SyncDbTuner(
                 _syncConfig,
-                SnapSyncFeed,
-                BodiesSyncFeed,
-                ReceiptsSyncFeed,
+                _serviceProvider.GetService<SnapSyncFeed>(),
+                _serviceProvider.GetService<BodiesSyncFeed>(),
+                _serviceProvider.GetService<ReceiptsSyncFeed>(),
                 _dbProvider.StateDb as ITunableDb,
                 _dbProvider.CodeDb as ITunableDb,
                 _dbProvider.BlocksDb as ITunableDb,
@@ -275,13 +331,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _nodeStorage, _blockTree, _logManager);
-            _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
-            SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
-                _stateSyncFeed,
-                new StateSyncDownloader(_logManager),
-                new StateSyncAllocationStrategyFactory()
-            );
+            SyncDispatcher<StateSyncBatch> stateSyncDispatcher = _serviceProvider.GetRequiredService<SyncDispatcher<StateSyncBatch>>();
 
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -296,13 +346,10 @@ namespace Nethermind.Synchronization
             });
         }
 
+
         private void StartSnapSyncComponents()
         {
-            SyncDispatcher<SnapSyncBatch> dispatcher = CreateDispatcher(
-                SnapSyncFeed,
-                new SnapSyncDownloader(_logManager),
-                new SnapSyncAllocationStrategyFactory()
-            );
+            SyncDispatcher<SnapSyncBatch> dispatcher = _serviceProvider.GetRequiredService<SyncDispatcher<SnapSyncBatch>>();
 
             Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
@@ -319,12 +366,7 @@ namespace Nethermind.Synchronization
 
         private void StartFastBlocksComponents()
         {
-            FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-            SyncDispatcher<HeadersSyncBatch> headersDispatcher = CreateDispatcher(
-                HeadersSyncFeed,
-                new HeadersSyncDownloader(_logManager),
-                fastFactory
-            );
+            SyncDispatcher<HeadersSyncBatch> headersDispatcher = _serviceProvider.GetService<SyncDispatcher<HeadersSyncBatch>>();
 
             Task headersTask = headersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
@@ -342,12 +384,8 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-
-                    SyncDispatcher<BodiesSyncBatch> bodiesDispatcher = CreateDispatcher(
-                        BodiesSyncFeed!,
-                        new BodiesSyncDownloader(_logManager),
-                        fastFactory
-                    );
+                    SyncDispatcher<BodiesSyncBatch> bodiesDispatcher =
+                        _serviceProvider.GetRequiredService<SyncDispatcher<BodiesSyncBatch>>();
 
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
@@ -364,11 +402,8 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    SyncDispatcher<ReceiptsSyncBatch> receiptsDispatcher = CreateDispatcher(
-                        ReceiptsSyncFeed!,
-                        new ReceiptsSyncDispatcher(_logManager),
-                        fastFactory
-                    );
+                    SyncDispatcher<ReceiptsSyncBatch> receiptsDispatcher =
+                        _serviceProvider.GetService<SyncDispatcher<ReceiptsSyncBatch>>();
 
                     Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
@@ -385,7 +420,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        protected SyncDispatcher<T> CreateDispatcher<T>(ISyncFeed<T> feed, ISyncDownloader<T> downloader, IPeerAllocationStrategyFactory<T> peerAllocationStrategyFactory)
+        private SyncDispatcher<T> CreateDispatcher<T>(ISyncFeed<T> feed, ISyncDownloader<T> downloader, IPeerAllocationStrategyFactory<T> peerAllocationStrategyFactory)
         {
             return new(
                 _syncConfig.MaxProcessingThreads,
@@ -422,23 +457,23 @@ namespace Nethermind.Synchronization
                 Task.Delay(FeedsTerminationTimeout),
                 Task.WhenAll(
                     _fastSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    _stateSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    SnapSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    _serviceProvider.GetService<StateSyncFeed>()?.FeedTask ?? Task.CompletedTask,
+                    _serviceProvider.GetService<SnapSyncFeed>()?.FeedTask ?? Task.CompletedTask,
                     _fullSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    HeadersSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    BodiesSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    ReceiptsSyncFeed?.FeedTask ?? Task.CompletedTask));
+                    _serviceProvider.GetService<HeadersSyncFeed>()?.FeedTask ?? Task.CompletedTask,
+                    _serviceProvider.GetService<BodiesSyncFeed>()?.FeedTask ?? Task.CompletedTask,
+                    _serviceProvider.GetService<ReceiptsSyncFeed>()?.FeedTask ?? Task.CompletedTask));
         }
 
         private void WireMultiSyncModeSelector()
         {
             WireFeedWithModeSelector(_fastSyncFeed);
-            WireFeedWithModeSelector(_stateSyncFeed);
-            WireFeedWithModeSelector(SnapSyncFeed);
+            WireFeedWithModeSelector(_serviceProvider.GetService<StateSyncFeed>());
+            WireFeedWithModeSelector(_serviceProvider.GetService<SnapSyncFeed>());
             WireFeedWithModeSelector(_fullSyncFeed);
-            WireFeedWithModeSelector(HeadersSyncFeed);
-            WireFeedWithModeSelector(BodiesSyncFeed);
-            WireFeedWithModeSelector(ReceiptsSyncFeed);
+            WireFeedWithModeSelector(_serviceProvider.GetService<HeadersSyncFeed>());
+            WireFeedWithModeSelector(_serviceProvider.GetService<BodiesSyncFeed>());
+            WireFeedWithModeSelector(_serviceProvider.GetService<ReceiptsSyncFeed>());
         }
 
         protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
@@ -456,15 +491,9 @@ namespace Nethermind.Synchronization
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
             _syncReport.Dispose();
             _fastSyncFeed?.Dispose();
-            _stateSyncFeed?.Dispose();
-            _stateSyncFeed = null;
-            SnapSyncFeed?.Dispose();
-            _snapSyncFeed = null;
             _fullSyncFeed?.Dispose();
-            HeadersSyncFeed?.Dispose();
-            BodiesSyncFeed?.Dispose();
-            ReceiptsSyncFeed?.Dispose();
-            _progressTracker.Dispose();
+
+            _serviceProvider.Dispose();
         }
     }
 }

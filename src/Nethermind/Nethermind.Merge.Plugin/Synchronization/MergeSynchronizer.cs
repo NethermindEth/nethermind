@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -18,18 +19,13 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeSynchronizer : Synchronizer
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IMergeConfig _mergeConfig;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private BeaconHeadersSyncFeed _beaconHeadersFeed = null!;
     private readonly IBeaconSyncStrategy _beaconSync;
+    private readonly ServiceProvider _beaconServiceProvider;
 
     public override ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
         SyncProgressResolver,
@@ -76,10 +72,38 @@ public class MergeSynchronizer : Synchronizer
             stateReader,
             logManager)
     {
-        _invalidChainTracker = invalidChainTracker;
-        _poSSwitcher = poSSwitcher;
-        _mergeConfig = mergeConfig;
         _beaconSync = beaconSync;
+
+        IServiceCollection beaconServiceCollection = new ServiceCollection();
+        beaconServiceCollection
+            .AddSingleton(blockTree)
+            .AddSingleton(invalidChainTracker)
+            .AddSingleton(poSSwitcher)
+            .AddSingleton(mergeConfig)
+            .AddSingleton(dbProvider)
+            .AddSingleton(nodeStorage)
+            .AddSingleton(peerPool)
+            .AddSingleton(logManager)
+            .AddSingleton(specProvider)
+            .AddSingleton(receiptStorage)
+            .AddSingleton(pivot)
+            .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => dbProvider.MetadataDb)
+            .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => dbProvider.CodeDb)
+            .AddSingleton(_syncReport)
+            .AddSingleton(syncConfig);
+
+        RegisterBeaconHeaderSyncComponent(beaconServiceCollection);
+        _beaconServiceProvider = beaconServiceCollection.BuildServiceProvider();
+    }
+
+    private static void RegisterBeaconHeaderSyncComponent(IServiceCollection serviceCollection)
+    {
+        serviceCollection
+            .AddSingleton<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
+            .AddSingleton<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
+
+        RegisterDispatcher<HeadersSyncBatch>(serviceCollection);
     }
 
     public override void Start()
@@ -96,16 +120,8 @@ public class MergeSynchronizer : Synchronizer
 
     private void StartBeaconHeadersComponents()
     {
-        FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-        _beaconHeadersFeed =
-            new(_poSSwitcher, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
-        BeaconHeadersSyncDownloader beaconHeadersDownloader = new(_logManager);
-
-        SyncDispatcher<HeadersSyncBatch> dispatcher = CreateDispatcher(
-            _beaconHeadersFeed!,
-            beaconHeadersDownloader,
-            fastFactory
-        );
+        SyncDispatcher<HeadersSyncBatch> dispatcher =
+            _beaconServiceProvider.GetRequiredService<SyncDispatcher<HeadersSyncBatch>>();
 
         dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
@@ -122,6 +138,6 @@ public class MergeSynchronizer : Synchronizer
 
     private void WireMultiSyncModeSelector()
     {
-        WireFeedWithModeSelector(_beaconHeadersFeed);
+        WireFeedWithModeSelector(_beaconServiceProvider.GetRequiredService<ISyncFeed<HeadersSyncBatch>>());
     }
 }

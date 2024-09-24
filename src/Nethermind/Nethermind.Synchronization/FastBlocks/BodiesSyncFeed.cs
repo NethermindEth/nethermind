@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -50,8 +51,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            IDbMeta blocksDb,
-            IDb metadataDb,
+            [FromKeyedServices(DbNames.Blocks)] IDbMeta blocksDb,
+            [FromKeyedServices(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger())
