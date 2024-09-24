@@ -5,32 +5,32 @@ namespace Nethermind.Verkle;
 
 public static class VerkleCrypto
 {
-    private static readonly IntPtr _rust = RustVerkleLib.VerkleContextNew();
+    private static readonly IntPtr ContextPtr = RustVerkleLib.VerkleContextNew();
 
     public static void PedersenHash(byte[] address, byte[] treeIndexLe, byte[] outHas) =>
-        RustVerkleLib.VerklePedersenhash(_rust, address, treeIndexLe, outHas);
+        RustVerkleLib.VerklePedersenhash(ContextPtr, address, treeIndexLe, outHas);
 
     public static void PedersenHashFlat(byte[] addAndTreeIndexLe, byte[] outHas) =>
-        RustVerkleLib.VerklePedersenhashFlat(_rust, addAndTreeIndexLe, outHas);
+        RustVerkleLib.VerklePedersenhashFlat(ContextPtr, addAndTreeIndexLe, outHas);
 
     public static void MSM(byte[] input, UIntPtr length, byte[] outHash) =>
-        RustVerkleLib.VerkleMSM(_rust, input, length, outHash);
+        RustVerkleLib.VerkleMSM(ContextPtr, input, length, outHash);
 
     public static void Prove(byte[] input, UIntPtr length, byte[] outHash) =>
-        RustVerkleLib.VerkleProve(_rust, input, length, outHash);
+        RustVerkleLib.VerkleProve(ContextPtr, input, length, outHash);
 
 
-    public static void Verify(byte[] input, UIntPtr length) => RustVerkleLib.VerkleVerify(_rust, input, length);
+    public static void Verify(byte[] input, UIntPtr length) => RustVerkleLib.VerkleVerify(ContextPtr, input, length);
 
     public static void ProveUncompressed(byte[] input, UIntPtr length, byte[] outHash) =>
-        RustVerkleLib.VerkleProveUncompressed(_rust, input, length, outHash);
+        RustVerkleLib.VerkleProveUncompressed(ContextPtr, input, length, outHash);
 
     public static void VerifyUncompressed(byte[] input, UIntPtr length) =>
-        RustVerkleLib.VerkleVerifyUncompressed(_rust, input, length);
+        RustVerkleLib.VerkleVerifyUncompressed(ContextPtr, input, length);
 
-    public static void GetLeadDeltaBothValue(byte subIndex, byte[] oldValue, byte[] newValue, byte[] output) =>
-        RustVerkleLib.GetLeadDeltaBothValue(_rust, subIndex, oldValue, newValue, output);
+    public static void GetLeafDeltaBothValue(byte subIndex, byte[] oldValue, byte[] newValue, byte[] output) =>
+        RustVerkleLib.GetLeafDeltaBothValue(ContextPtr, subIndex, oldValue, newValue, output);
 
-    public static void GetLeadDeltaNewValue(byte subIndex, byte[] newValue, byte[] output) =>
-        RustVerkleLib.GetLeadDeltaNewValue(_rust, subIndex, newValue, output);
+    public static void GetLeafDeltaNewValue(byte subIndex, byte[] newValue, byte[] output) =>
+        RustVerkleLib.GetLeafDeltaNewValue(ContextPtr, subIndex, newValue, output);
 }

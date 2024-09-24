@@ -171,9 +171,9 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
         byte[] data = new byte[64];
         if (oldValue is null)
-            VerkleCrypto.GetLeadDeltaNewValue(key.Bytes[31], value, data);
+            VerkleCrypto.GetLeafDeltaNewValue(key.Bytes[31], value, data);
         else
-            VerkleCrypto.GetLeadDeltaBothValue(key.Bytes[31], oldValue, value, data);
+            VerkleCrypto.GetLeafDeltaBothValue(key.Bytes[31], oldValue, value, data);
 
         var leafDeltaCommitment = Banderwagon.FromBytesUncompressedUnchecked(data, false);
         SetLeafCache(key, value);
@@ -183,7 +183,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
     private static Banderwagon GetLeafDelta(byte[] newValue, byte index)
     {
         byte[] data = new byte[64];
-        VerkleCrypto.GetLeadDeltaNewValue(index, newValue, data);
+        VerkleCrypto.GetLeafDeltaNewValue(index, newValue, data);
         return Banderwagon.FromBytesUncompressedUnchecked(data, false);
     }
 
