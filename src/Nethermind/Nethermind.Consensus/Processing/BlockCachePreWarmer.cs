@@ -99,6 +99,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                         i = Interlocked.Increment(ref progress) - 1;
                         scope.WorldState.WarmUp(block.Withdrawals[i].Address);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        // Ignore
+                    }
                     catch (Exception ex)
                     {
                         if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal {i}", ex);
@@ -140,6 +144,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                 if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
             }
+            catch (OperationCanceledException)
+            {
+                // Ignore
+            }
             catch (Exception ex)
             {
                 if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
@@ -172,6 +180,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 env = PreWarmer._envPool.Get();
                 using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
                 WarmupAddresses(parallelOptions, Block, scope);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore
             }
             catch (Exception ex)
             {
@@ -214,6 +226,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     {
                         scope.WorldState.WarmUp(to);
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ignore
                 }
                 catch (Exception ex)
                 {
