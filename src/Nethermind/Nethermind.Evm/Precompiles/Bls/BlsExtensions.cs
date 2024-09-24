@@ -24,114 +24,106 @@ public static class BlsParams
 public static class BlsExtensions
 {
     public class BlsPrecompileException(string message, Exception? innerException = null) : Exception(message, innerException);
-    public static G1 DecodeG1(ReadOnlySpan<byte> untrimmed, out bool isInfinity)
+
+    public static void DecodeRaw(this G1 p, ReadOnlySpan<byte> raw)
     {
-        if (untrimmed.Length != BlsParams.LenG1)
+        if (raw.Length != BlsParams.LenG1)
         {
             throw new BlsPrecompileException("G1 point was wrong size.");
         }
 
-        if (!ValidUntrimmedFp(untrimmed[..BlsParams.LenFp]) || !ValidUntrimmedFp(untrimmed[BlsParams.LenFp..]))
+        if (!ValidRawFp(raw[..BlsParams.LenFp]) || !ValidRawFp(raw[BlsParams.LenFp..]))
         {
             throw new BlsPrecompileException("Field point was invalid.");
         }
 
-        ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFp];
-        ReadOnlySpan<byte> fp1 = untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..];
-        isInfinity = !fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0);
+        p.Point.Clear();
 
-        if (isInfinity)
+        ReadOnlySpan<byte> fp0 = raw[BlsParams.LenFpPad..BlsParams.LenFp];
+        ReadOnlySpan<byte> fp1 = raw[(BlsParams.LenFp + BlsParams.LenFpPad)..];
+
+        if (!fp0.ContainsAnyExcept((byte)0) && !fp1.ContainsAnyExcept((byte)0))
         {
-            return new();
+            return;
         }
 
-        Span<byte> trimmed = stackalloc byte[BlsParams.LenG1Trimmed];
-        fp0.CopyTo(trimmed);
-        fp1.CopyTo(trimmed[BlsParams.LenFpTrimmed..]);
-
-        G1 x = new(trimmed);
-        if (!x.OnCurve())
+        p.Decode(fp0, fp1);
+        if (!p.OnCurve())
         {
             throw new BlsPrecompileException("G1 point not on curve.");
         }
-        return x;
     }
 
-    public static byte[] Encode(this G1 p)
+    public static byte[] EncodeRaw(this G1 p)
     {
         if (p.IsInf())
         {
             return Enumerable.Repeat<byte>(0, 128).ToArray();
         }
 
-        byte[] untrimmed = new byte[BlsParams.LenG1];
-        Span<byte> trimmed = p.Serialize();
-        trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
-        trimmed[BlsParams.LenFpTrimmed..].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
-        return untrimmed;
+        byte[] raw = new byte[BlsParams.LenG1];
+        ReadOnlySpan<byte> trimmed = p.Serialize();
+        trimmed[..BlsParams.LenFpTrimmed].CopyTo(raw.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
+        trimmed[BlsParams.LenFpTrimmed..].CopyTo(raw.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        return raw;
     }
 
-    public static G2 DecodeG2(ReadOnlySpan<byte> untrimmed, out bool isInfinity)
+    public static void DecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
-        if (untrimmed.Length != BlsParams.LenG2)
+        if (raw.Length != BlsParams.LenG2)
         {
             throw new BlsPrecompileException("G2 point was wrong size.");
         }
 
-        if (!ValidUntrimmedFp(untrimmed[..BlsParams.LenFp]) ||
-            !ValidUntrimmedFp(untrimmed[BlsParams.LenFp..(2 * BlsParams.LenFp)]) ||
-            !ValidUntrimmedFp(untrimmed[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)]) ||
-            !ValidUntrimmedFp(untrimmed[(3 * BlsParams.LenFp)..]))
+        if (!ValidRawFp(raw[..BlsParams.LenFp]) ||
+            !ValidRawFp(raw[BlsParams.LenFp..(2 * BlsParams.LenFp)]) ||
+            !ValidRawFp(raw[(2 * BlsParams.LenFp)..(3 * BlsParams.LenFp)]) ||
+            !ValidRawFp(raw[(3 * BlsParams.LenFp)..]))
         {
             throw new BlsPrecompileException("Field point was invalid.");
         }
 
-        ReadOnlySpan<byte> fp0 = untrimmed[BlsParams.LenFpPad..BlsParams.LenFp];
-        ReadOnlySpan<byte> fp1 = untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)];
-        ReadOnlySpan<byte> fp2 = untrimmed[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)];
-        ReadOnlySpan<byte> fp3 = untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..];
+        p.Point.Clear();
 
-        isInfinity = !fp0.ContainsAnyExcept((byte)0)
+        ReadOnlySpan<byte> fp0 = raw[BlsParams.LenFpPad..BlsParams.LenFp];
+        ReadOnlySpan<byte> fp1 = raw[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)];
+        ReadOnlySpan<byte> fp2 = raw[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)];
+        ReadOnlySpan<byte> fp3 = raw[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..];
+
+        bool isInfinity = !fp0.ContainsAnyExcept((byte)0)
             && !fp1.ContainsAnyExcept((byte)0)
             && !fp2.ContainsAnyExcept((byte)0)
             && !fp3.ContainsAnyExcept((byte)0);
 
         if (isInfinity)
         {
-            return new();
+            return;
         }
 
-        Span<byte> trimmed = stackalloc byte[BlsParams.LenG2Trimmed];
-        fp0.CopyTo(trimmed[BlsParams.LenFpTrimmed..]);
-        fp1.CopyTo(trimmed);
-        fp2.CopyTo(trimmed[(BlsParams.LenFpTrimmed * 3)..]);
-        fp3.CopyTo(trimmed[(BlsParams.LenFpTrimmed * 2)..]);
-
-        G2 x = new(trimmed);
-        if (!x.OnCurve())
+        p.Decode(fp0, fp1, fp2, fp3);
+        if (!p.OnCurve())
         {
             throw new BlsPrecompileException("G2 point not on curve.");
         }
-        return x;
     }
 
-    public static byte[] Encode(this G2 p)
+    public static byte[] EncodeRaw(this G2 p)
     {
         if (p.IsInf())
         {
             return Enumerable.Repeat<byte>(0, 256).ToArray();
         }
 
-        byte[] untrimmed = new byte[BlsParams.LenG2];
-        Span<byte> trimmed = p.Serialize();
-        trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
-        trimmed[BlsParams.LenFpTrimmed..(2 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
-        trimmed[(2 * BlsParams.LenFpTrimmed)..(3 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
-        trimmed[(3 * BlsParams.LenFpTrimmed)..].CopyTo(untrimmed.AsSpan()[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
-        return untrimmed;
+        byte[] raw = new byte[BlsParams.LenG2];
+        ReadOnlySpan<byte> trimmed = p.Serialize();
+        trimmed[..BlsParams.LenFpTrimmed].CopyTo(raw.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        trimmed[BlsParams.LenFpTrimmed..(2 * BlsParams.LenFpTrimmed)].CopyTo(raw.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
+        trimmed[(2 * BlsParams.LenFpTrimmed)..(3 * BlsParams.LenFpTrimmed)].CopyTo(raw.AsSpan()[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        trimmed[(3 * BlsParams.LenFpTrimmed)..].CopyTo(raw.AsSpan()[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        return raw;
     }
 
-    public static bool ValidUntrimmedFp(ReadOnlySpan<byte> fp)
+    public static bool ValidRawFp(ReadOnlySpan<byte> fp)
     {
         if (fp.Length != BlsParams.LenFp)
         {

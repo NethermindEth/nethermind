@@ -36,13 +36,13 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
         try
         {
-            G2 res = G2.Generator();
-            if (!BlsExtensions.ValidUntrimmedFp(inputData.Span[..BlsParams.LenFp]) || !BlsExtensions.ValidUntrimmedFp(inputData.Span[BlsParams.LenFp..]))
+            G2 res = new G2(stackalloc long[G2.Sz]);
+            if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsParams.LenFp]) || !BlsExtensions.ValidRawFp(inputData.Span[BlsParams.LenFp..]))
             {
                 return IPrecompile.Failure;
             }
             res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].Span, inputData[(BlsParams.LenFp + BlsParams.LenFpPad)..].Span);
-            return (res.Encode(), true);
+            return (res.EncodeRaw(), true);
         }
         catch (BlsExtensions.BlsPrecompileException)
         {
