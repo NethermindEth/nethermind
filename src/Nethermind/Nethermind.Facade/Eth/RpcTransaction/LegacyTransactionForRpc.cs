@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : TransactionForRpc, IFromTransactionSource<LegacyTransactionForRpc>
+public class LegacyTransactionForRpc : TransactionForRpc, IFromTransaction<LegacyTransactionForRpc>
 {
     public static TxType TxType => TxType.Legacy;
 
@@ -107,11 +107,6 @@ public class LegacyTransactionForRpc : TransactionForRpc, IFromTransactionSource
         From ??= Address.SystemUser;
     }
 
-    public static IFromTransaction<LegacyTransactionForRpc> Converter { get; } = new ConverterImpl();
-
-    private class ConverterImpl : IFromTransaction<LegacyTransactionForRpc>
-    {
-        public LegacyTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
-    }
+    public static LegacyTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData) =>
+        new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
 }

@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransactionSource<AccessListTransactionForRpc>
+public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransaction<AccessListTransactionForRpc>
 {
     // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
@@ -48,11 +48,6 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         return tx;
     }
 
-    public new static IFromTransaction<AccessListTransactionForRpc> Converter { get; } = new ConverterImpl();
-
-    private class ConverterImpl : IFromTransaction<AccessListTransactionForRpc>
-    {
-        public AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
-    }
+    public new static AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
 }

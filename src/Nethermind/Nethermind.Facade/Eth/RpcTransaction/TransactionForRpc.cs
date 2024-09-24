@@ -60,12 +60,12 @@ public abstract class TransactionForRpc
 
     public abstract void EnsureDefaults(long? gasCap);
 
-    public class JsonConverter : JsonConverter<TransactionForRpc>
+    internal class JsonConverter : JsonConverter<TransactionForRpc>
     {
+        // NOTE: Should we default to a specific TxType?
         private const TxType DefaultTxType = TxType.Legacy;
         private static readonly Type[] _transactionTypes = new Type[Transaction.MaxTxType + 1];
 
-        // TODO: Refactoring transition code
         public JsonConverter()
         {
             RegisterTransactionType<LegacyTransactionForRpc>();
@@ -74,7 +74,8 @@ public abstract class TransactionForRpc
             RegisterTransactionType<BlobTransactionForRpc>();
         }
 
-        public static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped => _transactionTypes[(int)T.TxType] = typeof(T);
+        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped
+            => _transactionTypes[(int)T.TxType] = typeof(T);
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -85,7 +86,6 @@ public abstract class TransactionForRpc
                 ? JsonDocument.Parse(document.RootElement.GetString()!)
                 : document;
 
-            // NOTE: Should we default to a specific TxType?
             TxType discriminator = DefaultTxType;
             if (jsonObject.RootElement.TryGetProperty("type", out JsonElement typeProperty))
             {
@@ -103,37 +103,43 @@ public abstract class TransactionForRpc
         }
     }
 
-    public class TransactionConverter : IFromTransaction<TransactionForRpc>
+    internal class TransactionConverter
     {
-        private readonly IFromTransaction<TransactionForRpc>?[] _converters = new IFromTransaction<TransactionForRpc>?[Transaction.MaxTxType + 1];
+        private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
 
-        public TransactionConverter RegisterConverter<T>() where T : TransactionForRpc, IFromTransactionSource<T>
+        private static readonly FromTransactionFunc?[]? _converters = new FromTransactionFunc?[Transaction.MaxTxType + 1];
+
+        static TransactionConverter()
         {
-            _converters[(byte)T.TxType] = T.Converter;
-            return this;
+            RegisterTransactionType<LegacyTransactionForRpc>();
+            RegisterTransactionType<AccessListTransactionForRpc>();
+            RegisterTransactionType<EIP1559TransactionForRpc>();
+            RegisterTransactionType<BlobTransactionForRpc>();
         }
 
-        public TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData) =>
-            _converters.TryGetByTxType(tx.Type, out IFromTransaction<TransactionForRpc> converter)
-                ? converter.FromTransaction(tx, extraData)
+        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
+            => _converters[(byte)T.TxType] = T.FromTransaction;
+
+        internal static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        {
+            return _converters.TryGetByTxType(tx.Type, out var FromTransaction)
+                ? FromTransaction(tx, extraData)
                 : throw new ArgumentException("No converter for transaction type");
+        }
     }
 
-    #region Refactoring transition code
-    public static readonly TransactionConverter GlobalConverter = new TransactionConverter()
-        .RegisterConverter<LegacyTransactionForRpc>()
-        .RegisterConverter<AccessListTransactionForRpc>()
-        .RegisterConverter<EIP1559TransactionForRpc>()
-        .RegisterConverter<BlobTransactionForRpc>();
+    public static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped, IFromTransaction<T>
+    {
+        JsonConverter.RegisterTransactionType<T>();
+        TransactionConverter.RegisterTransactionType<T>();
+    }
 
     public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null) =>
-        GlobalConverter.FromTransaction(transaction, new()
+        TransactionConverter.FromTransaction(transaction, new()
         {
             TxIndex = txIndex,
             BlockHash = blockHash,
             BlockNumber = blockNumber,
             BaseFee = baseFee
         });
-
-    #endregion
 }

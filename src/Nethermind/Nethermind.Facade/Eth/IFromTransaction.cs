@@ -8,14 +8,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth;
 
-public interface IFromTransactionSource<out T> : ITxTyped where T : TransactionForRpc
+public interface IFromTransaction<out T> : ITxTyped where T : TransactionForRpc
 {
-    static abstract IFromTransaction<T> Converter { get; }
-}
-
-public interface IFromTransaction<out T> where T : TransactionForRpc
-{
-    T FromTransaction(Transaction tx, TransactionConverterExtraData extraData);
+    static abstract T FromTransaction(Transaction tx, TransactionConverterExtraData extraData);
 }
 
 public readonly struct TransactionConverterExtraData

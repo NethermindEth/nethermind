@@ -15,7 +15,7 @@ namespace Nethermind.Optimism.Rpc;
 /// - https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
 /// - https://specs.optimism.io/protocol/deposits.html#the-deposited-transaction-type
 /// </Remarks>
-public class OptimismTransactionForRpc : TransactionForRpc, IFromTransactionSource<OptimismTransactionForRpc>
+public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<OptimismTransactionForRpc>
 {
     public static TxType TxType => TxType.DepositTx;
 
@@ -89,11 +89,6 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransactionSour
         // TODO: Are there any defaults to set in Optimism transactions?
     }
 
-    public static IFromTransaction<OptimismTransactionForRpc> Converter { get; } = new ConverterImpl();
-
-    private class ConverterImpl : IFromTransaction<OptimismTransactionForRpc>
-    {
-        public OptimismTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
-    }
+    public static OptimismTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
 }

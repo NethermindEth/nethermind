@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransactionSource<EIP1559TransactionForRpc>
+public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransaction<EIP1559TransactionForRpc>
 {
     public new static TxType TxType => TxType.EIP1559;
 
@@ -43,11 +43,6 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
         return tx;
     }
 
-    public new static IFromTransaction<EIP1559TransactionForRpc> Converter { get; } = new ConverterImpl();
-
-    private class ConverterImpl : IFromTransaction<EIP1559TransactionForRpc>
-    {
-        public EIP1559TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-            => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
-    }
+    public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);
 }
