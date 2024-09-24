@@ -42,16 +42,11 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
                         callTransactionModel = UpdateTxType(callTransactionModel);
-                        bool hadGasLimitInRequest;
-                        bool hadNonceInRequest;
-
-                        {
-                            LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
-                            hadGasLimitInRequest = asLegacy?.Gas is not null;
-                            hadNonceInRequest = asLegacy?.Nonce is not null;
-                            asLegacy!.EnsureDefaults(_gasCapBudget);
-                            _gasCapBudget -= asLegacy.Gas!.Value;
-                        }
+                        LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
+                        bool hadGasLimitInRequest = asLegacy?.Gas is not null;
+                        bool hadNonceInRequest = asLegacy?.Nonce is not null;
+                        asLegacy!.EnsureDefaults(_gasCapBudget);
+                        _gasCapBudget -= asLegacy.Gas!.Value;
 
                         Transaction tx = callTransactionModel.ToTransaction();
                         tx.ChainId = _blockchainBridge.GetChainId();

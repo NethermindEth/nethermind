@@ -13,7 +13,7 @@ using System;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-[JsonConverter(typeof(JsonConverterImpl))]
+[JsonConverter(typeof(JsonConverter))]
 public class AccessListForRpc
 {
     private readonly List<Item> _items;
@@ -63,7 +63,7 @@ public class AccessListForRpc
         return builder.Build();
     }
 
-    public class JsonConverterImpl : JsonConverter<AccessListForRpc>
+    public class JsonConverter : JsonConverter<AccessListForRpc>
     {
         public override AccessListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

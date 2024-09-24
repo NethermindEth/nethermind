@@ -8,8 +8,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class EIP1559TransactionForRpc : AccessListTransactionForRpc
+public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransactionSource<EIP1559TransactionForRpc>
 {
+    public new static TxType TxType => TxType.EIP1559;
+
     public override TxType? Type => TxType.EIP1559;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -41,7 +43,7 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc
         return tx;
     }
 
-    public new static readonly IFromTransaction<EIP1559TransactionForRpc> Converter = new ConverterImpl();
+    public new static IFromTransaction<EIP1559TransactionForRpc> Converter { get; } = new ConverterImpl();
 
     private class ConverterImpl : IFromTransaction<EIP1559TransactionForRpc>
     {

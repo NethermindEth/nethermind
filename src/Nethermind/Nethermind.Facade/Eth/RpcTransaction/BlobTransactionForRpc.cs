@@ -8,9 +8,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class BlobTransactionForRpc : EIP1559TransactionForRpc
+public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransactionSource<BlobTransactionForRpc>
 {
-    public override TxType? Type => TxType.Blob;
+    public new static TxType TxType => TxType.Blob;
+
+    public override TxType? Type => TxType;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerBlobGas { get; set; }
@@ -49,7 +51,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc
         return tx;
     }
 
-    public new static readonly IFromTransaction<BlobTransactionForRpc> Converter = new ConverterImpl();
+    public new static IFromTransaction<BlobTransactionForRpc> Converter { get; } = new ConverterImpl();
 
     private class ConverterImpl : IFromTransaction<BlobTransactionForRpc>
     {

@@ -5,6 +5,8 @@
 using System;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.TxPool;
@@ -23,12 +25,15 @@ namespace Nethermind.Api
 
     public static class NethermindApiExtensions
     {
-        public static void RegisterTxType(this INethermindApi api, TxType type, ITxDecoder decoder, ITxValidator validator)
+        public static void RegisterTxType<T>(this INethermindApi api, ITxDecoder decoder, ITxValidator validator) where T : TransactionForRpc, IFromTransactionSource<T>
         {
             ArgumentNullException.ThrowIfNull(api.TxValidator);
+            if (decoder.Type != T.TxType) throw new ArgumentException($"TxType mismatch decoder: {decoder.Type}, RPC: {T.TxType}");
 
-            api.TxValidator.RegisterValidator(type, validator);
+            api.TxValidator.RegisterValidator(T.TxType, validator);
             TxDecoder.Instance.RegisterDecoder(decoder);
+            TransactionForRpc.GlobalConverter.RegisterConverter<T>();
+            TransactionForRpc.JsonConverter.RegisterTransactionType<T>();
         }
     }
 }

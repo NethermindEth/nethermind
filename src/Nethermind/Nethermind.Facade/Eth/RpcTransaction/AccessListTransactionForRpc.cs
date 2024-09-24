@@ -8,13 +8,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class AccessListTransactionForRpc : LegacyTransactionForRpc
+public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransactionSource<AccessListTransactionForRpc>
 {
     // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
     public static ulong? DefaultChainId { get; set; }
 
-    public override TxType? Type => TxType.AccessList;
+    public new static TxType TxType => TxType.AccessList;
+
+    public override TxType? Type => TxType;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public AccessListForRpc? AccessList { get; set; }
@@ -23,7 +25,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc
     public UInt256? YParity { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public override ulong? ChainId { get; set; }
+    public sealed override ulong? ChainId { get; set; }
 
     [JsonConstructor]
     public AccessListTransactionForRpc() { }
@@ -46,7 +48,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc
         return tx;
     }
 
-    public new static readonly IFromTransaction<AccessListTransactionForRpc> Converter = new ConverterImpl();
+    public new static IFromTransaction<AccessListTransactionForRpc> Converter { get; } = new ConverterImpl();
 
     private class ConverterImpl : IFromTransaction<AccessListTransactionForRpc>
     {
