@@ -21,7 +21,6 @@ public interface IFromTransactionSource<out T> : ITxTyped where T : TransactionF
 public interface IFromTransaction<out T> where T : TransactionForRpc
 {
     T FromTransaction(Transaction tx, TransactionConverterExtraData extraData);
-    T FromTransaction(Transaction tx) => FromTransaction(tx, new TransactionConverterExtraData());
 }
 
 public readonly struct TransactionConverterExtraData
