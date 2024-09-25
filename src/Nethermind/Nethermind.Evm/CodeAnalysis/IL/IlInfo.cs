@@ -74,8 +74,11 @@ internal class IlInfo
         var executionResult = new ILChunkExecutionResult();
         if (Mode.HasFlag(ILMode.SubsegmentsCompiling) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
+            vmState.DataStackHead = stack.Head;
+
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, ctx.Name, vmState.Env);
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
+
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
             ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
@@ -90,14 +93,20 @@ internal class IlInfo
             executionResult.ExceptionType = ilvmState.EvmException;
             executionResult.ReturnData = ilvmState.ReturnBuffer;
 
-            vmState.DataStackHead = ilvmState.StackHead;
             stack.Head = ilvmState.StackHead;
+
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportOperationRemainingGas(gasAvailable);
         }
         else if (Mode.HasFlag(ILMode.PatternMatching) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, chunk.Name, vmState.Env);
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
+
             chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
+
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportOperationRemainingGas(gasAvailable);
         }
         else
         {
@@ -106,5 +115,30 @@ internal class IlInfo
 
         result = executionResult;
         return true;
+    }
+
+    private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
+        where TTracingInstructions : struct, VirtualMachine.IIsTracing
+    {
+        if(chunk is SegmentExecutionCtx segment)
+        {
+            tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, segment.Name, vmState.Env);
+        }
+        else if(chunk is InstructionChunk patternHandler)
+        {
+            tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, patternHandler.Name, vmState.Env);
+        }
+
+        if (tracer.IsTracingMemory)
+        {
+            tracer.SetOperationMemory(vmState.Memory.GetTrace());
+            tracer.SetOperationMemorySize(vmState.Memory.Size);
+        }
+
+        if (tracer.IsTracingStack)
+        {
+            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stack.Head * EvmStack<VirtualMachine.IsTracing>.WordSize);
+            tracer.SetOperationStack(new TraceStack(stackMemory));
+        }
     }
 }

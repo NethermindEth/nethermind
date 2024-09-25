@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.IL;
 using Nethermind.Evm.Tracing;
@@ -135,8 +136,8 @@ internal class ILCompiler
                 method.MarkLabel(jumpDestinations[op.ProgramCounter]);
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
-                continue;
             }
+
 
             // check if opcode is activated in current spec
             method.LoadArgument(4);
@@ -148,25 +149,31 @@ internal class ILCompiler
             method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
             method.StoreLocal(programCounter);
 
-            // load gasAvailable
-            method.LoadLocal(gasAvailable);
+            if(op.Metadata.GasCost != 0)
+            {
+                // load gasAvailable
+                method.LoadLocal(gasAvailable);
 
-            // get pc gas cost
-            method.LoadConstant(op.Metadata.GasCost);
+                // get pc gas cost
+                method.LoadConstant(op.Metadata.GasCost);
 
-            // subtract the gas cost
-            method.Subtract();
-            // check if gas is available
-            method.Duplicate();
-            method.StoreLocal(gasAvailable);
-            method.LoadConstant((long)0);
+                // subtract the gas cost
+                method.Subtract();
+                // check if gas is available
+                method.Duplicate();
+                method.StoreLocal(gasAvailable);
+                method.LoadConstant((long)0);
 
-            // if gas is not available, branch to out of gas
-            method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+                // if gas is not available, branch to out of gas
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+            }
 
             // else emit
             switch (op.Operation)
             {
+                case Instruction.JUMPDEST:
+                    // we do nothing
+                    break;
                 case Instruction.STOP:
                     method.LoadArgument(0);
                     method.LoadConstant(true);
@@ -420,7 +427,62 @@ internal class ILCompiler
                     EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels, uint256A, uint256B);
                     break;
                 case Instruction.EXP:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    Label powerIsZero = method.DefineLabel();
+                    Label baseIsOneOrZero = method.DefineLabel();
+                    Label endOfExpImpl = method.DefineLabel();
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Duplicate();
+                    method.Call(Word.LeaddingZeroProp);
+                    method.StoreLocal(uint64A);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+
+                    method.LoadLocalAddress(uint256B);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+                    method.BranchIfTrue(powerIsZero);
+
+                    // load spec
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExpByteCost)));
+                    method.LoadConstant((long)32);
+                    method.LoadLocal(uint64A);
+                    method.Subtract();
+                    method.Multiply();
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
+                    method.LoadLocalAddress(uint256A);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZeroOrOne)).GetMethod!);
+                    method.BranchIfTrue(baseIsOneOrZero);
+
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256B);
+                    method.LoadLocalAddress(uint256R);
+                    method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
+                    method.Branch(endOfExpImpl);
+
+                    method.MarkLabel(powerIsZero);
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadConstant(1);
+                    method.StoreField(Word.Byte0Field);
+                    method.Branch(endOfExpImpl);
+
+                    method.MarkLabel(baseIsOneOrZero);
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocal(uint256A);
+                    method.Call(Word.SetUInt256);
+                    method.Branch(endOfExpImpl);
+
+                    method.MarkLabel(endOfExpImpl);
+                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.LT:
                     EmitComparaisonUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, uint256A, uint256B);
@@ -631,8 +693,6 @@ internal class ILCompiler
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling)));
                     method.LoadConstant(GasCostOf.Memory);
                     method.Multiply();
-                    method.LoadConstant(GasCostOf.VeryLow);
-                    method.Add();
                     method.Subtract();
                     method.StoreLocal(gasAvailable);
 
@@ -1252,7 +1312,7 @@ internal class ILCompiler
                     method.LoadConstant(0);
                     method.LoadLocal(uint32A);
                     method.Convert<int>();
-                    method.Call(typeof(MemoryExtensions).GetMethod(nameof(MemoryExtensions.AsSpan), [typeof(byte[]), typeof(int), typeof(int)]));
+                    method.Call(typeof(System.MemoryExtensions).GetMethod(nameof(System.MemoryExtensions.AsSpan), [typeof(byte[]), typeof(int), typeof(int)]));
                     method.LoadLocalAddress(localSpan);
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
@@ -1566,6 +1626,12 @@ internal class ILCompiler
                     method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
                     break;
                 case Instruction.BALANCE:
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetAddress);
                     method.StoreLocal(address);

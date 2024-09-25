@@ -274,6 +274,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.Greater(accumulatedTraces.Count, 0);
         }
 
+        [Test]
+        public void All_Opcodes_Have_Metadata()
+        {
+            Instruction[] instructions = System.Enum.GetValues<Instruction>();
+            foreach (var opcode in instructions)
+            {
+                Assert.That(OpcodeMetadata.Operations.ContainsKey(opcode), Is.True);
+            }
+        }
+
         [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
         public void ILVM_JIT_Execution_Equivalence_Tests((Instruction? opcode, byte[] bytecode) testcase)
         {
@@ -293,24 +303,23 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
-            var bytecode =
-                Prepare.EvmCode
-                    .JUMPDEST()
-                    .Call(address, 10)
-                    .POP()
-                    .GAS()
-                    .PushData(1000)
-                    .LT()
-                    .JUMPI(0)
-                    .STOP()
-                    .Done;
+            var bytecode = Prepare.EvmCode
+                .JUMPDEST()
+                .Call(address, 100)
+                .POP()
+                .PushData(1000)
+                .GAS()
+                .GT()
+                .JUMPI(0)
+                .STOP()
+                .Done;
 
-            for (var i = 0; i <= repeatCount; i++)
+            for (var i = 0; i < repeatCount * 2; i++)
             {
                 standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
             }
 
-            for (var i = 0; i <= repeatCount; i++)
+            for (var i = 0; i < repeatCount * 2; i++)
             {
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
             }
@@ -320,6 +329,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
+
+            var ilvm_callsComp = ilvm_traces.Entries.Where(tr => tr.Opcode == "CALL");
+            var norm_callsComp = normal_traces.Entries.Where(tr => tr.Opcode == "CALL");
+
+            var zipped = ilvm_callsComp.Zip(norm_callsComp, (ilvm, norm) => (ilvm, norm)).ToList();
+
+            var indexOfChange = zipped.FindIndex(pair => pair.ilvm.Gas != pair.norm.Gas);
 
             var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
@@ -362,12 +378,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            for (var i = 0; i <= repeatCount; i++)
+            for (var i = 0; i < repeatCount * 2; i++)
             {
                 standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
             }
 
-            for (var i = 0; i <= repeatCount; i++)
+            for (var i = 0; i < repeatCount * 2; i++)
             {
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
             }
@@ -612,6 +628,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(23)
                     .PushSingle(7)
                     .EXP()
+                    .PushSingle(0)
+                    .PushSingle(7)
+                    .EXP()
+                    .PushSingle(1)
+                    .PushSingle(7)
+                    .EXP()
+                    .PushSingle(1)
+                    .PushSingle(0)
+                    .EXP()
+                    .PushSingle(1)
+                    .PushSingle(1)
+                    .EXP()
                     .Done);
 
             yield return (Instruction.MOD, Prepare.EvmCode
@@ -647,8 +675,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done);
 
             yield return (Instruction.GT, Prepare.EvmCode
-                    .PushSingle(23)
                     .PushSingle(7)
+                    .PushSingle(23)
                     .GT()
                     .Done);
 

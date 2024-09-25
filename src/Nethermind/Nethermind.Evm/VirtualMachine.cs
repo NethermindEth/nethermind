@@ -739,13 +739,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 if (chunkExecutionResult.Value.ShouldReturn)
                 {
-                    returnData = chunkExecutionResult.Value.ReturnData;
+                    returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
                     goto DataReturn;
                 }
                 if (chunkExecutionResult.Value.ShouldRevert)
                 {
                     isRevert = true;
-                    returnData = chunkExecutionResult.Value.ReturnData;
+                    returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
                     goto DataReturn;
                 }
                 if (chunkExecutionResult.Value.ShouldStop)
