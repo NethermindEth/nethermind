@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.Db
 {
@@ -30,5 +31,35 @@ namespace Nethermind.Db
         void RegisterDb<T>(string dbName, T db) where T : class, IDb;
         void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
         IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
+
+        void ConfigureServiceCollection(IServiceCollection sc)
+        {
+            sc.AddSingleton(this);
+
+            string[] dbNames = [
+                DbNames.State,
+                DbNames.Code,
+                DbNames.Metadata,
+                DbNames.Blocks,
+                DbNames.Headers,
+                DbNames.BlockInfos,
+                DbNames.BadBlocks,
+                DbNames.Bloom,
+                DbNames.Metadata,
+            ];
+            foreach (string dbName in dbNames)
+            {
+                sc.AddKeyedSingleton<IDb>(dbName, GetDb<IDb>(dbName));
+                sc.AddKeyedSingleton<IDbMeta>(dbName, GetDb<IDb>(dbName));
+            }
+
+            sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(GetColumnDb<ReceiptsColumns>(DbNames.Receipts));
+
+            foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
+            {
+                // The key here is large case for some reason...
+                sc.AddKeyedSingleton<IDbMeta>(kv.Key, kv.Value);
+            }
+        }
     }
 }

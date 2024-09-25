@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -70,22 +71,30 @@ namespace Nethermind.Synchronization.Test
 
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
+            IServiceCollection serviceCollection = new ServiceCollection()
+                .AddSingleton(dbProvider)
+                .AddSingleton(nodeStorage)
+                .AddSingleton(MainnetSpecProvider.Instance)
+                .AddSingleton(_blockTree)
+                .AddSingleton(_receiptStorage)
+                .AddSingleton(_pool)
+                .AddSingleton<INodeStatsManager>(stats)
+                .AddSingleton<ISyncConfig>(syncConfig)
+                .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory)
+                .AddSingleton<IPivot>(pivot)
+                .AddSingleton(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddSingleton(new ChainSpec())
+                .AddSingleton(stateReader)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<ILogManager>(LimboLogs.Instance);
+
             _synchronizer = new Synchronizer(
+                serviceCollection,
                 dbProvider,
-                nodeStorage,
-                MainnetSpecProvider.Instance,
-                _blockTree,
-                _receiptStorage,
-                _pool,
                 stats,
                 syncConfig,
-                blockDownloaderFactory,
-                pivot,
                 Substitute.For<IProcessExitSource>(),
-                bestPeerStrategy,
-                new ChainSpec(),
-                stateReader,
-                No.BeaconSync,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.TrieNodeRlpStore,

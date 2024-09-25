@@ -68,20 +68,7 @@ namespace Nethermind.Api
                 .AddPropertiesFrom<IBasicApi>(this)
                 .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
 
-            string[] dbNames = [DbNames.State, DbNames.Code, DbNames.Metadata, DbNames.Blocks];
-            foreach (string dbName in dbNames)
-            {
-                sc.AddKeyedSingleton<IDb>(dbName, DbProvider!.GetDb<IDb>(dbName));
-                sc.AddKeyedSingleton<IDbMeta>(dbName, DbProvider!.GetDb<IDb>(dbName));
-            }
-
-            sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(DbProvider!.GetColumnDb<ReceiptsColumns>(DbNames.Receipts));
-
-            foreach (KeyValuePair<string, IDbMeta> kv in DbProvider.GetAllDbMeta())
-            {
-                // The key here is large case for some reason...
-                sc.AddKeyedSingleton<IDbMeta>(kv.Key, kv.Value);
-            }
+            DbProvider!.ConfigureServiceCollection(sc);
 
             return sc;
         }

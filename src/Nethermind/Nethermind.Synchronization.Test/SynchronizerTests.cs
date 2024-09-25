@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -17,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -308,7 +310,7 @@ namespace Nethermind.Synchronization.Test
                 syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
 
                 IDbProvider dbProvider = TestMemDbProvider.Init();
-                IDb stateDb = new MemDb();
+                IDb stateDb = dbProvider.StateDb;
                 IDb codeDb = dbProvider.CodeDb;
                 BlockTree = Build.A.BlockTree()
                     .WithSpecProvider(new TestSingleReleaseSpecProvider(Constantinople.Instance))
@@ -340,6 +342,30 @@ namespace Nethermind.Synchronization.Test
                 Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
+
+                IServiceCollection serviceCollection = new ServiceCollection();
+                dbProvider.ConfigureServiceCollection(serviceCollection);
+
+                serviceCollection
+                    .AddSingleton(dbProvider)
+                    .AddSingleton(nodeStorage)
+                    .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                    .AddSingleton<IBlockTree>(BlockTree)
+                    .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+                    .AddSingleton(SyncPeerPool)
+                    .AddSingleton<INodeStatsManager>(stats)
+                    .AddSingleton(syncConfig)
+                    .AddSingleton<IPivot>(pivot)
+                    .AddSingleton<IPoSSwitcher>(poSSwitcher)
+                    .AddSingleton<IMergeConfig>(mergeConfig)
+                    .AddSingleton(invalidChainTracker)
+                    .AddSingleton(Substitute.For<IProcessExitSource>())
+                    .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
+                    .AddSingleton(new ChainSpec())
+                    .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                    .AddSingleton<IStateReader>(reader)
+                    .AddSingleton(_logManager);
+
                 if (IsMerge(synchronizerType))
                 {
                     IBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
@@ -353,25 +379,14 @@ namespace Nethermind.Synchronization.Test
                         fullStateFinder,
                         _logManager
                     );
+                    serviceCollection.AddSingleton(blockDownloaderFactory);
+
                     Synchronizer = new MergeSynchronizer(
+                        serviceCollection,
                         dbProvider,
-                        nodeStorage,
-                        MainnetSpecProvider.Instance,
-                        BlockTree,
-                        NullReceiptStorage.Instance,
-                        SyncPeerPool,
                         stats,
                         syncConfig,
-                        blockDownloaderFactory,
-                        pivot,
-                        poSSwitcher,
-                        mergeConfig,
-                        invalidChainTracker,
                         Substitute.For<IProcessExitSource>(),
-                        bestPeerStrategy,
-                        new ChainSpec(),
-                        No.BeaconSync,
-                        reader,
                         _logManager);
                 }
                 else
@@ -382,23 +397,14 @@ namespace Nethermind.Synchronization.Test
                         Always.Valid,
                         new TotalDifficultyBetterPeerStrategy(_logManager),
                         _logManager);
+                    serviceCollection.AddSingleton(blockDownloaderFactory);
 
                     Synchronizer = new Synchronizer(
+                        serviceCollection,
                         dbProvider,
-                        nodeStorage,
-                        MainnetSpecProvider.Instance,
-                        BlockTree,
-                        NullReceiptStorage.Instance,
-                        SyncPeerPool,
                         stats,
                         syncConfig,
-                        blockDownloaderFactory,
-                        pivot,
                         Substitute.For<IProcessExitSource>(),
-                        bestPeerStrategy,
-                        new ChainSpec(),
-                        reader,
-                        No.BeaconSync,
                         _logManager);
                 }
 

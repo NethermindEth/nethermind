@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -42,6 +43,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie;
 
@@ -362,22 +364,33 @@ namespace Nethermind.Synchronization.Test
                 sealValidator,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
                 logManager);
+
+            IServiceCollection serviceCollection = new ServiceCollection()
+                .AddSingleton(dbProvider)
+                .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddSingleton<IBlockTree>(tree)
+                .AddSingleton(NullReceiptStorage.Instance)
+                .AddSingleton<ISyncPeerPool>(syncPeerPool)
+                .AddSingleton<INodeStatsManager>(nodeStatsManager)
+                .AddSingleton(syncConfig)
+                .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory)
+                .AddSingleton<IPivot>(pivot)
+                .AddSingleton(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddSingleton(new ChainSpec())
+                .AddSingleton<IStateReader>(stateReader)
+                .AddSingleton<IReceiptStorage>(receiptStorage)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<ILogManager>(logManager);
+            dbProvider.ConfigureServiceCollection(serviceCollection);
+
             Synchronizer synchronizer = new(
+                serviceCollection,
                 dbProvider,
-                new NodeStorage(dbProvider.StateDb),
-                MainnetSpecProvider.Instance,
-                tree,
-                NullReceiptStorage.Instance,
-                syncPeerPool,
                 nodeStatsManager,
                 syncConfig,
-                blockDownloaderFactory,
-                pivot,
                 Substitute.For<IProcessExitSource>(),
-                bestPeerStrategy,
-                new ChainSpec(),
-                stateReader,
-                No.BeaconSync,
                 logManager);
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;

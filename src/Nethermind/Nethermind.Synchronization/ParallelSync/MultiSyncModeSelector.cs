@@ -46,8 +46,6 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         private const int StickyStateNodesDelta = 32;
 
-        public const string ParameterNeedToWaitForHeader = "needToWaitForHeaders";
-
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
@@ -84,7 +82,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IBeaconSyncStrategy beaconSyncStrategy,
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager,
-            [FromKeyedServices(ParameterNeedToWaitForHeader)] bool needToWaitForHeaders = false)
+            bool needToWaitForHeaders = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));

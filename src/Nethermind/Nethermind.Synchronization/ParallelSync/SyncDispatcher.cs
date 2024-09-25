@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncPeerPool? syncPeerPool,
             IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
             ILogManager? logManager)
-            :this (syncConfig.MaxProcessingThreads, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
+            : this (syncConfig.MaxProcessingThreads, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
         {
 
         }

@@ -131,7 +131,8 @@ namespace Nethermind.Synchronization
             if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync && _syncConfig.DownloadBodiesInFastSync)
                 RegisterBodiesSyncComponent(serviceCollection);
 
-            RegisterStateSyncComponent(serviceCollection);
+            if (_syncConfig.FastSync)
+                RegisterStateSyncComponent(serviceCollection);
 
             _mainScope = serviceCollection.BuildServiceProvider();
 
@@ -170,7 +171,17 @@ namespace Nethermind.Synchronization
         protected virtual void ConfigureServiceCollection(IServiceCollection serviceCollection)
         {
             serviceCollection
-                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
+                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>(sp =>
+                    new SyncProgressResolver(
+                        sp.GetRequiredService<IBlockTree>(),
+                        sp.GetRequiredService<IFullStateFinder>(),
+                        sp.GetRequiredService<ISyncConfig>(),
+                        sp.GetService<ISyncFeed<HeadersSyncBatch?>>(),
+                        sp.GetService<ISyncFeed<BodiesSyncBatch?>>(),
+                        sp.GetService<ISyncFeed<ReceiptsSyncBatch?>>(),
+                        sp.GetService<ISyncFeed<SnapSyncBatch?>>(),
+                        sp.GetRequiredService<ILogManager>()
+                    ))
                 .AddSingleton<ISyncReport, SyncReport>()
                 .AddSingleton<IFullStateFinder, FullStateFinder>()
                 .AddSingleton<ISyncModeSelector>(sp => sp.GetRequiredService<MultiSyncModeSelector>())
@@ -310,7 +321,7 @@ namespace Nethermind.Synchronization
             BlockDownloader fullSyncBlockDownloader = _fullSyncScope.GetRequiredService<BlockDownloader>();
             fullSyncBlockDownloader.SyncEvent += DownloaderOnSyncEvent;
 
-            SyncDispatcher<BlocksRequest> dispatcher = _fastSyncScope.GetRequiredService<SyncDispatcher<BlocksRequest>>();
+            SyncDispatcher<BlocksRequest> dispatcher = _fullSyncScope.GetRequiredService<SyncDispatcher<BlocksRequest>>();
 
             dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
