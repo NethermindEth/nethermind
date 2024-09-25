@@ -57,10 +57,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested) return;
-
         try
         {
+            if (cancellationToken.IsCancellationRequested) return;
+
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
