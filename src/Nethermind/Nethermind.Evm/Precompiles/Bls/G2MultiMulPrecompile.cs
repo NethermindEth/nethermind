@@ -80,10 +80,9 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
                     state.Break();
                 }
 
-                for (int j = 0; j < 32; j++)
-                {
-                    rawScalars[(dest * 32) + j] = rawScalar[31 - j];
-                }
+                int destOffset = dest * 32;
+                rawScalar.CopyTo(rawScalars.AsSpan()[destOffset..]);
+                rawScalars.AsSpan()[destOffset..(destOffset + 32)].Reverse();
             }
         });
 
