@@ -57,10 +57,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested) return;
-
         try
         {
+            if (cancellationToken.IsCancellationRequested) return;
+
             if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
@@ -98,6 +98,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                         // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
                         i = Interlocked.Increment(ref progress) - 1;
                         scope.WorldState.WarmUp(block.Withdrawals[i].Address);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Ignore
                     }
                     catch (Exception ex)
                     {
@@ -140,6 +144,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                 if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
             }
+            catch (OperationCanceledException)
+            {
+                // Ignore
+            }
             catch (Exception ex)
             {
                 if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
@@ -172,6 +180,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 env = PreWarmer._envPool.Get();
                 using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
                 WarmupAddresses(parallelOptions, Block, scope);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore
             }
             catch (Exception ex)
             {
@@ -214,6 +226,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     {
                         scope.WorldState.WarmUp(to);
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ignore
                 }
                 catch (Exception ex)
                 {
