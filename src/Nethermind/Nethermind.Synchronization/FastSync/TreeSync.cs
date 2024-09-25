@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly SyncMode _syncMode;
 
         public TreeSync([FromKeyedServices(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
-            : this (SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
+            : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
         {
 
         }

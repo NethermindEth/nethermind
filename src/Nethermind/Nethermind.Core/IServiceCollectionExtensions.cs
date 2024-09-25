@@ -63,6 +63,6 @@ public static class IServiceCollectionExtensions
 /// <summary>
 /// Mark a property so that it is not picked up by `AddPropertiesFrom`.
 /// </summary>
-public class SkipServiceCollectionAttribute: Attribute
+public class SkipServiceCollectionAttribute : Attribute
 {
 }

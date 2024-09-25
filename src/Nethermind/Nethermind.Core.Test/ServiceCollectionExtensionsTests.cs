@@ -45,7 +45,7 @@ public class ServiceCollectionExtensionsTests
         disposableService.WasDisposed.Should().BeTrue();
     }
 
-    private class InterfaceImplementation: ITestInterface
+    private class InterfaceImplementation : ITestInterface
     {
         public DeclaredService TheService { get; set; } = new DeclaredService();
         public DeclaredButNullService? NullService { get; set; } = null;
@@ -53,7 +53,7 @@ public class ServiceCollectionExtensionsTests
         public DeclaredInBase BaseService { get; set; } = new DeclaredInBase();
     }
 
-    private interface ITestInterface: ITestInterfaceBase
+    private interface ITestInterface : ITestInterfaceBase
     {
         DeclaredService TheService { get; set; }
         DeclaredButNullService? NullService { get; set; }
@@ -67,10 +67,10 @@ public class ServiceCollectionExtensionsTests
         DeclaredInBase BaseService { get; set; }
     }
 
-    private class DeclaredInBase {}
-    private class DeclaredService {}
-    private class DeclaredButNullService {}
-    private class Ignored {}
+    private class DeclaredInBase { }
+    private class DeclaredService { }
+    private class DeclaredButNullService { }
+    private class Ignored { }
 
     private class DisposableService : IDisposable
     {
