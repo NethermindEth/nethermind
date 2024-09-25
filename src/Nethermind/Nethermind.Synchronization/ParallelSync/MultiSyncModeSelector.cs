@@ -7,7 +7,6 @@ using System.Linq;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -102,7 +101,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _ = StartAsync(_cancellation.Token);
         }
-
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {

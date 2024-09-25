@@ -54,12 +54,6 @@ namespace Nethermind.Db
             }
 
             sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(GetColumnDb<ReceiptsColumns>(DbNames.Receipts));
-
-            foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
-            {
-                // The key here is large case for some reason...
-                sc.AddKeyedSingleton<IDbMeta>(kv.Key, kv.Value);
-            }
         }
     }
 }

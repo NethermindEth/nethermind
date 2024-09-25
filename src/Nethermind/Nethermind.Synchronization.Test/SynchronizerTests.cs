@@ -374,9 +374,6 @@ namespace Nethermind.Synchronization.Test
                 }
                 else
                 {
-                    serviceCollection
-                        .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(_logManager));
-
                     Synchronizer = new Synchronizer(serviceCollection, syncConfig);
                 }
 

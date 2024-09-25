@@ -17,9 +17,4 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Microsoft.Extensions.DependencyInjection.Abstractions">
-      <HintPath>..\..\..\..\..\.nuget\packages\microsoft.extensions.dependencyinjection.abstractions\8.0.1\lib\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
-    </Reference>
-  </ItemGroup>
 </Project>
