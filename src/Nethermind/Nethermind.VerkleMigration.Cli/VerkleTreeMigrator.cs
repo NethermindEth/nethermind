@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+
 using Nethermind.Core;
+using System.Diagnostics;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -24,8 +27,108 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private int _leafNodeCounter = 0;
     private DateTime _lastUpdateTime = DateTime.UtcNow;
 
+
+    Dictionary<Address, Account> _accountChange = new();
+    Dictionary<StorageCell, byte[]> toSetStorage = new();
     public event EventHandler<ProgressEventArgs>? _progressChanged;
 
+
+    private ActionBlock<KeyValuePair<Address, Account>>? _setStateAction;
+    private ActionBlock<KeyValuePair<StorageCell,  byte[]>>? _setStorageAction;
+
+    protected void BulkSetStorage(Dictionary<StorageCell, byte[]> storageChange)
+    {
+        void SetStateKV(KeyValuePair<StorageCell, byte[]> keyValuePair)
+        {
+            _verkleStateTree.SetStorage(keyValuePair.Key, keyValuePair.Value);
+        }
+
+        if (storageChange.Count == 1)
+        {
+            foreach (var keyValuePair in storageChange)
+            {
+                SetStateKV(keyValuePair);
+            }
+
+            return;
+        }
+        _setStorageAction =  new ActionBlock<KeyValuePair<StorageCell,  byte[]>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+        foreach (var keyValuePair in storageChange)
+        {
+            _setStorageAction.Post(keyValuePair);
+        }
+
+
+        _setStorageAction.Complete();
+    }
+
+    protected void BulkSet(Dictionary<Address, Account> accountChange)
+    {
+        void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
+        {
+            _verkleStateTree.Set(keyValuePair.Key, keyValuePair.Value);
+        }
+
+        if (accountChange.Count == 1)
+        {
+            foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
+            {
+                SetStateKV(keyValuePair);
+            }
+
+            return;
+        }
+
+        _setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+
+
+        foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
+        {
+            _setStateAction.Post(keyValuePair);
+        }
+
+        _setStateAction.Complete();
+    }
+
+    private void CommitTree()
+    {
+        TimeSpan timeToCompletePrevCommit;
+        TimeSpan timeToBulkSetAccount;
+        TimeSpan timeToBulkSetStorage;
+        TimeSpan timeToCommit;
+        TimeSpan timeToCommitTree;
+        var watch = Stopwatch.StartNew();
+        _setStateAction?.Completion.Wait();
+        _setStorageAction?.Completion.Wait();
+        timeToCompletePrevCommit = watch.Elapsed;
+        watch.Restart();
+        _verkleStateTree.Commit();
+        timeToCommit = watch.Elapsed;
+        watch.Restart();
+        _verkleStateTree.CommitTree(0);
+        timeToCommitTree = watch.Elapsed;
+        watch.Restart();
+        BulkSet(_accountChange);
+        timeToBulkSetAccount = watch.Elapsed;
+        watch.Restart();
+        BulkSetStorage(toSetStorage);
+        timeToBulkSetStorage = watch.Elapsed;
+        Console.WriteLine($"timeToCompletePrevCommit:{timeToCompletePrevCommit} timeToBulkSetAccount:{_accountChange.Count}:{timeToBulkSetAccount} timeToBulkSetStorage:{toSetStorage.Count}:{timeToBulkSetStorage} timeToCommit:{timeToCommit} timeToCommitTree:{timeToCommitTree}");
+        _accountChange.Clear();
+        toSetStorage.Clear();
+    }
 
     public class ProgressEventArgs : EventArgs
     {
@@ -43,8 +146,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         }
     }
 
-
-    private const int StateTreeCommitThreshold = 1000;
+    private const int StateTreeCommitThreshold = 10000;
 
     public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, ILogManager logManager, IDb? preImageDb = null, EventHandler<ProgressEventArgs>? progressChanged = null)
     {
@@ -94,8 +196,6 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         DateTime now = DateTime.UtcNow;
         TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
         _lastUpdateTime = now;
-        OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
-
 
         if (!trieVisitContext.IsStorage)
         {
@@ -147,15 +247,16 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
             MigrateAccountStorage(_lastAddress, storageSlot, storageValue);
         }
 
-        CommitIfThresholdReached();
+        CommitIfThresholdReached(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
     }
 
-    private void CommitIfThresholdReached()
+    private void CommitIfThresholdReached(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
     {
         _leafNodeCounter++;
         if (_leafNodeCounter >= StateTreeCommitThreshold)
         {
-            _verkleStateTree.Commit();
+            OnProgressChanged(progress, timeSinceLastUpdate, currentAddress, isStorage);
+            CommitTree();
             _leafNodeCounter = 0;
         }
     }
@@ -178,25 +279,27 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
 
     private void MigrateAccount(Address address, Account account)
     {
-        _verkleStateTree.Set(address, account);
+        _accountChange[address] = account;
+        // _verkleStateTree.Set(address, account);
     }
 
     private void MigrateContractCode(Address address, byte[] code)
     {
-        _verkleStateTree.SetCode(address, code);
+        // _verkleStateTree.SetCode(address, code);
     }
 
     private void MigrateAccountStorage(Address address, UInt256 index, byte[] value)
     {
         var storageKey = new StorageCell(address, index);
-        _verkleStateTree.SetStorage(storageKey, value);
+        toSetStorage[storageKey] = value;
+        // _verkleStateTree.SetStorage(storageKey, value);
     }
 
     public void FinalizeMigration(long blockNumber)
     {
         // Commit any remaining changes
         if (_leafNodeCounter > 0)
-            _verkleStateTree.Commit();
+            CommitTree();
         _verkleStateTree.CommitTree(blockNumber);
 
         // Ensure we report 100% progress at the end
