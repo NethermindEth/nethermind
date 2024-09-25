@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -57,5 +60,33 @@ namespace Nethermind.Api
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
+
+        public IServiceCollection ConfigureBasicApiServices()
+        {
+            IServiceCollection sc = new ServiceCollection()
+                .AddSingleton(SpecProvider!)
+                .AddSingleton(DbProvider!)
+                .AddSingleton(ChainSpec)
+                .AddSingletonIfNotNull(BetterPeerStrategy)
+                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
+                .AddSingleton(LogManager);
+
+            string[] dbNames = [DbNames.State, DbNames.Code, DbNames.Metadata, DbNames.Blocks];
+            foreach (string dbName in dbNames)
+            {
+                sc.AddKeyedSingleton<IDb>(dbName, DbProvider!.GetDb<IDb>(dbName));
+                sc.AddKeyedSingleton<IDbMeta>(dbName, DbProvider!.GetDb<IDb>(dbName));
+            }
+
+            sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(DbProvider!.GetColumnDb<ReceiptsColumns>(DbNames.Receipts));
+
+            foreach (var kv in DbProvider.GetAllDbMeta())
+            {
+                // The key here is large case for some reason...
+                sc.AddKeyedSingleton<IDbMeta>(kv.Key, kv.Value);
+            }
+
+            return sc;
+        }
     }
 }

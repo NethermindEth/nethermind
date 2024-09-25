@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -30,6 +31,8 @@ using Nethermind.Merge.Plugin.handlers;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
@@ -446,25 +449,18 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new FullStateFinder(_api.BlockTree, _api.StateReader),
                 _api.LogManager);
 
+            IServiceCollection serviceCollection = _api.CreateServiceCollectionForSynchronizer()
+                .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+                .AddSingleton(_mergeConfig)
+                .AddSingleton<IInvalidChainTracker>(_invalidChainTracker)
+                .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory);
+
             MergeSynchronizer synchronizer = new MergeSynchronizer(
+                serviceCollection,
                 _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-                _api.SpecProvider!,
-                _api.BlockTree!,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
+                _api.NodeStatsManager,
                 _syncConfig,
-                blockDownloaderFactory,
-                _beaconPivot,
-                _poSSwitcher,
-                _mergeConfig,
-                _invalidChainTracker,
                 _api.ProcessExit!,
-                _api.BetterPeerStrategy,
-                _api.ChainSpec,
-                _beaconSync,
-                _api.StateReader,
                 _api.LogManager
             );
             _api.Synchronizer = synchronizer;

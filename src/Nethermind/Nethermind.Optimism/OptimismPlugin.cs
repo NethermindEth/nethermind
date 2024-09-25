@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
@@ -30,6 +31,8 @@ using Nethermind.Optimism.Rpc;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Merge.Plugin.handlers;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Optimism;
 
@@ -158,25 +161,20 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new FullStateFinder(_api.BlockTree, _api.StateReader!),
             _api.LogManager);
 
+        IServiceCollection serviceCollection = ((INethermindApi)_api).CreateServiceCollectionForSynchronizer()
+            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+            .AddSingleton(_beaconPivot)
+            .AddSingleton(_api.PoSSwitcher)
+            .AddSingleton(_mergeConfig)
+            .AddSingleton(_invalidChainTracker)
+            .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory);
+
         _api.Synchronizer = new MergeSynchronizer(
+            serviceCollection,
             _api.DbProvider,
-            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-            _api.SpecProvider!,
-            _api.BlockTree!,
-            _api.ReceiptStorage!,
-            _api.SyncPeerPool,
-            _api.NodeStatsManager!,
+            _api.NodeStatsManager,
             _syncConfig,
-            blockDownloaderFactory,
-            _beaconPivot,
-            _api.PoSSwitcher,
-            _mergeConfig,
-            _invalidChainTracker,
             _api.ProcessExit!,
-            _api.BetterPeerStrategy,
-            _api.ChainSpec,
-            _beaconSync,
-            _api.StateReader!,
             _api.LogManager
         );
 

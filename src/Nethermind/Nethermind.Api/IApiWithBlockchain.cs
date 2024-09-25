@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -99,5 +100,14 @@ namespace Nethermind.Api
         INodeStorageFactory NodeStorageFactory { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
+
+        public IServiceCollection ConfigureServiceCollectionWithBlockchain()
+        {
+            return ConfigureApiWithStoreServices()
+                .AddSingletonIfNotNull(BlockTree)
+                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb))
+                .AddSingletonIfNotNull(StateReader);
+
+        }
     }
 }

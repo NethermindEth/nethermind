@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -48,5 +50,14 @@ namespace Nethermind.Api
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
+
+        public IServiceCollection CreateServiceCollectionForSynchronizer()
+        {
+            return ConfigureServiceCollectionWithBlockchain()
+                .AddSingletonIfNotNull(SyncPeerPool)
+                .AddSingletonIfNotNull(Pivot)
+                .AddSingletonIfNotNull(PoSSwitcher)
+                .AddSingletonIfNotNull(NodeStatsManager);
+        }
     }
 }

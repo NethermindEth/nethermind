@@ -63,6 +63,21 @@ namespace Nethermind.Synchronization
         public ISyncModeSelector SyncModeSelector => _mainScope.GetRequiredService<ISyncModeSelector>();
 
         public Synchronizer(
+            IServiceCollection serviceCollection,
+            IDbProvider dbProvider,
+            INodeStatsManager nodeStatsManager,
+            ISyncConfig syncConfig,
+            IProcessExitSource processExitSource,
+            ILogManager logManager)
+        {
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+            _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+
+            /*
             IDbProvider dbProvider,
             INodeStorage nodeStorage,
             ISpecProvider specProvider,
@@ -79,14 +94,6 @@ namespace Nethermind.Synchronization
             IStateReader stateReader,
             IBeaconSyncStrategy beaconSyncStrategy,
             ILogManager logManager)
-        {
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
             var serviceCollection = new ServiceCollection()
                 .AddSingleton(blockTree)
                 .AddSingleton(dbProvider)
@@ -107,6 +114,7 @@ namespace Nethermind.Synchronization
                 .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => _dbProvider.CodeDb)
                 .AddKeyedSingleton<IDb>(DbNames.State, (sp, _) => _dbProvider.StateDb)
                 .AddKeyedSingleton<IDbMeta>(DbNames.Blocks, (sp, _) => _dbProvider.BlocksDb);
+                */
 
             ConfigureServiceCollection(serviceCollection);
 

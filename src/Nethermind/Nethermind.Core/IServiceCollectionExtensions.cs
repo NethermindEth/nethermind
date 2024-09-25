@@ -27,4 +27,19 @@ public static class IServiceCollectionExtensions
 
         return configuration;
     }
+
+    /// <summary>
+    /// Used for initialization. Some property in INethermindApi may be null at the time of configuration,
+    /// so this just make it slightly easier to use IServiceCollection.
+    /// </summary>
+    /// <param name="configuration"></param>
+    /// <param name="service"></param>
+    /// <typeparam name="T"></typeparam>
+    /// <returns></returns>
+    public static IServiceCollection AddSingletonIfNotNull<T>(this IServiceCollection configuration, T? service) where T : class
+    {
+        if (service != null)
+            return configuration.AddSingleton<T>(service);
+        return configuration;
+    }
 }

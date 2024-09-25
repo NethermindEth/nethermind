@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -126,29 +127,23 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
+            IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
                 _api.BetterPeerStrategy!,
                 _api.LogManager);
 
+            IServiceCollection serviceCollection = _api.CreateServiceCollectionForSynchronizer()
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton(blockDownloaderFactory);
+
             _api.Synchronizer ??= new Synchronizer(
+                serviceCollection,
                 _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-                _api.SpecProvider!,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
                 _api.NodeStatsManager!,
                 _syncConfig,
-                blockDownloaderFactory,
-                _api.Pivot,
                 _api.ProcessExit!,
-                _api.BetterPeerStrategy,
-                _api.ChainSpec,
-                _api.StateReader!,
-                No.BeaconSync,
                 _api.LogManager);
         }
 

@@ -2,20 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -27,41 +19,18 @@ public class MergeSynchronizer : Synchronizer
     private readonly ServiceProvider _beaconScope;
 
     public MergeSynchronizer(
+        IServiceCollection serviceCollection,
         IDbProvider dbProvider,
-        INodeStorage nodeStorage,
-        ISpecProvider specProvider,
-        IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
-        ISyncPeerPool peerPool,
         INodeStatsManager nodeStatsManager,
         ISyncConfig syncConfig,
-        IBlockDownloaderFactory blockDownloaderFactory,
-        IPivot pivot,
-        IPoSSwitcher poSSwitcher,
-        IMergeConfig mergeConfig,
-        IInvalidChainTracker invalidChainTracker,
         IProcessExitSource exitSource,
-        IBetterPeerStrategy betterPeerStrategy,
-        ChainSpec chainSpec,
-        IBeaconSyncStrategy beaconSync,
-        IStateReader stateReader,
         ILogManager logManager)
         : base(
+            serviceCollection,
             dbProvider,
-            nodeStorage,
-            specProvider,
-            blockTree,
-            receiptStorage,
-            peerPool,
             nodeStatsManager,
             syncConfig,
-            blockDownloaderFactory,
-            pivot,
             exitSource,
-            betterPeerStrategy,
-            chainSpec,
-            stateReader,
-            beaconSync,
             logManager)
     {
         RegisterBeaconHeaderSyncComponent(_serviceCollection);
