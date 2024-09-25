@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test;
 public class CodeInfoRepositoryTests
 {
     [Test]
-    public void InsertFromAuthorizations_AuthorityTupleIsCorrect_CodeIsInserted()
+    public void InsertFromAuthorizations_AuthorityTupleIsCorrect_AuthorityIsAddedToAccessedAddresses()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         CodeInfoRepository sut = new(1);
@@ -119,8 +119,9 @@ public class CodeInfoRepositoryTests
         Assert.That(stateProvider.GetCode(authority.Address).Slice(3), Is.EqualTo(codeSource.Bytes));
     }
 
-    [Test]
-    public void InsertFromAuthorizations_AuthorityHasZeroNonce_NonceIsIncrementedByOne()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void InsertFromAuthorizations_AuthorityAccountExistsOrNot_NonceIsIncrementedByOne(bool accountExists)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -128,7 +129,8 @@ public class CodeInfoRepositoryTests
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         PrivateKey authority = TestItem.PrivateKeyA;
         Address codeSource = TestItem.AddressB;
-        stateProvider.CreateAccount(authority.Address, 0);
+        if (accountExists)
+            stateProvider.CreateAccount(authority.Address, 0);
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {

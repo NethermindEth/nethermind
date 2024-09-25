@@ -28,8 +28,10 @@ public class CodeInfoRepositoryBenchmark
 
     private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.PragueActivation);
 
+    private AuthorizationTuple[] Tuples1;
+    private AuthorizationTuple[] Tuples5;
+    private AuthorizationTuple[] Tuples10;
     private AuthorizationTuple[] Tuples100;
-    private AuthorizationTuple[] Tuples1k;
 
     private CodeInfoRepository sut;
     private static EthereumEcdsa _ethereumEcdsa;
@@ -62,8 +64,10 @@ public class CodeInfoRepositoryBenchmark
                 new Address(addressBuffer),
                 1));
         }
-        Tuples100 = list.Take(100).ToArray();
-        Tuples1k = list.Take(1_000).ToArray();
+        Tuples1 = list.Take(1).ToArray();
+        Tuples5 = list.Skip(1).Take(5).ToArray();
+        Tuples10 = list.Skip(6).Take(10).ToArray();
+        Tuples100 = list.Skip(16).Take(100).ToArray();
 
         static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
         {
@@ -80,14 +84,26 @@ public class CodeInfoRepositoryBenchmark
     }
 
     [Benchmark]
-    public void Build100Tuples()
+    public void Build1Tuples()
     {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples100, _accessedAddresses, _spec);
+        sut.InsertFromAuthorizations(_stateProvider, Tuples1, _accessedAddresses, _spec);
     }
 
     [Benchmark]
-    public void Build1kTuples()
+    public void Build5Tuples()
     {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples1k, _accessedAddresses, _spec);
+        sut.InsertFromAuthorizations(_stateProvider, Tuples5, _accessedAddresses, _spec);
+    }
+
+    [Benchmark]
+    public void Build10Tuples()
+    {
+        sut.InsertFromAuthorizations(_stateProvider, Tuples10, _accessedAddresses, _spec);
+    }
+
+    [Benchmark]
+    public void Build100Tuples()
+    {
+        sut.InsertFromAuthorizations(_stateProvider, Tuples100, _accessedAddresses, _spec);
     }
 }

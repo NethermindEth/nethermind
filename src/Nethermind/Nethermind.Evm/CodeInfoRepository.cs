@@ -18,6 +18,8 @@ using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
 using Nethermind.Int256;
 using Nethermind.Crypto;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm;
 
@@ -177,12 +179,14 @@ public class CodeInfoRepository : ICodeInfoRepository
                 continue;
 
             if (worldState.AccountExists(authTuple.Authority))
+            {
                 refunds++;
+                worldState.IncrementNonce(authTuple.Authority);
+            }
             else
-                worldState.CreateAccount(authTuple.Authority, 0);
+                worldState.CreateAccount(authTuple.Authority, 0, 1);
 
             InsertDelegationCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
-            worldState.IncrementNonce(authTuple.Authority);
         }
         return refunds;
 
