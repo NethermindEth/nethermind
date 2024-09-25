@@ -69,7 +69,7 @@ namespace Nethermind.Store.Test
             provider.Commit(Homestead.Instance);
 
             var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
-            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec, false);
+            provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
             provider.Commit(releaseSpec);
 
             provider.GetAccount(systemUser).Should().NotBeNull();

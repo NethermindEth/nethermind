@@ -90,11 +90,6 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult NotSupportedTxType = new(15, nameof(NotSupportedTxType));
 
-        /// <summary>
-        /// Ignores transactions if authority in authority_list is unresolvable
-        /// </summary>
-        public static readonly AcceptTxResult FailedToResolveAuthority = new(16, nameof(FailedToResolveAuthority));
-
         private int Id { get; }
         private string Code { get; }
         private string? Message { get; }
