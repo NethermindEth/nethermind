@@ -2,161 +2,47 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using Nethermind.Core;
 using System.Diagnostics;
 using System.Threading.Tasks.Dataflow;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
-using Nethermind.Int256;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.VerkleMigration.Cli;
 
-public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
+public sealed class VerkleTreeMigrator(
+    VerkleStateTree verkleStateTree,
+    IStateReader stateReader,
+    ILogManager logManager,
+    IDb? preImageDb = null,
+    EventHandler<VerkleTreeMigrator.ProgressEventArgs>? progressChanged = null)
+    : ITreeVisitor<TreePathContext>
 {
-    public readonly VerkleStateTree _verkleStateTree;
-    private readonly IStateReader _stateReader;
-    private readonly IDb? _preImageDb;
-    private Address? _lastAddress;
+    private const int StateTreeCommitThreshold = 10000;
+
+
+    private readonly Dictionary<Address, Account> _accountChange = new();
+
+    private readonly AccountDecoder _decoder = new();
+    private readonly ILogger _logger = logManager?.GetClassLogger<VerkleTreeMigrator>()
+                                       ?? throw new ArgumentNullException(nameof(logManager));
+
+    private readonly Dictionary<StorageCell, byte[]> _toSetStorage = new();
+    public readonly VerkleStateTree VerkleStateTree = verkleStateTree;
     private Account? _lastAccount;
-    private readonly ILogger _logger;
-    private int _leafNodeCounter = 0;
+    private Address? _lastAddress;
     private DateTime _lastUpdateTime = DateTime.UtcNow;
-
-
-    Dictionary<Address, Account> _accountChange = new();
-    Dictionary<StorageCell, byte[]> toSetStorage = new();
-    public event EventHandler<ProgressEventArgs>? _progressChanged;
+    private int _leafNodeCounter;
 
 
     private ActionBlock<KeyValuePair<Address, Account>>? _setStateAction;
-    private ActionBlock<KeyValuePair<StorageCell,  byte[]>>? _setStorageAction;
-
-    protected void BulkSetStorage(Dictionary<StorageCell, byte[]> storageChange)
-    {
-        void SetStateKV(KeyValuePair<StorageCell, byte[]> keyValuePair)
-        {
-            _verkleStateTree.SetStorage(keyValuePair.Key, keyValuePair.Value);
-        }
-
-        if (storageChange.Count == 1)
-        {
-            foreach (var keyValuePair in storageChange)
-            {
-                SetStateKV(keyValuePair);
-            }
-
-            return;
-        }
-        _setStorageAction =  new ActionBlock<KeyValuePair<StorageCell,  byte[]>>(
-            SetStateKV,
-            new ExecutionDataflowBlockOptions()
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            });
-
-        foreach (var keyValuePair in storageChange)
-        {
-            _setStorageAction.Post(keyValuePair);
-        }
-
-
-        _setStorageAction.Complete();
-    }
-
-    protected void BulkSet(Dictionary<Address, Account> accountChange)
-    {
-        void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
-        {
-            _verkleStateTree.Set(keyValuePair.Key, keyValuePair.Value);
-        }
-
-        if (accountChange.Count == 1)
-        {
-            foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
-            {
-                SetStateKV(keyValuePair);
-            }
-
-            return;
-        }
-
-        _setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
-            SetStateKV,
-            new ExecutionDataflowBlockOptions()
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount
-            });
-
-
-
-        foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
-        {
-            _setStateAction.Post(keyValuePair);
-        }
-
-        _setStateAction.Complete();
-    }
-
-    private void CommitTree()
-    {
-        TimeSpan timeToCompletePrevCommit;
-        TimeSpan timeToBulkSetAccount;
-        TimeSpan timeToBulkSetStorage;
-        TimeSpan timeToCommit;
-        TimeSpan timeToCommitTree;
-        var watch = Stopwatch.StartNew();
-        _setStateAction?.Completion.Wait();
-        _setStorageAction?.Completion.Wait();
-        timeToCompletePrevCommit = watch.Elapsed;
-        watch.Restart();
-        _verkleStateTree.Commit();
-        timeToCommit = watch.Elapsed;
-        watch.Restart();
-        _verkleStateTree.CommitTree(0);
-        timeToCommitTree = watch.Elapsed;
-        watch.Restart();
-        BulkSet(_accountChange);
-        timeToBulkSetAccount = watch.Elapsed;
-        watch.Restart();
-        BulkSetStorage(toSetStorage);
-        timeToBulkSetStorage = watch.Elapsed;
-        Console.WriteLine($"timeToCompletePrevCommit:{timeToCompletePrevCommit} timeToBulkSetAccount:{_accountChange.Count}:{timeToBulkSetAccount} timeToBulkSetStorage:{toSetStorage.Count}:{timeToBulkSetStorage} timeToCommit:{timeToCommit} timeToCommitTree:{timeToCommitTree}");
-        _accountChange.Clear();
-        toSetStorage.Clear();
-    }
-
-    public class ProgressEventArgs : EventArgs
-    {
-        public decimal Progress { get; }
-        public TimeSpan TimeSinceLastUpdate { get; }
-        public Address? CurrentAddress { get; }
-        public bool IsStorage { get; }
-
-        public ProgressEventArgs(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
-        {
-            Progress = progress;
-            TimeSinceLastUpdate = timeSinceLastUpdate;
-            CurrentAddress = currentAddress;
-            IsStorage = isStorage;
-        }
-    }
-
-    private const int StateTreeCommitThreshold = 10000;
-
-    public VerkleTreeMigrator(VerkleStateTree verkleStateTree, IStateReader stateReader, ILogManager logManager, IDb? preImageDb = null, EventHandler<ProgressEventArgs>? progressChanged = null)
-    {
-        _verkleStateTree = verkleStateTree;
-        _stateReader = stateReader;
-        _preImageDb = preImageDb;
-        _progressChanged = progressChanged;
-        _logger = logManager?.GetClassLogger<VerkleTreeMigrator>()
-            ?? throw new ArgumentNullException(nameof(logManager));
-    }
+    private ActionBlock<KeyValuePair<StorageCell, byte[]>>? _setStorageAction;
 
     public bool IsFullDbScan => true;
 
@@ -185,14 +71,13 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     {
     }
 
-    private readonly AccountDecoder decoder = new();
-
-    public void VisitLeaf(in TreePathContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+    public void VisitLeaf(in TreePathContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext,
+        ReadOnlySpan<byte> value)
     {
         TreePath path = nodeContext.Path.Append(node.Key);
         Span<byte> pathBytes = path.Path.BytesAsSpan;
 
-        var (progress, currentAddress) = CalculateProgress(pathBytes);
+        (var progress, Address? currentAddress) = CalculateProgress(pathBytes);
         DateTime now = DateTime.UtcNow;
         TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
         _lastUpdateTime = now;
@@ -202,7 +87,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
             var nodeValueBytes = node.Value.ToArray();
             if (nodeValueBytes is null)
                 return;
-            Account? account = decoder.Decode(new RlpStream(nodeValueBytes));
+            Account? account = _decoder.Decode(new RlpStream(nodeValueBytes));
             if (account is null)
                 return;
 
@@ -215,13 +100,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
                 // Update code size if account has code
                 if (account.HasCode)
                 {
-                    var code = _stateReader.GetCode(account.CodeHash);
+                    var code = stateReader.GetCode(account.CodeHash);
                     if (code is not null)
                     {
                         account.CodeSize = (UInt256)code.Length;
                         MigrateContractCode(address, code);
                     }
                 }
+
                 MigrateAccount(address, account);
 
                 _lastAddress = address;
@@ -235,6 +121,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
                 _logger.Warn($"No address or account detected for storage node: {node}");
                 return;
             }
+
             // Reconstruct the full keccak hash
             var storageSlotBytes = RetrievePreimage(pathBytes);
             if (storageSlotBytes is null)
@@ -242,6 +129,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
                 _logger.Warn($"Storage slot is null for node: {node} with key: {pathBytes.ToHexString()}");
                 return;
             }
+
             UInt256 storageSlot = new(storageSlotBytes);
             var storageValue = value.ToArray();
             MigrateAccountStorage(_lastAddress, storageSlot, storageValue);
@@ -250,7 +138,93 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         CommitIfThresholdReached(progress, timeSinceLastUpdate, currentAddress, trieVisitContext.IsStorage);
     }
 
-    private void CommitIfThresholdReached(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
+
+    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+    {
+    }
+
+    public event EventHandler<ProgressEventArgs>? ProgressChanged = progressChanged;
+
+    private void BulkSetStorage(Dictionary<StorageCell, byte[]> storageChange)
+    {
+        void SetStateKV(KeyValuePair<StorageCell, byte[]> keyValuePair)
+        {
+            VerkleStateTree.SetStorage(keyValuePair.Key, keyValuePair.Value);
+        }
+
+        if (storageChange.Count == 1)
+        {
+            foreach (KeyValuePair<StorageCell, byte[]> keyValuePair in storageChange) SetStateKV(keyValuePair);
+
+            return;
+        }
+
+        _setStorageAction = new ActionBlock<KeyValuePair<StorageCell, byte[]>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+        foreach (KeyValuePair<StorageCell, byte[]> keyValuePair in storageChange) _setStorageAction.Post(keyValuePair);
+
+
+        _setStorageAction.Complete();
+    }
+
+    private void BulkSet(Dictionary<Address, Account> accountChange)
+    {
+        void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
+        {
+            VerkleStateTree.Set(keyValuePair.Key, keyValuePair.Value);
+        }
+
+        if (accountChange.Count == 1)
+        {
+            foreach (KeyValuePair<Address, Account> keyValuePair in accountChange) SetStateKV(keyValuePair);
+
+            return;
+        }
+
+        _setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+
+        foreach (KeyValuePair<Address, Account> keyValuePair in accountChange) _setStateAction.Post(keyValuePair);
+
+        _setStateAction.Complete();
+    }
+
+    private void CommitTree()
+    {
+        var watch = Stopwatch.StartNew();
+        _setStateAction?.Completion.Wait();
+        _setStorageAction?.Completion.Wait();
+        TimeSpan timeToCompletePrevCommit = watch.Elapsed;
+        watch.Restart();
+        VerkleStateTree.Commit();
+        TimeSpan timeToCommit = watch.Elapsed;
+        watch.Restart();
+        VerkleStateTree.CommitTree(0);
+        TimeSpan timeToCommitTree = watch.Elapsed;
+        watch.Restart();
+        BulkSet(_accountChange);
+        TimeSpan timeToBulkSetAccount = watch.Elapsed;
+        watch.Restart();
+        BulkSetStorage(_toSetStorage);
+        TimeSpan timeToBulkSetStorage = watch.Elapsed;
+        _logger.Info(
+            $"timeToCompletePrevCommit:{timeToCompletePrevCommit} timeToBulkSetAccount:{_accountChange.Count}:{timeToBulkSetAccount} timeToBulkSetStorage:{_toSetStorage.Count}:{timeToBulkSetStorage} timeToCommit:{timeToCommit} timeToCommitTree:{timeToCommitTree}");
+        _accountChange.Clear();
+        _toSetStorage.Clear();
+    }
+
+    private void CommitIfThresholdReached(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress,
+        bool isStorage)
     {
         _leafNodeCounter++;
         if (_leafNodeCounter >= StateTreeCommitThreshold)
@@ -261,19 +235,11 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         }
     }
 
-
-    public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
-
     private byte[]? RetrievePreimage(Span<byte> key)
     {
-        if (_preImageDb is null)
-        {
+        if (preImageDb is null)
             return key[..20].ToArray();
-        }
-        else
-        {
-            return _preImageDb.Get(key);
-        }
+        return preImageDb.Get(key);
     }
 
 
@@ -291,7 +257,7 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
     private void MigrateAccountStorage(Address address, UInt256 index, byte[] value)
     {
         var storageKey = new StorageCell(address, index);
-        toSetStorage[storageKey] = value;
+        _toSetStorage[storageKey] = value;
         // _verkleStateTree.SetStorage(storageKey, value);
     }
 
@@ -300,14 +266,14 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         // Commit any remaining changes
         if (_leafNodeCounter > 0)
             CommitTree();
-        _verkleStateTree.CommitTree(blockNumber);
+        VerkleStateTree.CommitTree(blockNumber);
 
         // Ensure we report 100% progress at the end
         DateTime now = DateTime.UtcNow;
         TimeSpan timeSinceLastUpdate = now - _lastUpdateTime;
         OnProgressChanged(100, timeSinceLastUpdate, null, false);
 
-        _logger.Info($"Migration completed");
+        _logger.Info("Migration completed");
     }
 
     private static (decimal Progress, Address? CurrentAddress) CalculateProgress(Span<byte> prefix)
@@ -316,18 +282,33 @@ public class VerkleTreeMigrator : ITreeVisitor<TreePathContext>
         var currentValue = new UInt256(prefix[..20]);
         currentValue.Multiply(10000, out UInt256 progress);
         progress.Divide(maxValue, out UInt256 progressValue);
-        decimal calculatedProgress = progressValue.ToDecimal(null) / 100;
+        var calculatedProgress = progressValue.ToDecimal(null) / 100;
 
         Address? currentAddress = null;
-        if (prefix.Length >= 20)
-        {
-            currentAddress = new Address(prefix[..20].ToArray());
-        }
+        if (prefix.Length >= 20) currentAddress = new Address(prefix[..20].ToArray());
         return (calculatedProgress, currentAddress);
     }
 
-    protected virtual void OnProgressChanged(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress, bool isStorage)
+    private void OnProgressChanged(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress,
+        bool isStorage)
     {
-        _progressChanged?.Invoke(this, new ProgressEventArgs(progress, timeSinceLastUpdate, currentAddress, isStorage));
+        ProgressChanged?.Invoke(this, new ProgressEventArgs(progress, timeSinceLastUpdate, currentAddress, isStorage));
+    }
+
+    public class ProgressEventArgs : EventArgs
+    {
+        public ProgressEventArgs(decimal progress, TimeSpan timeSinceLastUpdate, Address? currentAddress,
+            bool isStorage)
+        {
+            Progress = progress;
+            TimeSinceLastUpdate = timeSinceLastUpdate;
+            CurrentAddress = currentAddress;
+            IsStorage = isStorage;
+        }
+
+        public decimal Progress { get; }
+        public TimeSpan TimeSinceLastUpdate { get; }
+        public Address? CurrentAddress { get; }
+        public bool IsStorage { get; }
     }
 }
