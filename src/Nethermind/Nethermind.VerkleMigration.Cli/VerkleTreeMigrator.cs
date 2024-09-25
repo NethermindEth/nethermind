@@ -26,7 +26,6 @@ public sealed class VerkleTreeMigrator(
 {
     private const int StateTreeCommitThreshold = 10000;
 
-
     private readonly Dictionary<Address, Account> _accountChange = new();
 
     private readonly AccountDecoder _decoder = new();
@@ -251,6 +250,7 @@ public sealed class VerkleTreeMigrator(
 
     private void MigrateContractCode(Address address, byte[] code)
     {
+        // TODO: need to add code migration as well
         // _verkleStateTree.SetCode(address, code);
     }
 
