@@ -163,7 +163,16 @@ namespace Nethermind.Api
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxHost? RlpxPeer { get; set; }
-        public IRpcModuleProvider? RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
+
+        private IRpcModuleProvider? _rpcModuleProvider = null;
+
+        public IRpcModuleProvider? RpcModuleProvider
+        {
+            get => _rpcModuleProvider ??=
+                new RpcModuleProvider(FileSystem!, ConfigProvider!.GetConfig<IJsonRpcConfig>(), LogManager!);
+            set => _rpcModuleProvider = value;
+        }
+
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
