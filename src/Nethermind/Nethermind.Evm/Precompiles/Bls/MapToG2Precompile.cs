@@ -24,29 +24,22 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 75000;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 2 * BlsParams.LenFp;
+        const int expectedInputLength = 2 * BlsConst.LenFp;
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        try
-        {
-            G2 res = new G2(stackalloc long[G2.Sz]);
-            if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsParams.LenFp]) || !BlsExtensions.ValidRawFp(inputData.Span[BlsParams.LenFp..]))
-            {
-                return IPrecompile.Failure;
-            }
-            res.MapTo(inputData[BlsParams.LenFpPad..BlsParams.LenFp].Span, inputData[(BlsParams.LenFp + BlsParams.LenFpPad)..].Span);
-            return (res.EncodeRaw(), true);
-        }
-        catch (BlsExtensions.BlsPrecompileException)
+        G2 res = new G2(stackalloc long[G2.Sz]);
+        if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]) || !BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]))
         {
             return IPrecompile.Failure;
         }
+        res.MapTo(inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span, inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span);
+        return (res.EncodeRaw(), true);
     }
 }

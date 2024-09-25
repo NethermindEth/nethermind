@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Collections;
+
 using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
@@ -24,7 +25,7 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
         return 12000L * k * Discount.For(k) / 1000;
@@ -32,67 +33,51 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
 
     private const int ItemSize = 160;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
             return IPrecompile.Failure;
         }
 
-        try
+        int nItems = inputData.Length / ItemSize;
+
+        using ArrayPoolList<long> rawPoints = new(nItems * 18, nItems * 18);
+        using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
+        using ArrayPoolList<int> pointDestinations = new(nItems);
+
+        int npoints = 0;
+        for (int i = 0; i < nItems; i++)
         {
-            int nItems = inputData.Length / ItemSize;
+            int offset = i * ItemSize;
+            ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG1)].Span;
+            ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsConst.LenG1)..(offset + ItemSize)].Span;
 
-            bool onStack = nItems <= 7;
-            Span<long> rawPoints = onStack ? stackalloc long[nItems * 18] : new long[nItems * 18];
-            Span<byte> rawScalars = onStack ? stackalloc byte[nItems * 32] : new byte[nItems * 32];
+            G1 p = new(rawPoints.AsSpan()[(npoints * 18)..]);
 
-            if (onStack)
+            if (!p.TryDecodeRaw(rawPoint) || !p.InGroup())
             {
-                rawPoints.Clear();
-                rawScalars.Clear();
+                return IPrecompile.Failure;
             }
 
-            int npoints = 0;
-            for (int i = 0; i < nItems; i++)
+            if (p.IsInf())
             {
-                int offset = i * ItemSize;
-
-                ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG1)].Span;
-                ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG1)..(offset + ItemSize)].Span;
-
-                G1 p = new(rawPoints[(npoints * 18)..]);
-                p.DecodeRaw(rawPoint);
-
-                if (p.IsInf())
-                {
-                    continue;
-                }
-
-                if (!p.InGroup())
-                {
-                    return IPrecompile.Failure;
-                }
-
-                for (int j = 0; j < 32; j++)
-                {
-                    rawScalars[(npoints * 32) + j] = rawScalar[31 - j];
-                }
-
-                npoints++;
+                continue;
             }
 
-            if (npoints == 0)
-            {
-                return (Enumerable.Repeat<byte>(0, 128).ToArray(), true);
-            }
+            int destOffset = npoints * 32;
+            rawScalar.CopyTo(rawScalars.AsSpan()[destOffset..]);
+            rawScalars.AsSpan()[destOffset..(destOffset + 32)].Reverse();
 
-            G1 res = new G1().MultiMult(rawPoints, rawScalars, npoints);
-            return (res.EncodeRaw(), true);
+            npoints++;
         }
-        catch (BlsExtensions.BlsPrecompileException)
+
+        if (npoints == 0)
         {
-            return IPrecompile.Failure;
+            return (BlsConst.G1Inf, true);
         }
+
+        G1 res = new G1().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+        return (res.EncodeRaw(), true);
     }
 }

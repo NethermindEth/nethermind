@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -25,49 +24,34 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 45000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = BlsParams.LenG2 + BlsParams.LenFr;
+        const int expectedInputLength = BlsConst.LenG2 + BlsConst.LenFr;
 
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        try
-        {
-            G2 x = new G2(stackalloc long[G2.Sz]);
-            x.DecodeRaw(inputData[..BlsParams.LenG2].Span);
-
-            if (x.IsInf())
-            {
-                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-            }
-
-            if (!x.InGroup())
-            {
-                return IPrecompile.Failure;
-            }
-
-            if (!inputData[BlsParams.LenG2..].Span.ContainsAnyExcept((byte)0))
-            {
-                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-            }
-
-            Span<byte> scalar = stackalloc byte[32];
-            for (int i = 0; i < 32; i++)
-            {
-                scalar[32 - i - 1] = inputData.Span[BlsParams.LenG2 + i];
-            }
-
-            G2 res = x.Mult(scalar);
-            return (res.EncodeRaw(), true);
-        }
-        catch (BlsExtensions.BlsPrecompileException)
+        G2 x = new(stackalloc long[G2.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !x.InGroup())
         {
             return IPrecompile.Failure;
         }
+
+        bool scalarIsInfinity = !inputData[BlsConst.LenG2..].Span.ContainsAnyExcept((byte)0);
+        if (scalarIsInfinity || x.IsInf())
+        {
+            return (BlsConst.G2Inf, true);
+        }
+
+        Span<byte> scalar = stackalloc byte[32];
+        inputData.Span[BlsConst.LenG2..].CopyTo(scalar);
+        scalar.Reverse();
+
+        G2 res = x.Mult(scalar);
+        return (res.EncodeRaw(), true);
     }
 }

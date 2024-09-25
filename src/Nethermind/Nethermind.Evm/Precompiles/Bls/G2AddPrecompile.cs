@@ -24,42 +24,34 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 800L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 2 * BlsParams.LenG2;
+        const int expectedInputLength = 2 * BlsConst.LenG2;
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        try
-        {
-            G2 x = new G2(stackalloc long[G2.Sz]);
-            x.DecodeRaw(inputData[..BlsParams.LenG2].Span);
-
-            G2 y = new G2(stackalloc long[G2.Sz]);
-            y.DecodeRaw(inputData[BlsParams.LenG2..].Span);
-
-            if (x.IsInf())
-            {
-                // x == inf
-                return (inputData[BlsParams.LenG2..], true);
-            }
-
-            if (y.IsInf())
-            {
-                // y == inf
-                return (inputData[..BlsParams.LenG2], true);
-            }
-
-            G2 res = x.Add(y);
-            return (res.EncodeRaw(), true);
-        }
-        catch (BlsExtensions.BlsPrecompileException)
+        G2 x = new(stackalloc long[G2.Sz]);
+        G2 y = new(stackalloc long[G2.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span))
         {
             return IPrecompile.Failure;
         }
+
+        if (x.IsInf())
+        {
+            return (inputData[BlsConst.LenG2..], true);
+        }
+
+        if (y.IsInf())
+        {
+            return (inputData[..BlsConst.LenG2], true);
+        }
+
+        G2 res = x.Add(y);
+        return (res.EncodeRaw(), true);
     }
 }
