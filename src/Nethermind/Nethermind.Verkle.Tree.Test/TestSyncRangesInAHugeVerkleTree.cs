@@ -555,9 +555,6 @@ public class TestSyncRangesInAHugeVerkleTree
             tree.Commit();
             tree.CommitTree(blockNumber);
             if (blockNumber == 180) requiredStateRoot = tree.StateRoot;
-            {
-
-            }
         }
 
         KeyValuePair<byte[], byte[]>[] rangeEnum =

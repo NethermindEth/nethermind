@@ -133,13 +133,14 @@ public class BlockBranchCache(int cacheSize)
     // Use IEnumerable for better abstraction and compatibility
     public IEnumerable<BlockBranchNode> GetEnumerable(Hash256 stateRoot)
     {
-        if (GetStateRootNode(stateRoot, out var node))
+        if (!GetStateRootNode(stateRoot, out var node)) yield break;
+
+        // the reason we use node.ParentNode != null is that the lastNode we have is just a placeholder
+        // for the state that is already persisted in the database
+        while (node.ParentNode != null)
         {
-            while (node != null)
-            {
-                yield return node;
-                node = node.ParentNode;
-            }
+            yield return node;
+            node = node.ParentNode;
         }
     }
 }
