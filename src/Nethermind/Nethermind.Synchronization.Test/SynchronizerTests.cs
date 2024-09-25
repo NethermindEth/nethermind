@@ -335,7 +335,6 @@ namespace Nethermind.Synchronization.Test
                     : totalDifficultyBetterPeerStrategy;
 
                 StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
-                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
                 INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
@@ -364,23 +363,13 @@ namespace Nethermind.Synchronization.Test
                     .AddSingleton(new ChainSpec())
                     .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                     .AddSingleton<IStateReader>(reader)
+                    .AddSingleton<ISealValidator>(Always.Valid)
+                    .AddSingleton<IBlockValidator>(Always.Valid)
+                    .AddSingleton(beaconPivot)
                     .AddSingleton(_logManager);
 
                 if (IsMerge(synchronizerType))
                 {
-                    IBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-                        poSSwitcher,
-                        beaconPivot,
-                        MainnetSpecProvider.Instance,
-                        Always.Valid,
-                        Always.Valid,
-                        syncConfig,
-                        bestPeerStrategy,
-                        fullStateFinder,
-                        _logManager
-                    );
-                    serviceCollection.AddSingleton(blockDownloaderFactory);
-
                     Synchronizer = new MergeSynchronizer(
                         serviceCollection,
                         dbProvider,
@@ -391,13 +380,8 @@ namespace Nethermind.Synchronization.Test
                 }
                 else
                 {
-                    IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
-                        MainnetSpecProvider.Instance,
-                        Always.Valid,
-                        Always.Valid,
-                        new TotalDifficultyBetterPeerStrategy(_logManager),
-                        _logManager);
-                    serviceCollection.AddSingleton(blockDownloaderFactory);
+                    serviceCollection
+                        .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(_logManager));
 
                     Synchronizer = new Synchronizer(
                         serviceCollection,

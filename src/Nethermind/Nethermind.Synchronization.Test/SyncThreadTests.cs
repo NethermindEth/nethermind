@@ -358,12 +358,6 @@ namespace Nethermind.Synchronization.Test
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            BlockDownloaderFactory blockDownloaderFactory = new(
-                MainnetSpecProvider.Instance,
-                blockValidator,
-                sealValidator,
-                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                logManager);
 
             IServiceCollection serviceCollection = new ServiceCollection()
                 .AddSingleton(dbProvider)
@@ -374,7 +368,8 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<ISyncPeerPool>(syncPeerPool)
                 .AddSingleton<INodeStatsManager>(nodeStatsManager)
                 .AddSingleton(syncConfig)
-                .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory)
+                .AddSingleton<IBlockValidator>(blockValidator)
+                .AddSingleton<ISealValidator>(sealValidator)
                 .AddSingleton<IPivot>(pivot)
                 .AddSingleton(Substitute.For<IProcessExitSource>())
                 .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)

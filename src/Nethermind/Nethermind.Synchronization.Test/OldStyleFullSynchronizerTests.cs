@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -62,25 +63,20 @@ namespace Nethermind.Synchronization.Test
             TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            BlockDownloaderFactory blockDownloaderFactory = new(
-                MainnetSpecProvider.Instance,
-                Always.Valid,
-                Always.Valid,
-                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                LimboLogs.Instance);
 
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             IServiceCollection serviceCollection = new ServiceCollection()
                 .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
-                .AddSingleton(MainnetSpecProvider.Instance)
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton(_blockTree)
                 .AddSingleton(_receiptStorage)
                 .AddSingleton(_pool)
                 .AddSingleton<INodeStatsManager>(stats)
                 .AddSingleton<ISyncConfig>(syncConfig)
-                .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory)
+                .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IPivot>(pivot)
                 .AddSingleton(Substitute.For<IProcessExitSource>())
                 .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)

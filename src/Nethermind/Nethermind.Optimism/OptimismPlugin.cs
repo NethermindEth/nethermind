@@ -150,24 +150,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-            _api.PoSSwitcher,
-            _beaconPivot,
-            _api.SpecProvider,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _syncConfig,
-            _api.BetterPeerStrategy!,
-            new FullStateFinder(_api.BlockTree, _api.StateReader!),
-            _api.LogManager);
-
         IServiceCollection serviceCollection = ((INethermindApi)_api).CreateServiceCollectionFromApiWithNetwork()
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
             .AddSingleton(_beaconPivot)
             .AddSingleton(_api.PoSSwitcher)
             .AddSingleton(_mergeConfig)
-            .AddSingleton(_invalidChainTracker)
-            .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory);
+            .AddSingleton(_invalidChainTracker);
 
         _api.Synchronizer = new MergeSynchronizer(
             serviceCollection,

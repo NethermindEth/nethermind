@@ -127,16 +127,8 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
-
             IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton(blockDownloaderFactory);
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
 
             _api.Synchronizer ??= new Synchronizer(
                 serviceCollection,

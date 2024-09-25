@@ -438,22 +438,11 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.Pivot = _beaconPivot;
 
-            MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-                _poSSwitcher,
-                _beaconPivot,
-                _api.SpecProvider,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _syncConfig,
-                _api.BetterPeerStrategy!,
-                new FullStateFinder(_api.BlockTree, _api.StateReader),
-                _api.LogManager);
-
             IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
                 .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+                .AddSingleton<IBeaconPivot>(_beaconPivot)
                 .AddSingleton(_mergeConfig)
-                .AddSingleton<IInvalidChainTracker>(_invalidChainTracker)
-                .AddSingleton<IBlockDownloaderFactory>(blockDownloaderFactory);
+                .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
                 serviceCollection,

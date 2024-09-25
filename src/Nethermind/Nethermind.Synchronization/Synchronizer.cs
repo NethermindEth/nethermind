@@ -115,18 +115,7 @@ namespace Nethermind.Synchronization
                 // These three line make sure that these components are not duplicated
                 .ForwardServiceAsSingleton<ISyncModeSelector>(_mainScope)
                 .ForwardServiceAsSingleton<ISyncReport>(_mainScope)
-                .ForwardServiceAsSingleton<ISyncProgressResolver>(_mainScope)
-
-                .AddSingleton<BlockDownloader>(sp => sp.GetRequiredService<IBlockDownloaderFactory>()
-                    .Create(sp.GetRequiredService<ISyncFeed<BlocksRequest>>(),
-                        sp.GetRequiredService<IBlockTree>(),
-                        sp.GetRequiredService<IReceiptStorage>(),
-                        sp.GetRequiredService<ISyncPeerPool>(),
-                        sp.GetRequiredService<ISyncReport>())
-                )
-                .AddSingleton<ISyncDownloader<BlocksRequest>>(sp => sp.GetRequiredService<BlockDownloader>())
-                .AddSingleton(sp => sp .GetRequiredService<IBlockDownloaderFactory>()
-                    .CreateAllocationStrategyFactory());
+                .ForwardServiceAsSingleton<ISyncProgressResolver>(_mainScope);
         }
 
         protected virtual void ConfigureServiceCollection(IServiceCollection serviceCollection)
@@ -156,7 +145,12 @@ namespace Nethermind.Synchronization
                     sp.GetRequiredService<ILogManager>(),
                     // Need to set this
                     sp.GetRequiredService<ChainSpec>()?.SealEngineType == SealEngineType.Clique))
-                .AddSingleton<SyncDispatcher<BlocksRequest>>();
+                .AddSingleton<SyncDispatcher<BlocksRequest>>()
+
+                // These are here so that MergeSynchronizer can replace them
+                .AddSingleton<BlockDownloader>()
+                .AddSingleton<ISyncDownloader<BlocksRequest>>(sp => sp.GetRequiredService<BlockDownloader>())
+                .AddSingleton<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>();
         }
 
         private static void ConfigureFullSync(IServiceCollection serviceCollection)

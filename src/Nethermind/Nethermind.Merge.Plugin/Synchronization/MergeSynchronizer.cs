@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -41,14 +42,20 @@ public class MergeSynchronizer : Synchronizer
     {
         base.ConfigureServiceCollection(serviceCollection);
 
-        // It does not set the last parameter
-        serviceCollection.AddSingleton<MultiSyncModeSelector>(sp => new MultiSyncModeSelector(
-            sp.GetRequiredService<ISyncProgressResolver>(),
-            sp.GetRequiredService<ISyncPeerPool>(),
-            sp.GetRequiredService<ISyncConfig>(),
-            sp.GetRequiredService<IBeaconSyncStrategy>(),
-            sp.GetRequiredService<IBetterPeerStrategy>(),
-            sp.GetRequiredService<ILogManager>()));
+        serviceCollection
+            // It does not set the last parameter
+            .AddSingleton<MultiSyncModeSelector>(sp => new MultiSyncModeSelector(
+                sp.GetRequiredService<ISyncProgressResolver>(),
+                sp.GetRequiredService<ISyncPeerPool>(),
+                sp.GetRequiredService<ISyncConfig>(),
+                sp.GetRequiredService<IBeaconSyncStrategy>(),
+                sp.GetRequiredService<IBetterPeerStrategy>(),
+                sp.GetRequiredService<ILogManager>()))
+
+            // Replace block downloader
+            .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
+            .AddSingleton<BlockDownloader, MergeBlockDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<Nethermind.Synchronization.Blocks.BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>();
     }
 
     private static void RegisterBeaconHeaderSyncComponent(IServiceCollection serviceCollection)
