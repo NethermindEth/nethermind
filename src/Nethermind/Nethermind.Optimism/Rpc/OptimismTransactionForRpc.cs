@@ -10,11 +10,11 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.Optimism.Rpc;
 
-/// <Remarks>
+/// <remarks>
 /// Defined in:
 /// - https://github.com/ethereum-optimism/op-geth/blob/8af19cf20261c0b62f98cc27da3a268f542822ee/core/types/deposit_tx.go#L29-L46
 /// - https://specs.optimism.io/protocol/deposits.html#the-deposited-transaction-type
-/// </Remarks>
+/// </remarks>
 public class OptimismTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransaction<OptimismTransactionForRpc>
 {
     public static TxType TxType => TxType.DepositTx;
