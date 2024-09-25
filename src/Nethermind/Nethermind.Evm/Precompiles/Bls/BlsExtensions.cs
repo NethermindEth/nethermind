@@ -126,18 +126,6 @@ public static class BlsExtensions
         }
 
         // check that fp < base field order
-        for (int i = 0; i < BlsConst.LenFpTrimmed; i++)
-        {
-            if (fp[BlsConst.LenFpPad + i] > BlsConst.BaseFieldOrder[i])
-            {
-                return false;
-            }
-            else if (fp[BlsConst.LenFpPad + i] < BlsConst.BaseFieldOrder[i])
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return fp[BlsConst.LenFpPad..].SequenceCompareTo(BlsConst.BaseFieldOrder.AsSpan()) < 0;
     }
 }
