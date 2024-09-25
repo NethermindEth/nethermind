@@ -77,45 +77,6 @@ namespace Nethermind.Synchronization
             _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
-            /*
-            IDbProvider dbProvider,
-            INodeStorage nodeStorage,
-            ISpecProvider specProvider,
-            IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
-            ISyncPeerPool peerPool,
-            INodeStatsManager nodeStatsManager,
-            ISyncConfig syncConfig,
-            IBlockDownloaderFactory blockDownloaderFactory,
-            IPivot pivot,
-            IProcessExitSource processExitSource,
-            IBetterPeerStrategy betterPeerStrategy,
-            ChainSpec chainSpec,
-            IStateReader stateReader,
-            IBeaconSyncStrategy beaconSyncStrategy,
-            ILogManager logManager)
-            var serviceCollection = new ServiceCollection()
-                .AddSingleton(blockTree)
-                .AddSingleton(dbProvider)
-                .AddSingleton(nodeStorage)
-                .AddSingleton(peerPool)
-                .AddSingleton(logManager)
-                .AddSingleton(specProvider)
-                .AddSingleton(receiptStorage)
-                .AddSingleton(stateReader)
-                .AddSingleton(chainSpec)
-                .AddSingleton(betterPeerStrategy)
-                .AddSingleton(beaconSyncStrategy)
-                .AddSingleton(blockDownloaderFactory)
-                .AddSingleton(syncConfig)
-                .AddSingleton(pivot)
-                .AddSingleton(nodeStatsManager)
-                .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => _dbProvider.MetadataDb)
-                .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => _dbProvider.CodeDb)
-                .AddKeyedSingleton<IDb>(DbNames.State, (sp, _) => _dbProvider.StateDb)
-                .AddKeyedSingleton<IDbMeta>(DbNames.Blocks, (sp, _) => _dbProvider.BlocksDb);
-                */
-
             ConfigureServiceCollection(serviceCollection);
 
             if (_syncConfig.FastSync && _syncConfig.SnapSync)
@@ -176,6 +137,7 @@ namespace Nethermind.Synchronization
                         sp.GetRequiredService<IBlockTree>(),
                         sp.GetRequiredService<IFullStateFinder>(),
                         sp.GetRequiredService<ISyncConfig>(),
+                        // These are optional, thats why this need to be set manually like this.
                         sp.GetService<ISyncFeed<HeadersSyncBatch?>>(),
                         sp.GetService<ISyncFeed<BodiesSyncBatch?>>(),
                         sp.GetService<ISyncFeed<ReceiptsSyncBatch?>>(),
@@ -194,18 +156,6 @@ namespace Nethermind.Synchronization
                     sp.GetRequiredService<ILogManager>(),
                     // Need to set this
                     sp.GetRequiredService<ChainSpec>()?.SealEngineType == SealEngineType.Clique))
-                .AddSingleton<SyncDbTuner>(sp => new SyncDbTuner(
-                    sp.GetRequiredService<ISyncConfig>(),
-
-                    // These are all optional so need to set manually
-                    sp.GetService<SnapSyncFeed>(),
-                    sp.GetService<BodiesSyncFeed>(),
-                    sp.GetService<ReceiptsSyncFeed>(),
-
-                    sp.GetRequiredService<IDbProvider>().StateDb as ITunableDb,
-                    sp.GetRequiredService<IDbProvider>().CodeDb as ITunableDb,
-                    sp.GetRequiredService<IDbProvider>().BlocksDb as ITunableDb,
-                    sp.GetRequiredService<IDbProvider>().ReceiptsDb as ITunableDb))
                 .AddSingleton<SyncDispatcher<BlocksRequest>>();
         }
 
