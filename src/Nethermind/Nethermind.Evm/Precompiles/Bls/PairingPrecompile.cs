@@ -43,7 +43,7 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             int offset = i * PairSize;
 
             if (!x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) ||
-                !y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span)) 
+                !y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span))
             {
                 return IPrecompile.Failure;
             }
