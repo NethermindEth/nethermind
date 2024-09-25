@@ -16,8 +16,6 @@ namespace Nethermind.TxPool.Filters
             if (!tx.HasAuthorizationList)
                 return AcceptTxResult.Accepted;
 
-            Metrics.PendingTransactionsWithExpensiveFiltering++;
-
             foreach (AuthorizationTuple tuple in tx.AuthorizationList!)
             {
                 if (tuple is null)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
@@ -181,7 +180,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
-                .Should().Be(21000 + (testCase.ExpectedCost));
+                .Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
         }
 
         [Test]

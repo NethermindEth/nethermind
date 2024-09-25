@@ -11,7 +11,6 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Test.Builders;
 using FluentAssertions;
 using Nethermind.State;
@@ -36,7 +35,7 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(authority, 1, TestItem.AddressB, 0),
         };
         HashSet<Address> accessedAddresses = new();
-        int result = sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
+        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
         accessedAddresses.Should().BeEquivalentTo([authority.Address]);
     }
