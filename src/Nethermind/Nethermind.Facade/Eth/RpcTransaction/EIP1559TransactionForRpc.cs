@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -42,6 +43,9 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, ITxTyped, I
 
         return tx;
     }
+
+    public override bool ShouldSetBaseFee() =>
+        base.ShouldSetBaseFee() || MaxFeePerGas.IsPositive() || MaxPriorityFeePerGas.IsPositive();
 
     public new static EIP1559TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee);

@@ -59,6 +59,7 @@ public abstract class TransactionForRpc
     }
 
     public abstract void EnsureDefaults(long? gasCap);
+    public abstract bool ShouldSetBaseFee();
 
     internal class JsonConverter : JsonConverter<TransactionForRpc>
     {

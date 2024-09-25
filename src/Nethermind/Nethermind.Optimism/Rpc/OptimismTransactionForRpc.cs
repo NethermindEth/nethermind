@@ -89,6 +89,8 @@ public class OptimismTransactionForRpc : TransactionForRpc, ITxTyped, IFromTrans
         // TODO: Are there any defaults to set in Optimism transactions?
     }
 
+    public override bool ShouldSetBaseFee() => false;
+
     public static OptimismTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
 }

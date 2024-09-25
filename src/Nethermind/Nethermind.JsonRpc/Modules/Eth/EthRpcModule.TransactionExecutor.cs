@@ -44,34 +44,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(clonedHeader, tx, token);
             }
 
-            // TODO: Should we move this method to `TransactionForRpc` directly?
-            private static bool ShouldSetBaseFee(TransactionForRpc t)
-            {
-                var positiveGasPrice = false;
-                if (t is LegacyTransactionForRpc legacy)
-                {
-                    positiveGasPrice = IsPositive(legacy.GasPrice);
-                }
-
-                var positiveMaxFeePerGas = false;
-                var positiveMaxPriorityFeePerGas = false;
-                if (t is EIP1559TransactionForRpc eip1559)
-                {
-                    positiveMaxFeePerGas = IsPositive(eip1559.MaxFeePerGas);
-                    positiveMaxPriorityFeePerGas = IsPositive(eip1559.MaxPriorityFeePerGas);
-                }
-
-                return positiveGasPrice || positiveMaxFeePerGas || positiveMaxPriorityFeePerGas;
-
-                // value?.IsZero == false <=> x > 0
-                static bool IsPositive(UInt256? value) => value?.IsZero == false;
-            }
-
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter)
             {
-                NoBaseFee = !ShouldSetBaseFee(transactionCall);
+                NoBaseFee = !transactionCall.ShouldSetBaseFee();
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
                 return base.Execute(transactionCall, blockParameter);
             }

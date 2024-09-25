@@ -107,6 +107,8 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         From ??= Address.SystemUser;
     }
 
+    public override bool ShouldSetBaseFee() => GasPrice.IsPositive();
+
     public static LegacyTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData) =>
         new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
 }
