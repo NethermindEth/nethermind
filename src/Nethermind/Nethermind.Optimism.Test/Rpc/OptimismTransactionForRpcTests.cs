@@ -41,7 +41,7 @@ public class OptimismTransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, default);
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
         string serialized = new EthereumJsonSerializer().Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
