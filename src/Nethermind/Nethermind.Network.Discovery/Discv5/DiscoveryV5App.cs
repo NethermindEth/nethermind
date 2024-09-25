@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
 using Nethermind.Blockchain;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Network.Discovery.Portal;
 using Nethermind.Network.Discovery.Portal.History;
@@ -88,8 +89,15 @@ public class DiscoveryV5App : IDiscoveryApp
            .AddSingleton(_sessionOptions.Verifier)
            .AddSingleton(_sessionOptions.Signer);
 
-        // IEnrEntryRegistry registry = new AllEnrEntryRegistry();
-        IEnrEntryRegistry registry = new EnrEntryRegistry();
+        IEnrEntryRegistry registry = new AllEnrEntryRegistry();
+        registry.RegisterEntry("c", (b) => new RawEntry("c", b));
+        registry.RegisterEntry("quic", (b) => new RawEntry("quic", b));
+        registry.RegisterEntry("domaintype", (b) => new RawEntry("domaintype", b));
+        registry.RegisterEntry("subnets", (b) => new RawEntry("subnets", b));
+        registry.RegisterEntry("eth", (b) => new RawEntry("eth", b));
+        registry.RegisterEntry("v4", (b) => new RawEntry("v4", b));
+        registry.RegisterEntry("opstack", (b) => new RawEntry("opstack", b));
+        // IEnrEntryRegistry registry = new EnrEntryRegistry();
         EnrFactory enrFactory = new(registry);
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
@@ -445,24 +453,24 @@ public class DiscoveryV5App : IDiscoveryApp
             IEntry? entry = _enrEntryRegistryImplementation.GetEnrEntry(stringKey, value);
             if (entry == null)
             {
-                Console.Error.WriteLine($"Unknown enr entry key {stringKey}");
+                Console.Error.WriteLine($"Unknown enr entry key {stringKey} with value {value.ToHexString()}");
                 entry = new RawEntry(stringKey, value);
             }
 
             return entry;
         }
+    }
 
-        public class RawEntry(string key, byte[] value) : IEntry
+    public class RawEntry(string key, byte[] value) : IEntry
+    {
+        public IEnumerable<byte> EncodeEntry()
         {
-            public IEnumerable<byte> EncodeEntry()
-            {
-                return ByteArrayUtils.JoinByteArrays(
-                    RlpEncoder.EncodeString(Key, Encoding.ASCII),
-                    RlpEncoder.EncodeBytes(value));
-            }
-
-            public EnrEntryKey Key { get; } = key;
+            return ByteArrayUtils.JoinByteArrays(
+                RlpEncoder.EncodeString(Key, Encoding.ASCII),
+                RlpEncoder.EncodeBytes(value));
         }
+
+        public EnrEntryKey Key { get; } = key;
     }
 
 }

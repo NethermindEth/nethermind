@@ -66,9 +66,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.PeerManager);
 
-        _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.LogManager);
-
-        IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
+        IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
         ILogger logger = _api.LogManager.GetClassLogger();
@@ -199,7 +197,7 @@ public class RegisterRpcModules : IStep
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 
-        if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
+        if (logger.IsInfo) logger.Info($"RPC modules  : {string.Join(", ", rpcModuleProvider.All.OrderBy(x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
 
         await Task.CompletedTask;
