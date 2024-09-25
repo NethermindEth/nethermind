@@ -1,7 +1,5 @@
 ﻿using Nethermind.Api;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
