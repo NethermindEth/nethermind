@@ -398,6 +398,7 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         new ChainSpec(),
                         reader,
+                        No.BeaconSync,
                         _logManager);
                 }
 

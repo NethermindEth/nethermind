@@ -58,23 +58,13 @@ namespace Nethermind.Synchronization
         private FastSyncFeed? _fastSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
         private readonly IProcessExitSource _exitSource;
-        protected IBetterPeerStrategy _betterPeerStrategy;
-        private readonly ChainSpec _chainSpec;
 
         public ISyncProgressResolver SyncProgressResolver => _serviceProvider.GetRequiredService<ISyncProgressResolver>();
 
-        protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
         private readonly ServiceProvider _serviceProvider;
 
-        public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
-            SyncProgressResolver,
-            _syncPeerPool!,
-            _syncConfig,
-            No.BeaconSync,
-            _betterPeerStrategy!,
-            _logManager,
-            _chainSpec?.SealEngineType == SealEngineType.Clique);
+        public ISyncModeSelector SyncModeSelector => _serviceProvider.GetRequiredService<ISyncModeSelector>();
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -91,6 +81,7 @@ namespace Nethermind.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
             IStateReader stateReader,
+            IBeaconSyncStrategy beaconSyncStrategy,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -104,8 +95,6 @@ namespace Nethermind.Synchronization
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
-            _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(_stateReader));
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
@@ -119,6 +108,10 @@ namespace Nethermind.Synchronization
                 .AddSingleton(specProvider)
                 .AddSingleton(receiptStorage)
                 .AddSingleton(stateReader)
+                .AddSingleton(chainSpec)
+                .AddSingleton(betterPeerStrategy)
+                // .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton(beaconSyncStrategy)
                 .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
                 .AddSingleton<IFullStateFinder, FullStateFinder>()
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => _dbProvider.MetadataDb)
@@ -127,6 +120,8 @@ namespace Nethermind.Synchronization
                 .AddKeyedSingleton<IDbMeta>(DbNames.Blocks, (sp, _) => _dbProvider.BlocksDb)
                 .AddSingleton(_syncReport)
                 .AddSingleton(syncConfig);
+
+            ConfigureServiceCollection(serviceCollection);
 
             if (_syncConfig.FastSync && _syncConfig.SnapSync)
                 RegisterSnapComponent(serviceCollection);
@@ -143,6 +138,27 @@ namespace Nethermind.Synchronization
 
             RegisterStateSyncComponent(serviceCollection);
             _serviceProvider = serviceCollection.BuildServiceProvider();
+        }
+
+        protected virtual void ConfigureServiceCollection(IServiceCollection serviceCollection)
+        {
+            serviceCollection
+                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
+                .AddSingleton<IFullStateFinder, FullStateFinder>()
+                .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => _dbProvider.MetadataDb)
+                .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => _dbProvider.CodeDb)
+                .AddKeyedSingleton<IDb>(DbNames.State, (sp, _) => _dbProvider.StateDb)
+                .AddKeyedSingleton<IDbMeta>(DbNames.Blocks, (sp, _) => _dbProvider.BlocksDb)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<ISyncModeSelector>(sp => sp.GetRequiredService<MultiSyncModeSelector>())
+                .AddSingleton<MultiSyncModeSelector>(sp => new MultiSyncModeSelector(
+                    sp.GetRequiredService<ISyncProgressResolver>(),
+                    sp.GetRequiredService<ISyncPeerPool>(),
+                    sp.GetRequiredService<ISyncConfig>(),
+                    sp.GetRequiredService<IBeaconSyncStrategy>(),
+                    sp.GetRequiredService<IBetterPeerStrategy>(),
+                    sp.GetRequiredService<ILogManager>(),
+                    sp.GetRequiredService<ChainSpec>()?.SealEngineType == SealEngineType.Clique));
         }
 
         protected static void RegisterDispatcher<T>(IServiceCollection serviceCollection)

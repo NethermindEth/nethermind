@@ -24,16 +24,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeSynchronizer : Synchronizer
 {
-    private readonly IBeaconSyncStrategy _beaconSync;
     private readonly ServiceProvider _beaconServiceProvider;
-
-    public override ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
-        SyncProgressResolver,
-        _syncPeerPool,
-        _syncConfig,
-        _beaconSync,
-        _betterPeerStrategy!,
-        _logManager);
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -70,10 +61,9 @@ public class MergeSynchronizer : Synchronizer
             betterPeerStrategy,
             chainSpec,
             stateReader,
+            beaconSync,
             logManager)
     {
-        _beaconSync = beaconSync;
-
         IServiceCollection beaconServiceCollection = new ServiceCollection();
         beaconServiceCollection
             .AddSingleton(blockTree)
@@ -94,6 +84,20 @@ public class MergeSynchronizer : Synchronizer
 
         RegisterBeaconHeaderSyncComponent(beaconServiceCollection);
         _beaconServiceProvider = beaconServiceCollection.BuildServiceProvider();
+    }
+
+    protected override void ConfigureServiceCollection(IServiceCollection serviceCollection)
+    {
+        base.ConfigureServiceCollection(serviceCollection);
+
+        // It does not set the last parameter
+        serviceCollection.AddSingleton<MultiSyncModeSelector>(sp => new MultiSyncModeSelector(
+            sp.GetRequiredService<ISyncProgressResolver>(),
+            sp.GetRequiredService<ISyncPeerPool>(),
+            sp.GetRequiredService<ISyncConfig>(),
+            sp.GetRequiredService<IBeaconSyncStrategy>(),
+            sp.GetRequiredService<IBetterPeerStrategy>(),
+            sp.GetRequiredService<ILogManager>()));
     }
 
     private static void RegisterBeaconHeaderSyncComponent(IServiceCollection serviceCollection)

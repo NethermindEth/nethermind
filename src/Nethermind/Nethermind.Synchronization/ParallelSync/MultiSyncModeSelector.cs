@@ -7,6 +7,7 @@ using System.Linq;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -45,6 +46,8 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         private const int StickyStateNodesDelta = 32;
 
+        public const string ParameterNeedToWaitForHeader = "needToWaitForHeaders";
+
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
@@ -81,7 +84,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IBeaconSyncStrategy beaconSyncStrategy,
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager,
-            bool needToWaitForHeaders = false)
+            [FromKeyedServices(ParameterNeedToWaitForHeader)] bool needToWaitForHeaders = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -101,6 +104,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _ = StartAsync(_cancellation.Token);
         }
+
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {

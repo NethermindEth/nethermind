@@ -377,6 +377,7 @@ namespace Nethermind.Synchronization.Test
                 bestPeerStrategy,
                 new ChainSpec(),
                 stateReader,
+                No.BeaconSync,
                 logManager);
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;
