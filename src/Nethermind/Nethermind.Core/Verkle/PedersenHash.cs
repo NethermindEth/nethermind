@@ -24,12 +24,4 @@ public static class PedersenHash
         VerkleCrypto.PedersenHashFlat(data, hash);
         return hash;
     }
-
-    public static void HashRust(byte[] address, UInt256 treeIndex, Span<byte> outHash)
-    {
-        Span<byte> data = stackalloc byte[64];
-        address.CopyTo(data[(address.Length == 20 ? 12 : 0)..]);
-        treeIndex.ToLittleEndian(data[32..]);
-        VerkleCrypto.PedersenHashFlat(data, outHash);
-    }
 }

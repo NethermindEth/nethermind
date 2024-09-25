@@ -24,11 +24,10 @@ namespace Nethermind.Verkle.Tree.Test
             }
 
             var sw = Stopwatch.StartNew();
-            Span<byte> outhash = stackalloc byte[32];
             for (int i = 0; i < 1000; i++)
             {
                 Random.NextBytes(key);
-                PedersenHash.HashRust(key, UInt256.Zero, outhash);
+               var outHash =  PedersenHash.HashRust(key, UInt256.Zero);
                 // Console.WriteLine(hash.ToHexString());
             }
             Console.WriteLine($"Elapsed time: {sw.Elapsed} ms");
