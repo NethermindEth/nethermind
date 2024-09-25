@@ -69,9 +69,9 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            if (_logger.IsDebug) _logger.Debug($"Pre-warming caches cancelled for block {suggestedBlock.Number}.");
+            if (_logger.IsDebug) _logger.Warn($"Error pre-warming {suggestedBlock.Number}. {ex}");
         }
         finally
         {
@@ -83,35 +83,39 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-        if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
+
+        try
         {
-            int progress = 0;
-            Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                _ =>
-                {
-                    IReadOnlyTxProcessorSource env = _envPool.Get();
-                    int i = 0;
-                    try
+            if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
+            {
+                int progress = 0;
+                Parallel.For(0, block.Withdrawals.Length, parallelOptions,
+                    _ =>
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-                        // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
-                        // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
-                        i = Interlocked.Increment(ref progress) - 1;
-                        scope.WorldState.WarmUp(block.Withdrawals[i].Address);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Ignore
-                    }
-                    catch (Exception ex)
-                    {
-                        if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal {i}", ex);
-                    }
-                    finally
-                    {
-                        _envPool.Return(env);
-                    }
-                });
+                        IReadOnlyTxProcessorSource env = _envPool.Get();
+                        int i = 0;
+                        try
+                        {
+                            using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                            // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
+                            // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
+                            i = Interlocked.Increment(ref progress) - 1;
+                            scope.WorldState.WarmUp(block.Withdrawals[i].Address);
+                        }
+                        finally
+                        {
+                            _envPool.Return(env);
+                        }
+                    });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore, block completed cancel
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal", ex);
         }
     }
 
@@ -119,45 +123,56 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
-        int progress = 0;
-        Parallel.For(0, block.Transactions.Length, parallelOptions, _ =>
+        try
         {
-            using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-            IReadOnlyTxProcessorSource env = _envPool.Get();
-            SystemTransaction systemTransaction = _systemTransactionPool.Get();
-            Transaction? tx = null;
-            try
+            int progress = 0;
+            Parallel.For(0, block.Transactions.Length, parallelOptions, _ =>
             {
-                // Process transactions in sequential order, rather than partitioning scheme from Parallel.For
-                // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
-                int i = Interlocked.Increment(ref progress) - 1;
-                // If the transaction has already been processed or being processed, exit early
-                if (block.TransactionProcessed > i) return;
-
-                tx = block.Transactions[i];
-                tx.CopyTo(systemTransaction);
-                using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-                if (spec.UseTxAccessLists)
+                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
+                IReadOnlyTxProcessorSource env = _envPool.Get();
+                SystemTransaction systemTransaction = _systemTransactionPool.Get();
+                Transaction? tx = null;
+                try
                 {
-                    scope.WorldState.WarmUp(tx.AccessList); // eip-2930
+                    // Process transactions in sequential order, rather than partitioning scheme from Parallel.For
+                    // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
+                    int i = Interlocked.Increment(ref progress) - 1;
+                    // If the transaction has already been processed or being processed, exit early
+                    if (block.TransactionProcessed > i) return;
+
+                    tx = block.Transactions[i];
+                    tx.CopyTo(systemTransaction);
+                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                    if (spec.UseTxAccessLists)
+                    {
+                        scope.WorldState.WarmUp(tx.AccessList); // eip-2930
+                    }
+                    TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+                    if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
-                TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
-                if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
-            }
-            catch (OperationCanceledException)
-            {
-                // Ignore
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
-            }
-            finally
-            {
-                _systemTransactionPool.Return(systemTransaction);
-                _envPool.Return(env);
-            }
-        });
+                catch (Exception ex) when (ex is EvmException or OverflowException)
+                {
+                    // Ignore, regular tx processing exceptions
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
+                }
+                finally
+                {
+                    _systemTransactionPool.Return(systemTransaction);
+                    _envPool.Return(env);
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore, block completed cancel
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Error($"Error pre-warming withdrawal", ex);
+        }
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, AccessList? systemTxAccessList, BlockCachePreWarmer preWarmer)
@@ -181,10 +196,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
                 WarmupAddresses(parallelOptions, Block, scope);
             }
-            catch (OperationCanceledException)
-            {
-                // Ignore
-            }
             catch (Exception ex)
             {
                 if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"Error pre-warming addresses", ex);
@@ -200,18 +211,18 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
-            if (SystemTxAccessList is not null)
+            try
             {
-                scope.WorldState.WarmUp(SystemTxAccessList);
-            }
-
-            int progress = 0;
-            Parallel.For(0, block.Transactions.Length, parallelOptions,
-            _ =>
-            {
-                int i = 0;
-                try
+                if (SystemTxAccessList is not null)
                 {
+                    scope.WorldState.WarmUp(SystemTxAccessList);
+                }
+
+                int progress = 0;
+                Parallel.For(0, block.Transactions.Length, parallelOptions,
+                _ =>
+                {
+                    int i = 0;
                     // Process addresses in sequential order, rather than partitioning scheme from Parallel.For
                     // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
                     i = Interlocked.Increment(ref progress) - 1;
@@ -226,16 +237,12 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     {
                         scope.WorldState.WarmUp(to);
                     }
-                }
-                catch (OperationCanceledException)
-                {
-                    // Ignore
-                }
-                catch (Exception ex)
-                {
-                    if (PreWarmer._logger.IsDebug) PreWarmer._logger.Error($"Error pre-warming addresses {i}", ex);
-                }
-            });
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore, block completed cancel
+            }
         }
     }
 
