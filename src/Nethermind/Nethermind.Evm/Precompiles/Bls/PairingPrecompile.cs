@@ -37,45 +37,33 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
         G1 x = new(stackalloc long[G1.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
 
-        try
+        var acc = GT.One();
+        for (int i = 0; i < inputData.Length / PairSize; i++)
         {
-            GT acc = GT.One();
-            for (int i = 0; i < inputData.Length / PairSize; i++)
+            int offset = i * PairSize;
+
+            if (!x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) ||
+                !y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span)) 
             {
-                int offset = i * PairSize;
-
-                x.DecodeRaw(inputData[offset..(offset + BlsParams.LenG1)].Span);
-                bool xInfinity = x.IsInf();
-
-                y.DecodeRaw(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)].Span);
-                bool yInfinity = y.IsInf();
-
-                if ((!xInfinity && !x.InGroup()) || (!yInfinity && !y.InGroup()))
-                {
-                    return IPrecompile.Failure;
-                }
-
-                // x == inf || y == inf -> e(x, y) = 1
-                if (xInfinity || yInfinity)
-                {
-                    continue;
-                }
-
-                acc.Mul(new GT(y, x));
+                return IPrecompile.Failure;
             }
 
-            bool verified = acc.FinalExp().IsOne();
-            byte[] res = new byte[32];
-            if (verified)
+            // x == inf || y == inf -> e(x, y) = 1
+            if (x.IsInf() || y.IsInf())
             {
-                res[31] = 1;
+                continue;
             }
 
-            return (res, true);
+            acc.Mul(new GT(y, x));
         }
-        catch (BlsExtensions.BlsPrecompileException)
+
+        bool verified = acc.FinalExp().IsOne();
+        byte[] res = new byte[32];
+        if (verified)
         {
-            return IPrecompile.Failure;
+            res[31] = 1;
         }
+
+        return (res, true);
     }
 }

@@ -42,67 +42,59 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
             return IPrecompile.Failure;
         }
 
-        try
+        int nItems = inputData.Length / ItemSize;
+
+        using ArrayPoolList<long> rawPoints = new(nItems * 36, nItems * 36);
+        using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
+        using ArrayPoolList<int> pointDestinations = new(nItems);
+
+        int npoints = 0;
+        for (int i = 0; i < nItems; i++)
         {
-            int nItems = inputData.Length / ItemSize;
+            int offset = i * ItemSize;
+            ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG2)].Span;
 
-            long[] rawPoints = new long[nItems * 36];
-            byte[] rawScalars = new byte[nItems * 32];
-            using ArrayPoolList<int> pointDestinations = new(nItems);
-
-            int npoints = 0;
-            for (int i = 0; i < nItems; i++)
-            {
-                int offset = i * ItemSize;
-                ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG2)].Span;
-
-                // exclude infinity points
-                int dest = rawPoint.ContainsAnyExcept((byte)0) ? npoints++ : -1;
-                pointDestinations.Add(dest);
-            }
-
-            if (npoints == 0)
-            {
-                return (Enumerable.Repeat<byte>(0, 256).ToArray(), true);
-            }
-
-            bool fail = false;
-            Parallel.ForEach(pointDestinations, (dest, state, i) =>
-            {
-                if (dest != -1)
-                {
-                    int offset = (int)i * ItemSize;
-                    ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsParams.LenG2)].Span;
-                    ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsParams.LenG2)..(offset + ItemSize)].Span;
-
-                    G2 p = new(rawPoints.AsSpan()[(dest * 36)..]);
-                    p.DecodeRaw(rawPoint);
-
-                    if (!p.InGroup())
-                    {
-                        fail = true;
-                        state.Break();
-                    }
-
-                    for (int j = 0; j < 32; j++)
-                    {
-                        rawScalars[(dest * 32) + j] = rawScalar[31 - j];
-                    }
-                }
-            });
-
-            if (fail)
-            {
-                return IPrecompile.Failure;
-            }
-
-            G2 res = new G2().MultiMult(rawPoints, rawScalars, npoints);
-
-            return (res.EncodeRaw(), true);
+            // exclude infinity points
+            int dest = rawPoint.ContainsAnyExcept((byte)0) ? npoints++ : -1;
+            pointDestinations.Add(dest);
         }
-        catch (BlsExtensions.BlsPrecompileException)
+
+        if (npoints == 0)
+        {
+            return (BlsConst.G2Inf, true);
+        }
+
+        bool fail = false;
+        Parallel.ForEach(pointDestinations, (dest, state, i) =>
+        {
+            if (dest != -1)
+            {
+                int offset = (int)i * ItemSize;
+                ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG2)].Span;
+                ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsConst.LenG2)..(offset + ItemSize)].Span;
+
+                G2 p = new(rawPoints.AsSpan()[(dest * 36)..]);
+
+                if (!p.TryDecodeRaw(rawPoint) || !p.InGroup())
+                {
+                    fail = true;
+                    state.Break();
+                }
+
+                for (int j = 0; j < 32; j++)
+                {
+                    rawScalars[(dest * 32) + j] = rawScalar[31 - j];
+                }
+            }
+        });
+
+        if (fail)
         {
             return IPrecompile.Failure;
         }
+
+        G2 res = new G2().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+
+        return (res.EncodeRaw(), true);
     }
 }

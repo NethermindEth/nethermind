@@ -28,36 +28,30 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 2 * BlsParams.LenG1;
+        const int expectedInputLength = 2 * BlsConst.LenG1;
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        try
-        {
-            G1 x = new G1(stackalloc long[G1.Sz]);
-            x.DecodeRaw(inputData[..BlsParams.LenG1].Span);
-
-            G1 y = new G1(stackalloc long[G1.Sz]);
-            y.DecodeRaw(inputData[BlsParams.LenG1..].Span);
-
-            if (x.IsInf())
-            {
-                return (inputData[BlsParams.LenG1..], true);
-            }
-
-            if (y.IsInf())
-            {
-                return (inputData[..BlsParams.LenG1], true);
-            }
-
-            G1 res = x.Add(y);
-            return (res.EncodeRaw(), true);
-        }
-        catch (BlsExtensions.BlsPrecompileException)
+        G1 x = new(stackalloc long[G1.Sz]);
+        G1 y = new(stackalloc long[G1.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span))
         {
             return IPrecompile.Failure;
         }
+
+        if (x.IsInf())
+        {
+            return (inputData[BlsConst.LenG1..], true);
+        }
+
+        if (y.IsInf())
+        {
+            return (inputData[..BlsConst.LenG1], true);
+        }
+
+        G1 res = x.Add(y);
+        return (res.EncodeRaw(), true);
     }
 }
