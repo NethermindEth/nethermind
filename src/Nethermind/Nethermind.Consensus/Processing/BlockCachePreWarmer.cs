@@ -188,13 +188,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
         void IThreadPoolWorkItem.Execute()
         {
-            IReadOnlyTxProcessorSource env = null;
             try
             {
                 if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-                env = PreWarmer._envPool.Get();
-                using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
-                WarmupAddresses(parallelOptions, Block, scope);
+                WarmupAddresses(parallelOptions, Block);
             }
             catch (Exception ex)
             {
@@ -202,12 +199,11 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             }
             finally
             {
-                if (env is not null) PreWarmer._envPool.Return(env);
                 _doneEvent.Set();
             }
         }
 
-        private void WarmupAddresses(ParallelOptions parallelOptions, Block block, IReadOnlyTxProcessingScope scope)
+        private void WarmupAddresses(ParallelOptions parallelOptions, Block block)
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
@@ -215,7 +211,16 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             {
                 if (SystemTxAccessList is not null)
                 {
-                    scope.WorldState.WarmUp(SystemTxAccessList);
+                    var env = PreWarmer._envPool.Get();
+                    try
+                    {
+                        using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+                        scope.WorldState.WarmUp(SystemTxAccessList);
+                    }
+                    finally
+                    {
+                        PreWarmer._envPool.Return(env);
+                    }
                 }
 
                 int progress = 0;
@@ -228,14 +233,24 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     i = Interlocked.Increment(ref progress) - 1;
                     Transaction tx = block.Transactions[i];
                     Address? sender = tx.SenderAddress;
-                    if (sender is not null)
+
+                    var env = PreWarmer._envPool.Get();
+                    try
                     {
-                        scope.WorldState.WarmUp(sender);
+                        using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+                        if (sender is not null)
+                        {
+                            scope.WorldState.WarmUp(sender);
+                        }
+                        Address to = tx.To;
+                        if (to is not null)
+                        {
+                            scope.WorldState.WarmUp(to);
+                        }
                     }
-                    Address to = tx.To;
-                    if (to is not null)
+                    finally
                     {
-                        scope.WorldState.WarmUp(to);
+                        PreWarmer._envPool.Return(env);
                     }
                 });
             }
