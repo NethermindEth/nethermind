@@ -41,6 +41,7 @@ namespace Nethermind.Api
         ILogManager LogManager { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
+        [SkipServiceCollection]
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector SyncModeSelector { get; set; }
@@ -61,15 +62,11 @@ namespace Nethermind.Api
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
 
-        public IServiceCollection ConfigureBasicApiServices()
+        public IServiceCollection CreateServiceCollectionFromBasicApi()
         {
             IServiceCollection sc = new ServiceCollection()
-                .AddSingleton(SpecProvider!)
-                .AddSingleton(DbProvider!)
-                .AddSingleton(ChainSpec)
-                .AddSingletonIfNotNull(BetterPeerStrategy)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
-                .AddSingleton(LogManager);
+                .AddPropertiesFrom<IBasicApi>(this)
+                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
 
             string[] dbNames = [DbNames.State, DbNames.Code, DbNames.Metadata, DbNames.Blocks];
             foreach (string dbName in dbNames)
@@ -80,7 +77,7 @@ namespace Nethermind.Api
 
             sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(DbProvider!.GetColumnDb<ReceiptsColumns>(DbNames.Receipts));
 
-            foreach (var kv in DbProvider.GetAllDbMeta())
+            foreach (KeyValuePair<string, IDbMeta> kv in DbProvider.GetAllDbMeta())
             {
                 // The key here is large case for some reason...
                 sc.AddKeyedSingleton<IDbMeta>(kv.Key, kv.Value);

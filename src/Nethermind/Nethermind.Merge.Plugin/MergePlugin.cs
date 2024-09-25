@@ -449,7 +449,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new FullStateFinder(_api.BlockTree, _api.StateReader),
                 _api.LogManager);
 
-            IServiceCollection serviceCollection = _api.CreateServiceCollectionForSynchronizer()
+            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
                 .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
                 .AddSingleton(_mergeConfig)
                 .AddSingleton<IInvalidChainTracker>(_invalidChainTracker)

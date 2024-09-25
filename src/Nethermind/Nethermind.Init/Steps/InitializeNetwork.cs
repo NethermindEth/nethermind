@@ -134,7 +134,7 @@ public class InitializeNetwork : IStep
                 _api.BetterPeerStrategy!,
                 _api.LogManager);
 
-            IServiceCollection serviceCollection = _api.CreateServiceCollectionForSynchronizer()
+            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton(blockDownloaderFactory);
 

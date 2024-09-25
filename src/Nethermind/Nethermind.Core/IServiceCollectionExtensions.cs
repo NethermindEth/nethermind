@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.Core;
@@ -29,17 +32,37 @@ public static class IServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Used for initialization. Some property in INethermindApi may be null at the time of configuration,
-    /// so this just make it slightly easier to use IServiceCollection.
+    /// Add all properties as singleton. It get them ahead of time instead of lazily to prevent the final service provider
+    /// from disposing it. To prevent a property from being included, use <see cref="SkipServiceCollectionAttribute"/>.
     /// </summary>
     /// <param name="configuration"></param>
-    /// <param name="service"></param>
+    /// <param name="source"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public static IServiceCollection AddSingletonIfNotNull<T>(this IServiceCollection configuration, T? service) where T : class
+    public static IServiceCollection AddPropertiesFrom<T>(this IServiceCollection configuration, T source) where T : class
     {
-        if (service != null)
-            return configuration.AddSingleton<T>(service);
+        Type t = typeof(T);
+
+        IEnumerable<PropertyInfo> properties = t
+            .GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
+
+        foreach (PropertyInfo propertyInfo in properties)
+        {
+            object? val = propertyInfo.GetValue(source);
+            if (val != null)
+            {
+                configuration = configuration.AddSingleton(propertyInfo.PropertyType, val);
+            }
+        }
+
         return configuration;
     }
+}
+
+/// <summary>
+/// Mark a property so that it is not picked up by `AddPropertiesFrom`.
+/// </summary>
+public class SkipServiceCollectionAttribute: Attribute
+{
 }

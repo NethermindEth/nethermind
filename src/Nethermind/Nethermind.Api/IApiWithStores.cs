@@ -32,11 +32,10 @@ namespace Nethermind.Api
         IWallet? Wallet { get; set; }
         IBlockStore? BadBlocksStore { get; set; }
 
-        public IServiceCollection ConfigureApiWithStoreServices()
+        public IServiceCollection CreateServiceCollectionFromApiWithStores()
         {
-            return ConfigureBasicApiServices()
-                .AddSingletonIfNotNull(BlockTree!)
-                .AddSingletonIfNotNull(ReceiptStorage!);
+            return CreateServiceCollectionFromBasicApi()
+                .AddPropertiesFrom<IApiWithStores>(this);
         }
     }
 }

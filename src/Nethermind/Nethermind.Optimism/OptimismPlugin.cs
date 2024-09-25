@@ -161,7 +161,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new FullStateFinder(_api.BlockTree, _api.StateReader!),
             _api.LogManager);
 
-        IServiceCollection serviceCollection = ((INethermindApi)_api).CreateServiceCollectionForSynchronizer()
+        IServiceCollection serviceCollection = ((INethermindApi)_api).CreateServiceCollectionFromApiWithNetwork()
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
             .AddSingleton(_beaconPivot)
             .AddSingleton(_api.PoSSwitcher)

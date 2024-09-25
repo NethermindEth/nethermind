@@ -51,13 +51,10 @@ namespace Nethermind.Api
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 
-        public IServiceCollection CreateServiceCollectionForSynchronizer()
+        public IServiceCollection CreateServiceCollectionFromApiWithNetwork()
         {
-            return ConfigureServiceCollectionWithBlockchain()
-                .AddSingletonIfNotNull(SyncPeerPool)
-                .AddSingletonIfNotNull(Pivot)
-                .AddSingletonIfNotNull(PoSSwitcher)
-                .AddSingletonIfNotNull(NodeStatsManager);
+            return CreateServiceCollectionFromApiWithBlockchain()
+                .AddPropertiesFrom(this);
         }
     }
 }
