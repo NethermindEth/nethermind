@@ -28,7 +28,7 @@ namespace Nethermind.Crypto
             BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
                 NumberStyles.HexNumber);
 
-        private readonly AuthorizationTupleDecoder _tupleDecoder = new();
+        private readonly AuthorizationTupleDecoder _tupleDecoder = AuthorizationTupleDecoder.Instance;
         private readonly ulong _chainIdValue;
         public ulong ChainId => _chainIdValue;
 

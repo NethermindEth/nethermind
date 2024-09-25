@@ -18,8 +18,6 @@ using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
 using Nethermind.Int256;
 using Nethermind.Crypto;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nethermind.Evm;
 
@@ -267,10 +265,12 @@ public class CodeInfoRepository : ICodeInfoRepository
             Eip7702Constants.IsDelegatedCode(InternalGetCachedCode(worldState, source).MachineCode.Span);
     }
 
+    /// <remarks>
+    /// Parses delegation code to extract the contained address.
+    /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
+    /// </remarks>
     private static Address ParseDelegatedAddress(ReadOnlySpan<byte> code)
     {
-        if (code.Length != Eip7702Constants.DelegationHeader.Length + Address.Size)
-            throw new ArgumentException("Not valid delegation code.", nameof(code));
         return new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
     }
 

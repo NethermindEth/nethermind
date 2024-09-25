@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp.Eip2930;
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -11,6 +12,8 @@ namespace Nethermind.Serialization.Rlp;
 
 public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, IRlpValueDecoder<AuthorizationTuple>
 {
+    public static readonly AuthorizationTupleDecoder Instance = new();
+
     public AuthorizationTuple Decode(RlpStream stream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = stream.ReadSequenceLength();
