@@ -228,6 +228,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree", "N
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree.Test", "Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj", "{C311716E-F9D0-4076-8E9D-DDB1C99090A4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.VerkleMigration.Cli", "Nethermind.VerkleMigration.Cli\Nethermind.VerkleMigration.Cli.csproj", "{2968302B-C5B9-44B6-9154-A6E5221D767A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -626,6 +628,10 @@ Global
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
