@@ -117,7 +117,7 @@ public abstract class TransactionForRpc
             RegisterTransactionType<BlobTransactionForRpc>();
         }
 
-        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
+        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped, IFromTransaction<T>
             => _fromTransactionFuncs[(byte)T.TxType] = T.FromTransaction;
 
         internal static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)

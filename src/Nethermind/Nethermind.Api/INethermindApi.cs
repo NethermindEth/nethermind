@@ -25,7 +25,7 @@ namespace Nethermind.Api
 
     public static class NethermindApiExtensions
     {
-        public static void RegisterTxType<T>(this INethermindApi api, ITxDecoder decoder, ITxValidator validator) where T : TransactionForRpc, IFromTransaction<T>
+        public static void RegisterTxType<T>(this INethermindApi api, ITxDecoder decoder, ITxValidator validator) where T : TransactionForRpc, ITxTyped, IFromTransaction<T>
         {
             ArgumentNullException.ThrowIfNull(api.TxValidator);
             if (decoder.Type != T.TxType) throw new ArgumentException($"TxType mismatch decoder: {decoder.Type}, RPC: {T.TxType}");

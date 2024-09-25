@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransaction<AccessListTransactionForRpc>
+public class AccessListTransactionForRpc : LegacyTransactionForRpc, ITxTyped, IFromTransaction<AccessListTransactionForRpc>
 {
     // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
     // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914

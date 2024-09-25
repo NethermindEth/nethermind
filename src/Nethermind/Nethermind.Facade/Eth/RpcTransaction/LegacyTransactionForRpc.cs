@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : TransactionForRpc, IFromTransaction<LegacyTransactionForRpc>
+public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
 {
     public static TxType TxType => TxType.Legacy;
 

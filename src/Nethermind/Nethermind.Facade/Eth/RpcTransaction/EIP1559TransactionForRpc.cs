@@ -8,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransaction<EIP1559TransactionForRpc>
+public class EIP1559TransactionForRpc : AccessListTransactionForRpc, ITxTyped, IFromTransaction<EIP1559TransactionForRpc>
 {
     public new static TxType TxType => TxType.EIP1559;
 
