@@ -67,7 +67,6 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             IServiceCollection serviceCollection = new ServiceCollection()
-                .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton(_blockTree)
@@ -84,14 +83,10 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton(stateReader)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
+            dbProvider.ConfigureServiceCollection(serviceCollection);
 
-            _synchronizer = new Synchronizer(
-                serviceCollection,
-                dbProvider,
-                stats,
-                syncConfig,
-                Substitute.For<IProcessExitSource>(),
-                LimboLogs.Instance);
+            _synchronizer = new Synchronizer(serviceCollection, syncConfig);
+
             _syncServer = new SyncServer(
                 trieStore.TrieNodeRlpStore,
                 _codeDb,

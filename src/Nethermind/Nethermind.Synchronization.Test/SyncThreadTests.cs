@@ -380,13 +380,7 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<ILogManager>(logManager);
             dbProvider.ConfigureServiceCollection(serviceCollection);
 
-            Synchronizer synchronizer = new(
-                serviceCollection,
-                dbProvider,
-                nodeStatsManager,
-                syncConfig,
-                Substitute.For<IProcessExitSource>(),
-                logManager);
+            Synchronizer synchronizer = new(serviceCollection, syncConfig);
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;
             SyncServer syncServer = new(

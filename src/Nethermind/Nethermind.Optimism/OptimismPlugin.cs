@@ -157,14 +157,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             .AddSingleton(_mergeConfig)
             .AddSingleton(_invalidChainTracker);
 
-        _api.Synchronizer = new MergeSynchronizer(
-            serviceCollection,
-            _api.DbProvider,
-            _api.NodeStatsManager,
-            _syncConfig,
-            _api.ProcessExit!,
-            _api.LogManager
-        );
+        _api.Synchronizer = new MergeSynchronizer(serviceCollection, _syncConfig);
 
         _ = new PivotUpdator(
             _api.BlockTree,

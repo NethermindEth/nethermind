@@ -3,10 +3,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
-using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
@@ -19,28 +16,15 @@ public class MergeSynchronizer : Synchronizer
 {
     private readonly ServiceProvider _beaconScope;
 
-    public MergeSynchronizer(
-        IServiceCollection serviceCollection,
-        IDbProvider dbProvider,
-        INodeStatsManager nodeStatsManager,
-        ISyncConfig syncConfig,
-        IProcessExitSource exitSource,
-        ILogManager logManager)
-        : base(
-            serviceCollection,
-            dbProvider,
-            nodeStatsManager,
-            syncConfig,
-            exitSource,
-            logManager)
+    public MergeSynchronizer(IServiceCollection serviceCollection, ISyncConfig syncConfig) : base(serviceCollection, syncConfig)
     {
         RegisterBeaconHeaderSyncComponent(_serviceCollection);
         _beaconScope = _serviceCollection.BuildServiceProvider();
     }
 
-    protected override void ConfigureServiceCollection(IServiceCollection serviceCollection)
+    protected override void ConfigureSynchronizerServiceCollection(IServiceCollection serviceCollection)
     {
-        base.ConfigureServiceCollection(serviceCollection);
+        base.ConfigureSynchronizerServiceCollection(serviceCollection);
 
         serviceCollection
             // It does not set the last parameter

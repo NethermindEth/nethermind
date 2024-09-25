@@ -130,13 +130,7 @@ public class InitializeNetwork : IStep
             IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
 
-            _api.Synchronizer ??= new Synchronizer(
-                serviceCollection,
-                _api.DbProvider,
-                _api.NodeStatsManager!,
-                _syncConfig,
-                _api.ProcessExit!,
-                _api.LogManager);
+            _api.Synchronizer ??= new Synchronizer(serviceCollection, _syncConfig);
         }
 
         _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;

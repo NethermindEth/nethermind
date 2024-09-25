@@ -444,14 +444,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 .AddSingleton(_mergeConfig)
                 .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
-            MergeSynchronizer synchronizer = new MergeSynchronizer(
-                serviceCollection,
-                _api.DbProvider,
-                _api.NodeStatsManager,
-                _syncConfig,
-                _api.ProcessExit!,
-                _api.LogManager
-            );
+            MergeSynchronizer synchronizer = new MergeSynchronizer(serviceCollection, _syncConfig);
             _api.Synchronizer = synchronizer;
 
             PivotUpdator pivotUpdator = new(

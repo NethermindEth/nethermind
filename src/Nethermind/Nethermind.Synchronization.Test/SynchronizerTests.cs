@@ -370,26 +370,14 @@ namespace Nethermind.Synchronization.Test
 
                 if (IsMerge(synchronizerType))
                 {
-                    Synchronizer = new MergeSynchronizer(
-                        serviceCollection,
-                        dbProvider,
-                        stats,
-                        syncConfig,
-                        Substitute.For<IProcessExitSource>(),
-                        _logManager);
+                    Synchronizer = new MergeSynchronizer(serviceCollection, syncConfig);
                 }
                 else
                 {
                     serviceCollection
                         .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(_logManager));
 
-                    Synchronizer = new Synchronizer(
-                        serviceCollection,
-                        dbProvider,
-                        stats,
-                        syncConfig,
-                        Substitute.For<IProcessExitSource>(),
-                        _logManager);
+                    Synchronizer = new Synchronizer(serviceCollection, syncConfig);
                 }
 
                 SyncServer = new SyncServer(
