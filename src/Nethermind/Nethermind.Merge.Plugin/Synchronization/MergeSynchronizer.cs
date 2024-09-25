@@ -24,7 +24,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeSynchronizer : Synchronizer
 {
-    private readonly ServiceProvider _beaconServiceProvider;
+    private readonly ServiceProvider _beaconScope;
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -64,26 +64,8 @@ public class MergeSynchronizer : Synchronizer
             beaconSync,
             logManager)
     {
-        IServiceCollection beaconServiceCollection = new ServiceCollection();
-        beaconServiceCollection
-            .AddSingleton(blockTree)
-            .AddSingleton(invalidChainTracker)
-            .AddSingleton(poSSwitcher)
-            .AddSingleton(mergeConfig)
-            .AddSingleton(dbProvider)
-            .AddSingleton(nodeStorage)
-            .AddSingleton(peerPool)
-            .AddSingleton(logManager)
-            .AddSingleton(specProvider)
-            .AddSingleton(receiptStorage)
-            .AddSingleton(pivot)
-            .AddKeyedSingleton<IDb>(DbNames.Metadata, (sp, _) => dbProvider.MetadataDb)
-            .AddKeyedSingleton<IDb>(DbNames.Code, (sp, _) => dbProvider.CodeDb)
-            .AddSingleton(_syncReport)
-            .AddSingleton(syncConfig);
-
-        RegisterBeaconHeaderSyncComponent(beaconServiceCollection);
-        _beaconServiceProvider = beaconServiceCollection.BuildServiceProvider();
+        RegisterBeaconHeaderSyncComponent(_serviceCollection);
+        _beaconScope = _serviceCollection.BuildServiceProvider();
     }
 
     protected override void ConfigureServiceCollection(IServiceCollection serviceCollection)
@@ -105,9 +87,8 @@ public class MergeSynchronizer : Synchronizer
         serviceCollection
             .AddSingleton<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
             .AddSingleton<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>()
-            .AddSingleton<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>();
-
-        RegisterDispatcher<HeadersSyncBatch>(serviceCollection);
+            .AddSingleton<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
+            .AddSingleton<SyncDispatcher<HeadersSyncBatch>>();
     }
 
     public override void Start()
@@ -125,7 +106,7 @@ public class MergeSynchronizer : Synchronizer
     private void StartBeaconHeadersComponents()
     {
         SyncDispatcher<HeadersSyncBatch> dispatcher =
-            _beaconServiceProvider.GetRequiredService<SyncDispatcher<HeadersSyncBatch>>();
+            _beaconScope.GetRequiredService<SyncDispatcher<HeadersSyncBatch>>();
 
         dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
@@ -142,6 +123,6 @@ public class MergeSynchronizer : Synchronizer
 
     private void WireMultiSyncModeSelector()
     {
-        WireFeedWithModeSelector(_beaconServiceProvider.GetRequiredService<ISyncFeed<HeadersSyncBatch>>());
+        WireFeedWithModeSelector(_beaconScope.GetRequiredService<ISyncFeed<HeadersSyncBatch>>());
     }
 }
