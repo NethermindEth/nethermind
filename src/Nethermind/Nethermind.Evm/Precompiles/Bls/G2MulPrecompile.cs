@@ -48,10 +48,8 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         }
 
         Span<byte> scalar = stackalloc byte[32];
-        for (int i = 0; i < 32; i++)
-        {
-            scalar[32 - i - 1] = inputData.Span[BlsConst.LenG2 + i];
-        }
+        inputData.Span[BlsConst.LenG2..].CopyTo(scalar);
+        scalar.Reverse();
 
         G2 res = x.Mult(scalar);
         return (res.EncodeRaw(), true);
