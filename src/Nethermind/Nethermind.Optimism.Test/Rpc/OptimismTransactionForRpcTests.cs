@@ -45,7 +45,11 @@ public class OptimismTransactionForRpcTests
         string serialized = new EthereumJsonSerializer().Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
+        ValidateSchema(json);
+    }
 
+    private static void ValidateSchema(JsonElement json)
+    {
         json.GetProperty("type").GetString().Should().MatchRegex("^0x7[eE]$");
         json.GetProperty("sourceHash").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
         json.GetProperty("from").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
