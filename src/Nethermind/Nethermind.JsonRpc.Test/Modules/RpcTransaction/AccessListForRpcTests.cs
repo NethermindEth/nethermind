@@ -28,12 +28,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JArray.Parse(serialized);
-        var expected = JArray.Parse(
-            """
-              [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]
-              """);
-        actual.Should().BeEquivalentTo(expected);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]""");
     }
 
     [Test]
@@ -54,12 +49,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JArray.Parse(serialized);
-        var expected = JArray.Parse(
-            """
-            [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003"]}]
-            """);
-        actual.Should().BeEquivalentTo(expected);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""");
     }
 
     [Test]
@@ -81,12 +71,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JArray.Parse(serialized);
-        var expected = JArray.Parse(
-            """
-            [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000001"]}]
-            """);
-        actual.Should().BeEquivalentTo(expected);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000001"]}]""");
     }
 
     [Test]
@@ -108,12 +93,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JArray.Parse(serialized);
-        var expected = JArray.Parse(
-            """
-            [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000003"]}]
-            """);
-        actual.Should().BeEquivalentTo(expected);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000003"]}]""");
     }
 
     [Test]
@@ -136,11 +116,6 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        var actual = JArray.Parse(serialized);
-        var expected = JArray.Parse(
-            """
-            [{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000003"]}]
-            """);
-        actual.Should().BeEquivalentTo(expected);
+        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""");
     }
 }

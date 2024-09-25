@@ -9,6 +9,7 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -817,9 +818,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
 
-            var actual = JObject.Parse(serialized);
-            var expected = JObject.Parse($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""");
-            actual.Should().BeEquivalentTo(expected);
+            JToken.Parse(serialized).Should().BeEquivalentTo($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""");
         }
 
         [TestCase(2)]
