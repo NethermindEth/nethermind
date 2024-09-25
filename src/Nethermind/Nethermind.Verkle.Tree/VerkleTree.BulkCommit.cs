@@ -57,10 +57,10 @@ public partial class VerkleTree
         int sectionStart = 0;
         byte sectionStartByte = leafDeltas[0].Key[depth];
 
-        McsLock deltaLock = new McsLock();
-        using ArrayPoolList<(FrE, int)> deltaOps = new ArrayPoolList<(FrE, int)>(256);
+        var deltaLock = new McsLock();
+        using var deltaOps = new ArrayPoolList<(FrE, int)>(256);
 
-        ActionBlock<(int, int, byte)> accumulateDelta = new ActionBlock<(int, int, byte)>(input =>
+        var accumulateDelta = new ActionBlock<(int, int, byte)>(input =>
             {
                 (int start, int end, byte sectionByte) = input;
                 // Get the delta for the previous section

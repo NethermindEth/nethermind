@@ -224,9 +224,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		nuget.config = nuget.config
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree", "Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj", "{8901DFA2-D081-4511-B251-D3BB3A07E591}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle", "Nethermind.Verkle\Nethermind.Verkle.csproj", "{3E761C25-7588-4281-B87C-1CA33EC8695E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree.Test", "Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj", "{C311716E-F9D0-4076-8E9D-DDB1C99090A4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tests", "Nethermind.Verkle.Tests\Nethermind.Verkle.Tests.csproj", "{A3008976-B8C2-41A0-BD8A-C2E49FBC61BF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree", "Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj", "{E2E1F8B4-B7E5-4ADE-96F2-1E7A23E29972}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree.Test", "Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj", "{C4FA29FD-594D-44CA-947C-5F216C2C4C0E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.VerkleMigration.Cli", "Nethermind.VerkleMigration.Cli\Nethermind.VerkleMigration.Cli.csproj", "{2968302B-C5B9-44B6-9154-A6E5221D767A}"
 EndProject
@@ -632,6 +636,22 @@ Global
 		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2968302B-C5B9-44B6-9154-A6E5221D767A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E761C25-7588-4281-B87C-1CA33EC8695E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E761C25-7588-4281-B87C-1CA33EC8695E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E761C25-7588-4281-B87C-1CA33EC8695E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E761C25-7588-4281-B87C-1CA33EC8695E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3008976-B8C2-41A0-BD8A-C2E49FBC61BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3008976-B8C2-41A0-BD8A-C2E49FBC61BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3008976-B8C2-41A0-BD8A-C2E49FBC61BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3008976-B8C2-41A0-BD8A-C2E49FBC61BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2E1F8B4-B7E5-4ADE-96F2-1E7A23E29972}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2E1F8B4-B7E5-4ADE-96F2-1E7A23E29972}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2E1F8B4-B7E5-4ADE-96F2-1E7A23E29972}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2E1F8B4-B7E5-4ADE-96F2-1E7A23E29972}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C4FA29FD-594D-44CA-947C-5F216C2C4C0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C4FA29FD-594D-44CA-947C-5F216C2C4C0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C4FA29FD-594D-44CA-947C-5F216C2C4C0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C4FA29FD-594D-44CA-947C-5F216C2C4C0E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -696,7 +716,8 @@ Global
 		{2EDE2554-59C0-4E78-92F7-EB8077AA597D} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{48E50409-26FE-4FD8-AF6E-2A0E79F794CE} = {2EDE2554-59C0-4E78-92F7-EB8077AA597D}
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{C311716E-F9D0-4076-8E9D-DDB1C99090A4} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{A3008976-B8C2-41A0-BD8A-C2E49FBC61BF} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{C4FA29FD-594D-44CA-947C-5F216C2C4C0E} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

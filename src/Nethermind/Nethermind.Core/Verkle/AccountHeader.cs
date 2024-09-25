@@ -31,62 +31,26 @@ public readonly struct AccountHeader
 
     private static readonly UInt256 MainStorageOffset = ((UInt256)MainStorageOffsetBase << MainStorageOffsetExponent) >> 8;
 
-    private static readonly LruCache<(byte[], UInt256), byte[]> _keyCache = new(
+    private static readonly LruCache<(byte[], UInt256), byte[]> KeyCache = new(
         1000000, 10000, "Verkle Key Cache", new ArrayAndUintComparer());
-
-    private class ArrayAndUintComparer : IEqualityComparer<(byte[], UInt256)>
-    {
-        public bool Equals((byte[], UInt256) x, (byte[], UInt256) y)
-        {
-            return Bytes.AreEqual(x.Item1, y.Item1) && ((Object)x.Item2).Equals(y.Item2);
-        }
-
-        public int GetHashCode((byte[], UInt256) obj)
-        {
-            return HashCode.Combine(obj.Item1.GetSimplifiedHashCode(), obj.Item2);
-        }
-    }
-
-    public static byte[] GetTreeKeyPrefix(ReadOnlySpan<byte> address20, UInt256 treeIndex)
-    {
-        if (_keyCache.TryGet((address20.ToArray(), treeIndex), out byte[] value)) return value;
-        value = PedersenHash.ComputeHashBytes(address20, treeIndex);
-        _keyCache.Set((address20.ToArray(), treeIndex), value);
-        return value;
-    }
-
-    public static Hash256 GetTreeKey(ReadOnlySpan<byte> address, UInt256 treeIndex, byte subIndexBytes)
-    {
-        var treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
-        treeKeyPrefix[31] = subIndexBytes;
-        return new Hash256(treeKeyPrefix);
-    }
 
     public static Hash256 GetTreeKeyForCodeChunk(byte[] address, UInt256 chunk)
     {
         UInt256 chunkOffset = CodeOffset + chunk;
         UInt256 treeIndex = chunkOffset / VerkleNodeWidth;
         UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
-        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
+        return GetTreeKey(address, treeIndex, GetSubIndexByte(subIndex));
     }
 
-    public static Hash256 GetTreeKeyForStorageSlot(ReadOnlySpan<byte> address, UInt256 storageKey)
+    public static Hash256 GetTreeKeyForStorageSlot(byte[] address, UInt256 storageKey)
     {
         if (storageKey < (CodeOffset - HeaderStorageOffset))
-            return GetTreeKey(address, UInt256.Zero, (HeaderStorageOffset + storageKey).ToBigEndian()[31]);
+            return GetTreeKey(address, UInt256.Zero, GetSubIndexByte(HeaderStorageOffset + storageKey));
 
-        byte subIndex = storageKey.ToBigEndian()[31];
+        byte subIndex = GetSubIndexByte(storageKey);
         UInt256 treeIndex = storageKey >> 8;
         treeIndex += MainStorageOffset;
         return GetTreeKey(address, treeIndex, subIndex);
-    }
-
-    public static void FillTreeAndSubIndexForChunk(UInt256 chunkId, ref Span<byte> subIndexBytes, out UInt256 treeIndex)
-    {
-        UInt256 chunkOffset = CodeOffset + chunkId;
-        treeIndex = chunkOffset / VerkleNodeWidth;
-        UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
-        subIndex.ToBigEndian(subIndexBytes);
     }
 
     public static Account BasicDataToAccount(in ReadOnlySpan<byte> basicData, Hash256 codeHash)
@@ -137,5 +101,35 @@ public readonly struct AccountHeader
         BinaryPrimitives.WriteUInt64BigEndian(basicDataSpan.Slice(NonceOffset, NonceBytesLength), nonce);
 
         return basicData;
+    }
+
+    private static byte GetSubIndexByte(in UInt256 subIndex) => (byte)subIndex.u0;
+
+    public static Hash256 GetTreeKey(byte[] address, UInt256 treeIndex, byte subIndexBytes)
+    {
+        var treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
+        treeKeyPrefix[31] = subIndexBytes;
+        return new Hash256(treeKeyPrefix);
+    }
+
+    public static byte[] GetTreeKeyPrefix(byte[] address20, UInt256 treeIndex)
+    {
+        if (KeyCache.TryGet((address20, treeIndex), out byte[] value)) return value;
+        value = PedersenHash.ComputeHashBytes(address20, treeIndex);
+        KeyCache.Set((address20, treeIndex), value);
+        return value;
+    }
+
+    private class ArrayAndUintComparer : IEqualityComparer<(byte[], UInt256)>
+    {
+        public bool Equals((byte[], UInt256) x, (byte[], UInt256) y)
+        {
+            return Bytes.AreEqual(x.Item1, y.Item1) && ((Object)x.Item2).Equals(y.Item2);
+        }
+
+        public int GetHashCode((byte[], UInt256) obj)
+        {
+            return HashCode.Combine(obj.Item1.GetSimplifiedHashCode(), obj.Item2);
+        }
     }
 }

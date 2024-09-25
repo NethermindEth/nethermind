@@ -22,11 +22,6 @@ namespace Nethermind.Core.Verkle
             }
         }
 
-        public static Banderwagon Commit(FrE[] value)
-        {
-            return Banderwagon.MultiScalarMul(Constants.BasisG, value);
-        }
-
         public static Banderwagon ScalarMul(in FrE value, int index)
         {
             if (value.IsZero)
@@ -37,6 +32,7 @@ namespace Nethermind.Core.Verkle
             return Constants.BasisG[index] * value;
         }
 
+        // TODO: replace this with rust msm
         public static Banderwagon MultiScalarMul(Span<(FrE, int)> pair)
         {
             if (pair.Length == 1)

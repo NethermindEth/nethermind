@@ -22,6 +22,7 @@ public class AccountHeaderTests
 
         var index = new UInt256(data, true);
         Hash256? storageKey = AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, index);
+        Console.WriteLine(storageKey);
         storageKey.BytesToArray().Should()
             .BeEquivalentTo(Bytes.FromHexString("0x0beaa63f5273c76e7b673048a478dd85e970f5657bc02dead742b9246e101e67"));
 
@@ -30,7 +31,8 @@ public class AccountHeaderTests
     [Test]
     public void TestGetTreeKey()
     {
-        Span<byte> addr = new byte[32];
+        byte[] address = new byte[32];
+        Span<byte> addr = address;
         for (int i = 0; i < 16; i++)
         {
             addr[1 + 2 * i] = 255;
@@ -39,7 +41,7 @@ public class AccountHeaderTests
         UInt256 n = 1;
         n = n << 129;
         n = n + 3;
-        byte[] key = PedersenHash.Hash(addr, n);
+        byte[] key = PedersenHash.HashRust(address, n);
         key[31] = 1;
 
         key.ToHexString().Should().BeEquivalentTo("6ede905763d5856cd2d67936541e82aa78f7141bf8cd5ff6c962170f3e9dc201");
