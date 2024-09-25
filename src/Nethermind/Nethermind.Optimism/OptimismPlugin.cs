@@ -27,6 +27,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Merge.Plugin.handlers;
 
 namespace Nethermind.Optimism;
 

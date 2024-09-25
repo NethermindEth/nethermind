@@ -15,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 
 namespace Nethermind.Optimism;
@@ -24,14 +23,14 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
-    protected override Task InitBlockchain()
+    protected override async Task InitBlockchain()
     {
-        api.RegisterTxType(TxType.DepositTx, new OptimismTxDecoder<Transaction>(), Always.Valid);
-
         api.SpecHelper = new(api.ChainSpec.Optimism);
         api.L1CostHelper = new(api.SpecHelper, api.ChainSpec.Optimism.L1BlockAddress);
 
-        return base.InitBlockchain();
+        await base.InitBlockchain();
+
+        api.RegisterTxType(TxType.DepositTx, new OptimismTxDecoder<Transaction>(), Always.Valid);
     }
 
     protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
