@@ -33,7 +33,7 @@ public class TransactionProcessorFeeTests
     [SetUp]
     public void Setup()
     {
-        _spec = new(Prague.Instance);
+        _spec = new(Prague.GnosisInstance);
         _specProvider = new TestSpecProvider(_spec);
 
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
