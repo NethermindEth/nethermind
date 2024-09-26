@@ -326,15 +326,13 @@ public sealed class SetCodeTxValidator : ITxValidator
         {
             return TxErrorMessages.NotAllowedCreateTransaction;
         }
-        if (tx.AuthorizationList is null || tx.AuthorizationList.Length == 0)
+        return tx.AuthorizationList switch
         {
-            return TxErrorMessages.MissingAuthorizationList;
-        }
-        if (tx.AuthorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)))
-        {
-            return TxErrorMessages.InvalidAuthoritySignature;
-        }
-        return ValidationResult.Success;
+            null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
+            var authorizationList when authorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature) =>
+                TxErrorMessages.InvalidAuthoritySignature,
+            _ => ValidationResult.Success
+        };
     }
     private bool ValidateAuthoritySignature(Signature signature)
     {
