@@ -152,8 +152,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            _warmAddressBuilder.StartNewBuild(spec);
-            int delegationRefunds = ProcessDelegations(tx, spec, _accessedAddresses);
+            JournalSet<Address> accessedAddresses = new();
+            int delegationRefunds = ProcessDelegations(tx, spec, accessedAddresses);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _warmAddressBuilder);
 
@@ -207,7 +207,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, HashSet<Address> accessedAddresses)
+        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, ICollection<Address> accessedAddresses)
         {
             int refunds = 0;
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
@@ -242,7 +242,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool IsValidForExecution(
                 AuthorizationTuple authorizationTuple,
-                ISet<Address> accessedAddresses,
+                ICollection<Address> accessedAddresses,
                 [NotNullWhen(false)] out string? error)
             {
                 if (authorizationTuple.Authority is null)
