@@ -26,6 +26,7 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
     public static AccessList Empty { get; } = new(new List<(Address, int)>(), new List<UInt256>());
 
     public bool IsEmpty => _addresses.Count == 0;
+    public (int AddressesCount, int StorageKeysCount) Count => (_addresses.Count, _keys.Count);
 
     public class Builder
     {
@@ -72,26 +73,21 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
     IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)> IEnumerable<(Address Address, StorageKeysEnumerable StorageKeys)>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public struct Enumerator : IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)>, IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>
+    public struct Enumerator(AccessList accessList) : IEnumerator<(Address Address, StorageKeysEnumerable StorageKeys)>,
+        IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>
     {
-        private readonly AccessList _accessList;
         private int _index = -1;
         private int _keysIndex = 0;
-
-        public Enumerator(AccessList accessList)
-        {
-            _accessList = accessList;
-        }
 
         public bool MoveNext()
         {
             _index++;
             if (_index > 0)
             {
-                _keysIndex += CollectionsMarshal.AsSpan(_accessList._addresses)[_index - 1].count;
+                _keysIndex += CollectionsMarshal.AsSpan(accessList._addresses)[_index - 1].count;
             }
 
-            return _index < _accessList._addresses.Count;
+            return _index < accessList._addresses.Count;
         }
 
         public void Reset()
@@ -104,8 +100,8 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         {
             get
             {
-                ref readonly var addressCount = ref CollectionsMarshal.AsSpan(_accessList._addresses)[_index];
-                return (addressCount.address, new StorageKeysEnumerable(_accessList, _keysIndex, addressCount.count));
+                ref readonly var addressCount = ref CollectionsMarshal.AsSpan(accessList._addresses)[_index];
+                return (addressCount.address, new StorageKeysEnumerable(accessList, _keysIndex, addressCount.count));
             }
         }
 

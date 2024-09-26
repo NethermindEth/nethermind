@@ -48,23 +48,8 @@ public static class IntrinsicGasCalculator
 
     private static long AccessListCost(Transaction transaction)
     {
-        AccessList? accessList = transaction.AccessList;
-        long accessListCost = 0;
-        if (accessList is not null)
-        {
-            if (accessList.IsEmpty) return accessListCost;
-
-            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
-            {
-                accessListCost += GasCostOf.AccessAccountListEntry;
-                foreach (UInt256 _ in entry.storageKeys)
-                {
-                    accessListCost += GasCostOf.AccessStorageListEntry;
-                }
-            }
-        }
-
-        return accessListCost;
+        (int addressesCount, int storageKeysCount) = transaction.AccessList?.Count ?? (0, 0);
+        return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessAccountListEntry;
     }
 
     private static long AuthorizationListCost(Transaction transaction) =>
