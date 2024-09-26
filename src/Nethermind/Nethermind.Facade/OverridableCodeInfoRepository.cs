@@ -46,8 +46,8 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public int SetDelegations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec) =>
         codeInfoRepository.SetDelegations(worldState, authorizations, accessedAddresses, spec);
 
-    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        codeInfoRepository.IsDelegation(worldState, address, out delegatedAddress);
+    public bool TryGetDelegatedAddress(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        codeInfoRepository.TryGetDelegatedAddress(worldState, address, out delegatedAddress);
 
     public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address) =>
         codeInfoRepository.GetExecutableCodeHash(worldState, address);

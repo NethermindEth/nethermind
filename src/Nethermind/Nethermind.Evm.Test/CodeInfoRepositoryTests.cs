@@ -284,7 +284,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new(1);
 
-        sut.IsDelegation(stateProvider, TestItem.AddressA, out _).Should().Be(false);
+        sut.TryGetDelegatedAddress(stateProvider, TestItem.AddressA, out _).Should().Be(false);
     }
 
 
@@ -314,7 +314,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new(1);
 
-        sut.IsDelegation(stateProvider, TestItem.AddressA, out _).Should().Be(true);
+        sut.TryGetDelegatedAddress(stateProvider, TestItem.AddressA, out _).Should().Be(true);
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
@@ -329,7 +329,7 @@ public class CodeInfoRepositoryTests
         CodeInfoRepository sut = new(1);
 
         Address result;
-        sut.IsDelegation(stateProvider, TestItem.AddressA, out result);
+        sut.TryGetDelegatedAddress(stateProvider, TestItem.AddressA, out result);
 
         result.Should().Be(new Address(code.Slice(3, Address.Size)));
     }
