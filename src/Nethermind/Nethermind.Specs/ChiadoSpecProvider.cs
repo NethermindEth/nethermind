@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
@@ -25,7 +26,7 @@ public class ChiadoSpecProvider : ISpecProvider
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => Shanghai.Instance,
             < PragueTimestamp => Cancun.Instance,
-            _ => Prague.GnosisInstance
+            _ => PragueGnosis.Instance
         }
     };
 

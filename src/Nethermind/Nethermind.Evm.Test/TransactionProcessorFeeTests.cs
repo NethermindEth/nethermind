@@ -13,12 +13,12 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.Int256;
 using NUnit.Framework;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Evm.Test;
 
@@ -33,7 +33,7 @@ public class TransactionProcessorFeeTests
     [SetUp]
     public void Setup()
     {
-        _spec = new(Prague.GnosisInstance);
+        _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);

@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
@@ -37,7 +38,7 @@ public class GnosisSpecProvider : ISpecProvider
                 null or < ShanghaiTimestamp => London.Instance,
                 < CancunTimestamp => Shanghai.Instance,
                 < PragueTimestamp => Cancun.Instance,
-                _ => Prague.GnosisInstance
+                _ => PragueGnosis.Instance
             }
         };
     }
