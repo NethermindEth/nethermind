@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -42,7 +43,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
-        private readonly HashSet<Address> _accessedAddresses = [];
+        private readonly WarmAddressBuilder _warmAddressBuilder = new();
 
         [Flags]
         protected enum ExecutionOptions
@@ -151,17 +152,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            _accessedAddresses.Clear();
+            _warmAddressBuilder.StartNewBuild(spec);
             int delegationRefunds = 0;
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
-                delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, _accessedAddresses, spec);
+                delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, _warmAddressBuilder, spec);
             }
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _accessedAddresses);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _warmAddressBuilder);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, _accessedAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, _warmAddressBuilder.WarmAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -443,13 +444,13 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
-            HashSet<Address> accessedAddresses)
+            WarmAddressBuilder accessedAddresses)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            accessedAddresses.Add(recipient);
-            accessedAddresses.Add(tx.SenderAddress!);
+            accessedAddresses.WarmUpAddress(recipient);
+            accessedAddresses.WarmUpAddress(tx.SenderAddress!);
 
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
             Address? delegationAddress = null;
@@ -458,7 +459,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
 
             if (delegationAddress is not null)
-                accessedAddresses.Add(delegationAddress);
+                accessedAddresses.WarmUpAddress(delegationAddress);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -519,7 +520,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
                     true,
                     snapshot,
-                    false))
+                    warmedAddresses))
                 {
                     WarmUp(tx, header, spec, state, warmedAddresses);
 
@@ -702,14 +703,61 @@ namespace Nethermind.Evm.TransactionProcessing
         [StackTraceHidden]
         private static void ThrowTransactionCollisionException() => throw new TransactionCollisionException();
 
-        private readonly struct AddressWarmer(IReleaseSpec spec)
+        private sealed class WarmAddressBuilder: ICollection<Address>
         {
-            public readonly JournalSet<Address> WarmAddresses { get; } = [];
+            private IReleaseSpec _spec;
+            public JournalSet<Address> WarmAddresses { get; private set; }
+
+            public int Count => WarmAddresses.Count;
+
+            public bool IsReadOnly => WarmAddresses.IsReadOnly;
 
             public void WarmUpAddress(Address address)
             {
-                if (spec.UseHotAndColdStorage) // eip-2929
+                Debug.Assert(WarmAddresses is not null);
+                if (_spec.UseHotAndColdStorage) // eip-2929
                     WarmAddresses.Add(address);
+            }
+            public void StartNewBuild(IReleaseSpec releaseSpec)
+            {
+                _spec = releaseSpec;
+                WarmAddresses = [];
+            }
+
+            public void Add(Address item)
+            {
+                Debug.Assert(WarmAddresses is not null);
+                WarmUpAddress(item);
+            }
+
+            public void Clear()
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool Contains(Address item)
+            {
+                return WarmAddresses.Contains(item);
+            }
+
+            public void CopyTo(Address[] array, int arrayIndex)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool Remove(Address item)
+            {
+                throw new NotImplementedException();
+            }
+
+            public IEnumerator<Address> GetEnumerator()
+            {
+                return WarmAddresses.GetEnumerator();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return WarmAddresses.GetEnumerator();
             }
         }
     }

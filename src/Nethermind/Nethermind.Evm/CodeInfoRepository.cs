@@ -159,7 +159,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     public int InsertFromAuthorizations(
         IWorldState worldState,
         AuthorizationTuple?[] authorizations,
-        ISet<Address> accessedAddresses,
+        ICollection<Address> accessedAddresses,
         IReleaseSpec spec)
     {
         int refunds = 0;
@@ -225,7 +225,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         AuthorizationTuple authorizationTuple,
         IWorldState stateProvider,
         ulong chainId,
-        ISet<Address> accessedAddresses,
+        ICollection<Address> accessedAddresses,
         [NotNullWhen(false)] out string? error)
     {
         if (authorizationTuple.Authority is null)

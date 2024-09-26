@@ -45,7 +45,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverwrites[key] = value;
     }
 
-    public int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec) =>
+    public int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ICollection<Address> accessedAddresses, IReleaseSpec spec) =>
         codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, accessedAddresses, spec);
 
     public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>

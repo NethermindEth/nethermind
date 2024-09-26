@@ -107,8 +107,25 @@ namespace Nethermind.Evm
 
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
-
         public EvmState(
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            bool isTopLevel,
+            Snapshot snapshot,
+            JournalSet<Address> warmAddresses)
+            : this(
+                  gasAvailable,
+                  env,
+                  executionType,
+                  isTopLevel,
+                  snapshot,
+                  false)
+        {
+            _accessedAddresses = warmAddresses;
+        }
+
+        internal EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
