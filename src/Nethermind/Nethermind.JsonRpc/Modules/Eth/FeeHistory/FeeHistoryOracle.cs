@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     b.Number,
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
-                    feePerBlobGas == UInt256.MaxValue ? 0 : feePerBlobGas,
+                    feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
                     b.GasUsed / (double)b.GasLimit,
                     (b.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
                     b.ParentHash,
