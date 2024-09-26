@@ -131,6 +131,9 @@ public class CodeInfoRepository : ICodeInfoRepository
         _codeCache.Set(codeHash, codeInfo);
     }
 
+    /// <summary>
+    /// Insert a delegation to <paramref name="codeSource"/> into <paramref name="authority"/>
+    /// </summary>
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
     {
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
@@ -164,7 +167,6 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     /// <remarks>
     /// Parses delegation code to extract the contained address.
-    /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
     /// </remarks>
     private static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
     {
