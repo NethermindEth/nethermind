@@ -18,61 +18,48 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
     {
         int length = stream.ReadSequenceLength();
         int check = length + stream.Position;
-
-        var chainId = stream.DecodeULong();
+        ulong chainId = stream.DecodeULong();
         Address? codeAddress = stream.DecodeAddress();
         ulong nonce = stream.DecodeULong();
-
         ulong yParity = stream.DecodeULong();
         byte[] r = stream.DecodeByteArray();
         byte[] s = stream.DecodeByteArray();
+        
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
             stream.Check(check);
-        try
-        {
-            return new AuthorizationTuple(
-                chainId,
-                codeAddress!,
-                nonce,
-                yParity,
-                r,
-                s);
         }
-        catch (ArgumentNullException e)
+
+        if (codeAddress is null)
         {
-            throw InvalidValueRlpException(e);
+            ThrowMissingCodeAddressException();
         }
+
+        return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
     public AuthorizationTuple Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
-
-        var chainId = decoderContext.DecodeULong();
-        Address codeAddress = decoderContext.DecodeAddress();
-
+        ulong chainId = decoderContext.DecodeULong();
+        Address? codeAddress = decoderContext.DecodeAddress();
         ulong nonce = decoderContext.DecodeULong();
-
         ulong yParity = decoderContext.DecodeULong();
         byte[] r = decoderContext.DecodeByteArray();
         byte[] s = decoderContext.DecodeByteArray();
+
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
+        {
             decoderContext.Check(check);
-        try
-        {
-            return new AuthorizationTuple(
-            chainId,
-            codeAddress!,
-            nonce,
-            yParity,
-            r,
-            s);
         }
-        catch (ArgumentNullException e)
+
+        if (codeAddress is null)
         {
-            throw InvalidValueRlpException(e);
+            ThrowMissingCodeAddressException();
         }
+
+        return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
     }
 
     public RlpStream Encode(AuthorizationTuple item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -125,7 +112,6 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         + Rlp.LengthOf(codeAddress)
         + Rlp.LengthOf(nonce);
 
-    [StackTraceHidden]
-    private static RlpException InvalidValueRlpException(ArgumentNullException e) =>
-        new RlpException($"Invalid value for '{e.ParamName}' in '{nameof(AuthorizationTuple)}'", e);
+    [DoesNotReturn]
+    private static RlpException ThrowMissingCodeAddressException() => throw new RlpException("Missing code address for Authorization");
 }

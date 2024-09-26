@@ -23,9 +23,9 @@ public class AuthorizationTuple(
     { }
 
     public ulong ChainId { get; } = chainId;
-    public Address CodeAddress { get; protected set; } = codeAddress ?? throw new ArgumentNullException(nameof(codeAddress));
+    public Address CodeAddress { get; protected set; } = codeAddress;
     public ulong Nonce { get; } = nonce;
-    public Signature AuthoritySignature { get; protected set; } = sig ?? throw new ArgumentNullException(nameof(sig));
+    public Signature AuthoritySignature { get; protected set; } = sig;
 
     /// <summary>
     /// <see cref="Authority"/> may be recovered at a later point.
