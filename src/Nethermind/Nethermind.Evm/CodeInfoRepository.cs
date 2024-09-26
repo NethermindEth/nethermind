@@ -82,11 +82,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo cachedCodeInfo = InternalGetCachedCode(worldState, codeSource);
 
-        if (Eip7702Constants.IsDelegatedCode(cachedCodeInfo.MachineCode.Span))
+        if (TryGetDelegatedAddress(cachedCodeInfo.MachineCode.Span, out delegationAddress))
         {
-            Address parsedDelegated = ParseDelegatedAddress(cachedCodeInfo.MachineCode.Span);
-            cachedCodeInfo = InternalGetCachedCode(worldState, parsedDelegated);
-            delegationAddress = parsedDelegated;
+            cachedCodeInfo = InternalGetCachedCode(worldState, delegationAddress);
         }
 
         return cachedCodeInfo;
