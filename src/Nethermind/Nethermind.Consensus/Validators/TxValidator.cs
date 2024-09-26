@@ -329,7 +329,7 @@ public sealed class SetCodeTxValidator : ITxValidator
         return tx.AuthorizationList switch
         {
             null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
-            var authorizationList when authorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature) =>
+            var authorizationList when authorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)) =>
                 TxErrorMessages.InvalidAuthoritySignature,
             _ => ValidationResult.Success
         };

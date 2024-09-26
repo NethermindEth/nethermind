@@ -214,8 +214,8 @@ public class CodeInfoRepository : ICodeInfoRepository
         CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
-            : Eip7702Constants.IsDelegatedCode(codeInfo.MachineCode.Span)
-                ? worldState.GetCodeHash(ParseDelegatedAddress(codeInfo.MachineCode.Span))
+            : TryGetDelegatedAddress(codeInfo.MachineCode.Span, out Address? delegationAddress)
+                ? worldState.GetCodeHash(delegationAddress)
                 : codeHash;
     }
 
@@ -268,9 +268,16 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// Parses delegation code to extract the contained address.
     /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
     /// </remarks>
-    private static Address ParseDelegatedAddress(ReadOnlySpan<byte> code)
+    private static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
     {
-        return new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
+        if (Eip7702Constants.IsDelegatedCode(code))
+        {
+            address = new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
+            return true;
+        }
+
+        address = null;
+        return false;
     }
 
     private CodeInfo CreateCachedPrecompile(
@@ -278,7 +285,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
-    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) => 
+    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address).MachineCode.Span, out delegatedAddress);
 
     private class CachedPrecompile(
