@@ -338,11 +338,6 @@ public sealed class SetCodeTxValidator : ITxValidator
     {
         UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
 
-        if (sValue >= Secp256K1Curve.HalfNPlusOne)
-        {
-            return false;
-        }
-
-        return signature.RecoveryId is 0 or 1;
+        return sValue < Secp256K1Curve.HalfNPlusOne && signature.RecoveryId is 0 or 1;
     }
 }
