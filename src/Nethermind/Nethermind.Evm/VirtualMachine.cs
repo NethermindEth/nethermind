@@ -470,7 +470,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             // parity induced if else for vmtrace
                             if (_txTracer.IsTracingInstructions)
                             {
-                                _txTracer.ReportMemoryChange((long)previousCallOutputDestination, previousCallOutput);
+                                _txTracer.ReportMemoryChange(previousCallOutputDestination, previousCallOutput);
                             }
                         }
 
@@ -1310,7 +1310,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, slice);
+                                _txTracer.ReportMemoryChange(a, slice);
                             }
                         }
 
@@ -1337,7 +1337,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             slice = env.CodeInfo.MachineCode.SliceWithZeroPadding(in b, (int)result);
                             vmState.Memory.Save(in a, in slice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, in slice);
                         }
 
                         break;
@@ -1450,7 +1450,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
+                                _txTracer.ReportMemoryChange(a, in slice);
                             }
                         }
 
@@ -1489,7 +1489,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
+                                _txTracer.ReportMemoryChange(a, in slice);
                             }
                         }
                         break;
@@ -1514,7 +1514,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.BlockHash;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        long number = a > long.MaxValue ? long.MaxValue : (long)a;
+                        long number = a.ToLong();
 
                         Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
 
@@ -1661,7 +1661,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, bytes);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
 
                         break;
                     }
@@ -1673,7 +1673,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         byte data = stack.PopByte();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
                         vmState.Memory.SaveByte(in result, data);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, data);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, data);
 
                         break;
                     }
@@ -2563,7 +2563,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
 
-        long gasLimitUl = (long)gasLimit;
+        long gasLimitUl = gasLimit.ToLong();
         if (!UpdateGas(gasLimitUl, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         if (!transferValue.IsZero)
@@ -2634,8 +2634,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             executionType,
             isTopLevel: false,
             snapshot,
-            (long)outputOffset,
-            (long)outputLength,
+            outputOffset.ToLong(),
+            outputLength.ToLong(),
             instruction == Instruction.STATICCALL || vmState.IsStatic,
             vmState,
             isContinuation: false,
@@ -3214,7 +3214,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
         if (!UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                length.ToLong() * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
@@ -3441,15 +3441,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
-        if (memoryCost != 0L)
-        {
-            if (!UpdateGas(memoryCost, ref gasAvailable))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return memoryCost == 0L || UpdateGas(memoryCost, ref gasAvailable);
     }
 
     private static bool Jump(CodeInfo codeinfo, in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env)

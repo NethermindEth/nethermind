@@ -17,12 +17,12 @@ public class Secp256r1Precompile : IPrecompile<Secp256r1Precompile>
     public static Address Address { get; } = Address.FromNumber(0x100);
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 3450L;
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
     // TODO can be optimized - Go implementation is 2-6 times faster depending on the platform. Options:
     // - Try to replicate Go version in C#
     // - Compile Go code into a library and call it via P/Invoke
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length != 160)
             return (null, true);

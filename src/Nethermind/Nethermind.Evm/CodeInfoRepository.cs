@@ -82,10 +82,10 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             [G1AddPrecompile.Address] = new CodeInfo(G1AddPrecompile.Instance),
             [G1MulPrecompile.Address] = new CodeInfo(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
+            [G1MultiMulPrecompile.Address] = new CodeInfo(G1MultiMulPrecompile.Instance),
             [G2AddPrecompile.Address] = new CodeInfo(G2AddPrecompile.Instance),
             [G2MulPrecompile.Address] = new CodeInfo(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
+            [G2MultiMulPrecompile.Address] = new CodeInfo(G2MultiMulPrecompile.Instance),
             [PairingPrecompile.Address] = new CodeInfo(PairingPrecompile.Instance),
             [MapToG1Precompile.Address] = new CodeInfo(MapToG1Precompile.Instance),
             [MapToG2Precompile.Address] = new CodeInfo(MapToG2Precompile.Instance),
@@ -181,9 +181,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
             if (!cache.TryGetValue(key, out (ReadOnlyMemory<byte>, bool) result))
