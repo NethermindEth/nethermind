@@ -17,10 +17,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
-        _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
-            ? result
-            : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
@@ -43,29 +39,18 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         if (redirectAddress is not null)
         {
-            _codeOverwrites[redirectAddress] = GetCachedCodeInfo(worldState, key, vmSpec);
+            _codeOverwrites[redirectAddress] = this.GetCachedCodeInfo(worldState, key, vmSpec);
         }
 
         _codeOverwrites[key] = value;
     }
 
-    public void ClearOverwrites()
-    {
-        _codeOverwrites.Clear();
-    }
+    public int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec) =>
+        codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, accessedAddresses, spec);
 
-    public int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec)
-    {
-        return codeInfoRepository.InsertFromAuthorizations(worldState, authorizations, accessedAddresses, spec);
-    }
+    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        codeInfoRepository.IsDelegation(worldState, address, out delegatedAddress);
 
-    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        return codeInfoRepository.IsDelegation(worldState, address, out delegatedAddress);
-    }
-
-    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
-    {
-        return codeInfoRepository.GetCodeHash(worldState, address);
-    }
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address) =>
+        codeInfoRepository.GetExecutableCodeHash(worldState, address);
 }

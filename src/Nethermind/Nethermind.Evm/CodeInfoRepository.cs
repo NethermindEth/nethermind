@@ -205,19 +205,20 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// </summary>
     /// <param name="worldState"></param>
     /// <param name="address"></param>
-    public ValueHash256 GetCodeHash(IWorldState worldState, Address address)
+    public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address)
     {
         ValueHash256 codeHash = worldState.GetCodeHash(address);
         if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        {
             return Keccak.OfAnEmptyString.ValueHash256;
+        }
 
         CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
-        if (codeInfo.IsEmpty)
-            return Keccak.OfAnEmptyString.ValueHash256;
-
-        if (Eip7702Constants.IsDelegatedCode(codeInfo.MachineCode.Span))
-            return worldState.GetCodeHash(ParseDelegatedAddress(codeInfo.MachineCode.Span));
-        return codeHash;
+        return codeInfo.IsEmpty
+            ? Keccak.OfAnEmptyString.ValueHash256
+            : Eip7702Constants.IsDelegatedCode(codeInfo.MachineCode.Span)
+                ? worldState.GetCodeHash(ParseDelegatedAddress(codeInfo.MachineCode.Span))
+                : codeHash;
     }
 
     /// <summary>

@@ -350,7 +350,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository sut = new(1);
 
-        sut.GetCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(delegationCode).ValueHash256);
+        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(delegationCode).ValueHash256);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -365,7 +365,7 @@ public class CodeInfoRepositoryTests
 
         CodeInfoRepository sut = new(1);
 
-        sut.GetCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(code).ValueHash256);
+        sut.GetExecutableCodeHash(stateProvider, TestItem.AddressA).Should().Be(Keccak.Compute(code).ValueHash256);
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
