@@ -305,5 +305,20 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator()
+        {
+            throw new NotImplementedException();
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start)
+        {
+            throw new NotImplementedException();
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start, byte[] end)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

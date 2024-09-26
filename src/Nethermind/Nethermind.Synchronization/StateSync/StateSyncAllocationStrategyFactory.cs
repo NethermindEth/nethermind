@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.StateSync
 
             protected override bool Filter(PeerInfo peerInfo)
             {
-                return peerInfo.CanGetSnapData() || peerInfo.CanGetNodeData();
+                return peerInfo.CanGetSnapData() || peerInfo.CanGetNodeData() || peerInfo.CanGetVerkleSyncData();
             }
         }
     }

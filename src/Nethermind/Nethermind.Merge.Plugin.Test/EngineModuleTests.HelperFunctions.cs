@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -95,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequest.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, new BlockReceiptsTracer(), chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
@@ -115,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Snapshot before = chain.State.TakeSnapshot();
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
-            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, new BlockReceiptsTracer(), chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();

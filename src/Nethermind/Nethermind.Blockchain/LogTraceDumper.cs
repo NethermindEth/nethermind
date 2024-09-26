@@ -54,7 +54,7 @@ public static class BlockTraceDumper
 
         try
         {
-            if (blockTracer is BlockReceiptsTracer receiptsTracer)
+            if (blockTracer is BlockExecutionTracer receiptsTracer)
             {
                 fileName = $"receipts_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);

@@ -55,6 +55,9 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
+using Nethermind.Synchronization.VerkleSync;
+using Nethermind.Verkle.Tree.History.V2;
+using Nethermind.Verkle.Tree.TreeStore;
 
 namespace Nethermind.Api
 {
@@ -230,5 +233,9 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+        public VerkleSyncServer? VerkleSyncServer { get; set; }
+        public IVerkleTreeStore? VerkleTreeStore { get; set; }
+        public IReadOnlyVerkleTreeStore? ReadOnlyVerkleTrieStore { get; set; }
+        public VerkleArchiveStore? VerkleArchiveStore { get; set; }
     }
 }

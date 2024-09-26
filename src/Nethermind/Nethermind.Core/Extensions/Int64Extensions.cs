@@ -163,7 +163,7 @@ public static class Int64Extensions
     {
         if (skipLeadingZeros)
         {
-            if (value == default)
+            if (value == (UInt256)default)
             {
                 return "0x0";
             }

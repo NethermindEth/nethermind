@@ -28,12 +28,12 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
-        private readonly ProgressTracker _progressTracker;
+        private readonly SnapProgressTracker _progressTracker;
 
         // This is actually close to 97% effective.
         private readonly LruKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16, "");
 
-        public SnapProvider(ProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
+        public SnapProvider(SnapProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+        public bool IsSnapGetRangesFinished() => _progressTracker.IsGetRangesFinished();
 
         public void UpdatePivot()
         {
