@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected Hash256 _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
-        protected TxDecoder _txDecoder => TxDecoder.Instance;
+        protected readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
 
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;

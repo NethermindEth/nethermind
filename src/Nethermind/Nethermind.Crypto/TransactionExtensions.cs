@@ -4,15 +4,17 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using System;
 
 namespace Nethermind.Crypto
 {
     public static class TransactionExtensions
     {
+        private static readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
         public static Hash256 CalculateHash(this Transaction transaction)
         {
             KeccakRlpStream stream = new();
-            TxDecoder.Instance.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            _txDecoder.Value.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
             return stream.GetHash();
         }
     }

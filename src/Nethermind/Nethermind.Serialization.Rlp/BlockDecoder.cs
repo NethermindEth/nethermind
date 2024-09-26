@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
     public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private TxDecoder _txDecoder => TxDecoder.Instance;
+        private readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
         private readonly WithdrawalDecoder _withdrawalDecoder = new();
         private readonly ConsensusRequestDecoder _consensusRequestsDecoder = new();
 
@@ -180,7 +180,7 @@ namespace Nethermind.Serialization.Rlp
             int txLength = 0;
             for (int i = 0; i < item.Transactions.Length; i++)
             {
-                txLength += _txDecoder.GetLength(item.Transactions[i], rlpBehaviors);
+                txLength += _txDecoder.Value.GetLength(item.Transactions[i], rlpBehaviors);
             }
 
             return txLength;
@@ -338,7 +338,7 @@ namespace Nethermind.Serialization.Rlp
             stream.StartSequence(txsLength);
             for (int i = 0; i < item.Transactions.Length; i++)
             {
-                stream.Encode(item.Transactions[i]);
+                _txDecoder.Value.Encode(stream, item.Transactions[i]);
             }
 
             stream.StartSequence(unclesLength);
