@@ -237,8 +237,9 @@ namespace Nethermind.Init.Steps
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
-                new BlockhashStore(_api.SpecProvider!, worldState),
+                _api.TransactionProcessor,
                 new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
                 preWarmer: preWarmer
             );

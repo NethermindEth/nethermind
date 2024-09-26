@@ -114,7 +114,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
-            new BlockhashStore(SpecProvider, StateProvider),
+            _transactionProcessor,
             new BeaconBlockRootHandler(_transactionProcessor),
+            new BlockhashStore(SpecProvider, StateProvider),
             _logManager);
 }

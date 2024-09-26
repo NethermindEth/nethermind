@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    private readonly IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _executionGetPayloadBodiesByHashV1Handler;
+    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> _executionGetPayloadBodiesByHashV1Handler;
     private readonly IGetPayloadBodiesByRangeV1Handler _executionGetPayloadBodiesByRangeV1Handler;
     private readonly IAsyncHandler<byte[], GetPayloadV2Result?> _getPayloadHandlerV2;
 
@@ -24,8 +24,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
         => _getPayloadHandlerV2.HandleAsync(payloadId);
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByHashV1(IList<Hash256> blockHashes)
-        => _executionGetPayloadBodiesByHashV1Handler.HandleAsync(blockHashes);
+    public ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes)
+        => _executionGetPayloadBodiesByHashV1Handler.Handle(blockHashes);
 
     public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByRangeV1(long start, long count)
         => _executionGetPayloadBodiesByRangeV1Handler.Handle(start, count);
