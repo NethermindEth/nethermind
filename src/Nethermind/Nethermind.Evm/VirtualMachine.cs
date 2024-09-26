@@ -2385,7 +2385,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.Memory.Save(in memOffset, dataSectionSlice);
                             if (_txTracer.IsTracingInstructions)
                             {
-                                _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+                                _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice.ToArray().AsSpan());
                             }
                         }
 
