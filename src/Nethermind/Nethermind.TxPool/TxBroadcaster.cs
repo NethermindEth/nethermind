@@ -142,7 +142,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void OnNewHead()
+        public void OnNewHead(object? sender, Block block)
         {
             _baseFeeThreshold = CalculateBaseFeeThreshold();
             BroadcastPersistentTxs();
