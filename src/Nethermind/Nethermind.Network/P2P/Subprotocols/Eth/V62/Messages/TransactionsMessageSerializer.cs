@@ -5,13 +5,12 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
-using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
-        private readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
+        private readonly TxDecoder _decoder = TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -22,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             nettyRlpStream.StartSequence(contentLength);
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                _txDecoder.Value.Encode(nettyRlpStream, message.Transactions[i], RlpBehaviors.InMempoolForm);
+                nettyRlpStream.Encode(message.Transactions[i], RlpBehaviors.InMempoolForm);
             }
         }
 
@@ -38,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                contentLength += _txDecoder.Value.GetLength(message.Transactions[i], RlpBehaviors.InMempoolForm);
+                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.InMempoolForm);
             }
 
             return Rlp.LengthOfSequence(contentLength);

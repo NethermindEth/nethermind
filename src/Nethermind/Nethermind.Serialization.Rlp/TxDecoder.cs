@@ -14,7 +14,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     public static readonly ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
 
 #pragma warning disable CS0618
-    public static TxDecoder Instance => Rlp.GetStreamDecoder<Transaction>() as TxDecoder;
+    public static readonly TxDecoder Instance = new();
 #pragma warning restore CS0618
 
     // Rlp will try to find a public parameterless constructor during static initialization.
