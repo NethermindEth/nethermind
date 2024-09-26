@@ -160,7 +160,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _txTracer = txTracer;
         _state = worldState;
 
-        TxExecutionContext txExecutionContext = state.Env.TxExecutionContext;
+        ref readonly TxExecutionContext txExecutionContext = ref state.Env.TxExecutionContext;
         ICodeInfoRepository codeInfoRepository = txExecutionContext.CodeInfoRepository;
         IReleaseSpec spec = _specProvider.GetSpec(txExecutionContext.BlockExecutionContext.Header.Number, txExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
