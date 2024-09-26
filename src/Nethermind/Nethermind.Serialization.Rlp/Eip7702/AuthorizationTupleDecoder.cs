@@ -113,5 +113,6 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         + Rlp.LengthOf(nonce);
 
     [DoesNotReturn]
+    [StackTraceHidden]
     private static void ThrowMissingCodeAddressException() => throw new RlpException("Missing code address for Authorization");
 }
