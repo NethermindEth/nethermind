@@ -10,8 +10,9 @@ namespace Nethermind.Specs.Forks;
 public class Prague : Cancun
 {
     private static IReleaseSpec _instance;
+    private static IReleaseSpec _gnosisInstance;
 
-    protected Prague()
+    protected Prague(bool enableEip4844FeeCollection)
     {
         Name = "Prague";
         IsEip2537Enabled = true;
@@ -20,8 +21,9 @@ public class Prague : Cancun
         IsEip7002Enabled = true;
         IsRip7212Enabled = true;
         Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
-        IsEip4844FeeCollectorEnabled = true;
+        IsEip4844FeeCollectorEnabled = enableEip4844FeeCollection;
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague(false));
+    public static IReleaseSpec GnosisInstance => LazyInitializer.EnsureInitialized(ref _gnosisInstance, () => new Prague(true));
 }
