@@ -66,7 +66,8 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             ContractSizeTxValidator.Instance,
             NonBlobFieldsTxValidator.Instance,
-            SetCodeTxValidator.Instance,
+            NoContractCreationTxValidator.Instance,
+            AuthorizationListTxValidator.Instance,
         ]));
     }
 
@@ -310,30 +311,28 @@ public sealed class SignatureTxValidator : BaseSignatureTxValidator
     private SignatureTxValidator() { }
 }
 
-public sealed class SetCodeTxValidator : ITxValidator
+public sealed class NoContractCreationTxValidator : ITxValidator
 {
-    public static readonly SetCodeTxValidator Instance = new();
-    private SetCodeTxValidator() { }
+    public static readonly NoContractCreationTxValidator Instance = new();
+    private NoContractCreationTxValidator() { }
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.IsContractCreation ? TxErrorMessages.NotAllowedCreateTransaction : ValidationResult.Success;
+}
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        return Validate7702Fields(transaction);
-    }
+public sealed class AuthorizationListTxValidator : ITxValidator
+{
+    public static readonly AuthorizationListTxValidator Instance = new();
+    private AuthorizationListTxValidator() { }
 
-    private ValidationResult Validate7702Fields(Transaction tx)
-    {
-        if (tx.IsContractCreation)
-        {
-            return TxErrorMessages.NotAllowedCreateTransaction;
-        }
-        return tx.AuthorizationList switch
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.AuthorizationList switch
         {
             null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
             var authorizationList when authorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)) =>
                 TxErrorMessages.InvalidAuthoritySignature,
             _ => ValidationResult.Success
         };
-    }
+
     private bool ValidateAuthoritySignature(Signature signature)
     {
         UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
