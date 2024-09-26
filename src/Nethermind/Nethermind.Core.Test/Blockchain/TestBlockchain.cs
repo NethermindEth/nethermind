@@ -181,15 +181,16 @@ public class TestBlockchain : IDisposable
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
-        TxPool = CreateTxPool();
+        CodeInfoRepository codeInfoRepository = new();
+        TxPool = CreateTxPool(codeInfoRepository);
 
         IChainHeadInfoProvider chainHeadInfoProvider =
-            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader);
+            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader, codeInfoRepository);
 
-        NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+        NonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-        CodeInfoRepository codeInfoRepository = new(SpecProvider.ChainId);
+
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
@@ -315,17 +316,15 @@ public class TestBlockchain : IDisposable
 
     public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
-    protected virtual TxPool.TxPool CreateTxPool() =>
+    protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
         new(
             EthereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
+            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState, codeInfoRepository),
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
-            TransactionComparerProvider.GetDefaultComparer(),
-            new CodeInfoRepository(SpecProvider.ChainId),
-            WorldStateManager.GlobalWorldState);
+            TransactionComparerProvider.GetDefaultComparer());
 
     protected virtual TxPoolTxSource CreateTxPoolTxSource()
     {

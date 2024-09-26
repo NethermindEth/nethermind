@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
 
             IStateReader stateReader = setApi.StateReader!;
             PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
-            CodeInfoRepository codeInfoRepository = new(_api.SpecProvider!.ChainId, preBlockCaches?.PrecompileCache);
+            CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
             ITxPool txPool = _api.TxPool = CreateTxPool(_api.WorldState!, codeInfoRepository);
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
@@ -81,17 +81,17 @@ namespace Nethermind.Init.Steps
             setApi.BlockValidator = CreateBlockValidator();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
-                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader);
+                new ChainHeadInfoProvider(getApi.SpecProvider!, getApi.BlockTree!, stateReader, codeInfoRepository);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider!.ChainId);
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
-            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+            INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
             setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
 
-            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
+            setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.ReadOnlyStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
                 ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, _api.WorldState), _api.SpecProvider, _api.LogManager, preBlockCaches)
@@ -204,13 +204,11 @@ namespace Nethermind.Init.Steps
         protected virtual TxPool.TxPool CreateTxPool(IWorldState worldState, CodeInfoRepository codeInfoRepository) =>
             new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
+                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                codeInfoRepository,
-                worldState,
                 _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();

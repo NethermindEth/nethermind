@@ -16,10 +16,9 @@ public interface ICodeInfoRepository
 {
     CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress);
     ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address);
-    CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
-    int InsertFromAuthorizations(IWorldState worldState, AuthorizationTuple?[] authorizations, ICollection<Address> accessedAddresses, IReleaseSpec spec);
-    bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress);
+    void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec);
+    bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress);
 }
 
 public static class CodeInfoRepositoryExtensions

@@ -260,25 +260,24 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     protected override TxPool.TxPool CreateTxPool(IWorldState worldState, CodeInfoRepository codeInfoRepository)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
-        var txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
-        var localDataSource = _api.TxPriorityContractLocalDataSource;
+        TxPriorityContract txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
+        TxPriorityContract.LocalDataSource? localDataSource = _api.TxPriorityContractLocalDataSource;
 
         ReportTxPriorityRules(txPriorityContract, localDataSource);
 
-        var minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
+        DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore
+            = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
         ITxFilter txPoolFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, minGasPricesContractDataStore);
 
         return new TxPool.TxPool(
-            _api.EthereumEcdsa,
+            _api.EthereumEcdsa!,
             _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-            new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
+            new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
             NethermindApi.Config<ITxPoolConfig>(),
-            _api.TxValidator,
+            _api.TxValidator!,
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-            codeInfoRepository,
-            worldState,
             _api.TxGossipPolicy,
             new TxFilterAdapter(_api.BlockTree, txPoolFilter, _api.LogManager),
             txPriorityContract is not null || localDataSource is not null);

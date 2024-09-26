@@ -149,7 +149,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when updating code hash");
             }
 
-            if (account.CodeHash != codeHash)
+            if (account.CodeHash.ValueHash256 != codeHash)
             {
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
