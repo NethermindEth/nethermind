@@ -598,20 +598,21 @@ namespace Nethermind.Evm.TransactionProcessing
             if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
             {
                 UInt256 fees = (UInt256)spentGas * premiumPerGas;
-                UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : 0;
+                UInt256 eip1559Fees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : UInt256.Zero;
+                UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
-                if (tx.SupportsBlobs && spec.IsEip4844PectraEnabled)
+                if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
                 {
-                    burntFees += blobBaseFee;
+                    collectedFees += blobBaseFee;
                 }
 
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
-                if (spec.IsEip1559Enabled && spec.FeeCollector is not null && !burntFees.IsZero)
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, burntFees, spec);
+                if (spec.FeeCollector is not null && !collectedFees.IsZero)
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
 
                 if (tracer.IsTracingFees)
-                    tracer.ReportFees(fees, burntFees);
+                    tracer.ReportFees(fees, eip1559Fees + blobBaseFee);
             }
         }
 

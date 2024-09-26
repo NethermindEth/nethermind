@@ -153,6 +153,6 @@ public class ChainParameters
     /// <summary>
     /// Enables blob gas fee collection for Gnosis chain
     /// </summary>
-    public ulong? Eip4844PectraTransitionTimestamp { get; set; }
+    public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     #endregion
 }

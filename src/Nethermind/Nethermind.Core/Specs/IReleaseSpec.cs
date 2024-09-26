@@ -302,7 +302,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Blob base fee collection for Gnosis
         /// </summary>
-        bool IsEip4844PectraEnabled { get; }
+        bool IsEip4844FeeCollectorEnabled { get; }
 
         /// <summary>
         /// Secp256r1 precompile
