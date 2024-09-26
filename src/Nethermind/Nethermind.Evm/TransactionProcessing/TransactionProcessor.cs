@@ -522,7 +522,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     snapshot,
                     warmedAddresses))
                 {
-                    WarmUp(tx, header, spec, state, warmedAddresses);
+                    WarmUp(tx, header, spec, state);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -603,19 +603,11 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
-        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state, IEnumerable<Address> accessedAddresses)
+        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state)
         {
             if (spec.UseTxAccessLists)
             {
                 state.WarmUp(tx.AccessList); // eip-2930
-            }
-
-            if (spec.UseHotAndColdStorage) // eip-2929
-            {
-                foreach (Address accessed in accessedAddresses)
-                {
-                    state.WarmUp(accessed);
-                }
             }
 
             if (spec.AddCoinbaseToTxAccessList)
