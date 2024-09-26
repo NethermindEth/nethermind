@@ -36,6 +36,7 @@ public class ValidateSubmissionHandler
 
     private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
     private readonly IBlockTree _blockTree;
+    private readonly IHeaderValidator _headerValidator;
     private readonly IBlockValidator _blockValidator;
     private readonly ILogger _logger;
 
@@ -44,10 +45,12 @@ public class ValidateSubmissionHandler
     private readonly IReceiptStorage _receiptStorage = new InMemoryReceiptStorage();
 
     public ValidateSubmissionHandler(
+        IHeaderValidator headerValidator,
         IBlockValidator blockValidator,
         ReadOnlyTxProcessingEnv txProcessingEnv,
         IFlashbotsConfig flashbotsConfig)
     {
+        _headerValidator = headerValidator;
         _blockValidator = blockValidator;
         _txProcessingEnv = txProcessingEnv;
         _blockTree = _txProcessingEnv.BlockTree;
@@ -234,7 +237,7 @@ public class ValidateSubmissionHandler
 
     private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, out string? error)
     {
-        if (!HeaderValidator.ValidateHash(block.Header))
+        if (!_headerValidator.Validate(block.Header))
         {
             error = $"Invalid block header hash {block.Header.Hash}";
             return false;
@@ -362,8 +365,9 @@ public class ValidateSubmissionHandler
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             _receiptStorage,
+            transactionProcessor,
+            new BeaconBlockRootHandler(transactionProcessor),
             new BlockhashStore(_txProcessingEnv.SpecProvider, stateProvider),
-            beaconBlockRootHandler: new BeaconBlockRootHandler(transactionProcessor),
             logManager: _txProcessingEnv.LogManager,
             withdrawalProcessor: new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
             receiptsRootCalculator: new ReceiptsRootCalculator()
