@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {

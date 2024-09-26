@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using System;
-using System.IO;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
