@@ -52,7 +52,7 @@ public static class IntrinsicGasCalculator
             }
 
             (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessAccountListEntry;
+            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
         }
 
         return 0;
