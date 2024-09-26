@@ -149,7 +149,7 @@ internal class ILCompiler
             method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
             method.StoreLocal(programCounter);
 
-            if(op.Metadata.GasCost != 0)
+            if (op.Metadata.GasCost != 0)
             {
                 // load gasAvailable
                 method.LoadLocal(gasAvailable);

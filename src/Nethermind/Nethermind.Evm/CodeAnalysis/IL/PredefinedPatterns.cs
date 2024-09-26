@@ -74,7 +74,7 @@ internal class IsContractCheck : InstructionChunk
 
         Address address = stack.PopAddress();
 
-        if(!VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, NullTxTracer.Instance))
+        if (!VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, NullTxTracer.Instance))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         int contractCodeSize = codeInfoRepository.GetCachedCodeInfo(worldState, address, spec).MachineCode.Length;

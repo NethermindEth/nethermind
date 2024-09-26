@@ -120,11 +120,11 @@ internal class IlInfo
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
-        if(chunk is SegmentExecutionCtx segment)
+        if (chunk is SegmentExecutionCtx segment)
         {
             tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, segment.Name, vmState.Env);
         }
-        else if(chunk is InstructionChunk patternHandler)
+        else if (chunk is InstructionChunk patternHandler)
         {
             tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, patternHandler.Name, vmState.Env);
         }
