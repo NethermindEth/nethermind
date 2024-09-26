@@ -26,7 +26,6 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
-using System.Linq;
 using Int256;
 
 
@@ -1900,16 +1899,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
 
-                        if (!_state.AccountExists(address)
-                            || _state.IsDeadAccount(address)
-                            || (env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegatedAddress)
-                            && !_state.AccountExists(delegatedAddress)))
+                        if (_state.AccountExists(address)
+                            && !_state.IsDeadAccount(address)
+                            && (!env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegatedAddress)
+                                || _state.AccountExists(delegatedAddress)))
                         {
-                            stack.PushZero();
+                            stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
                         }
                         else
                         {
-                            stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
+                            stack.PushZero();
                         }
 
                         break;
