@@ -22,51 +22,36 @@ public static class IntrinsicGasCalculator
         long result = GasCostOf.Transaction;
         result += DataCost(transaction, releaseSpec);
         result += CreateCost(transaction, releaseSpec);
-        result += AccessListCost(transaction, releaseSpec);
-        result += AuthorizationListCost(transaction, releaseSpec);
+        result += AccessListCost(transaction);
+        result += AuthorizationListCost(transaction);
         return result;
     }
 
-    private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long createCost = 0;
-        if (transaction.IsContractCreation && releaseSpec.IsEip2Enabled)
-        {
-            createCost += GasCostOf.TxCreate;
-        }
-
-        return createCost;
-    }
+    private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long txDataNonZeroGasCost =
-            releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+        long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
 
         int totalZeros = data.CountZeros();
 
-        var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
+        var baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
             ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
-            : 0);
+            : 0;
 
         return baseDataCost +
             totalZeros * GasCostOf.TxDataZero +
             (data.Length - totalZeros) * txDataNonZeroGasCost;
     }
 
-    private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
+    private static long AccessListCost(Transaction transaction)
     {
         AccessList? accessList = transaction.AccessList;
         long accessListCost = 0;
         if (accessList is not null)
         {
-            if (!releaseSpec.UseTxAccessLists)
-            {
-                throw new InvalidDataException(
-                    $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
-            }
-
             if (accessList.IsEmpty) return accessListCost;
 
             foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
@@ -82,22 +67,6 @@ public static class IntrinsicGasCalculator
         return accessListCost;
     }
 
-    private static long AuthorizationListCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        AuthorizationTuple[]? authorizationList = transaction.AuthorizationList;
-        if (authorizationList is not null)
-        {
-            if (!releaseSpec.IsAuthorizationListEnabled)
-            {
-                throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
-            }
-
-            if (authorizationList.Length != 0)
-            {
-                return GasCostOf.NewAccount * authorizationList.Length;
-            }
-        }
-
-        return 0;
-    }
+    private static long AuthorizationListCost(Transaction transaction) =>
+        (transaction.AuthorizationList?.Length ?? 0) * GasCostOf.NewAccount;
 }
