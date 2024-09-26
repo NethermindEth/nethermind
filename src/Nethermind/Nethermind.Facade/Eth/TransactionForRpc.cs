@@ -61,14 +61,11 @@ public class TransactionForRpc
         {
             AccessList = null;
         }
-        if (transaction.SupportsAuthorizationList)
-        {
-            AuthorizationList = transaction.AuthorizationList is null ? Array.Empty<AuthorizationTupleForRpc>() : AuthorizationTupleForRpc.FromAuthorizationList(transaction.AuthorizationList);
-        }
-        else
-        {
-            AuthorizationList = null;
-        }
+        AuthorizationList = transaction.SupportsAuthorizationList
+            ? transaction.AuthorizationList is null
+                ? Array.Empty<AuthorizationTupleForRpc>()
+                : AuthorizationTupleForRpc.FromAuthorizationList(transaction.AuthorizationList)
+            : null;
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas;
         BlobVersionedHashes = transaction.BlobVersionedHashes;
 
