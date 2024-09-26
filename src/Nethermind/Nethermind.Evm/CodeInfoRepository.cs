@@ -146,7 +146,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         CodeInfo codeInfo = new(code);
         codeInfo.AnalyseInBackgroundIfRequired();
 
-        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
+        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);
     }
@@ -191,9 +191,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
             codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
-            Hash256 codeHash = Keccak.Compute(authorizedBuffer);
+            ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
             state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
-
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
     }

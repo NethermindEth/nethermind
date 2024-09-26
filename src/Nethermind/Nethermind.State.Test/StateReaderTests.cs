@@ -258,7 +258,7 @@ namespace Nethermind.Store.Test
             TrieStore trieStore = new TrieStore(new MemDb(), Logger);
             WorldState sut = new(trieStore, new MemDb(), Logger);
             sut.CreateAccount(TestItem.AddressA, 0);
-            sut.InsertCode(TestItem.AddressA, Keccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(new byte[1]), new byte[1], releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
 
@@ -294,7 +294,7 @@ namespace Nethermind.Store.Test
             WorldState sut = new(trieStore, new MemDb(), Logger);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
 
@@ -313,7 +313,7 @@ namespace Nethermind.Store.Test
             WorldState sut = new(trieStore, new MemDb(), Logger);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = new byte[20];
-            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
 
@@ -331,7 +331,7 @@ namespace Nethermind.Store.Test
             WorldState sut = new(trieStore, new MemDb(), Logger);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
 
@@ -349,7 +349,7 @@ namespace Nethermind.Store.Test
             WorldState sut = new(trieStore, new MemDb(), Logger);
             sut.CreateAccount(TestItem.AddressA, 0);
             byte[] code = [.. Eip7702Constants.DelegationHeader, .. new byte[20]];
-            sut.InsertCode(TestItem.AddressA, Keccak.Compute(code), code, releaseSpec, false);
+            sut.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, releaseSpec, false);
             sut.Commit(MuirGlacier.Instance);
             sut.CommitTree(0);
 

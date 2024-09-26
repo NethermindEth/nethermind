@@ -151,7 +151,7 @@ internal class TransactionProcessorEip7702Tests
     }
     public static IEnumerable<object[]> DifferentCommitValues()
     {
-        //Base case 
+        //Base case
         yield return new object[] { 1ul, 0ul, TestItem.AddressA.Bytes };
         //Wrong nonce
         yield return new object[] { 1ul, 1ul, new[] { (byte)0x0 } };
@@ -378,7 +378,7 @@ internal class TransactionProcessorEip7702Tests
         PrivateKey signer = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
-        //Increment 1 everytime it's called 
+        //Increment 1 everytime it's called
         byte[] code = Prepare.EvmCode
             .Op(Instruction.PUSH0)
             .Op(Instruction.SLOAD)
@@ -500,7 +500,7 @@ internal class TransactionProcessorEip7702Tests
     private void DeployCode(Address codeSource, byte[] code)
     {
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);
-        _stateProvider.InsertCode(codeSource, Keccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
+        _stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
     }
 
     private AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)

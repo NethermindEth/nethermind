@@ -54,7 +54,7 @@ public class CodeInfoRepositoryTests
             false
         };
         yield return new object[]
-        {            
+        {
             //wrong nonce
             CreateAuthorizationTuple(TestItem.PrivateKeyC, 1, TestItem.AddressB, 1),
             false
@@ -107,7 +107,7 @@ public class CodeInfoRepositoryTests
         byte[] code = new byte[23];
         Eip7702Constants.DelegationHeader.CopyTo(code);
         stateProvider.CreateAccount(authority.Address, 0);
-        stateProvider.InsertCode(authority.Address, Keccak.Compute(code), code, Substitute.For<IReleaseSpec>());
+        stateProvider.InsertCode(authority.Address, ValueKeccak.Compute(code), code, Substitute.For<IReleaseSpec>());
         CodeInfoRepository sut = new(1);
         var tuples = new[]
         {
