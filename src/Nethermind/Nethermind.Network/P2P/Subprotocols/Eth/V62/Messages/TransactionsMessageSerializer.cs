@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
-        private readonly TxDecoder _decoder = TxDecoder.Instance;
+        private TxDecoder _decoder => TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {

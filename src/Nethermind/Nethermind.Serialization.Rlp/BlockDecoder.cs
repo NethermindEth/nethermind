@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
     public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
+        private TxDecoder _txDecoder => TxDecoder.Instance;
         private readonly WithdrawalDecoder _withdrawalDecoder = new();
         private readonly ConsensusRequestDecoder _consensusRequestsDecoder = new();
 

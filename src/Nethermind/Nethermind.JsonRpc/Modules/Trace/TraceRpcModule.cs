@@ -38,7 +38,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IReceiptFinder _receiptFinder;
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
-        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly TimeSpan _cancellationTokenTimeout;
         private readonly IStateReader _stateReader;
@@ -109,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = TxDecoder.Instance.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 

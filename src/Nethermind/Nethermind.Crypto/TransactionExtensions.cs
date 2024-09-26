@@ -9,12 +9,10 @@ namespace Nethermind.Crypto
 {
     public static class TransactionExtensions
     {
-        private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
-
         public static Hash256 CalculateHash(this Transaction transaction)
         {
             KeccakRlpStream stream = new();
-            _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
+            TxDecoder.Instance.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);
             return stream.GetHash();
         }
     }

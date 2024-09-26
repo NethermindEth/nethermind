@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
         {
-            private readonly TxDecoder _txDecoder = TxDecoder.Instance;
+            private TxDecoder _txDecoder => TxDecoder.Instance;
             private readonly HeaderDecoder _headerDecoder = new();
             private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
             private readonly ConsensusRequestDecoder _requestsDecoder = new();
