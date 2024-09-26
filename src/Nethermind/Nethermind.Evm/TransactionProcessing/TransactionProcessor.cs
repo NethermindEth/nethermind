@@ -607,8 +607,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
-                if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
-                    WorldState.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec);
+                if (spec.IsEip1559Enabled && spec.FeeCollector is not null && !burntFees.IsZero)
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, burntFees, spec);
 
                 if (tracer.IsTracingFees)
                     tracer.ReportFees(fees, burntFees);

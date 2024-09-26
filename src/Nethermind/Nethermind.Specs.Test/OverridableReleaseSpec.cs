@@ -123,11 +123,11 @@ namespace Nethermind.Specs.Test
             set => _overridenEip1559TransitionBlock = value;
         }
 
-        private Address? _overridenEip1559FeeCollector;
-        public Address? Eip1559FeeCollector
+        private Address? _overridenFeeCollector;
+        public Address? FeeCollector
         {
-            get => _overridenEip1559FeeCollector ?? _spec.Eip1559FeeCollector;
-            set => _overridenEip1559FeeCollector = value;
+            get => _overridenFeeCollector ?? _spec.FeeCollector;
+            set => _overridenFeeCollector = value;
         }
 
         private ulong? _overridenEip4844TransitionTimeStamp;

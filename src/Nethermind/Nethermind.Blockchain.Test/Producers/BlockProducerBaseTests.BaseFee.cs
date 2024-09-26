@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test.Producers
                         {
                             IsEip1559Enabled = _eip1559Enabled,
                             Eip1559TransitionBlock = _eip1559TransitionBlock,
-                            Eip1559FeeCollector = _eip1559FeeCollector,
+                            FeeCollector = _feeCollector,
                             IsEip155Enabled = true
                         });
                     BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);

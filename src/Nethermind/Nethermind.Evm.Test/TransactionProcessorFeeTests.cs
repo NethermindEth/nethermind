@@ -57,7 +57,7 @@ public class TransactionProcessorFeeTests
     {
         if (withFeeCollector)
         {
-            _spec.Eip1559FeeCollector = TestItem.AddressC;
+            _spec.FeeCollector = TestItem.AddressC;
         }
 
         Transaction tx = Build.A.Transaction
@@ -85,7 +85,7 @@ public class TransactionProcessorFeeTests
     {
         if (withFeeCollector)
         {
-            _spec.Eip1559FeeCollector = TestItem.AddressC;
+            _spec.FeeCollector = TestItem.AddressC;
         }
 
         Transaction tx1 = Build.A.Transaction
@@ -115,7 +115,7 @@ public class TransactionProcessorFeeTests
         UInt256 initialBalance = 0;
         if (withFeeCollector)
         {
-            _spec.Eip1559FeeCollector = TestItem.AddressC;
+            _spec.FeeCollector = TestItem.AddressC;
             initialBalance = _stateProvider.GetBalance(TestItem.AddressC);
         }
 

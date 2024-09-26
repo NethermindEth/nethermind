@@ -118,7 +118,7 @@ internal class ChainSpecParamsJson
 
     public long? Eip1559FeeCollectorTransition { get; set; }
 
-    public Address Eip1559FeeCollector { get; set; }
+    public Address FeeCollector { get; set; }
 
     public long? Eip1559BaseFeeMinValueTransition { get; set; }
 
