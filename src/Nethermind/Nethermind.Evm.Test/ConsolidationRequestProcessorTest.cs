@@ -84,7 +84,7 @@ public class ConsolidationRequestProcessorTests
             TargetPubkey = Bytes.FromHexString("0000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b0000000000000000000000000000000000000000")
         };
 
-        var ConsolidationRequests = ConsolidationRequestsProcessor.ReadConsolidationRequests(spec, _stateProvider, block).ToList();
+        var ConsolidationRequests = ConsolidationRequestsProcessor.ReadConsolidationRequests(block, _stateProvider, spec).ToList();
 
         Assert.That(ConsolidationRequests, Has.Count.EqualTo(10));
         ConsolidationRequest ConsolidationRequestResult = ConsolidationRequests[0];

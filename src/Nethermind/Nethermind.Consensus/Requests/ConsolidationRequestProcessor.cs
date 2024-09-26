@@ -21,7 +21,7 @@ public class ConsolidationRequestsProcessor(ITransactionProcessor transactionPro
     private const long GasLimit = 30_000_000L;
     private const int SizeOfClass = 20 + 48 + 48;
 
-    public IEnumerable<ConsolidationRequest> ReadConsolidationRequests(IReleaseSpec spec, IWorldState state, Block block)
+    public IEnumerable<ConsolidationRequest> ReadConsolidationRequests(Block block, IWorldState state, IReleaseSpec spec)
     {
         if (!spec.ConsolidationRequestsEnabled)
             yield break;

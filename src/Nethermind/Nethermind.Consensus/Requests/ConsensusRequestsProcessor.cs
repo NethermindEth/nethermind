@@ -29,7 +29,7 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
 
         requestsList.AddRange(_depositsProcessor.ProcessDeposits(block, receipts, spec));
         requestsList.AddRange(_withdrawalRequestsProcessor.ReadWithdrawalRequests(block, state, spec));
-        requestsList.AddRange(_consolidationRequestsProcessor.ReadConsolidationRequests(spec, state, block));
+        requestsList.AddRange(_consolidationRequestsProcessor.ReadConsolidationRequests(block, state, spec));
 
         ConsensusRequest[] requests = requestsList.ToArray();
         Hash256 root = new RequestsTrie(requests).RootHash;
