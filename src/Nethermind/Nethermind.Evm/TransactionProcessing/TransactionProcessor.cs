@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -485,7 +486,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            IEnumerable<Address> accessedAddresses,
+            JournalSet<Address> warmedAddresses,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -512,11 +513,15 @@ namespace Nethermind.Evm.TransactionProcessing
                     PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec);
                 }
 
-                ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
-
-                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
+                using (EvmState state = new(
+                    unspentGas,
+                    env,
+                    tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
+                    true,
+                    snapshot,
+                    false))
                 {
-                    WarmUp(tx, header, spec, state, accessedAddresses);
+                    WarmUp(tx, header, spec, state, warmedAddresses);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -696,6 +701,17 @@ namespace Nethermind.Evm.TransactionProcessing
         [DoesNotReturn]
         [StackTraceHidden]
         private static void ThrowTransactionCollisionException() => throw new TransactionCollisionException();
+
+        private readonly struct AddressWarmer(IReleaseSpec spec)
+        {
+            public readonly JournalSet<Address> WarmAddresses { get; } = [];
+
+            public void WarmUpAddress(Address address)
+            {
+                if (spec.UseHotAndColdStorage) // eip-2929
+                    WarmAddresses.Add(address);
+            }
+        }
     }
 
     public readonly struct TransactionResult(string? error)
