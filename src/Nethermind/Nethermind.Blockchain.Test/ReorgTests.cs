@@ -49,18 +49,16 @@ public class ReorgTests
             .WithSpecProvider(specProvider)
             .TestObject;
 
+        CodeInfoRepository codeInfoRepository = new();
         TxPool.TxPool txPool = new(
             ecdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
+            new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider, codeInfoRepository),
             new TxPoolConfig(),
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
-            transactionComparerProvider.GetDefaultComparer(),
-            new CodeInfoRepository(specProvider.ChainId),
-            stateProvider);
+            transactionComparerProvider.GetDefaultComparer());
         BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
-        CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,

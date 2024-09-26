@@ -16,10 +16,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
@@ -93,8 +91,6 @@ namespace Nethermind.TxPool
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
-            ICodeInfoRepository codeInfoRepository,
-            IWorldState worldState,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             bool thereIsPriorityContract = false)
@@ -105,7 +101,7 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
-            _accounts = _accountCache = new AccountCache(_headInfo.AccountStateProvider);
+            _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -125,35 +121,36 @@ namespace Nethermind.TxPool
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _preHashFilters = new IIncomingTxFilter[]
-            {
+            _preHashFilters =
+            [
                 new NotSupportedTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
                 new PriorityFeeTooLowFilter(_logger),
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
                 new MalformedTxFilter(_specProvider, validator, _logger)
-            };
+            ];
 
-            List<IIncomingTxFilter> postHashFilters = new()
-            {
+            List<IIncomingTxFilter> postHashFilters =
+            [
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new UnknownSenderFilter(ecdsa, _logger),
-                new TxTypeTxFilter(_transactions, _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
+                new TxTypeTxFilter(_transactions,
+                    _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
                 new BalanceTooLowFilter(_transactions, _blobTransactions, _logger),
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
-                new RecoverAuthorityFilter(ecdsa),
-            };
+                new RecoverAuthorityFilter(ecdsa)
+            ];
 
             if (incomingTxFilter is not null)
             {
                 postHashFilters.Add(incomingTxFilter);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(worldState, codeInfoRepository, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository, _specProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 

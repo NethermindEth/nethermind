@@ -109,15 +109,14 @@ namespace Nethermind.Clique.Test
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
+                CodeInfoRepository codeInfoRepository = new();
                 TxPool.TxPool txPool = new(_ethereumEcdsa,
                     new BlobTxStorage(),
-                    new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider),
+                    new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                     new TxPoolConfig(),
                     new TxValidator(goerliSpecProvider.ChainId),
                     _logManager,
-                    transactionComparerProvider.GetDefaultComparer(),
-                    new CodeInfoRepository(specProvider.ChainId),
-                    stateProvider);
+                    transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
@@ -131,7 +130,6 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-                CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
                     new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                     codeInfoRepository,

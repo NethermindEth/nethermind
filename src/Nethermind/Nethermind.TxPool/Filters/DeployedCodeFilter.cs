@@ -11,13 +11,13 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions that sender has any code deployed. If <see cref="IReleaseSpec.IsEip3607Enabled"/> is enabled.
     /// </summary>
-    internal sealed class DeployedCodeFilter(IWorldState worldState, ICodeInfoRepository codeInfoRepository, IChainHeadSpecProvider specProvider) : IIncomingTxFilter
+    internal sealed class DeployedCodeFilter(IReadOnlyStateProvider worldState, ICodeInfoRepository codeInfoRepository, IChainHeadSpecProvider specProvider) : IIncomingTxFilter
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             return specProvider.GetCurrentHeadSpec().IsEip3607Enabled
                 && state.SenderAccount.HasCode
-                && (!specProvider.GetCurrentHeadSpec().IsEip7702Enabled || !codeInfoRepository.TryGetDelegatedAddress(worldState, tx.SenderAddress!, out _))
+                && (!specProvider.GetCurrentHeadSpec().IsEip7702Enabled || !codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 ? AcceptTxResult.SenderIsContract
                 : AcceptTxResult.Accepted;
         }

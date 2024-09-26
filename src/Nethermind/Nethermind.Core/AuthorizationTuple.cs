@@ -31,4 +31,6 @@ public class AuthorizationTuple(
     /// <see cref="Authority"/> may be recovered at a later point.
     /// </summary>
     public Address? Authority { get; set; } = authority;
+
+    public override string ToString() => $"Delegation authorization from {Authority} to {CodeAddress} on chain {ChainId} with Nonce {Nonce}";
 }

@@ -17,8 +17,8 @@ public interface ICodeInfoRepository
     CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress);
     ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
-    int SetDelegations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec);
-    bool TryGetDelegatedAddress(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress);
+    void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec);
+    bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress);
 }
 
 public static class CodeInfoRepositoryExtensions

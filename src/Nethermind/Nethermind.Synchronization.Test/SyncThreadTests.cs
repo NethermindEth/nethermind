@@ -269,17 +269,15 @@ namespace Nethermind.Synchronization.Test
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
+            CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(ecdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(specProvider, tree, stateReader),
+                new ChainHeadInfoProvider(specProvider, tree, stateReader, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 logManager,
-                transactionComparerProvider.GetDefaultComparer(),
-                new CodeInfoRepository(specProvider.ChainId),
-                stateProvider);
+                transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new(specProvider.ChainId);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
             Always sealValidator = Always.Valid;
