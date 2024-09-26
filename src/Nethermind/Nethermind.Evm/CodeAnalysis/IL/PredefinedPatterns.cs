@@ -11,6 +11,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.Patterns;
 
@@ -39,7 +40,7 @@ internal class MethodSelector : InstructionChunk
 
         byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
         byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
-        VirtualMachine<T>.UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, 0, 32);
+        VirtualMachine<T>.UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, location, 32);
         vmState.Memory.SaveByte(location, value);
         stack.PushUInt256(vmState.Env.Value);
         stack.PushUInt256(vmState.Env.Value);
@@ -56,7 +57,7 @@ internal class IsContractCheck : InstructionChunk
 
     public long GasCost(EvmState vmState, IReleaseSpec spec)
     {
-        long gasCost = spec.GetExtCodeCost() + GasCostOf.VeryLow + GasCostOf.Base;
+        long gasCost = spec.GetExtCodeCost() + GasCostOf.VeryLow + GasCostOf.VeryLow;
         return gasCost;
     }
 
@@ -72,7 +73,11 @@ internal class IsContractCheck : InstructionChunk
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         Address address = stack.PopAddress();
-        int contractCodeSize = worldState.GetCode(address).Length;
+
+        if(!VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, NullTxTracer.Instance))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        int contractCodeSize = codeInfoRepository.GetCachedCodeInfo(worldState, address, spec).MachineCode.Length;
         stack.PushUInt32(contractCodeSize);
         if (contractCodeSize == 0)
         {

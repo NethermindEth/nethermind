@@ -232,29 +232,25 @@ internal struct Word
     }
 
 
-    public long LeadingZeros
+    public unsafe long LeadingZeros
     {
         get
         {
-            // use _long and BitOperations to count leading zeros
-            if (_ulong3 != 0)
+            fixed (byte* ptr = _buffer)
             {
-                return BitOperations.LeadingZeroCount(_ulong3);
-            }
-            if (_ulong2 != 0)
-            {
-                return 64 + BitOperations.LeadingZeroCount(_ulong2);
-            }
-            if (_ulong1 != 0)
-            {
-                return 128 + BitOperations.LeadingZeroCount(_ulong1);
-            }
-            return 192 + BitOperations.LeadingZeroCount(_ulong0);
+                byte* end = ptr + 32;
+                byte* current = ptr;
+                while (current < end && *current == 0)
+                {
+                    current++;
+                }
 
+                return current - ptr;
+            }
         }
     }
 
-    public static readonly MethodInfo LeaddingZeroProp = typeof(Word).GetProperty(nameof(LeadingZeros))!.GetMethod;
+    public static readonly MethodInfo LeadingZeroProp = typeof(Word).GetProperty(nameof(LeadingZeros))!.GetMethod;
     public static readonly FieldInfo Byte0Field = typeof(Word).GetField(nameof(_uByte0));
 
     public static readonly MethodInfo GetInt0 = typeof(Word).GetProperty(nameof(Int0))!.GetMethod;

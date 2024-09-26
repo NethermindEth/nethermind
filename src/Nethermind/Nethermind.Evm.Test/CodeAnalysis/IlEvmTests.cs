@@ -369,7 +369,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var bytecode =
                 Prepare.EvmCode
                     .JUMPDEST()
-                    .Call(address, 10)
+                    .Call(address, 100)
                     .POP()
                     .GAS()
                     .PushData(1000)
@@ -573,14 +573,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .JUMP()
                     .JUMPDEST()
                     .Done);
-            yield return (typeof(IsContractCheck), Prepare.EvmCode
+            yield return (typeof(MethodSelector), Prepare.EvmCode
                     .PushData(0)
                     .PushData(23)
                     .MSTORE()
                     .CALLVALUE()
                     .DUPx(1)
                     .Done);
-            yield return (typeof(MethodSelector), Prepare.EvmCode
+            yield return (typeof(IsContractCheck), Prepare.EvmCode
                     .EXTCODESIZE(Address.SystemUser)
                     .DUPx(1)
                     .ISZERO()

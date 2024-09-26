@@ -436,7 +436,7 @@ internal class ILCompiler
                     method.StoreLocal(uint256A);
                     method.StackLoadPrevious(stack, head, 2);
                     method.Duplicate();
-                    method.Call(Word.LeaddingZeroProp);
+                    method.Call(Word.LeadingZeroProp);
                     method.StoreLocal(uint64A);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256B);
@@ -455,7 +455,10 @@ internal class ILCompiler
                     method.Subtract();
                     method.Multiply();
                     method.Subtract();
+                    method.Duplicate();
                     method.StoreLocal(gasAvailable);
+                    method.LoadConstant((long)0);
+                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadLocalAddress(uint256A);
                     method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZeroOrOne)).GetMethod!);
