@@ -481,14 +481,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return true;
         }
         bool notOutOfGas = ChargeAccountGas(ref gasAvailable, vmState, address, spec);
-        if (notOutOfGas
-            && chargeForDelegation
-            && vmState.Env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegated)
-            )
-        {
-            return ChargeAccountGas(ref gasAvailable, vmState, delegated, spec);
-        }
-        return notOutOfGas;
+        return notOutOfGas
+               && chargeForDelegation
+               && vmState.Env.TxExecutionContext.CodeInfoRepository.IsDelegation(_state, address, out Address delegated)
+            ? ChargeAccountGas(ref gasAvailable, vmState, delegated, spec)
+            : notOutOfGas;
 
         bool ChargeAccountGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec)
         {
