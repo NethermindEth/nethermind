@@ -46,7 +46,7 @@ public class OpcodeStatsPlugin : INethermindPlugin
 
             // Setup tracing
             var analyzer = new StatsAnalyzer(_config.GetStatsAnalyzerConfig());
-            OpcodeStatsFileTracer opcodeStatsFileTracer = new(_config.ProcessingQueueSize, _config.InstructionsQueueSize, analyzer, new FileSystem(), _logger, _config.File);
+            OpcodeStatsFileTracer opcodeStatsFileTracer = new(_config.ProcessingQueueSize, _config.InstructionsQueueSize, analyzer, _config.GetIgnoreSet(),  new FileSystem(), _logger,_config.WriteFrequency, _config.File);
             _api.BlockchainProcessor!.Tracers.Add(opcodeStatsFileTracer);
         }
 

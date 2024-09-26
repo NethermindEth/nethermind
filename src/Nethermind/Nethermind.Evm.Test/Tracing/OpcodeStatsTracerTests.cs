@@ -16,6 +16,7 @@ using Nethermind.State;
 using System.Linq;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Evm.Test.Tracing.OpcodeStats;
 
@@ -30,7 +31,7 @@ public class OpcodeStatsTracerTests : VirtualMachineTestsBase
         CMSketch sketch = new CMSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         StatsAnalyzer analyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
                                       .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
-        OpcodeStatsTracer tracer = new(100000, analyzer);
+        OpcodeStatsTracer tracer = new(100000, analyzer, new HashSet<Instruction>());
 
         ExecuteBlock(tracer, code, MainnetSpecProvider.CancunActivation);
         var traces = tracer.BuildResult();

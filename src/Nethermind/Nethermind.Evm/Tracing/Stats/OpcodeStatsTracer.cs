@@ -25,14 +25,16 @@ public class OpcodeStatsTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeStats
     protected int _bufferSize;
     private StatsAnalyzer _statsAnalyzer;
     private McsLock _processingLock = new();
+    private HashSet<Instruction> _ignore;
+
     private static readonly object _lock = new object();
 
-    public OpcodeStatsTracer(int bufferSize, StatsAnalyzer statsAnalyzer) : base()
+    public OpcodeStatsTracer(int bufferSize, StatsAnalyzer statsAnalyzer, HashSet<Instruction> ignore) : base()
     {
         _bufferSize = bufferSize;
         _statsAnalyzer = statsAnalyzer;
-
-        _tracer = new OpcodeStatsTxTracer(this, _bufferSize, _processingLock, _statsAnalyzer);
+        _ignore = ignore;
+        _tracer = new OpcodeStatsTxTracer(_ignore, _bufferSize, _processingLock, _statsAnalyzer);
     }
 
     private void resetQueue()
@@ -56,7 +58,7 @@ public class OpcodeStatsTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeStats
             tracer = _tracer;
             InitialBlockNumber = _initialBlock;
             CurrentBlockNumber = _currentBlock;
-            _tracer = new OpcodeStatsTxTracer(this, _bufferSize, _processingLock, _statsAnalyzer);
+            _tracer = new OpcodeStatsTxTracer(_ignore, _bufferSize, _processingLock, _statsAnalyzer);
         }
         OpcodeStatsTxTrace trace = tracer.BuildResult();
         trace.InitialBlockNumber = InitialBlockNumber;

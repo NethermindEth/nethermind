@@ -16,7 +16,7 @@ public class OpcodeStatsTxTracer : TxTracer
 
     private StatsAnalyzer _statsAnalyzer;
     private OpcodeStatsQueue? _queue = null;
-    OpcodeStatsTracer _blockTracer;
+    private HashSet<Instruction> _ignoreSet;
     private McsLock _processingLock;
 
     //  public OpcodeStatsTxTracer(OpcodeStatsTracer blockTracer, OpcodeStatsQueue queue, StatsAnalyzer statsAnalyzer)
@@ -27,12 +27,12 @@ public class OpcodeStatsTxTracer : TxTracer
     //      IsTracingInstructions = true;
     //  }
 
-    public OpcodeStatsTxTracer(OpcodeStatsTracer blockTracer, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
+    public OpcodeStatsTxTracer(HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
     {
+        _ignoreSet = ignoreSet;
         _statsAnalyzer = statsAnalyzer;
         _processingLock = processingLock;
         _queue = new(size, statsAnalyzer, processingLock);
-        _blockTracer = blockTracer;
         IsTracingInstructions = true;
     }
 
@@ -77,7 +77,7 @@ public class OpcodeStatsTxTracer : TxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        if (opcode != Instruction.JUMPDEST) _queue.Enqueue(opcode);
+        if (!_ignoreSet.Contains(opcode)) _queue.Enqueue(opcode);
     }
 }
 

@@ -1,6 +1,5 @@
 using Nethermind.Config;
-
-
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 namespace Nethermind.OpcodeStats.Plugin
 {
@@ -8,6 +7,8 @@ namespace Nethermind.OpcodeStats.Plugin
     {
         public bool Enabled { get; set; }
         public string? File { get; set; }
+        public int WriteFrequency { get; set; } = 10;
+        public string Ignore { get; set; } = "";
         public int InstructionsQueueSize { get; set; }
         public int ProcessingQueueSize { get; set; }
         public int? SketchBuckets { get; set; }
@@ -44,6 +45,19 @@ namespace Nethermind.OpcodeStats.Plugin
                 MaxError = SketchMaxError
             };
             return config;
+        }
+
+        public HashSet<Instruction> GetIgnoreSet()
+        {
+            var ignoreSet = new HashSet<Instruction>();
+            string[] deserializedArray = Ignore.Split(',').Select(item => item.Trim()).ToArray();
+            foreach (var instructionString in deserializedArray)
+            {
+               var instruction = (Instruction)Enum.Parse(typeof(Instruction), instructionString);
+               ignoreSet.Add(instruction);
+            }
+
+            return ignoreSet;
         }
     }
 }

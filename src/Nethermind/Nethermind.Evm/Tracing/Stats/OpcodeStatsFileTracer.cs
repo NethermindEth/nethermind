@@ -29,10 +29,14 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
     private ILogger _logger;
     int _fileTracingQueueSize = 1;
     private static readonly object _fileLock = new object();
+    private int _writeFreq = 1;
+    private int _pos = 0;
 
-    public OpcodeStatsFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer, IFileSystem fileSystem, ILogger logger, string? fileName) : base(bufferSize, statsAnalyzer)
+
+    public OpcodeStatsFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer, HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, string? fileName) : base(bufferSize, statsAnalyzer, ignore)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
         _fileName = fileName ?? _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), DefaultFile);
         _logger = logger;
@@ -43,6 +47,9 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
     public override void EndBlockTrace()
     {
         if (_fileTracingQueueSize < 1) return;
+
+        _pos = (_pos + 1) % _writeFreq;
+
 
         if ((_fileTracingQueue.Count >= _fileTracingQueueSize) && _fileTracingQueue.Count > 0)
         {
@@ -62,12 +69,13 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
             }
         }
 
+        var pos = _pos;
         var task = Task.Run(() =>
         {
             try
             {
                 base.EndBlockTrace();
-                DumpStats();
+                DumpStats(pos);
             }
             catch (Exception ex)
             {
@@ -87,9 +95,10 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
 
 
 
-    private void DumpStats()
+    private void DumpStats(int pos)
     {
         var trace = BuildResult().First();
+        if (pos != 0 ) return;
 
         if (_logger.IsInfo) _logger.Info($"Writing stats to file: {_fileName}");
 
@@ -98,14 +107,12 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
         {
             try
             {
-                // Clear the file before writing (if needed)
                 File.WriteAllText(_fileName, string.Empty);
 
                 // Open the file for writing, using 'using' block to ensure it is closed after writing
                 using (var _file = _fileSystem.File.OpenWrite(_fileName))
                 using (var jsonWriter = new Utf8JsonWriter(_file))
                 {
-                    // Serialize the trace and write to the file
                     JsonSerializer.Serialize(jsonWriter, trace, _serializerOptions);
                 }
             }

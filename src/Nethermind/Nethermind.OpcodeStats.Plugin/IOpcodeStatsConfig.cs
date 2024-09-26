@@ -1,4 +1,5 @@
 using Nethermind.Config;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 
 namespace Nethermind.OpcodeStats.Plugin
@@ -7,13 +8,24 @@ namespace Nethermind.OpcodeStats.Plugin
     {
         [ConfigItem(
             Description = "Activates or Deactivates OpcodeStats Plugin",
-            DefaultValue = "true")]
+            DefaultValue = "false")]
         bool Enabled { get; set; }
+
 
         [ConfigItem(
             Description = "Sets the file to which the stats are dumped",
             DefaultValue = "null")]
         string? File { get; set; }
+
+        [ConfigItem(
+            Description = "Sets the block freuency for writing stats to disk",
+            DefaultValue = "null")]
+        int WriteFrequency { get; set; }
+
+        [ConfigItem(
+            Description = "Sets the opcodes to ignore",
+            DefaultValue = "")]
+        string Ignore { get; set; }
 
         [ConfigItem(Description = "Sets the size of the queue used to gather instructions per block")]
         int InstructionsQueueSize { get; set; }
@@ -56,6 +68,8 @@ namespace Nethermind.OpcodeStats.Plugin
         [ConfigItem(Description = "Sets the capacity of filter used for n-gram tracking")]
         double AnalyzerSketchResetOrReuseThreshold { get; set; }
 
+
+        HashSet<Instruction> GetIgnoreSet();
 
         StatsAnalyzerConfig GetStatsAnalyzerConfig();
 

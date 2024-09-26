@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
@@ -10,8 +11,9 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
 
         public readonly int Size;
         private StatsAnalyzer _statsAnalyzer;
-        private Instruction[] _queue;
-        private int bufferPos = 0;
+        private DisposableResettableList<Instruction> _queue;
+        //private Instruction[] _queue;
+        //private int bufferPos = 0;
         private bool disposed = false;
         private readonly McsLock _processingLock;
 
@@ -19,17 +21,18 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
         {
             Size = size;
             _statsAnalyzer = statsAnalyzer;
-            _queue = new Instruction[size];
+            _queue = new DisposableResettableList<Instruction>(); //new Instruction[size];
             _processingLock = processingLock;
         }
 
         public void Enqueue(Instruction item)
         {
-            if (bufferPos < _queue.Length)
-            {
-                _queue[bufferPos] = item;
-                bufferPos++;
-            }
+            _queue.Add(item);
+         //   if (bufferPos < _queue.Length)
+         //   {
+         //       _queue[bufferPos] = item;
+         //       bufferPos++;
+         //   }
         }
 
         public void Dispose()
@@ -45,8 +48,9 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
                 if (disposing)
                 {
                     var dispasable = _processingLock.Acquire();
-                    _statsAnalyzer.Add(_queue[..bufferPos]);
+                    _statsAnalyzer.Add(_queue);
                     dispasable.Dispose();
+                    _queue.Dispose();
 
                 }
                 disposed = true;
