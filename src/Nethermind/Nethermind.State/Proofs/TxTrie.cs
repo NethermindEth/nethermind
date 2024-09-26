@@ -16,7 +16,7 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public class TxTrie : PatriciaTrie<Transaction>
 {
-    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
@@ -29,7 +29,7 @@ public class TxTrie : PatriciaTrie<Transaction>
 
         foreach (Transaction? transaction in list)
         {
-            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping, _bufferPool);
+            CappedArray<byte> buffer = _txDecoder.Value.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping, _bufferPool);
             CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(_bufferPool);
 
             Set(keyBuffer.AsSpan(), buffer);
