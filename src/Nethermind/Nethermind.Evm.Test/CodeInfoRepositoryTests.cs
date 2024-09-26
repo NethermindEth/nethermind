@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test;
 public class CodeInfoRepositoryTests
 {
     [Test]
-    public void InsertFromAuthorizations_AuthorityTupleIsCorrect_AuthorityIsAddedToAccessedAddresses()
+    public void SetDelegations_AuthorityTupleIsCorrect_AuthorityIsAddedToAccessedAddresses()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         CodeInfoRepository sut = new(1);
@@ -35,7 +35,7 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(authority, 1, TestItem.AddressB, 0),
         };
         HashSet<Address> accessedAddresses = new();
-        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(Substitute.For<IWorldState>(), tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
         accessedAddresses.Should().BeEquivalentTo([authority.Address]);
     }
@@ -62,7 +62,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(AuthorizationCases))]
-    public void InsertFromAuthorizations_MixOfCorrectAndWrongChainIdAndNonce_InsertsIfExpected(AuthorizationTuple tuple, bool shouldInsert)
+    public void SetDelegations_MixOfCorrectAndWrongChainIdAndNonce_InsertsIfExpected(AuthorizationTuple tuple, bool shouldInsert)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -70,13 +70,13 @@ public class CodeInfoRepositoryTests
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
         CodeInfoRepository sut = new(1);
         HashSet<Address> accessedAddresses = new();
-        sut.InsertFromAuthorizations(stateProvider, [tuple], accessedAddresses, Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(stateProvider, [tuple], accessedAddresses, Substitute.For<IReleaseSpec>());
 
         Assert.That(stateProvider.HasCode(tuple.Authority), Is.EqualTo(shouldInsert));
     }
 
     [Test]
-    public void InsertFromAuthorizations_AuthorityHasCode_NoCodeIsInserted()
+    public void SetDelegations_AuthorityHasCode_NoCodeIsInserted()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         Address codeSource = TestItem.AddressB;
@@ -90,13 +90,13 @@ public class CodeInfoRepositoryTests
         };
         HashSet<Address> accessedAddresses = new();
 
-        sut.InsertFromAuthorizations(mockWorldState, tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(mockWorldState, tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
         mockWorldState.DidNotReceive().InsertCode(Arg.Any<Address>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IReleaseSpec>());
     }
 
     [Test]
-    public void InsertFromAuthorizations_AuthorityHasDelegatedCode_CodeIsInserted()
+    public void SetDelegations_AuthorityHasDelegatedCode_CodeIsInserted()
     {
         PrivateKey authority = TestItem.PrivateKeyA;
         Address codeSource = TestItem.AddressB;
@@ -114,14 +114,14 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
-        sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
         Assert.That(stateProvider.GetCode(authority.Address).Slice(3), Is.EqualTo(codeSource.Bytes));
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public void InsertFromAuthorizations_AuthorityAccountExistsOrNot_NonceIsIncrementedByOne(bool accountExists)
+    public void SetDelegations_AuthorityAccountExistsOrNot_NonceIsIncrementedByOne(bool accountExists)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -137,13 +137,13 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(authority, 1, codeSource, 0),
         };
 
-        sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
         Assert.That(stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)1));
     }
 
     [Test]
-    public void InsertFromAuthorizations_FourAuthorizationInTotalButOneHasInvalidNonce_ResultContainsThreeAddresses()
+    public void SetDelegations_FourAuthorizationInTotalButOneHasInvalidNonce_ResultContainsThreeAddresses()
     {
         CodeInfoRepository sut = new(1);
         var tuples = new[]
@@ -154,13 +154,13 @@ public class CodeInfoRepositoryTests
             CreateAuthorizationTuple(TestItem.PrivateKeyD, 1, TestItem.AddressF, 1),
         };
         HashSet<Address> addresses = new();
-        sut.InsertFromAuthorizations(Substitute.For<IWorldState>(), tuples, addresses, Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(Substitute.For<IWorldState>(), tuples, addresses, Substitute.For<IReleaseSpec>());
 
         addresses.Should().BeEquivalentTo([TestItem.AddressA, TestItem.AddressB, TestItem.AddressD]);
     }
 
     [Test]
-    public void InsertFromAuthorizations_AuthorizationsHasOneExistingAccount_ResultHaveOneRefund()
+    public void SetDelegations_AuthorizationsHasOneExistingAccount_ResultHaveOneRefund()
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -174,7 +174,7 @@ public class CodeInfoRepositoryTests
         };
         stateProvider.CreateAccount(TestItem.AddressA, 0);
 
-        int refunds = sut.InsertFromAuthorizations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
+        int refunds = sut.SetDelegations(stateProvider, tuples, Substitute.For<ISet<Address>>(), Substitute.For<IReleaseSpec>());
 
         refunds.Should().Be(1);
     }
@@ -221,7 +221,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(CountsAsAccessedCases))]
-    public void InsertFromAuthorizations_CombinationOfValidAndInvalidTuples_AddsTheCorrectAddressesToAccessedAddresses(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
+    public void SetDelegations_CombinationOfValidAndInvalidTuples_AddsTheCorrectAddressesToAccessedAddresses(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -231,7 +231,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(TestItem.AddressA, 0);
 
         ISet<Address> accessedAddresses = new HashSet<Address>();
-        sut.InsertFromAuthorizations(stateProvider, tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
+        sut.SetDelegations(stateProvider, tuples, accessedAddresses, Substitute.For<IReleaseSpec>());
 
         accessedAddresses.Count.Should().Be(shouldCountAsAccessed.Length);
         accessedAddresses.Should().Contain(shouldCountAsAccessed);

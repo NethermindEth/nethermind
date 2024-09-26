@@ -154,7 +154,7 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = 0;
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
-                delegationRefunds = _codeInfoRepository.InsertFromAuthorizations(WorldState, tx.AuthorizationList, _accessedAddresses, spec);
+                delegationRefunds = _codeInfoRepository.SetDelegations(WorldState, tx.AuthorizationList, _accessedAddresses, spec);
             }
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _accessedAddresses);

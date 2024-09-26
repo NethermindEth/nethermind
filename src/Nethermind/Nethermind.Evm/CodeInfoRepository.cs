@@ -68,10 +68,6 @@ public class CodeInfoRepository : ICodeInfoRepository
             : _precompiles.ToFrozenDictionary(kvp => kvp.Key, kvp => CreateCachedPrecompile(kvp, precompileCache));
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-    {
-        return GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
-    }
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
@@ -128,19 +124,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
-    {
-        if (!_codeCache.TryGet(codeHash, out CodeInfo? codeInfo))
-        {
-            codeInfo = new(initCode.ToArray());
-
-            // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
-        }
-
-        return codeInfo;
-    }
-
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         CodeInfo codeInfo = new(code);
@@ -156,7 +139,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// and return all authority addresses that was accessed and amount of autorization refunds.
     /// eip-7702
     /// </summary>
-    public int InsertFromAuthorizations(
+    public int SetDelegations(
         IWorldState worldState,
         AuthorizationTuple?[] authorizations,
         ISet<Address> accessedAddresses,
@@ -168,25 +151,28 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             if (authTuple is null)
                 continue;
-            authTuple.Authority = authTuple.Authority ?? _ethereumEcdsa.RecoverAddress(authTuple);
-            string? error;
 
-            if (!IsValidForExecution(authTuple, worldState, _ethereumEcdsa.ChainId, accessedAddresses, out error))
+            authTuple.Authority ??= _ethereumEcdsa.RecoverAddress(authTuple);
+
+            if (!IsValidForExecution(authTuple, worldState, _ethereumEcdsa.ChainId, accessedAddresses, out _))
                 continue;
 
-            if (worldState.AccountExists(authTuple.Authority))
+            if (!worldState.AccountExists(authTuple.Authority!))
+            {
+                worldState.CreateAccount(authTuple.Authority, 0, 1);
+            }
+            else
             {
                 refunds++;
                 worldState.IncrementNonce(authTuple.Authority);
             }
-            else
-                worldState.CreateAccount(authTuple.Authority, 0, 1);
 
             InsertDelegationCode(worldState, authTuple.CodeAddress, authTuple.Authority, spec);
         }
+
         return refunds;
 
-        void InsertDelegationCode(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
+        static void InsertDelegationCode(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
         {
             byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
@@ -240,8 +226,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
         accessedAddresses.Add(authorizationTuple.Authority);
 
-        if (stateProvider.HasCode(authorizationTuple.Authority)
-         && !HasDelegatedCode(stateProvider, authorizationTuple.Authority))
+        if (stateProvider.HasCode(authorizationTuple.Authority) && !HasDelegatedCode(stateProvider, authorizationTuple.Authority))
         {
             error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
             return false;
@@ -255,11 +240,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         error = null;
         return true;
-    }
 
-    private bool HasDelegatedCode(IWorldState worldState, Address source)
-    {
-        return
+        static bool HasDelegatedCode(IWorldState worldState, Address source) =>
             Eip7702Constants.IsDelegatedCode(InternalGetCachedCode(worldState, source).MachineCode.Span);
     }
 
@@ -312,7 +294,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             return result;
         }
     }
-    internal sealed class CodeLruCache
+
+    private sealed class CodeLruCache
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
