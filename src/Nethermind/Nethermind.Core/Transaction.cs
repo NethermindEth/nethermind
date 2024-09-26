@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -57,6 +58,8 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+
+        [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
             Type == TxType.SetCode &&
             AuthorizationList is not null &&

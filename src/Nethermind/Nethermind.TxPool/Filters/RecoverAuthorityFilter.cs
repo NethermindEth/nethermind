@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Crypto;
 
@@ -13,17 +14,12 @@ namespace Nethermind.TxPool.Filters
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (!tx.HasAuthorizationList)
-                return AcceptTxResult.Accepted;
-
-            foreach (AuthorizationTuple tuple in tx.AuthorizationList!)
+            if (tx.HasAuthorizationList)
             {
-                if (tuple is null)
+                foreach (AuthorizationTuple tuple in tx.AuthorizationList)
                 {
-                    //Should not happen in production
-                    continue;
+                    tuple.Authority ??= ecdsa.RecoverAddress(tuple);
                 }
-                tuple.Authority ??= ecdsa.RecoverAddress(tuple);
             }
 
             return AcceptTxResult.Accepted;
