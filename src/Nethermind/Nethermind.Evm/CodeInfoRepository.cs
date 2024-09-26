@@ -280,17 +280,8 @@ public class CodeInfoRepository : ICodeInfoRepository
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
         new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
 
-    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        CodeInfo codeInfo = InternalGetCachedCode(worldState, address);
-        if (Eip7702Constants.IsDelegatedCode(codeInfo.MachineCode.Span))
-        {
-            delegatedAddress = ParseDelegatedAddress(codeInfo.MachineCode.Span);
-            return true;
-        }
-        delegatedAddress = null;
-        return false;
-    }
+    public bool IsDelegation(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) => 
+        TryGetDelegatedAddress(InternalGetCachedCode(worldState, address).MachineCode.Span, out delegatedAddress);
 
     private class CachedPrecompile(
         Address address,
