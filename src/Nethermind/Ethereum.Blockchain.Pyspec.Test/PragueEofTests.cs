@@ -20,7 +20,7 @@ public class PragueEofTests : EofTestBase
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
             ArchiveName = "fixtures_eip7692.tar.gz",
-            ArchiveVersion = "eip7692@v1.1.0"
+            ArchiveVersion = "eip7692@v1.1.1"
         }, $"fixtures/eof_tests/prague");
         return loader.LoadTests().Cast<EofTest>().Select(t => new TestCaseData(t)
             .SetName(t.Name)
