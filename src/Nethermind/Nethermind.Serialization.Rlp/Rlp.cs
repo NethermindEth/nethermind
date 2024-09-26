@@ -1572,7 +1572,7 @@ namespace Nethermind.Serialization.Rlp
                     }
                 }
                 int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
                 T[] result = new T[count];
                 for (int i = 0; i < result.Length; i++)
                 {
@@ -1602,10 +1602,7 @@ namespace Nethermind.Serialization.Rlp
             return Equals(other as Rlp);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes is not null ? Bytes.GetSimplifiedHashCode() : 0;
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public bool Equals(Rlp? other)
         {

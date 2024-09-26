@@ -18,10 +18,8 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => headerValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
-    {
-        return Validate(header, parent, isUncle, out _);
-    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false) => Validate(header, parent, isUncle, out _);
+
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = headerValidator.Validate(header, parent, isUncle, out error);
@@ -39,10 +37,7 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    public bool Validate(BlockHeader header, bool isUncle = false)
-    {
-        return Validate(header, isUncle, out _);
-    }
+    public bool Validate(BlockHeader header, bool isUncle = false) => Validate(header, isUncle, out _);
 
     public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
     {
@@ -78,10 +73,8 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return ValidateProcessedBlock(block, receipts, suggestedBlock, out _);
-    }
+    public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock) => ValidateProcessedBlock(block, receipts, suggestedBlock, out _);
+
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
         bool result = headerValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
@@ -100,10 +93,7 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    private static bool ShouldNotTrackInvalidation(BlockHeader header)
-    {
-        return !HeaderValidator.ValidateHash(header);
-    }
+    private static bool ShouldNotTrackInvalidation(BlockHeader header) => !HeaderValidator.ValidateHash(header);
 
     public bool ValidateWithdrawals(Block block, out string? error)
     {
@@ -128,19 +118,11 @@ public class InvalidBlockInterceptor(
         return result;
     }
 
-    private static bool ShouldNotTrackInvalidation(Block block)
-    {
-        if (ShouldNotTrackInvalidation(block.Header))
-            return true;
-
+    private static bool ShouldNotTrackInvalidation(Block block) =>
+        ShouldNotTrackInvalidation(block.Header) ||
         // Body does not match header, but it does not mean the hash that the header point to is invalid.
-        if (!BlockValidator.ValidateTxRootMatchesTxs(block, out _))
-            return true;
-
-        if (!BlockValidator.ValidateUnclesHashMatches(block, out _))
-            return true;
-
-        return !BlockValidator.ValidateWithdrawalsHashMatches(block, out _);
-    }
-
+        !BlockValidator.ValidateTxRootMatchesTxs(block, out _) ||
+        !BlockValidator.ValidateUnclesHashMatches(block, out _) ||
+        !BlockValidator.ValidateWithdrawalsHashMatches(block, out _) ||
+        !BlockValidator.ValidateRequestsHashMatches(block, out _);
 }

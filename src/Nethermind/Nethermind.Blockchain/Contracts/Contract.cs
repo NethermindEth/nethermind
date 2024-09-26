@@ -201,7 +201,6 @@ namespace Nethermind.Blockchain.Contracts
                 return tracer.ReturnValue;
             }
         }
-
         protected object[] DecodeReturnData(string functionName, byte[] data)
         {
             AbiEncodingInfo abiEncodingInfo = AbiDefinition.GetFunction(functionName).GetReturnInfo();
