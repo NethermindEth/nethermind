@@ -7,7 +7,7 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationRequest>, IRlpValueDecoder<ConsolidationRequest>, IRlpObjectDecoder<ConsolidationRequest>
+public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationRequest>, IRlpValueDecoder<ConsolidationRequest>
 {
     public static ConsolidationRequestDecoder Instance { get; } = new();
     public int GetLength(ConsolidationRequest item, RlpBehaviors rlpBehaviors) =>
@@ -54,14 +54,5 @@ public class ConsolidationRequestDecoder : IRlpStreamDecoder<ConsolidationReques
         stream.Encode(item.SourceAddress);
         stream.Encode(item.SourcePubkey);
         stream.Encode(item.TargetPubkey);
-    }
-
-    public Rlp Encode(ConsolidationRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-
-        Encode(rlpStream, item, rlpBehaviors);
-
-        return new Rlp(rlpStream.Data.ToArray());
     }
 }

@@ -24,7 +24,7 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         ulong yParity = stream.DecodeULong();
         byte[] r = stream.DecodeByteArray();
         byte[] s = stream.DecodeByteArray();
-        
+
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
             stream.Check(check);
@@ -113,5 +113,5 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         + Rlp.LengthOf(nonce);
 
     [DoesNotReturn]
-    private static RlpException ThrowMissingCodeAddressException() => throw new RlpException("Missing code address for Authorization");
+    private static void ThrowMissingCodeAddressException() => throw new RlpException("Missing code address for Authorization");
 }
