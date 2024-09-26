@@ -27,15 +27,11 @@ namespace Nethermind.State
             this IReadOnlyStateProvider stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<bool>? isDelegatedCode = null)
-        {
-            return spec.IsEip3607Enabled
-                && stateProvider.HasCode(sender)
-                && (!spec.IsEip7702Enabled
-                || (isDelegatedCode != null
-                ? !isDelegatedCode()
-                : !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
-        }
+            Func<bool>? isDelegatedCode = null) =>
+            spec.IsEip3607Enabled
+            && stateProvider.HasCode(sender)
+            && (!spec.IsEip7702Enabled
+                || (!isDelegatedCode?.Invoke() ?? !Eip7702Constants.IsDelegatedCode(GetCode(stateProvider, sender))));
     }
 
 }
