@@ -111,7 +111,8 @@ public class ShutterTxSource(
         {
             if (_keyWaitTasks.Remove(keys.Slot, out Dictionary<ulong, (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr)>? slotWaitTasks))
             {
-                slotWaitTasks.ForEach(waitTask => {
+                slotWaitTasks.ForEach(waitTask =>
+                {
                     waitTask.Value.Tcs.TrySetResult();
                     waitTask.Value.Ctr.Dispose();
                 });

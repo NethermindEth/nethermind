@@ -101,7 +101,8 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
                 if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))
                 {
-                    waitTasks.ForEach(waitTask => {
+                    waitTasks.ForEach(waitTask =>
+                    {
                         waitTask.Value.Tcs.TrySetResult(head);
                         waitTask.Value.Dispose();
                     });
@@ -204,7 +205,8 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask => {
+        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask =>
+        {
             waitTask.Value.CancellationRegistration.Dispose();
             waitTask.Value.TimeoutCancellationRegistration.Dispose();
         }));
