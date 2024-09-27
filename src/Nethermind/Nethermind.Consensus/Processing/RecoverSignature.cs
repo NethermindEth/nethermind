@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -61,7 +62,7 @@ namespace Nethermind.Consensus.Processing
             // Don't access txPool in Parallel loop as increases contention
             foreach (Transaction tx in txs)
             {
-                if (!ShouldRecoverSender(tx))
+                if (!ShouldRecoverSignatures(tx))
                     continue;
 
                 Transaction? poolTx = null;
@@ -110,7 +111,7 @@ namespace Nethermind.Consensus.Processing
                 Parallel.For(0, txs.Length, i =>
                 {
                     Transaction tx = txs[i];
-                    if (!ShouldRecoverSender(tx)) return;
+                    if (!ShouldRecoverSignatures(tx)) return;
 
                     tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx);
@@ -121,7 +122,7 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    if (!ShouldRecoverSender(tx)) continue;
+                    if (!ShouldRecoverSignatures(tx)) continue;
 
                     tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx);
@@ -155,7 +156,7 @@ namespace Nethermind.Consensus.Processing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ShouldRecoverSender(Transaction tx)
-            => tx.IsSigned && tx.SenderAddress is null;
+        private static bool ShouldRecoverSignatures(Transaction tx)
+            => tx.IsSigned && tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a=>a.Authority is null));
     }
 }
