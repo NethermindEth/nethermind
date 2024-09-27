@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -152,7 +155,13 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             .AddSingleton(_mergeConfig)
             .AddSingleton(_invalidChainTracker);
 
-        _api.Synchronizer = new MergeSynchronizer(serviceCollection, _syncConfig);
+        ContainerBuilder builder = new ContainerBuilder();
+        builder.Populate(serviceCollection);
+        Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
+        MergeSynchronizer.ConfigureMergeComponent(builder);
+        IContainer container = builder.Build();
+        _api.Synchronizer = container.Resolve<MergeSynchronizer>();
+        _api.DisposeStack.Append(container);
 
         _ = new PivotUpdator(
             _api.BlockTree,

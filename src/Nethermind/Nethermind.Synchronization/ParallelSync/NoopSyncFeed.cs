@@ -41,7 +41,6 @@ public class NoopSyncFeed<T> : ISyncFeed<T>
     public Task FeedTask => Task.CompletedTask;
     public void SyncModeSelectorOnChanged(SyncMode current)
     {
-        throw new InvalidOperationException("null sync feed should not be used");
     }
 
     public bool IsFinished { get; } = true;

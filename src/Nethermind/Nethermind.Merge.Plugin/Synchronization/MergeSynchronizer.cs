@@ -1,8 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
@@ -10,54 +16,62 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class MergeSynchronizer : Synchronizer
+public class MergeSynchronizer(
+    [KeyFilter(nameof(BeaconHeadersSyncFeed))] FeedComponent<HeadersSyncBatch> beaconHeaderComponent,
+    ISyncConfig syncConfig,
+    Synchronizer baseSynchronizer,
+    ILogManager logManager)
+    : ISynchronizer
 {
-    private readonly ServiceProvider _beaconScope;
+    private readonly CancellationTokenSource? _syncCancellation = new();
+    private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
-    public MergeSynchronizer(IServiceCollection serviceCollection, ISyncConfig syncConfig) : base(serviceCollection, syncConfig)
+    public static void ConfigureMergeComponent(ContainerBuilder serviceCollection)
     {
-        RegisterBeaconHeaderSyncComponent(_serviceCollection);
-        _beaconScope = _serviceCollection.BuildServiceProvider();
-    }
-
-    protected override void ConfigureSynchronizerServiceCollection(IServiceCollection serviceCollection)
-    {
-        base.ConfigureSynchronizerServiceCollection(serviceCollection);
-
         serviceCollection
-            // Replace block downloader
+            .AddSingleton<MergeSynchronizer>()
+
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
-            .AddSingleton<BlockDownloader, MergeBlockDownloader>()
-            .AddSingleton<IPeerAllocationStrategyFactory<Nethermind.Synchronization.Blocks.BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>();
+            .AddScoped<BlockDownloader, MergeBlockDownloader>()
+            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
+
+            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed),
+                scopeConfig => scopeConfig
+                    .AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
+                    .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>());
     }
 
-    private static void RegisterBeaconHeaderSyncComponent(IServiceCollection serviceCollection)
+    public event EventHandler<SyncEventArgs>? SyncEvent
     {
-        serviceCollection
-            .AddSingleton<ISyncFeed<HeadersSyncBatch?>, BeaconHeadersSyncFeed>()
-            .AddSingleton<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>()
-            .AddSingleton<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
-            .AddSingleton<SyncDispatcher<HeadersSyncBatch>>();
+        add => baseSynchronizer.SyncEvent += value;
+        remove => baseSynchronizer.SyncEvent -= value;
     }
 
-    public override void Start()
+    public void Start()
     {
-        if (!_syncConfig.SynchronizationEnabled)
+        if (!syncConfig.SynchronizationEnabled)
         {
             return;
         }
 
-        base.Start();
+        baseSynchronizer.Start();
         StartBeaconHeadersComponents();
         WireMultiSyncModeSelector();
     }
 
+    public Task StopAsync()
+    {
+        _syncCancellation?.Cancel();
+        return baseSynchronizer.StopAsync();
+    }
+
+    public ISyncProgressResolver SyncProgressResolver => baseSynchronizer.SyncProgressResolver;
+
+    public ISyncModeSelector SyncModeSelector => baseSynchronizer.SyncModeSelector;
+
     private void StartBeaconHeadersComponents()
     {
-        SyncDispatcher<HeadersSyncBatch> dispatcher =
-            _beaconScope.GetRequiredService<SyncDispatcher<HeadersSyncBatch>>();
-
-        dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+        beaconHeaderComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)
             {
@@ -72,6 +86,11 @@ public class MergeSynchronizer : Synchronizer
 
     private void WireMultiSyncModeSelector()
     {
-        WireFeedWithModeSelector(_beaconScope.GetRequiredService<ISyncFeed<HeadersSyncBatch>>());
+        baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
+    }
+
+    public void Dispose()
+    {
+        baseSynchronizer.Dispose();
     }
 }

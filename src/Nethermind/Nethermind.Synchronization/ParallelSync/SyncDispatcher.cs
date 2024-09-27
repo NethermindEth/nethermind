@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -26,6 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
 
+        [UseThisPlease]
         public SyncDispatcher(
             ISyncConfig syncConfig,
             ISyncFeed<T>? syncFeed,

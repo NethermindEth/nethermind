@@ -5,6 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Autofac;
+using Autofac.Core.Activators.Reflection;
+using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.Core;
@@ -58,6 +61,84 @@ public static class IServiceCollectionExtensions
 
         return configuration;
     }
+
+    public static void ForwardNamedTypeFromLifetime(this ContainerBuilder builder, string name, params Type[] types)
+    {
+        foreach (Type type in types)
+        {
+            builder.Register(ctx =>
+            {
+                var theLifetime = ctx.ResolveNamed<ILifetimeScope>(name);
+                Console.Error.WriteLine($"Attempting to resolve {type.Name} from {name} scope");
+                return theLifetime.Resolve(type);
+            }).Named(name, type);
+        }
+    }
+
+    public static void ForwardNamedTypeFromLifetimeButNotAsNamed<T>(this ContainerBuilder builder, string name) where T : notnull
+    {
+        builder.Register(ctx => ctx.ResolveNamed<ILifetimeScope>(name).Resolve<T>()).As<T>();
+    }
+
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder) where T : notnull
+    {
+        builder.RegisterType<T>()
+            .As<T>()
+            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
+            .WithAttributeFiltering()
+            .SingleInstance();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddSingleton<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
+    {
+        builder.RegisterType<TImpl>()
+            .As<T>()
+            .AsSelf()
+            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
+            .WithAttributeFiltering()
+            .SingleInstance();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddScoped<T>(this ContainerBuilder builder) where T : notnull
+    {
+        builder.RegisterType<T>()
+            .As<T>()
+            .AsSelf()
+            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddScoped<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
+    {
+        builder.RegisterType<TImpl>()
+            .As<T>()
+            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
+            .InstancePerLifetimeScope();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
+    /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration
+    /// or a graph of multiple same type. The T is expected to be of a main container of sort that contains the
+    /// main service of interest.
+    /// Note: The T should dispose an injected ILifetimeScope as ILifetimeScope is not automatically disposed.
+    /// TODO: Double check this behaviour
+    /// </summary>
+    public static ContainerBuilder RegisterNamedComponentInItsOwnLifetime<T>(this ContainerBuilder builder, string name, Action<ContainerBuilder> configurator) where T : notnull
+    {
+        builder.Register<ILifetimeScope, T>(ctx => ctx.BeginLifetimeScope(configurator).Resolve<T>())
+            .Named<T>(name);
+
+        return builder;
+    }
 }
 
 /// <summary>
@@ -65,4 +146,19 @@ public static class IServiceCollectionExtensions
 /// </summary>
 public class SkipServiceCollectionAttribute : Attribute
 {
+}
+
+public class UseThisPleaseAttribute : Attribute
+{
+}
+
+public class UseThisPleaseConstructorFinder : IConstructorFinder
+{
+    public ConstructorInfo[] FindConstructors(Type targetType)
+    {
+        ConstructorInfo[] constructors = targetType.GetConstructors();
+        ConstructorInfo? specifiedConstructor = constructors.FirstOrDefault(it => it.GetCustomAttribute<UseThisPleaseAttribute>() != null);
+        if (specifiedConstructor != null) return [specifiedConstructor];
+        return constructors;
+    }
 }

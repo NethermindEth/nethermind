@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -32,7 +33,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IBlockTree blockTree,
             IFullStateFinder fullStateFinder,
             ISyncConfig syncConfig,
-            ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
+            [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
             ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
             ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
             ISyncFeed<SnapSyncBatch?> snapSyncFeed,

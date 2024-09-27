@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -380,7 +382,12 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<ILogManager>(logManager);
             dbProvider.ConfigureServiceCollection(serviceCollection);
 
-            Synchronizer synchronizer = new(serviceCollection, syncConfig);
+            ContainerBuilder builder = new ContainerBuilder();
+            builder.Populate(serviceCollection);
+            Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+            IContainer container = builder.Build();
+
+            Synchronizer synchronizer = container.Resolve<Synchronizer>();
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;
             SyncServer syncServer = new(

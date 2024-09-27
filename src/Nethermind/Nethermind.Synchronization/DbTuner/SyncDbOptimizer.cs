@@ -31,6 +31,12 @@ public class SyncDbTuner
         [FromKeyedServices(DbNames.Receipts)] ITunableDb? receiptDb
     )
     {
+        if (syncConfig.TuneDbMode == ITunableDb.TuneType.Default && syncConfig.BlocksDbTuneDbMode == ITunableDb.TuneType.Default)
+        {
+            // Do nothing.
+            return;
+        }
+
         // Only these three make sense as they are write heavy
         // Headers is used everywhere, so slowing read might slow the whole sync.
         // Statesync is read heavy, Forward sync is just plain too slow to saturate IO.

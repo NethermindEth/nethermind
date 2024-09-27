@@ -6,6 +6,9 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
+using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -443,8 +446,15 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 .AddSingleton(_mergeConfig)
                 .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
-            MergeSynchronizer synchronizer = new MergeSynchronizer(serviceCollection, _syncConfig);
+            ContainerBuilder builder = new ContainerBuilder();
+            builder.Populate(serviceCollection);
+            Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
+            MergeSynchronizer.ConfigureMergeComponent(builder);
+            IContainer container = builder.Build();
+
+            MergeSynchronizer synchronizer = container.Resolve<MergeSynchronizer>();
             _api.Synchronizer = synchronizer;
+            _api.DisposeStack.Append(container);
 
             PivotUpdator pivotUpdator = new(
                 _api.BlockTree,

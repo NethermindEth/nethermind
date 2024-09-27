@@ -4,6 +4,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
@@ -85,7 +87,12 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
             dbProvider.ConfigureServiceCollection(serviceCollection);
 
-            _synchronizer = new Synchronizer(serviceCollection, syncConfig);
+            ContainerBuilder builder = new ContainerBuilder();
+            builder.Populate(serviceCollection);
+            Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+            IContainer container = builder.Build();
+
+            _synchronizer = container.Resolve<Synchronizer>();
 
             _syncServer = new SyncServer(
                 trieStore.TrieNodeRlpStore,

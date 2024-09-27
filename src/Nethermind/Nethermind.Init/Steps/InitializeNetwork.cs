@@ -3,9 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -133,7 +136,13 @@ public class InitializeNetwork : IStep
             if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
                 _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
-            _api.Synchronizer ??= new Synchronizer(serviceCollection, _syncConfig);
+            ContainerBuilder builder = new ContainerBuilder();
+            builder.Populate(serviceCollection);
+            Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
+            IContainer container = builder.Build();
+
+            _api.Synchronizer ??= container.Resolve<Synchronizer>();
+            _api.DisposeStack.Append(container);
         }
 
         _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
@@ -143,7 +152,7 @@ public class InitializeNetwork : IStep
             _api.SyncModeSelector, _api.SyncProgressResolver, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
         _api.DisposeStack.Push(_api.SyncModeSelector);
-        _api.DisposeStack.Push(_api.Synchronizer);
+        // _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!.TrieNodeRlpStore,

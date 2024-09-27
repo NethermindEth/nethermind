@@ -8,6 +8,8 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -370,11 +372,22 @@ namespace Nethermind.Synchronization.Test
 
                 if (IsMerge(synchronizerType))
                 {
-                    Synchronizer = new MergeSynchronizer(serviceCollection, syncConfig);
+                    ContainerBuilder builder = new ContainerBuilder();
+                    builder.Populate(serviceCollection);
+                    Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+                    MergeSynchronizer.ConfigureMergeComponent(builder);
+                    IContainer container = builder.Build();
+
+                    Synchronizer = container.Resolve<MergeSynchronizer>();
                 }
                 else
                 {
-                    Synchronizer = new Synchronizer(serviceCollection, syncConfig);
+                    ContainerBuilder builder = new ContainerBuilder();
+                    builder.Populate(serviceCollection);
+                    Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+                    IContainer container = builder.Build();
+
+                    Synchronizer = container.Resolve<Synchronizer>();
                 }
 
                 SyncServer = new SyncServer(
