@@ -118,10 +118,10 @@ public abstract class TransactionForRpc
             RegisterTransactionType<BlobTransactionForRpc>();
         }
 
-        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped, IFromTransaction<T>
+        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>
             => _fromTransactionFuncs[(byte)T.TxType] = T.FromTransaction;
 
-        internal static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
+        public static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
         {
             return _fromTransactionFuncs.TryGetByTxType(tx.Type, out var FromTransaction)
                 ? FromTransaction(tx, extraData)
@@ -129,7 +129,7 @@ public abstract class TransactionForRpc
         }
     }
 
-    public static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped, IFromTransaction<T>
+    public static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>
     {
         JsonConverter.RegisterTransactionType<T>();
         TransactionConverter.RegisterTransactionType<T>();
