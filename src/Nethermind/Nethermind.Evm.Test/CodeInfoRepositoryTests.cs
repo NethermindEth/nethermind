@@ -408,7 +408,7 @@ public class CodeInfoRepositoryTests
         using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
         Span<byte> code = stackalloc byte[rlp.Length + 1];
         code[0] = Eip7702Constants.Magic;
-        rlp.Data.AsSpan().CopyTo(code.Slice(1));
+        rlp.AsSpan().CopyTo(code.Slice(1));
         EthereumEcdsa ecdsa = new(1);
         Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
 

@@ -58,7 +58,7 @@ namespace Nethermind.Crypto
             using NettyRlpStream rlp = _tupleDecoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
             Span<byte> code = stackalloc byte[rlp.Length + 1];
             code[0] = Eip7702Constants.Magic;
-            rlp.Data.AsSpan().CopyTo(code.Slice(1));
+            rlp.AsSpan().CopyTo(code.Slice(1));
             Signature sig = Sign(signer, Keccak.Compute(code));
             return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
         }
@@ -119,8 +119,8 @@ namespace Nethermind.Crypto
             Span<byte> buffer = stackalloc byte[128];
             buffer[0] = Eip7702Constants.Magic;
             using NettyRlpStream stream = _tupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-            stream.Data.AsSpan().CopyTo(buffer.Slice(1));
-            return RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(buffer.Slice(0, stream.Data.Length + 1)));
+            stream.AsSpan().CopyTo(buffer.Slice(1));
+            return RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(buffer.Slice(0, stream.Length + 1)));
         }
 
         public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
