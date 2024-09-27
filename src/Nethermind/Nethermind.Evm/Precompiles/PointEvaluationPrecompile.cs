@@ -24,13 +24,13 @@ public class PointEvaluationPrecompile : IPrecompile<PointEvaluationPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 50000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsValid(in ReadOnlyMemory<byte> inputData)
+        static bool IsValid(ReadOnlyMemory<byte> inputData)
         {
             if (inputData.Length != 192)
             {

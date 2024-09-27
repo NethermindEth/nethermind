@@ -22,17 +22,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Core;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Merge.Plugin.handlers;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Optimism;
 

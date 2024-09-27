@@ -17,7 +17,7 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : IBlobTxStorage
 {
-    private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
+    private static readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
@@ -96,7 +96,7 @@ public class BlobTxStorage : IBlobTxStorage
         if (bytes is not null)
         {
             RlpStream rlpStream = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
+            blockBlobTransactions = _txDecoder.Value.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
             return true;
         }
 
@@ -141,10 +141,10 @@ public class BlobTxStorage : IBlobTxStorage
 
     private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
     {
-        int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+        int length = _txDecoder.Value.GetLength(transaction, RlpBehaviors.InMempoolForm);
         IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
         using NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
+        _txDecoder.Value.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
 
         db.PutSpan(txHashPrefixed, byteBuffer.AsSpan());
     }
@@ -158,7 +158,7 @@ public class BlobTxStorage : IBlobTxStorage
         rlpStream.StartSequence(contentLength);
         foreach (Transaction transaction in blockBlobTransactions)
         {
-            _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
+            _txDecoder.Value.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
         }
 
         db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), byteBuffer.AsSpan());
@@ -169,7 +169,7 @@ public class BlobTxStorage : IBlobTxStorage
         int contentLength = 0;
         foreach (Transaction transaction in blockBlobTransactions)
         {
-            contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+            contentLength += _txDecoder.Value.GetLength(transaction, RlpBehaviors.InMempoolForm);
         }
 
         return contentLength;

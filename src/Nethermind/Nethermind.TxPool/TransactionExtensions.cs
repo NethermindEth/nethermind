@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -14,11 +15,11 @@ namespace Nethermind.TxPool
     public static class TransactionExtensions
     {
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB(); //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
-        private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
+        private static readonly Lazy<NetworkTransactionSizeCalculator> _transactionSizeCalculator = new(() => new NetworkTransactionSizeCalculator(TxDecoder.Instance));
 
         public static int GetLength(this Transaction tx)
         {
-            return tx.GetLength(_transactionSizeCalculator);
+            return tx.GetLength(_transactionSizeCalculator.Value);
         }
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => tx.MaxFeePerGas >= currentBaseFee;

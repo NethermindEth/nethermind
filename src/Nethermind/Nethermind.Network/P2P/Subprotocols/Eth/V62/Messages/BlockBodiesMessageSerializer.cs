@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -56,7 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
         {
-            private readonly TxDecoder _txDecoder = TxDecoder.Instance;
+            private readonly Lazy<TxDecoder> _txDecoder = new(() => TxDecoder.Instance);
             private readonly HeaderDecoder _headerDecoder = new();
             private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
             private readonly ConsensusRequestDecoder _requestsDecoder = new();
@@ -72,7 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 + (b.Withdrawals is not null ? Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals)) : 0)
                 + (b.Requests is not null ? Rlp.LengthOfSequence(GetRequestsLength(b.Requests)) : 0);
 
-            private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
+            private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.Value.GetLength(t, RlpBehaviors.None));
 
             private int GetUnclesLength(BlockHeader[] headers) => headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
 
@@ -91,7 +92,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
                 // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
                 // (just on these delegates)
-                Transaction[] transactions = ctx.DecodeArray(_txDecoder);
+                Transaction[] transactions = ctx.DecodeArray(_txDecoder.Value);
                 BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
                 Withdrawal[]? withdrawals = null;
                 ConsensusRequest[]? requests = null;
@@ -114,7 +115,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 stream.StartSequence(GetTxLength(body.Transactions));
                 foreach (Transaction? txn in body.Transactions)
                 {
-                    stream.Encode(txn);
+                    _txDecoder.Value.Encode(stream, txn);
                 }
 
                 stream.StartSequence(GetUnclesLength(body.Uncles));
