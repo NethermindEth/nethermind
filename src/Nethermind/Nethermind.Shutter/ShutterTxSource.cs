@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core.Collections;
-using Org.BouncyCastle.Math.EC.Rfc7748;
 
 namespace Nethermind.Shutter;
 
@@ -26,7 +25,8 @@ public class ShutterTxSource(
 {
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly ConcurrentDictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> _keyWaitTasks = new();
+    private ulong _keyWaitTaskId = 0;
+    private readonly ConcurrentDictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
     private readonly object _syncObject = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
@@ -60,21 +60,34 @@ public class ShutterTxSource(
         return shutterTransactions.Value.Transactions;
     }
 
-    public async Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
+    public Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)
     {
         TaskCompletionSource? tcs = null;
         lock (_syncObject)
         {
             if (_txCache.Contains(slot))
             {
-                return;
+                return Task.CompletedTask;
             }
 
+            ulong taskId = _keyWaitTaskId++;
             tcs = new();
-            CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot));
-            _keyWaitTasks.GetOrAdd(slot, _ => (tcs, ctr));
+            CancellationTokenRegistration ctr = cancellationToken.Register(() => {
+                if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
+                {
+                    if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+                    {
+                        waitTask.Tcs.TrySetException(new OperationCanceledException());
+                        waitTask.Ctr.Dispose();
+                    }
+                    slotWaitTasks.Remove(taskId);
+                }
+            });
+
+            Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks = _keyWaitTasks.GetOrAdd(slot, _ => []);
+            slotWaitTasks.Add(taskId, (tcs, ctr));
         }
-        await tcs.Task;
+        return tcs.Task;
     }
 
     public bool HaveTransactionsArrived(ulong slot)
@@ -89,23 +102,18 @@ public class ShutterTxSource(
 
         lock (_syncObject)
         {
-            if (_keyWaitTasks.Remove(keys.Slot, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+            if (_keyWaitTasks.Remove(keys.Slot, out Dictionary<ulong, (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr)>? slotWaitTasks))
             {
-                waitTask.Tcs.TrySetResult();
-                waitTask.Ctr.Dispose();
+                slotWaitTasks.ForEach(waitTask => {
+                    waitTask.Value.Tcs.TrySetResult();
+                    waitTask.Value.Ctr.Dispose();
+                });
             }
         }
 
         return transactions;
     }
 
-    private void CancelWaitForTransactions(ulong slot)
-    {
-        _keyWaitTasks.Remove(slot, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask);
-        waitTask.Tcs.TrySetException(new OperationCanceledException());
-        waitTask.Ctr.Dispose();
-    }
-
     public void Dispose()
-        => _keyWaitTasks.ForEach(waitTask => waitTask.Value.Item2.Dispose());
+        => _keyWaitTasks.ForEach(x => x.Value.ForEach(waitTask => waitTask.Value.Item2.Dispose()));
 }
