@@ -7,9 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Eip2930;
-using Nethermind.Int256;
+using Nethermind.Core.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Evm
@@ -79,30 +77,24 @@ namespace Nethermind.Evm
         /// <summary>
         /// EIP-2929 accessed addresses
         /// </summary>
-        public IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
+        public IReadOnlySet<Address> AccessedAddresses => _accessTracker.AccessedAddresses;
 
         /// <summary>
         /// EIP-2929 accessed storage keys
         /// </summary>
-        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
+        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessTracker.AccessedStorageCells;
 
         // As we can add here from VM, we need it as ICollection
-        public ICollection<Address> DestroyList => _destroyList;
+        public ICollection<Address> DestroyList => _accessTracker.DestroyList;
         // As we can add here from VM, we need it as ICollection
-        public ICollection<AddressAsKey> CreateList => _createList;
+        public ICollection<AddressAsKey> CreateList => _accessTracker.CreateList;
         // As we can add here from VM, we need it as ICollection
-        public ICollection<LogEntry> Logs => _logs;
+        public ICollection<LogEntry> Logs => _accessTracker.Logs;
 
-        private readonly JournalSet<Address> _accessedAddresses;
-        private readonly JournalSet<StorageCell> _accessedStorageCells;
-        private readonly JournalCollection<LogEntry> _logs;
-        private readonly JournalSet<Address> _destroyList;
-        private readonly HashSet<AddressAsKey> _createList;
-        private readonly int _accessedAddressesSnapshot;
-        private readonly int _accessedStorageKeysSnapshot;
-        private readonly int _destroyListSnapshot;
-        private readonly int _logsSnapshot;
+        public AccessTracker AccessTracker => _accessTracker;
 
+        private readonly AccessTracker _accessTracker;
+        
         public int DataStackHead = 0;
 
         public int ReturnStackHead = 0;
@@ -113,16 +105,19 @@ namespace Nethermind.Evm
             ExecutionType executionType,
             bool isTopLevel,
             Snapshot snapshot,
-            JournalSet<Address> warmAddresses)
-            : this(
-                  gasAvailable,
-                  env,
-                  executionType,
-                  isTopLevel,
-                  snapshot,
-                  false)
+            AccessTracker accessedItems)
+            : this(gasAvailable,
+                env,
+                executionType,
+                isTopLevel,
+                snapshot,
+                0L,
+                0L,
+                false,
+                accessedItems,
+                false,
+                false)
         {
-            _accessedAddresses = warmAddresses;
         }
 
         internal EvmState(
@@ -157,7 +152,7 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
-            EvmState? stateForAccessLists,
+            AccessTracker? stateForAccessLists,
             bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
@@ -179,32 +174,19 @@ namespace Nethermind.Evm
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
             if (stateForAccessLists is not null)
             {
-                // if we are sub-call, then we use the main collection for this transaction
-                _accessedAddresses = stateForAccessLists._accessedAddresses;
-                _accessedStorageCells = stateForAccessLists._accessedStorageCells;
-                _destroyList = stateForAccessLists._destroyList;
-                _createList = stateForAccessLists._createList;
-                _logs = stateForAccessLists._logs;
+                // if we are sub-call, then we use the existing access list for this transaction
+                _accessTracker = stateForAccessLists;
             }
             else
             {
-                // if we are top level, then we need to create the collections
-                _accessedAddresses = new JournalSet<Address>();
-                _accessedStorageCells = new JournalSet<StorageCell>();
-                _destroyList = new JournalSet<Address>();
-                _createList = new HashSet<AddressAsKey>();
-                _logs = new JournalCollection<LogEntry>();
+                // if we are top level, then we create a new access tracker
+                _accessTracker = new();
             }
             if (executionType.IsAnyCreate())
             {
-                _createList.Add(env.ExecutingAccount);
+                _accessTracker.CreateList.Add(env.ExecutingAccount);
             }
-
-            _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
-            _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
-            _destroyListSnapshot = _destroyList.TakeSnapshot();
-            _logsSnapshot = _logs.TakeSnapshot();
-
+            _accessTracker.TakeSnapshot();
         }
 
         public Address From
@@ -270,28 +252,13 @@ namespace Nethermind.Evm
             }
         }
 
-        public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
+        public bool IsCold(Address? address) => !_accessTracker.AccessedAddresses.Contains(address);
 
-        public bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
+        public bool IsCold(in StorageCell storageCell) => !_accessTracker.AccessedStorageCells.Contains(storageCell);
 
-        public void WarmUp(AccessList? accessList)
-        {
-            if (accessList?.IsEmpty == false)
-            {
-                foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
-                {
-                    WarmUp(address);
-                    foreach (UInt256 storage in storages)
-                    {
-                        WarmUp(new StorageCell(address, storage));
-                    }
-                }
-            }
-        }
+        public void WarmUp(Address address) => _accessTracker.Add(address);
 
-        public void WarmUp(Address address) => _accessedAddresses.Add(address);
-
-        public void WarmUp(in StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
+        public void WarmUp(in StorageCell storageCell) => _accessTracker.Add(storageCell);
 
         public void CommitToParent(EvmState parentState)
         {
@@ -303,11 +270,8 @@ namespace Nethermind.Evm
         {
             if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             {
-                _logs.Restore(_logsSnapshot);
-                _destroyList.Restore(_destroyListSnapshot);
-                _accessedAddresses.Restore(_accessedAddressesSnapshot);
-                _accessedStorageCells.Restore(_accessedStorageKeysSnapshot);
+                _accessTracker.Restore();
             }
-        }
+        }        
     }
 }

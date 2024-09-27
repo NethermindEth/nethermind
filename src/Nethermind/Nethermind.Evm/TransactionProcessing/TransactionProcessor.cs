@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -43,7 +42,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
-        private readonly WarmAddressBuilder _warmAddressBuilder = new();
 
         [Flags]
         protected enum ExecutionOptions
@@ -152,13 +150,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            JournalSet<Address> accessedAddresses = new();
-            int delegationRefunds = ProcessDelegations(tx, spec, accessedAddresses);
+            AccessTracker accessTracker = new();
+            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker.AccessedAddresses);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _warmAddressBuilder);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, _warmAddressBuilder.WarmAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -508,24 +506,37 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
-            WarmAddressBuilder accessedAddresses)
+            AccessTracker accessedAddresses)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
-
-            accessedAddresses.WarmUpAddress(recipient);
-            accessedAddresses.WarmUpAddress(tx.SenderAddress!);
-
+                   
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
             Address? delegationAddress = null;
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
                 : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
-
-            if (delegationAddress is not null)
-                accessedAddresses.WarmUpAddress(delegationAddress);
-
             codeInfo.AnalyseInBackgroundIfRequired();
+
+            if (spec.UseHotAndColdStorage)
+            {
+                accessedAddresses.Add(recipient);
+                accessedAddresses.Add(tx.SenderAddress!);
+
+                if (spec.UseTxAccessLists)
+                {
+                    accessedAddresses.Add(tx.AccessList); // eip-2930
+                }
+
+                if (spec.AddCoinbaseToTxAccessList)
+                {
+                    accessedAddresses.Add(blCtx.Header.GasBeneficiary!);
+                }
+
+                //We assume eip-7702 must be active if it is a delegation 
+                if (delegationAddress is not null)
+                    accessedAddresses.Add(delegationAddress);
+            }
 
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
 
@@ -551,7 +562,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            JournalSet<Address> warmedAddresses,
+            AccessTracker accessedItems,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -584,9 +595,8 @@ namespace Nethermind.Evm.TransactionProcessing
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
                     true,
                     snapshot,
-                    warmedAddresses))
+                    accessedItems))
                 {
-                    WarmUp(tx, header, spec, state);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -667,19 +677,6 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
-        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state)
-        {
-            if (spec.UseTxAccessLists)
-            {
-                state.WarmUp(tx.AccessList); // eip-2930
-            }
-
-            if (spec.AddCoinbaseToTxAccessList)
-            {
-                state.WarmUp(header.GasBeneficiary!);
-            }
-        }
-
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
@@ -758,64 +755,6 @@ namespace Nethermind.Evm.TransactionProcessing
         [DoesNotReturn]
         [StackTraceHidden]
         private static void ThrowTransactionCollisionException() => throw new TransactionCollisionException();
-
-        private sealed class WarmAddressBuilder: ICollection<Address>
-        {
-            private IReleaseSpec _spec;
-            public JournalSet<Address> WarmAddresses { get; private set; }
-
-            public int Count => WarmAddresses.Count;
-
-            public bool IsReadOnly => WarmAddresses.IsReadOnly;
-
-            public void WarmUpAddress(Address address)
-            {
-                Debug.Assert(WarmAddresses is not null);
-                if (_spec.UseHotAndColdStorage) // eip-2929
-                    WarmAddresses.Add(address);
-            }
-            public void StartNewBuild(IReleaseSpec releaseSpec)
-            {
-                _spec = releaseSpec;
-                WarmAddresses = [];
-            }
-
-            public void Add(Address item)
-            {
-                Debug.Assert(WarmAddresses is not null);
-                WarmUpAddress(item);
-            }
-
-            public void Clear()
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool Contains(Address item)
-            {
-                return WarmAddresses.Contains(item);
-            }
-
-            public void CopyTo(Address[] array, int arrayIndex)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool Remove(Address item)
-            {
-                throw new NotImplementedException();
-            }
-
-            public IEnumerator<Address> GetEnumerator()
-            {
-                return WarmAddresses.GetEnumerator();
-            }
-
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return WarmAddresses.GetEnumerator();
-            }
-        }
     }
 
     public readonly struct TransactionResult(string? error)
