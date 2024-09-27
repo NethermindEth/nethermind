@@ -140,7 +140,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         string requestStr = payloadAttributes is null
             ? forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)
-            : $"{forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)} {payloadAttributes}";
+            : $"{forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)}";
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 
