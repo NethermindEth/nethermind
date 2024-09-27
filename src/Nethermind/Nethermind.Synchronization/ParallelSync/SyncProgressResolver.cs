@@ -23,19 +23,19 @@ namespace Nethermind.Synchronization.ParallelSync
         // ReSharper disable once NotAccessedField.Local
         private readonly ILogger _logger;
 
-        private readonly ISyncFeed<HeadersSyncBatch?>? _headersSyncFeed;
-        private readonly ISyncFeed<BodiesSyncBatch?>? _bodiesSyncFeed;
-        private readonly ISyncFeed<ReceiptsSyncBatch?>? _receiptsSyncFeed;
-        private readonly ISyncFeed<SnapSyncBatch?>? _snapSyncFeed;
+        private readonly ISyncFeed<HeadersSyncBatch?> _headersSyncFeed;
+        private readonly ISyncFeed<BodiesSyncBatch?> _bodiesSyncFeed;
+        private readonly ISyncFeed<ReceiptsSyncBatch?> _receiptsSyncFeed;
+        private readonly ISyncFeed<SnapSyncBatch?> _snapSyncFeed;
 
         public SyncProgressResolver(
             IBlockTree blockTree,
             IFullStateFinder fullStateFinder,
             ISyncConfig syncConfig,
-            ISyncFeed<HeadersSyncBatch?>? headersSyncFeed,
-            ISyncFeed<BodiesSyncBatch?>? bodiesSyncFeed,
-            ISyncFeed<ReceiptsSyncBatch?>? receiptsSyncFeed,
-            ISyncFeed<SnapSyncBatch?>? snapSyncFeed,
+            ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
+            ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
+            ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
+            ISyncFeed<SnapSyncBatch?> snapSyncFeed,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -83,11 +83,11 @@ namespace Nethermind.Synchronization.ParallelSync
             return _blockTree.FindHeader(blockHash)?.TotalDifficulty == 0 ? null : _blockTree.FindHeader(blockHash)?.TotalDifficulty;
         }
 
-        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || _headersSyncFeed?.IsFinished == true;
+        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || _headersSyncFeed.IsFinished;
 
-        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || _bodiesSyncFeed?.IsFinished == true;
+        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || _bodiesSyncFeed.IsFinished;
 
-        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed?.IsFinished == true;
+        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed.IsFinished;
 
         public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
@@ -15,6 +16,14 @@ public class MallocTrimmer
 {
     private readonly MallocHelper _mallocHelper;
     private readonly ILogger _logger;
+
+    public MallocTrimmer(
+        ISyncModeSelector syncModeSelector,
+        ISyncConfig syncConfig,
+        ILogManager logManager
+    ): this(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), logManager)
+    {
+    }
 
     public MallocTrimmer(
         ISyncModeSelector syncModeSelector,

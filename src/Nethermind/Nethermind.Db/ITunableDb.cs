@@ -3,7 +3,7 @@
 
 namespace Nethermind.Db;
 
-public interface ITunableDb : IDb
+public interface ITunableDb
 {
     public void Tune(TuneType type);
 
@@ -16,5 +16,12 @@ public interface ITunableDb : IDb
         DisableCompaction,
         EnableBlobFiles,
         HashDb
+    }
+}
+
+public class NoopTunableDb: ITunableDb
+{
+    public void Tune(ITunableDb.TuneType type)
+    {
     }
 }

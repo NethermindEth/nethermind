@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -20,7 +19,6 @@ using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
@@ -30,9 +28,6 @@ namespace Nethermind.Synchronization
     public class Synchronizer : ISynchronizer
     {
         private const int FeedsTerminationTimeout = 5_000;
-
-        private static MallocTrimmer? s_trimmer;
-        private static SyncDbTuner? s_dbTuner;
 
         private readonly INodeStatsManager _nodeStatsManager;
 
@@ -45,7 +40,6 @@ namespace Nethermind.Synchronization
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        private readonly IDbProvider _dbProvider;
         private readonly IProcessExitSource _exitSource;
 
         public ISyncProgressResolver SyncProgressResolver => _mainScope.GetRequiredService<ISyncProgressResolver>();
@@ -63,25 +57,13 @@ namespace Nethermind.Synchronization
         {
             _syncConfig = config;
             ConfigureSynchronizerServiceCollection(serviceCollection);
-
-            if (_syncConfig.FastSync && _syncConfig.SnapSync)
-                ConfigureSnapComponent(serviceCollection);
-
-            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync)
-                ConfigureHeaderSyncComponent(serviceCollection);
-
-            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync && _syncConfig.DownloadBodiesInFastSync &&
-                _syncConfig.DownloadReceiptsInFastSync)
-                ConfigureReceiptSyncComponent(serviceCollection);
-
-            if (_syncConfig.FastSync && _syncConfig.DownloadHeadersInFastSync && _syncConfig.DownloadBodiesInFastSync)
-                ConfigureBodiesSyncComponent(serviceCollection);
-
-            if (_syncConfig.FastSync)
-                ConfigureStateSyncComponent(serviceCollection);
+            ConfigureSnapComponent(serviceCollection);
+            ConfigureHeaderSyncComponent(serviceCollection);
+            ConfigureReceiptSyncComponent(serviceCollection);
+            ConfigureBodiesSyncComponent(serviceCollection);
+            ConfigureStateSyncComponent(serviceCollection);
 
             _mainScope = serviceCollection.BuildServiceProvider();
-            _dbProvider = _mainScope.GetRequiredService<IDbProvider>();
             _logManager = _mainScope.GetRequiredService<ILogManager>();
             _logger = _logManager.GetClassLogger();
             _nodeStatsManager = _mainScope.GetRequiredService<INodeStatsManager>();
@@ -89,6 +71,8 @@ namespace Nethermind.Synchronization
 
             ConfigureBlocksDownloader(serviceCollection);
 
+            // These to use a separate IServiceProvider because the both expose and use an
+            // ISyncFeed<T>,Synchronizer<T>,ISyncDownloader<T> where T is BlocksRequest.
             ConfigureFastSync(serviceCollection);
             _fastSyncScope = serviceCollection.BuildServiceProvider();
 
@@ -111,23 +95,14 @@ namespace Nethermind.Synchronization
         protected virtual void ConfigureSynchronizerServiceCollection(IServiceCollection serviceCollection)
         {
             serviceCollection
-                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>(sp =>
-                    new SyncProgressResolver(
-                        sp.GetRequiredService<IBlockTree>(),
-                        sp.GetRequiredService<IFullStateFinder>(),
-                        sp.GetRequiredService<ISyncConfig>(),
-                        // These are optional, thats why this need to be set manually like this.
-                        sp.GetService<ISyncFeed<HeadersSyncBatch?>>(),
-                        sp.GetService<ISyncFeed<BodiesSyncBatch?>>(),
-                        sp.GetService<ISyncFeed<ReceiptsSyncBatch?>>(),
-                        sp.GetService<ISyncFeed<SnapSyncBatch?>>(),
-                        sp.GetRequiredService<ILogManager>()
-                    ))
+                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
                 .AddSingleton<ISyncReport, SyncReport>()
                 .AddSingleton<IFullStateFinder, FullStateFinder>()
                 .AddSingleton<ISyncModeSelector>(sp => sp.GetRequiredService<MultiSyncModeSelector>())
                 .AddSingleton<MultiSyncModeSelector>()
                 .AddSingleton<SyncDispatcher<BlocksRequest>>()
+                .AddSingleton<SyncDbTuner>()
+                .AddSingleton<MallocTrimmer>()
 
                 // These are here so that MergeSynchronizer can replace them
                 .AddSingleton<BlockDownloader>()
@@ -142,14 +117,20 @@ namespace Nethermind.Synchronization
                 .AddSingleton<ISyncFeed<BlocksRequest>, FullSyncFeed>(sp => sp.GetRequiredService<FullSyncFeed>());
         }
 
-        private static void ConfigureFastSync(IServiceCollection serviceCollection)
+        private void ConfigureFastSync(IServiceCollection serviceCollection)
         {
             serviceCollection
                 .AddSingleton<FastSyncFeed>()
                 .AddSingleton<ISyncFeed<BlocksRequest>, FastSyncFeed>(sp => sp.GetRequiredService<FastSyncFeed>());
         }
-        private static void ConfigureSnapComponent(IServiceCollection serviceCollection)
+        private void ConfigureSnapComponent(IServiceCollection serviceCollection)
         {
+            if (!_syncConfig.FastSync || !_syncConfig.SnapSync)
+            {
+                serviceCollection.AddSingleton<ISyncFeed<SnapSyncBatch>, NoopSyncFeed<SnapSyncBatch>>();
+                return;
+            }
+
             serviceCollection
                 .AddSingleton<ProgressTracker>()
                 .AddSingleton<ISnapProvider, SnapProvider>();
@@ -157,18 +138,40 @@ namespace Nethermind.Synchronization
             ConfigureSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
         }
 
-        private static void ConfigureHeaderSyncComponent(IServiceCollection serviceCollection)
+        private void ConfigureHeaderSyncComponent(IServiceCollection serviceCollection)
         {
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync)
+            {
+                serviceCollection.AddSingleton<ISyncFeed<HeadersSyncBatch>, NoopSyncFeed<HeadersSyncBatch>>();
+                return;
+            }
+
             ConfigureSyncFeed<HeadersSyncBatch, HeadersSyncFeed, HeadersSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
         }
 
-        private static void ConfigureReceiptSyncComponent(IServiceCollection serviceCollection)
+        private void ConfigureReceiptSyncComponent(IServiceCollection serviceCollection)
         {
+
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync ||
+                !_syncConfig.DownloadBodiesInFastSync ||
+                !_syncConfig.DownloadReceiptsInFastSync)
+            {
+                serviceCollection.AddSingleton<ISyncFeed<ReceiptsSyncBatch>, NoopSyncFeed<ReceiptsSyncBatch>>();
+                return;
+            }
+
             ConfigureSyncFeed<ReceiptsSyncBatch, ReceiptsSyncFeed, ReceiptsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
         }
 
-        private static void ConfigureBodiesSyncComponent(IServiceCollection serviceCollection)
+        private void ConfigureBodiesSyncComponent(IServiceCollection serviceCollection)
         {
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync ||
+                !_syncConfig.DownloadBodiesInFastSync)
+            {
+                serviceCollection.AddSingleton<ISyncFeed<BodiesSyncBatch>, NoopSyncFeed<BodiesSyncBatch>>();
+                return;
+            }
+
             ConfigureSyncFeed<BodiesSyncBatch, BodiesSyncFeed, BodiesSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
         }
 
@@ -182,8 +185,14 @@ namespace Nethermind.Synchronization
                 .AddSingleton<SyncDispatcher<TBatch>>();
         }
 
-        private static void ConfigureStateSyncComponent(IServiceCollection serviceCollection)
+        private void ConfigureStateSyncComponent(IServiceCollection serviceCollection)
         {
+            if (!_syncConfig.FastSync)
+            {
+                serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
+                return;
+            }
+
             serviceCollection
                 .AddSingleton<TreeSync>();
 
@@ -215,7 +224,7 @@ namespace Nethermind.Synchronization
 
             if (_syncConfig.TuneDbMode != ITunableDb.TuneType.Default || _syncConfig.BlocksDbTuneDbMode != ITunableDb.TuneType.Default)
             {
-                SetupDbOptimizer();
+                _mainScope.GetRequiredService<SyncDbTuner>();
             }
 
             if (_syncConfig.ExitOnSynced)
@@ -225,21 +234,8 @@ namespace Nethermind.Synchronization
 
             WireMultiSyncModeSelector();
 
-            s_trimmer ??= new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
+            _mainScope.GetRequiredService<MallocTrimmer>();
             SyncModeSelector.Changed += _mainScope.GetRequiredService<ISyncReport>().SyncModeSelectorOnChanged;
-        }
-
-        private void SetupDbOptimizer()
-        {
-            s_dbTuner ??= new SyncDbTuner(
-                _syncConfig,
-                _mainScope.GetService<SnapSyncFeed>(),
-                _mainScope.GetService<BodiesSyncFeed>(),
-                _mainScope.GetService<ReceiptsSyncFeed>(),
-                _dbProvider.StateDb as ITunableDb,
-                _dbProvider.CodeDb as ITunableDb,
-                _dbProvider.BlocksDb as ITunableDb,
-                _dbProvider.ReceiptsDb as ITunableDb);
         }
 
         private void StartFullSyncComponents()

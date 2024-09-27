@@ -49,11 +49,25 @@ namespace Nethermind.Db
             ];
             foreach (string dbName in dbNames)
             {
-                sc.AddKeyedSingleton<IDb>(dbName, GetDb<IDb>(dbName));
-                sc.AddKeyedSingleton<IDbMeta>(dbName, GetDb<IDb>(dbName));
+                var db = GetDb<IDb>(dbName);
+                sc.AddKeyedSingleton<IDb>(dbName, db);
+                sc.AddKeyedSingleton<IDbMeta>(dbName, db);
+                if (db is ITunableDb tunableDb)
+                {
+                    sc.AddKeyedSingleton<ITunableDb>(dbName, tunableDb);
+                }
+                else
+                {
+                    sc.AddKeyedSingleton<ITunableDb>(dbName, new NoopTunableDb());
+                }
             }
 
-            sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(GetColumnDb<ReceiptsColumns>(DbNames.Receipts));
+            IColumnsDb<ReceiptsColumns> receiptColumnDb = GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
+            sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(receiptColumnDb);
+            if (receiptColumnDb is ITunableDb tunableDb2)
+                sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, tunableDb2);
+            else
+                sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, new NoopTunableDb());
         }
     }
 }
