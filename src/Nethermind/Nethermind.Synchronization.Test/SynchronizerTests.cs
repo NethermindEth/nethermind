@@ -344,10 +344,10 @@ namespace Nethermind.Synchronization.Test
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
-                IServiceCollection serviceCollection = new ServiceCollection();
-                dbProvider.ConfigureServiceCollection(serviceCollection);
+                ContainerBuilder builder = new ContainerBuilder();
+                dbProvider.ConfigureServiceCollection(builder);
 
-                serviceCollection
+                builder
                     .AddSingleton(dbProvider)
                     .AddSingleton(nodeStorage)
                     .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -370,8 +370,6 @@ namespace Nethermind.Synchronization.Test
                     .AddSingleton(beaconPivot)
                     .AddSingleton(_logManager);
 
-                ContainerBuilder builder = new ContainerBuilder();
-                builder.Populate(serviceCollection);
                 Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
 
                 if (IsMerge(synchronizerType))

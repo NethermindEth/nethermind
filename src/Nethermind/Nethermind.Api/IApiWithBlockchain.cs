@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -101,9 +102,9 @@ namespace Nethermind.Api
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
-        public IServiceCollection CreateServiceCollectionFromApiWithBlockchain(IServiceCollection serviceCollection)
+        public ContainerBuilder CreateServiceCollectionFromApiWithBlockchain(ContainerBuilder builder)
         {
-            return CreateServiceCollectionFromApiWithStores(serviceCollection)
+            return CreateServiceCollectionFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
                 .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
 

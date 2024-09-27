@@ -361,7 +361,8 @@ namespace Nethermind.Synchronization.Test
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
 
-            IServiceCollection serviceCollection = new ServiceCollection()
+            ContainerBuilder builder = new ContainerBuilder();
+            builder
                 .AddSingleton(dbProvider)
                 .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -380,10 +381,7 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<IReceiptStorage>(receiptStorage)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton<ILogManager>(logManager);
-            dbProvider.ConfigureServiceCollection(serviceCollection);
-
-            ContainerBuilder builder = new ContainerBuilder();
-            builder.Populate(serviceCollection);
+            dbProvider.ConfigureServiceCollection(builder);
             Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
             IContainer container = builder.Build();
 

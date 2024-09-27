@@ -130,16 +130,15 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork(new ServiceCollection())
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
-
             if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
                 _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
             ContainerBuilder builder = new ContainerBuilder();
-            builder.Populate(serviceCollection);
+            _api.CreateServiceCollectionFromApiWithNetwork(builder)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
             Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
             IContainer container = builder.Build();
+
             _api.ApiWithNetworkServiceContainer = container;
             _api.DisposeStack.Append(container);
         }

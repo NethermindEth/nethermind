@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using Autofac;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -32,7 +34,7 @@ namespace Nethermind.Db
         void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
         IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
 
-        void ConfigureServiceCollection(IServiceCollection sc)
+        void ConfigureServiceCollection(ContainerBuilder sc)
         {
             sc.AddSingleton(this);
 

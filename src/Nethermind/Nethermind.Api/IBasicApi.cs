@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
@@ -60,15 +61,15 @@ namespace Nethermind.Api
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
 
-        public IServiceCollection CreateServiceCollectionFromBasicApi(IServiceCollection serviceCollection)
+        public ContainerBuilder CreateServiceCollectionFromBasicApi(ContainerBuilder builder)
         {
-            IServiceCollection sc = serviceCollection
+            builder
                 .AddPropertiesFrom<IBasicApi>(this)
                 .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
 
-            DbProvider!.ConfigureServiceCollection(sc);
+            DbProvider!.ConfigureServiceCollection(builder);
 
-            return sc;
+            return builder;
         }
     }
 }

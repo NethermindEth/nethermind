@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
@@ -14,35 +15,14 @@ public class ServiceCollectionExtensionsTests
     public void AddPropertiesFrom_CanAddProperties()
     {
         ITestInterface interfaceImplementation = new InterfaceImplementation();
-        IServiceProvider sp = new ServiceCollection()
+        IContainer sp = new ContainerBuilder()
             .AddPropertiesFrom(interfaceImplementation)
-            .BuildServiceProvider();
+            .Build();
 
-        sp.GetService<DeclaredService>().Should().NotBeNull();
-        sp.GetService<DeclaredInBase>().Should().BeNull();
-        sp.GetService<Ignored>().Should().BeNull();
-        sp.GetService<DeclaredButNullService>().Should().BeNull();
-    }
-
-    [Test]
-    public void TestForwardDependency_ShouldNotDispose()
-    {
-        ServiceProvider sp1 = new ServiceCollection()
-            .AddSingleton<DisposableService>()
-            .BuildServiceProvider();
-
-        ServiceProvider sp2 = new ServiceCollection()
-            .ForwardServiceAsSingleton<DisposableService>(sp1)
-            .BuildServiceProvider();
-
-        DisposableService disposableService = sp2.GetRequiredService<DisposableService>();
-        disposableService.WasDisposed.Should().BeFalse();
-
-        sp2.Dispose();
-        disposableService.WasDisposed.Should().BeFalse();
-
-        sp1.Dispose();
-        disposableService.WasDisposed.Should().BeTrue();
+        sp.Resolve<DeclaredService>().Should().NotBeNull();
+        sp.Resolve<DeclaredInBase>().Should().BeNull();
+        sp.Resolve<Ignored>().Should().BeNull();
+        sp.Resolve<DeclaredButNullService>().Should().BeNull();
     }
 
     private class InterfaceImplementation : ITestInterface

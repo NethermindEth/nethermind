@@ -440,16 +440,16 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.Pivot = _beaconPivot;
 
-            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork(new ServiceCollection())
+            ContainerBuilder builder = new ContainerBuilder();
+
+            _api.CreateServiceCollectionFromApiWithNetwork(builder)
                 .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
                 .AddSingleton<IBeaconPivot>(_beaconPivot)
                 .AddSingleton(_mergeConfig)
                 .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
-
-            ContainerBuilder builder = new ContainerBuilder();
-            builder.Populate(serviceCollection);
             Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
             MergeSynchronizer.ConfigureMergeComponent(builder);
+
             IContainer container = builder.Build();
             _api.ApiWithNetworkServiceContainer = container;
             _api.DisposeStack.Append(container);

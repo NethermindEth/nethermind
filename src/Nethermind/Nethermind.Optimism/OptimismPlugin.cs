@@ -152,18 +152,17 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        IServiceCollection serviceCollection = ((INethermindApi)_api).CreateServiceCollectionFromApiWithNetwork(new ServiceCollection())
+        ContainerBuilder builder = new ContainerBuilder();
+        ((INethermindApi)_api).CreateServiceCollectionFromApiWithNetwork(builder)
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
             .AddSingleton(_beaconPivot)
             .AddSingleton(_api.PoSSwitcher)
             .AddSingleton(_mergeConfig)
             .AddSingleton(_invalidChainTracker);
-
-        ContainerBuilder builder = new ContainerBuilder();
-        builder.Populate(serviceCollection);
         Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
         MergeSynchronizer.ConfigureMergeComponent(builder);
         IContainer container = builder.Build();
+
         _api.ApiWithNetworkServiceContainer = container;
         _api.DisposeStack.Append(container);
 

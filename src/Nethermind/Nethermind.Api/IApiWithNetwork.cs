@@ -57,9 +57,9 @@ namespace Nethermind.Api
 
         IContainer? ApiWithNetworkServiceContainer { get; set; }
 
-        public IServiceCollection CreateServiceCollectionFromApiWithNetwork(IServiceCollection serviceCollection)
+        public ContainerBuilder CreateServiceCollectionFromApiWithNetwork(ContainerBuilder builder)
         {
-            return CreateServiceCollectionFromApiWithBlockchain(serviceCollection)
+            return CreateServiceCollectionFromApiWithBlockchain(builder)
                 .AddPropertiesFrom(this);
         }
     }
