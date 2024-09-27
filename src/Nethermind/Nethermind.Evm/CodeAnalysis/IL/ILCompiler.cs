@@ -124,8 +124,6 @@ internal class ILCompiler
 
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
-
-        Dictionary<int, long> gasCost = BuildCostLookup(code);
         for (int i = 0; i < code.Length; i++)
         {
             OpcodeInfo op = code[i];
