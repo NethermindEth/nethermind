@@ -15,24 +15,18 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/experimental/blob-extension.md#engine_getpayloadv3">
 /// engine_getpayloadv3</a>
 /// </summary>
-public class GetPayloadV3Handler : GetPayloadHandlerBase<GetPayloadV3Result>
+public class GetPayloadV3Handler(
+    IPayloadPreparationService payloadPreparationService,
+    ISpecProvider specProvider,
+    ILogManager logManager,
+    CensorshipDetector? censorshipDetector = null)
+    : GetPayloadHandlerBase<GetPayloadV3Result>(3, payloadPreparationService, specProvider, logManager)
 {
-    private readonly CensorshipDetector? _censorshipDetector;
-    public GetPayloadV3Handler(
-        IPayloadPreparationService payloadPreparationService,
-        ISpecProvider specProvider,
-        ILogManager logManager,
-        CensorshipDetector? censorshipDetector = null) : base(
-        3, payloadPreparationService, specProvider, logManager)
-    {
-        _censorshipDetector = censorshipDetector;
-    }
-
     protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {
         return new(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV1(context.CurrentBestBlock!))
         {
-            ShouldOverrideBuilder = _censorshipDetector?.GetCensoredBlocks().Contains(new BlockNumberHash(context.CurrentBestBlock!)) ?? false
+            ShouldOverrideBuilder = censorshipDetector?.GetCensoredBlocks().Contains(new BlockNumberHash(context.CurrentBestBlock!)) ?? false
         };
     }
 }

@@ -8,19 +8,16 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV2Result : IForkValidator
+public class GetPayloadV2Result<TVersionedExecutionPayload>(Block block, UInt256 blockFees)
+    : IForkValidator where TVersionedExecutionPayload : ExecutionPayload, IExecutionPayloadParams, IExecutionPayloadFactory<TVersionedExecutionPayload>
 {
-    public GetPayloadV2Result(Block block, UInt256 blockFees)
-    {
-        BlockValue = blockFees;
-        ExecutionPayload = new(block);
-    }
+    public UInt256 BlockValue { get; } = blockFees;
 
-    public UInt256 BlockValue { get; }
-
-    public virtual ExecutionPayload ExecutionPayload { get; }
+    public virtual TVersionedExecutionPayload ExecutionPayload { get; } = TVersionedExecutionPayload.Create(block);
 
     public bool ValidateFork(ISpecProvider specProvider) => ExecutionPayload.ValidateFork(specProvider);
 
     public override string ToString() => $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}}}";
 }
+
+public class GetPayloadV2Result(Block block, UInt256 blockFees) : GetPayloadV2Result<ExecutionPayload>(block, blockFees);

@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -155,6 +156,11 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
             Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
                                                  Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
+
+            Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
+            DepositContractAddress = chainSpecJson.Params.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
+            Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
+            Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
@@ -414,8 +420,14 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
+        bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
+        bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
+
+        bool requestsEnabled = depositsEnabled || withdrawalRequestsEnabled;
+        if (requestsEnabled)
+            genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -430,12 +442,22 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
+        if (requestsEnabled)
+        {
+            genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+        }
+
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
-        chainSpec.Genesis = withdrawalsEnabled
-            ? new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>())
-            : new Block(genesisHeader);
+        chainSpec.Genesis = !withdrawalsEnabled
+            ? new Block(genesisHeader)
+            : new Block(
+                genesisHeader,
+                Array.Empty<Transaction>(),
+                Array.Empty<BlockHeader>(),
+                Array.Empty<Withdrawal>(),
+                requestsEnabled ? Array.Empty<ConsensusRequest>() : null);
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

@@ -93,7 +93,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
-                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, _api.WorldState), _api.SpecProvider, _api.LogManager, _api.WorldState)
+                ? new(new(_api.WorldStateManager!, _api.BlockTree!, _api.SpecProvider, _api.LogManager, _api.WorldState), _api.SpecProvider, _api.LogManager, preBlockCaches)
                 : null;
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor(preWarmer);
 
@@ -237,8 +237,9 @@ namespace Nethermind.Init.Steps
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage,
-                new BlockhashStore(_api.SpecProvider!, worldState),
+                _api.TransactionProcessor,
                 new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
                 preWarmer: preWarmer
             );
