@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
 using Nethermind.Shutter.Config;
+using System.Linq;
 
 namespace Nethermind.Shutter;
 
@@ -39,7 +40,8 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly TimeSpan _blockWaitCutoff;
     private readonly ReadOnlyTxProcessingEnvFactory _envFactory;
     private bool _haveCheckedRegistered = false;
-    private readonly ConcurrentDictionary<ulong, BlockWaitTask> _blockWaitTasks = new();
+    private ulong _blockWaitTaskId = 0;
+    private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
     private readonly object _syncObject = new();
 
@@ -97,10 +99,12 @@ public class ShutterBlockHandler : IShutterBlockHandler
                 ulong slot = _time.GetSlot(head.Timestamp * 1000);
                 _slotToBlockHash.Set(slot, head.Hash);
 
-                if (_blockWaitTasks.Remove(slot, out BlockWaitTask waitTask))
+                if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))
                 {
-                    waitTask.Tcs.TrySetResult(head);
-                    waitTask.Dispose();
+                    waitTasks.ForEach(waitTask => {
+                        waitTask.Value.Tcs.TrySetResult(head);
+                        waitTask.Value.Dispose();
+                    });
                 }
             }
         }
@@ -122,6 +126,8 @@ public class ShutterBlockHandler : IShutterBlockHandler
 
             if (_logger.IsDebug) _logger.Debug($"Waiting for block in {slot} to get Shutter transactions.");
 
+            tcs = new();
+
             long offset = _time.GetCurrentOffsetMs(slot);
             long waitTime = (long)_blockWaitCutoff.TotalMilliseconds - offset;
             if (waitTime <= 0)
@@ -131,27 +137,46 @@ public class ShutterBlockHandler : IShutterBlockHandler
             }
             waitTime = Math.Min(waitTime, 2 * (long)_slotLength.TotalMilliseconds);
 
+            ulong taskId = _blockWaitTaskId++;
             var timeoutSource = new CancellationTokenSource((int)waitTime);
-            var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
-            CancellationTokenRegistration ctr = source.Token.Register(() => CancelWaitForBlock(slot));
-            tcs = new();
-            _blockWaitTasks.GetOrAdd(slot, _ => new()
+            CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForBlock(slot, taskId, false));
+            CancellationTokenRegistration timeoutCtr = timeoutSource.Token.Register(() => CancelWaitForBlock(slot, taskId, true));
+
+            if (!_blockWaitTasks.ContainsKey(slot))
+            {
+                _blockWaitTasks.Add(slot, []);
+            }
+
+            Dictionary<ulong, BlockWaitTask> slotWaitTasks = _blockWaitTasks.GetValueOrDefault(slot)!;
+            slotWaitTasks.Add(taskId, new BlockWaitTask()
             {
                 Tcs = tcs,
                 TimeoutSource = timeoutSource,
-                LinkedSource = source,
-                CancellationRegistration = ctr
+                CancellationRegistration = ctr,
+                TimeoutCancellationRegistration = timeoutCtr
             });
         }
         return await tcs.Task;
     }
 
-    private void CancelWaitForBlock(ulong slot)
+    private void CancelWaitForBlock(ulong slot, ulong taskId, bool timeout)
     {
-        if (_blockWaitTasks.Remove(slot, out BlockWaitTask cancelledWaitTask))
+        if (_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks))
         {
-            cancelledWaitTask.Tcs.TrySetResult(null);
-            cancelledWaitTask.Dispose();
+            if (slotWaitTasks.TryGetValue(taskId, out BlockWaitTask waitTask))
+            {
+                if (timeout)
+                {
+                    waitTask.Tcs.TrySetResult(null);
+                }
+                else
+                {
+                    waitTask.Tcs.SetException(new OperationCanceledException());
+                }
+                waitTask.CancellationRegistration.Dispose();
+                waitTask.TimeoutCancellationRegistration.Dispose();
+            }
+            slotWaitTasks.Remove(taskId);
         }
     }
 
@@ -179,21 +204,24 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        _blockWaitTasks.ForEach(x => x.Value.Dispose());
+        _blockWaitTasks.ForEach(x => x.Value.ForEach(waitTask => {
+            waitTask.Value.CancellationRegistration.Dispose();
+            waitTask.Value.TimeoutCancellationRegistration.Dispose();
+        }));
     }
 
     private readonly struct BlockWaitTask : IDisposable
     {
         public TaskCompletionSource<Block?> Tcs { get; init; }
         public CancellationTokenSource TimeoutSource { get; init; }
-        public CancellationTokenSource LinkedSource { get; init; }
         public CancellationTokenRegistration CancellationRegistration { get; init; }
+        public CancellationTokenRegistration TimeoutCancellationRegistration { get; init; }
 
         public void Dispose()
         {
             TimeoutSource.Dispose();
-            LinkedSource.Dispose();
             CancellationRegistration.Dispose();
+            TimeoutCancellationRegistration.Dispose();
         }
     }
 }

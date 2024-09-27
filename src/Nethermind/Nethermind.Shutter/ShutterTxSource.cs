@@ -72,26 +72,29 @@ public class ShutterTxSource(
 
             ulong taskId = _keyWaitTaskId++;
             tcs = new();
-            CancellationTokenRegistration ctr = cancellationToken.Register(() => {
-                if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
-                {
-                    if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
-                    {
-                        waitTask.Tcs.TrySetException(new OperationCanceledException());
-                        waitTask.Ctr.Dispose();
-                    }
-                    slotWaitTasks.Remove(taskId);
-                }
-            });
+            CancellationTokenRegistration ctr = cancellationToken.Register(() => CancelWaitForTransactions(slot, taskId));
 
             if (!_keyWaitTasks.ContainsKey(slot))
             {
                 _keyWaitTasks.Add(slot, []);
             }
-            Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks = _keyWaitTasks.GetValueOrDefault(slot);
+            Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks = _keyWaitTasks.GetValueOrDefault(slot)!;
             slotWaitTasks!.Add(taskId, (tcs, ctr));
         }
         return tcs.Task;
+    }
+
+    private void CancelWaitForTransactions(ulong slot, ulong taskId)
+    {
+        if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
+        {
+            if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+            {
+                waitTask.Tcs.TrySetException(new OperationCanceledException());
+                waitTask.Ctr.Dispose();
+            }
+            slotWaitTasks.Remove(taskId);
+        }
     }
 
     public bool HaveTransactionsArrived(ulong slot)
