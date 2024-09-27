@@ -80,7 +80,7 @@ public class BlockForRpc
         Timestamp = block.Timestamp;
         TotalDifficulty = block.TotalDifficulty ?? 0;
         Transactions = (includeFullTransactionData
-                ? block.Transactions.Select((t, idx) => TransactionForRpc.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas))
+                ? block.Transactions.Select((t, idx) => TransactionForRpc.FromTransaction(t, block.Hash, block.Number, idx, block.BaseFeePerGas, specProvider.ChainId))
                 : block.Transactions.Select(t => t.Hash).OfType<object>())
             .ToArray();
         TransactionsRoot = block.TxRoot;

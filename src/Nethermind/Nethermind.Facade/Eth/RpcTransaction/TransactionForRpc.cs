@@ -135,9 +135,10 @@ public abstract class TransactionForRpc
         TransactionConverter.RegisterTransactionType<T>();
     }
 
-    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null) =>
+    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null, ulong? chainId = null) =>
         TransactionConverter.FromTransaction(transaction, new()
         {
+            ChainId = chainId,
             TxIndex = txIndex,
             BlockHash = blockHash,
             BlockNumber = blockNumber,

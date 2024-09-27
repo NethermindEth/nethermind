@@ -94,6 +94,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockHeader toBlock = Build.A.BlockHeader.WithNumber(77777).TestObject;
             _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(fromBlock);
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
+
+            _specProvider.ChainId.Returns((ulong)BlockchainIds.Mainnet);
         }
 
         [TearDown]
@@ -146,7 +148,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId, TransactionsOption? option = null)
         {
-            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager, option);
+            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _specProvider, _logManager, option);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -845,6 +847,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using NewPendingTransactionsSubscription subscription = new(
                 jsonRpcDuplexClient: client,
                 txPool: txPool,
+                specProvider: _specProvider,
                 logManager: LimboLogs.Instance);
 
             for (int i = 0; i < messages; i++)
@@ -883,6 +886,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     // ReSharper disable once AccessToDisposedClosure
                     jsonRpcDuplexClient: client,
                     txPool: txPool,
+                    specProvider: _specProvider,
                     logManager: LimboLogs.Instance);
 
                 for (int i = 0; i < messages; i++)

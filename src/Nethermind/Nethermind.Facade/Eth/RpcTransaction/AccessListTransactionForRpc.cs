@@ -30,12 +30,12 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     [JsonConstructor]
     public AccessListTransactionForRpc() { }
 
-    public AccessListTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    public AccessListTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, ulong? chainId = null)
         : base(transaction, txIndex, blockHash, blockNumber)
     {
         AccessList = AccessListForRpc.FromAccessList(transaction.AccessList);
         YParity = transaction.Signature?.RecoveryId ?? 0;
-        ChainId = transaction.ChainId ?? DefaultChainId ?? BlockchainIds.Mainnet;
+        ChainId = transaction.ChainId ?? chainId ?? BlockchainIds.Mainnet;
         V = YParity ?? 0;
     }
 
@@ -49,5 +49,5 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     }
 
     public new static AccessListTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber);
+        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, chainId: extraData.ChainId);
 }
