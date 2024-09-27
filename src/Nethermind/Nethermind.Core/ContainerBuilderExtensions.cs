@@ -30,11 +30,9 @@ public static class ContainerBuilderExtensions
 
         foreach (PropertyInfo propertyInfo in properties)
         {
-            object? val = propertyInfo.GetValue(source);
-            if (val != null)
-            {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
-            }
+            configuration.Register(_ => propertyInfo.GetValue(source)!)
+                .ExternallyOwned() // Don't disposeee this
+                .As(propertyInfo.PropertyType);
         }
 
         return configuration;
@@ -84,6 +82,7 @@ public static class ContainerBuilderExtensions
         builder.RegisterType<T>()
             .As<T>()
             .AsSelf()
+            .WithAttributeFiltering()
             .InstancePerLifetimeScope();
 
         return builder;
@@ -93,6 +92,7 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterType<TImpl>()
             .As<T>()
+            .WithAttributeFiltering()
             .InstancePerLifetimeScope();
 
         return builder;
@@ -103,8 +103,8 @@ public static class ContainerBuilderExtensions
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration
     /// or a graph of multiple same type. The T is expected to be of a main container of sort that contains the
     /// main service of interest.
-    /// Note: The T should dispose an injected ILifetimeScope as ILifetimeScope is not automatically disposed.
-    /// TODO: Double check this behaviour
+    /// Note: The T should dispose an injected ILifetimeScope on dispose as ILifetimeScope is not automatically disposed
+    /// when parent scope is disposed.
     /// </summary>
     public static ContainerBuilder RegisterNamedComponentInItsOwnLifetime<T>(this ContainerBuilder builder, string name, Action<ContainerBuilder> configurator) where T : notnull
     {

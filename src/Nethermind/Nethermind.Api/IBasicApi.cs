@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -21,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
 {
@@ -61,7 +59,7 @@ namespace Nethermind.Api
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
 
-        public ContainerBuilder CreateServiceCollectionFromBasicApi(ContainerBuilder builder)
+        public ContainerBuilder ConfigureContainerBuilderFromBasicApi(ContainerBuilder builder)
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)

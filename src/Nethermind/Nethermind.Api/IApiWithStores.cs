@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -33,9 +32,9 @@ namespace Nethermind.Api
         IWallet? Wallet { get; set; }
         IBlockStore? BadBlocksStore { get; set; }
 
-        public ContainerBuilder CreateServiceCollectionFromApiWithStores(ContainerBuilder builder)
+        public ContainerBuilder ConfigureContainerBuilderFromApiWithStores(ContainerBuilder builder)
         {
-            return CreateServiceCollectionFromBasicApi(builder)
+            return ConfigureContainerBuilderFromBasicApi(builder)
                 .AddPropertiesFrom<IApiWithStores>(this);
         }
     }

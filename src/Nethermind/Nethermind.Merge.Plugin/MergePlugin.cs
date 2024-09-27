@@ -442,7 +442,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             ContainerBuilder builder = new ContainerBuilder();
 
-            _api.CreateServiceCollectionFromApiWithNetwork(builder)
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
                 .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
                 .AddSingleton<IBeaconPivot>(_beaconPivot)
                 .AddSingleton(_mergeConfig)

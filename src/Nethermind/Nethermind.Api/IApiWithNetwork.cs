@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.PubSub;
@@ -57,9 +56,9 @@ namespace Nethermind.Api
 
         IContainer? ApiWithNetworkServiceContainer { get; set; }
 
-        public ContainerBuilder CreateServiceCollectionFromApiWithNetwork(ContainerBuilder builder)
+        public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
         {
-            return CreateServiceCollectionFromApiWithBlockchain(builder)
+            return ConfigureContainerBuilderFromApiWithBlockchain(builder)
                 .AddPropertiesFrom(this);
         }
     }

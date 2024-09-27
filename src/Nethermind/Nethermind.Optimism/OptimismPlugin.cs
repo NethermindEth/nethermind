@@ -153,7 +153,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.Pivot = _beaconPivot;
 
         ContainerBuilder builder = new ContainerBuilder();
-        ((INethermindApi)_api).CreateServiceCollectionFromApiWithNetwork(builder)
+        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
             .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
             .AddSingleton(_beaconPivot)
             .AddSingleton(_api.PoSSwitcher)

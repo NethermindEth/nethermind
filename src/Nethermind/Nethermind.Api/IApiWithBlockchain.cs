@@ -3,7 +3,6 @@
 
 #nullable enable
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -102,9 +101,9 @@ namespace Nethermind.Api
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
-        public ContainerBuilder CreateServiceCollectionFromApiWithBlockchain(ContainerBuilder builder)
+        public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
         {
-            return CreateServiceCollectionFromApiWithStores(builder)
+            return ConfigureContainerBuilderFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
                 .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
 

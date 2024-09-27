@@ -134,7 +134,7 @@ public class InitializeNetwork : IStep
                 _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
             ContainerBuilder builder = new ContainerBuilder();
-            _api.CreateServiceCollectionFromApiWithNetwork(builder)
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
             Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
             IContainer container = builder.Build();

@@ -4,12 +4,11 @@
 using System;
 using Autofac;
 using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-public class ServiceCollectionExtensionsTests
+public class ContainerBuilderExtensionsTests
 {
     [Test]
     public void AddPropertiesFrom_CanAddProperties()
@@ -23,6 +22,56 @@ public class ServiceCollectionExtensionsTests
         sp.ResolveOptional<DeclaredInBase>().Should().BeNull();
         sp.ResolveOptional<Ignored>().Should().BeNull();
         sp.ResolveOptional<DeclaredButNullService>().Should().BeNull();
+    }
+
+    [Test]
+    public void TestRegisterNamedComponent()
+    {
+        IContainer sp = new ContainerBuilder()
+            .AddScoped<MainComponent>()
+            .AddScoped<MainComponentDependency>()
+            .RegisterNamedComponentInItsOwnLifetime<MainComponent>("custom", cfg =>
+            {
+                // Override it in custom
+                cfg.AddScoped<MainComponentDependency, MainComponentDependencySubClass>();
+            })
+            .Build();
+
+        using (ILifetimeScope scope = sp.BeginLifetimeScope())
+        {
+            scope.Resolve<MainComponent>().Property.Should().BeOfType<MainComponentDependency>();
+        }
+
+        MainComponentDependency customMainComponentDependency = sp.ResolveNamed<MainComponent>("custom").Property;
+        sp.ResolveNamed<MainComponent>("custom").Property.Should().BeOfType<MainComponentDependencySubClass>();
+
+        sp.Dispose();
+
+        customMainComponentDependency.WasDisposed.Should().BeTrue();
+    }
+
+    private class MainComponent(MainComponentDependency mainComponentDependency, ILifetimeScope scope) : IDisposable
+    {
+        public MainComponentDependency Property => mainComponentDependency;
+
+        public void Dispose()
+        {
+            scope.Dispose();
+        }
+    }
+
+    private class MainComponentDependency : IDisposable
+    {
+        public bool WasDisposed { get; set; }
+
+        public void Dispose()
+        {
+            WasDisposed = true;
+        }
+    }
+
+    private class MainComponentDependencySubClass : MainComponentDependency
+    {
     }
 
     private class InterfaceImplementation : ITestInterface
