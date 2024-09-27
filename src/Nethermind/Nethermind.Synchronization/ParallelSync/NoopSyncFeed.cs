@@ -8,13 +8,13 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync;
 
-public class NoopSyncFeed<T>: ISyncFeed<T>
+public class NoopSyncFeed<T> : ISyncFeed<T>
 {
     public SyncFeedState CurrentState { get; }
 
-    #pragma warning disable CS0067
+#pragma warning disable CS0067
     public event EventHandler<SyncFeedStateEventArgs>? StateChanged;
-    #pragma warning disable
+#pragma warning disable
 
     public Task<T> PrepareRequest(CancellationToken token = default)
     {

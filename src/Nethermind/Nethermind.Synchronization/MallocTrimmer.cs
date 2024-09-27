@@ -21,7 +21,7 @@ public class MallocTrimmer
         ISyncModeSelector syncModeSelector,
         ISyncConfig syncConfig,
         ILogManager logManager
-    ): this(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), logManager)
+    ) : this(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), logManager)
     {
     }
 

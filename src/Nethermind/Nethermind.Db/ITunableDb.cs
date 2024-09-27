@@ -19,7 +19,7 @@ public interface ITunableDb
     }
 }
 
-public class NoopTunableDb: ITunableDb
+public class NoopTunableDb : ITunableDb
 {
     public void Tune(ITunableDb.TuneType type)
     {
