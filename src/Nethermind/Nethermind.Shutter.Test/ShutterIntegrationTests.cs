@@ -95,7 +95,7 @@ public class ShutterIntegrationTests
     }
 
     [Test]
-    public async Task Can_load_when_previous_block_missed()
+    public async Task Can_load_when_previous_block_late()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp - 5, 0);
