@@ -139,7 +139,7 @@ public static class IlAnalyzer
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
         {
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
-            foreach (var (_, chunkHandler) in _patterns)
+            foreach ((Type _, InstructionChunk chunkHandler) in _patterns)
             {
                 for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
                 {

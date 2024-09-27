@@ -89,7 +89,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             programCounter += 5;
         }
     }
-
     internal class TestBlockChain : VirtualMachineTestsBase
     {
         protected IVMConfig config;
