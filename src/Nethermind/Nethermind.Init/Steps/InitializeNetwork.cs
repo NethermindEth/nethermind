@@ -140,18 +140,13 @@ public class InitializeNetwork : IStep
             builder.Populate(serviceCollection);
             Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
             IContainer container = builder.Build();
-
-            _api.Synchronizer ??= container.Resolve<Synchronizer>();
-            _api.SyncModeSelector ??= container.Resolve<ISyncModeSelector>();
-            _api.SyncProgressResolver ??= container.Resolve<ISyncProgressResolver>();
+            _api.ApiWithNetworkServiceContainer = container;
             _api.DisposeStack.Append(container);
         }
 
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
-            _api.SyncModeSelector, _api.SyncProgressResolver!, _api.LogManager);
+            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-        _api.DisposeStack.Push(_api.SyncModeSelector);
-        // _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!.TrieNodeRlpStore,

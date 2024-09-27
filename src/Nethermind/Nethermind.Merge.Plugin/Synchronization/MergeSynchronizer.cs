@@ -29,7 +29,7 @@ public class MergeSynchronizer(
     public static void ConfigureMergeComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
-            .AddSingleton<MergeSynchronizer>()
+            .AddSingleton<ISynchronizer, MergeSynchronizer>()
 
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddScoped<BlockDownloader, MergeBlockDownloader>()

@@ -91,6 +91,15 @@ public static class IServiceCollectionExtensions
         return builder;
     }
 
+    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    {
+        builder.RegisterInstance(instance)
+            .As<T>()
+            .SingleInstance();
+
+        return builder;
+    }
+
     public static ContainerBuilder AddSingleton<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
     {
         builder.RegisterType<TImpl>()

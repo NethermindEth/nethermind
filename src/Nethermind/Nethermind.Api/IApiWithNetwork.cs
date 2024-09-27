@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -18,6 +19,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
 {
@@ -43,13 +45,17 @@ namespace Nethermind.Api
         IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
-        ISynchronizer? Synchronizer { get; set; }
+        ISynchronizer? Synchronizer { get; }
+        ISyncModeSelector SyncModeSelector { get; }
+        ISyncProgressResolver? SyncProgressResolver { get; }
         IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
+
+        IContainer? ApiWithNetworkServiceContainer { get; set; }
 
         public IServiceCollection CreateServiceCollectionFromApiWithNetwork(IServiceCollection serviceCollection)
         {

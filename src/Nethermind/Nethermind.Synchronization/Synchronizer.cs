@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization
         public static void ConfigureContainerBuilder(ContainerBuilder builder, ISyncConfig syncConfig)
         {
             builder
-                .AddSingleton<Synchronizer>()
+                .AddSingleton<ISynchronizer, Synchronizer>()
 
                 .AddSingleton<ISyncModeSelector, MultiSyncModeSelector>()
                 .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
