@@ -130,6 +130,9 @@ public class InitializeNetwork : IStep
             IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork(new ServiceCollection())
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
 
+            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
+                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+
             _api.Synchronizer ??= new Synchronizer(serviceCollection, _syncConfig);
         }
 

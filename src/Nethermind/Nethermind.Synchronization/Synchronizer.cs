@@ -126,15 +126,7 @@ namespace Nethermind.Synchronization
                 .AddSingleton<ISyncReport, SyncReport>()
                 .AddSingleton<IFullStateFinder, FullStateFinder>()
                 .AddSingleton<ISyncModeSelector>(sp => sp.GetRequiredService<MultiSyncModeSelector>())
-                .AddSingleton<MultiSyncModeSelector>(sp => new MultiSyncModeSelector(
-                    sp.GetRequiredService<ISyncProgressResolver>(),
-                    sp.GetRequiredService<ISyncPeerPool>(),
-                    sp.GetRequiredService<ISyncConfig>(),
-                    sp.GetRequiredService<IBeaconSyncStrategy>(),
-                    sp.GetRequiredService<IBetterPeerStrategy>(),
-                    sp.GetRequiredService<ILogManager>(),
-                    // Need to set this
-                    sp.GetRequiredService<ChainSpec>()?.SealEngineType == SealEngineType.Clique))
+                .AddSingleton<MultiSyncModeSelector>()
                 .AddSingleton<SyncDispatcher<BlocksRequest>>()
 
                 // These are here so that MergeSynchronizer can replace them

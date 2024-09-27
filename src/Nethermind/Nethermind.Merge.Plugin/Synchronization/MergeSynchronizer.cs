@@ -3,12 +3,10 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -27,15 +25,6 @@ public class MergeSynchronizer : Synchronizer
         base.ConfigureSynchronizerServiceCollection(serviceCollection);
 
         serviceCollection
-            // It does not set the last parameter
-            .AddSingleton<MultiSyncModeSelector>(sp => new MultiSyncModeSelector(
-                sp.GetRequiredService<ISyncProgressResolver>(),
-                sp.GetRequiredService<ISyncPeerPool>(),
-                sp.GetRequiredService<ISyncConfig>(),
-                sp.GetRequiredService<IBeaconSyncStrategy>(),
-                sp.GetRequiredService<IBetterPeerStrategy>(),
-                sp.GetRequiredService<ILogManager>()))
-
             // Replace block downloader
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddSingleton<BlockDownloader, MergeBlockDownloader>()

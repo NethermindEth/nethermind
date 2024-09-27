@@ -145,7 +145,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 private readonly List<Action> _overwrites = new();
 
                 private readonly List<ISyncPeer> _peers = new();
-                private bool _needToWaitForHeaders;
 
                 public ISyncPeerPool SyncPeerPool { get; set; } = null!;
 
@@ -812,7 +811,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         }
 
                         TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
                         selector.Stop();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
@@ -840,7 +839,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder WhenConsensusRequiresToWaitForHeaders(bool needToWaitForHeaders)
                 {
-                    _needToWaitForHeaders = needToWaitForHeaders;
+                    SyncConfig.NeedToWaitForHeader = needToWaitForHeaders;
                     return this;
                 }
 
