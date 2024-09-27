@@ -161,7 +161,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
         MergeSynchronizer.ConfigureMergeComponent(builder);
         IContainer container = builder.Build();
-        _api.ApiWithNetworkServiceContainer = builder.Build();
+        _api.ApiWithNetworkServiceContainer = container;
         _api.DisposeStack.Append(container);
 
         _ = new PivotUpdator(
