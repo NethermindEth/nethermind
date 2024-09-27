@@ -14,6 +14,7 @@ namespace Nethermind.Evm.Precompiles.Snarks;
 /// </summary>
 public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
 {
+    private const int Bn256PairingMaxInputSizeGranite = 112687;
     private const int PairSize = 192;
 
     public static Bn254PairingPrecompile Instance = new Bn254PairingPrecompile();
@@ -27,7 +28,10 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254PairingPrecompile++;
-
+        if (releaseSpec.IsRip7214Enabled && inputData.Length > Bn256PairingMaxInputSizeGranite)
+        {
+            return IPrecompile.Failure;
+        }
         if (inputData.Length % PairSize > 0)
         {
             // note that it will not happen in case of null / 0 length
