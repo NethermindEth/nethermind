@@ -55,7 +55,7 @@ namespace Nethermind.Crypto
 
         public AuthorizationTuple Sign(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
         {
-            RlpStream rlp = _tupleDecoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
+            using NettyRlpStream rlp = _tupleDecoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
             Span<byte> code = stackalloc byte[rlp.Length + 1];
             code[0] = Eip7702Constants.Magic;
             rlp.Data.AsSpan().CopyTo(code.Slice(1));
@@ -118,7 +118,7 @@ namespace Nethermind.Crypto
         {
             Span<byte> buffer = stackalloc byte[128];
             buffer[0] = Eip7702Constants.Magic;
-            RlpStream stream = _tupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
+            using NettyRlpStream stream = _tupleDecoder.EncodeWithoutSignature(tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
             stream.Data.AsSpan().CopyTo(buffer.Slice(1));
             return RecoverAddress(tuple.AuthoritySignature, Keccak.Compute(buffer.Slice(0, stream.Data.Length + 1)));
         }

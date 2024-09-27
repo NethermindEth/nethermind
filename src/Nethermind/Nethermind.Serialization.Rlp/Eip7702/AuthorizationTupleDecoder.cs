@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp.Eip2930;
@@ -81,11 +82,12 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         stream.Encode(new UInt256(item.AuthoritySignature.S, true));
     }
 
-    public RlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, ulong nonce)
+    public NettyRlpStream EncodeWithoutSignature(ulong chainId, Address codeAddress, ulong nonce)
     {
         int contentLength = GetContentLengthWithoutSig(chainId, codeAddress, nonce);
         var totalLength = Rlp.LengthOfSequence(contentLength);
-        RlpStream stream = new(totalLength);
+        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(totalLength);
+        NettyRlpStream stream = new(byteBuffer);
         EncodeWithoutSignature(stream, chainId, codeAddress, nonce);
         return stream;
     }

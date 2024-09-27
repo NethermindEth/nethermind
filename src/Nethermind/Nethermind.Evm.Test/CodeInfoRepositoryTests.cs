@@ -405,7 +405,7 @@ public class CodeInfoRepositoryTests
     private static AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {
         AuthorizationTupleDecoder decoder = new();
-        RlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
+        using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
         Span<byte> code = stackalloc byte[rlp.Length + 1];
         code[0] = Eip7702Constants.Magic;
         rlp.Data.AsSpan().CopyTo(code.Slice(1));
