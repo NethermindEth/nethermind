@@ -26,7 +26,7 @@ public class ShutterTxSource(
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
     private readonly ILogger _logger = logManager.GetClassLogger();
     private ulong _keyWaitTaskId = 0;
-    private readonly ConcurrentDictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
+    private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
     private readonly object _syncObject = new();
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
@@ -84,8 +84,12 @@ public class ShutterTxSource(
                 }
             });
 
-            Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks = _keyWaitTasks.GetOrAdd(slot, _ => []);
-            slotWaitTasks.Add(taskId, (tcs, ctr));
+            if (!_keyWaitTasks.ContainsKey(slot))
+            {
+                _keyWaitTasks.Add(slot, []);
+            }
+            Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks = _keyWaitTasks.GetValueOrDefault(slot);
+            slotWaitTasks!.Add(taskId, (tcs, ctr));
         }
         return tcs.Task;
     }
