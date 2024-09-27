@@ -370,26 +370,17 @@ namespace Nethermind.Synchronization.Test
                     .AddSingleton(beaconPivot)
                     .AddSingleton(_logManager);
 
+                ContainerBuilder builder = new ContainerBuilder();
+                builder.Populate(serviceCollection);
+                Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+
                 if (IsMerge(synchronizerType))
                 {
-                    ContainerBuilder builder = new ContainerBuilder();
-                    builder.Populate(serviceCollection);
-                    Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
                     MergeSynchronizer.ConfigureMergeComponent(builder);
-                    IContainer container = builder.Build();
-
-                    Synchronizer = container.Resolve<MergeSynchronizer>();
-                }
-                else
-                {
-                    ContainerBuilder builder = new ContainerBuilder();
-                    builder.Populate(serviceCollection);
-                    Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
-                    IContainer container = builder.Build();
-
-                    Synchronizer = container.Resolve<Synchronizer>();
                 }
 
+                IContainer container = builder.Build();
+                Synchronizer = container.Resolve<Synchronizer>();
                 SyncServer = new SyncServer(
                     trieStore.TrieNodeRlpStore,
                     codeDb,
@@ -398,7 +389,7 @@ namespace Nethermind.Synchronization.Test
                     Always.Valid,
                     Always.Valid,
                     SyncPeerPool,
-                    Synchronizer.SyncModeSelector,
+                    container.Resolve<ISyncModeSelector>(),
                     syncConfig,
                     Policy.FullGossip,
                     MainnetSpecProvider.Instance,

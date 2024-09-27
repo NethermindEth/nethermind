@@ -25,7 +25,6 @@ using Nethermind.Synchronization.StateSync;
 namespace Nethermind.Synchronization
 {
     public class Synchronizer(
-        ISyncProgressResolver syncProgressResolver,
         ISyncModeSelector syncModeSelector,
         ISyncReport syncReport,
         ISyncConfig syncConfig,
@@ -53,8 +52,6 @@ namespace Nethermind.Synchronization
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
-
-        public ISyncProgressResolver SyncProgressResolver => syncProgressResolver;
 
         public ISyncModeSelector SyncModeSelector => syncModeSelector;
 

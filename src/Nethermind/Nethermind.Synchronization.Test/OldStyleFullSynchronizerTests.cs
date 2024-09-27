@@ -28,6 +28,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
@@ -102,7 +103,7 @@ namespace Nethermind.Synchronization.Test
                 Always.Valid,
                 Always.Valid,
                 _pool,
-                _synchronizer.SyncModeSelector,
+                container.Resolve<ISyncModeSelector>(),
                 quickConfig,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,

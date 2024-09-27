@@ -454,11 +454,13 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             MergeSynchronizer synchronizer = container.Resolve<MergeSynchronizer>();
             _api.Synchronizer = synchronizer;
+            _api.SyncModeSelector = container.Resolve<ISyncModeSelector>();
+            _api.SyncProgressResolver = container.Resolve<ISyncProgressResolver>();
             _api.DisposeStack.Append(container);
 
             PivotUpdator pivotUpdator = new(
                 _api.BlockTree,
-                synchronizer.SyncModeSelector,
+                _api.SyncModeSelector,
                 _api.SyncPeerPool,
                 _syncConfig,
                 _blockCacheService,

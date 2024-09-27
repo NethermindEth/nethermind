@@ -65,10 +65,6 @@ public class MergeSynchronizer(
         return baseSynchronizer.StopAsync();
     }
 
-    public ISyncProgressResolver SyncProgressResolver => baseSynchronizer.SyncProgressResolver;
-
-    public ISyncModeSelector SyncModeSelector => baseSynchronizer.SyncModeSelector;
-
     private void StartBeaconHeadersComponents()
     {
         beaconHeaderComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>

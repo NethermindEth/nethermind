@@ -31,6 +31,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Optimism;
 
@@ -161,11 +162,13 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         MergeSynchronizer.ConfigureMergeComponent(builder);
         IContainer container = builder.Build();
         _api.Synchronizer = container.Resolve<MergeSynchronizer>();
+        _api.SyncModeSelector = container.Resolve<ISyncModeSelector>();
+        _api.SyncProgressResolver = container.Resolve<ISyncProgressResolver>();
         _api.DisposeStack.Append(container);
 
         _ = new PivotUpdator(
             _api.BlockTree,
-            _api.Synchronizer.SyncModeSelector,
+            _api.SyncModeSelector,
             _api.SyncPeerPool,
             _syncConfig,
             _blockCacheService,
