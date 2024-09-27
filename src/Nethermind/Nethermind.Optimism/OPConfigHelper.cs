@@ -13,6 +13,7 @@ public class OptimismSpecHelper(OptimismParameters parameters) : IOptimismSpecHe
     private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
     private readonly ulong? _ecotoneTimestamp = parameters.EcotoneTimestamp;
     private readonly ulong? _fjordTimestamp = parameters.FjordTimestamp;
+    private readonly ulong? _graniteTimestamp = parameters.GraniteTimestamp;
 
     public Address L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
@@ -39,6 +40,11 @@ public class OptimismSpecHelper(OptimismParameters parameters) : IOptimismSpecHe
     public bool IsFjord(BlockHeader header)
     {
         return header.Timestamp >= _fjordTimestamp;
+    }
+
+    public bool IsGranite(BlockHeader header)
+    {
+        return header.Timestamp >= _graniteTimestamp;
     }
 
     public Address? Create2DeployerAddress { get; } = parameters.Create2DeployerAddress;
