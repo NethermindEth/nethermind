@@ -68,7 +68,7 @@ namespace Nethermind.Network
 
             if (_forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head?.Header) != ValidationResult.Valid)
             {
-                return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, "invalid fork id");
+                return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, $"invalid network id {syncPeerArgs.NetworkId} fork id {syncPeerArgs.ForkId.Value}");
             }
 
             return true;
