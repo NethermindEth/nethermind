@@ -30,9 +30,11 @@ public static class ContainerBuilderExtensions
 
         foreach (PropertyInfo propertyInfo in properties)
         {
-            configuration.Register(_ => propertyInfo.GetValue(source)!)
-                .ExternallyOwned() // Don't disposeee this
-                .As(propertyInfo.PropertyType);
+            object? val = propertyInfo.GetValue(source);
+            if (val != null)
+            {
+                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+            }
         }
 
         return configuration;
