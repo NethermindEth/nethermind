@@ -15,14 +15,9 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
-    public class InitRlp : IStep
+    public class InitTxTypesAndRlp(INethermindApi api) : IStep
     {
-        private readonly INethermindApi _api;
-
-        public InitRlp(INethermindApi api)
-        {
-            _api = api ?? throw new ArgumentNullException(nameof(api));
-        }
+        private readonly INethermindApi _api = api ?? throw new ArgumentNullException(nameof(api));
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute(CancellationToken _)
@@ -40,7 +35,7 @@ namespace Nethermind.Init.Steps
 
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                plugin.InitRlpDecoders(_api);
+                plugin.InitTxTypesAndRlpDecoders(_api);
             }
 
             return Task.CompletedTask;

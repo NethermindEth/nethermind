@@ -76,7 +76,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ILogManager logManager, ChainSpec chainSpec) =>
         new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
-    public void InitRlpDecoders(INethermindApi api)
+    public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
         if (ShouldRunSteps(api))
         {
