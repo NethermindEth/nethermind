@@ -19,10 +19,10 @@ public class ServiceCollectionExtensionsTests
             .AddPropertiesFrom(interfaceImplementation)
             .Build();
 
-        sp.Resolve<DeclaredService>().Should().NotBeNull();
-        sp.Resolve<DeclaredInBase>().Should().BeNull();
-        sp.Resolve<Ignored>().Should().BeNull();
-        sp.Resolve<DeclaredButNullService>().Should().BeNull();
+        sp.ResolveOptional<DeclaredService>().Should().NotBeNull();
+        sp.ResolveOptional<DeclaredInBase>().Should().BeNull();
+        sp.ResolveOptional<Ignored>().Should().BeNull();
+        sp.ResolveOptional<DeclaredButNullService>().Should().BeNull();
     }
 
     private class InterfaceImplementation : ITestInterface

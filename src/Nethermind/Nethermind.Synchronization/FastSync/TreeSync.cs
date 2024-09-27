@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -75,7 +76,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private readonly SyncMode _syncMode;
 
-        public TreeSync([FromKeyedServices(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
             : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
         {
 

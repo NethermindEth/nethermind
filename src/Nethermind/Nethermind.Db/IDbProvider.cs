@@ -38,6 +38,7 @@ namespace Nethermind.Db
         {
             sc.AddSingleton(this);
 
+            // TODO: Have hooks that automatically get these
             string[] dbNames = [
                 DbNames.State,
                 DbNames.Code,

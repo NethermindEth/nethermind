@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
@@ -25,10 +26,10 @@ public class SyncDbTuner
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,
         ISyncFeed<BodiesSyncBatch>? bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch>? receiptSyncFeed,
-        [FromKeyedServices(DbNames.State)] ITunableDb? stateDb,
-        [FromKeyedServices(DbNames.Code)] ITunableDb? codeDb,
-        [FromKeyedServices(DbNames.Blocks)] ITunableDb? blockDb,
-        [FromKeyedServices(DbNames.Receipts)] ITunableDb? receiptDb
+        [KeyFilter(DbNames.State)] ITunableDb? stateDb,
+        [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
+        [KeyFilter(DbNames.Blocks)] ITunableDb? blockDb,
+        [KeyFilter(DbNames.Receipts)] ITunableDb? receiptDb
     )
     {
         if (syncConfig.TuneDbMode == ITunableDb.TuneType.Default && syncConfig.BlocksDbTuneDbMode == ITunableDb.TuneType.Default)
