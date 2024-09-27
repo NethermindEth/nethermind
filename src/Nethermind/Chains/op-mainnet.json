@@ -71,7 +71,7 @@
     "eip6780TransitionTimestamp": "0x65f23e01",
 
     "rip7212TransitionTimestamp": "0x668eb001",
-    "OpGraniteTransitionTimestamp": "0x66e1be81",
+    "opGraniteTransitionTimestamp": "0x66e1be81",
 
     "terminalTotalDifficulty": "0"
   },
