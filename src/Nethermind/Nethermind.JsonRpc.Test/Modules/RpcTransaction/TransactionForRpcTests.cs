@@ -18,6 +18,8 @@ public class TransactionForRpcTests
 {
     private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
+    public static readonly ulong SomeChainId = 123ul;
+
     public static readonly Transaction[] Transactions =
     [
         .. LegacyTransactionForRpcTests.Transactions,
@@ -25,12 +27,6 @@ public class TransactionForRpcTests
         .. EIP1559TransactionForRpcTests.Transactions,
         .. BlobTransactionForRpcTests.Transactions,
     ];
-
-    [SetUp]
-    public void SetUp()
-    {
-        AccessListTransactionForRpc.DefaultChainId = BlockchainIds.Mainnet;
-    }
 
     [Test]
     public void R_and_s_are_quantity_and_not_data()
@@ -61,7 +57,7 @@ public class TransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, chainId: SomeChainId);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
@@ -88,7 +84,7 @@ public class TransactionForRpcTests
     [TestCaseSource(nameof(Transactions))]
     public void Serialized_JSON_satisfies_Nethermind_fields_schema(Transaction transaction)
     {
-        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
+        TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction, chainId: SomeChainId);
         string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;

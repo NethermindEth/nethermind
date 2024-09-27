@@ -81,7 +81,6 @@ namespace Nethermind.Runner.Ethereum.Api
 
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
             ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
-            AccessListTransactionForRpc.DefaultChainId = chainSpec.ChainId; // TODO: Figure a proper fix instead of this hack
             return chainSpec;
         }
 
