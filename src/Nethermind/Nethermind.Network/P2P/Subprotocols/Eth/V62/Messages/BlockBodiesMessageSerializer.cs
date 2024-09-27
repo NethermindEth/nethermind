@@ -75,10 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                        Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
             }
 
-            private int GetTxLength(Transaction[] transactions)
-            {
-                return transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
-            }
+            private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
 
             private int GetUnclesLength(BlockHeader[] headers)
             {
