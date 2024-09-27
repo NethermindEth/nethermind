@@ -107,7 +107,7 @@ public class ShutterIntegrationTests
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
-        ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
+        ExecutionPayload lastPayload = executionPayloads[^1];
 
         timestamper.SetTimestamp((long)_buildingSlotTimestamp - 5);
 
@@ -120,7 +120,7 @@ public class ShutterIntegrationTests
 
         // allow waiting for block in (_buildingSlot - 1) to timeout
         using CancellationTokenSource cts = new();
-        await chain.Api.BlockHandler.WaitForBlockInSlot((ulong)(_buildingSlot - 1), cts.Token);
+        await Task.Delay((int)chain.Api.BlockWaitCutoff.TotalMilliseconds + 200);
 
         timestamper.SetTimestamp((long)_buildingSlotTimestamp);
 
@@ -128,9 +128,9 @@ public class ShutterIntegrationTests
         txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(20));
 
-        // next block should contain loaded transactions
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
-        lastPayload = payloads[0];
+        // late block arrives, then next block should contain loaded transactions
+        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 2, lastPayload, true, null, 5);
+        lastPayload = payloads[^1];
         lastPayload.TryGetBlock(out Block? b);
         Assert.That(b!.Transactions, Has.Length.EqualTo(20));
     }
