@@ -28,7 +28,7 @@ public class Bn254PairingPrecompile : IPrecompile<Bn254PairingPrecompile>
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254PairingPrecompile++;
-        if (releaseSpec.IsRip7214Enabled && inputData.Length > Bn256PairingMaxInputSizeGranite)
+        if (releaseSpec.IsOpGraniteEnabled && inputData.Length > Bn256PairingMaxInputSizeGranite)
         {
             return IPrecompile.Failure;
         }
