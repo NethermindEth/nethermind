@@ -62,9 +62,9 @@ namespace Nethermind.Api
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
 
-        public IServiceCollection CreateServiceCollectionFromBasicApi()
+        public IServiceCollection CreateServiceCollectionFromBasicApi(IServiceCollection serviceCollection)
         {
-            IServiceCollection sc = new ServiceCollection()
+            IServiceCollection sc = serviceCollection
                 .AddPropertiesFrom<IBasicApi>(this)
                 .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
 

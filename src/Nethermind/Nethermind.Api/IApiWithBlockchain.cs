@@ -101,9 +101,9 @@ namespace Nethermind.Api
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
-        public IServiceCollection CreateServiceCollectionFromApiWithBlockchain()
+        public IServiceCollection CreateServiceCollectionFromApiWithBlockchain(IServiceCollection serviceCollection)
         {
-            return CreateServiceCollectionFromApiWithStores()
+            return CreateServiceCollectionFromApiWithStores(serviceCollection)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
                 .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
 

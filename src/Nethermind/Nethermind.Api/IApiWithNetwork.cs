@@ -51,9 +51,9 @@ namespace Nethermind.Api
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 
-        public IServiceCollection CreateServiceCollectionFromApiWithNetwork()
+        public IServiceCollection CreateServiceCollectionFromApiWithNetwork(IServiceCollection serviceCollection)
         {
-            return CreateServiceCollectionFromApiWithBlockchain()
+            return CreateServiceCollectionFromApiWithBlockchain(serviceCollection)
                 .AddPropertiesFrom(this);
         }
     }

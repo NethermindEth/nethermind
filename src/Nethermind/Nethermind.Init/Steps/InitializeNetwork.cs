@@ -127,7 +127,7 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
+            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork(new ServiceCollection())
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
 
             _api.Synchronizer ??= new Synchronizer(serviceCollection, _syncConfig);

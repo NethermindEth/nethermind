@@ -32,9 +32,9 @@ namespace Nethermind.Api
         IWallet? Wallet { get; set; }
         IBlockStore? BadBlocksStore { get; set; }
 
-        public IServiceCollection CreateServiceCollectionFromApiWithStores()
+        public IServiceCollection CreateServiceCollectionFromApiWithStores(IServiceCollection serviceCollection)
         {
-            return CreateServiceCollectionFromBasicApi()
+            return CreateServiceCollectionFromBasicApi(serviceCollection)
                 .AddPropertiesFrom<IApiWithStores>(this);
         }
     }

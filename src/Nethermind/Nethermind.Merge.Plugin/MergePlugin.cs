@@ -438,7 +438,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.Pivot = _beaconPivot;
 
-            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork()
+            IServiceCollection serviceCollection = _api.CreateServiceCollectionFromApiWithNetwork(new ServiceCollection())
                 .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
                 .AddSingleton<IBeaconPivot>(_beaconPivot)
                 .AddSingleton(_mergeConfig)
