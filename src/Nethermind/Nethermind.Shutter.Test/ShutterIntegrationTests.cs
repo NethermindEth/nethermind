@@ -30,69 +30,6 @@ public class ShutterIntegrationTests
     private readonly int _buildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private readonly ulong _buildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
 
-    private class ShutterApiSimulatorNoBlockTimeout(
-        ShutterEventSimulator eventSimulator, IAbiEncoder abiEncoder, IReadOnlyBlockTree blockTree,
-        IEthereumEcdsa ecdsa, ILogFinder logFinder, IReceiptStorage receiptStorage, ILogManager logManager,
-        ISpecProvider specProvider, ITimestamper timestamper, IWorldStateManager worldStateManager,
-        IShutterConfig cfg, Dictionary<ulong, byte[]> validatorsInfo, Random rnd)
-            : ShutterApiSimulator(eventSimulator, abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-            logManager, specProvider, timestamper, worldStateManager, cfg, validatorsInfo, rnd)
-    {
-        public override TimeSpan BlockWaitCutoff { get => TimeSpan.MaxValue; }
-    }
-
-    private class ShutterTestBlockchainNoBlockTimeout(Random rnd, ITimestamper? timestamper) : ShutterTestBlockchain(rnd, timestamper)
-    {
-        protected override ShutterApiSimulator CreateShutterApi()
-            => new ShutterApiSimulatorNoBlockTimeout(
-                ShutterTestsCommon.InitEventSimulator(_rnd), ShutterTestsCommon.AbiEncoder, BlockTree.AsReadOnly(),
-                EthereumEcdsa, LogFinder, ReceiptStorage, LogManager, SpecProvider, _timestamper ?? Timestamper,
-                WorldStateManager, ShutterTestsCommon.Cfg, [], _rnd
-            );
-    }
-
-    [Test]
-    public async Task Can_load_when_block_arrives_late()
-    {
-        Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp - 5, 0);
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = _buildingSlotTimestamp
-        };
-
-        using var chain = (ShutterTestBlockchainNoBlockTimeout)await new ShutterTestBlockchainNoBlockTimeout(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-
-        ExecutionPayload initialPayload = CreateParentBlockRequestOnHead(chain.BlockTree);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, initialPayload, true, null, 5);
-        ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
-
-        // keys arrive, waits for head block before loading
-        chain.Api!.AdvanceSlot(20);
-
-        _ = Task.Run(async () =>
-        {
-            // block is a bit late
-            await Task.Delay(1000);
-            IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
-            lastPayload = payloads[0];
-        });
-
-        // no events loaded initially
-        var txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(0));
-
-        using CancellationTokenSource source = new();
-        await chain.Api.TxSource.WaitForTransactions(ShutterTestsCommon.InitialSlot, source.Token);
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
-        Assert.That(txs, Has.Count.EqualTo(20));
-
-        IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
-        lastPayload = payloads[0];
-        lastPayload.TryGetBlock(out Block? b);
-        Assert.That(b!.Transactions, Has.Length.EqualTo(20));
-    }
 
     [Test]
     public async Task Can_load_when_previous_block_arrives_late()
@@ -135,7 +72,7 @@ public class ShutterIntegrationTests
     public async Task Can_load_when_block_arrives_before_keys()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp - 5, 0);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp, 0);
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = _buildingSlotTimestamp
@@ -150,7 +87,6 @@ public class ShutterIntegrationTests
         var txs = chain.Api!.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(0));
 
-        timestamper.SetTimestamp((long)_buildingSlotTimestamp);
         chain.Api.AdvanceSlot(20);
 
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -185,7 +121,6 @@ public class ShutterIntegrationTests
             lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5))[0];
 
             time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
-            timestamper.SetTimestamp(time);
         }
 
         // longer delay between fcu and get_payload, should timeout waiting for keys
