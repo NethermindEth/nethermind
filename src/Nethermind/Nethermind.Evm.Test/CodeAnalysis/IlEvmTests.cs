@@ -161,6 +161,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     internal class IlEvmTests : TestBlockChain
     {
         private const string AnalyzerField = "_analyzer";
+        private const string PatternField = "_patterns";
 
         [SetUp]
         public override void Setup()
@@ -950,6 +951,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             yield return (Instruction.SELFBALANCE, Prepare.EvmCode
                 .SELFBALANCE()
                 .Done);
+        }
+
+        [Test]
+        public void ILAnalyzer_Initialize_Add_All_Patterns()
+        {
+            IlAnalyzer.Initialize();
+            // get static field _patterns from IlAnalyzer
+            var patterns = typeof(IlAnalyzer).GetField(PatternField, BindingFlags.NonPublic | BindingFlags.Static).GetValue(null) as Dictionary<Type, InstructionChunk>;
+
+            Assert.That(patterns.Count, Is.GreaterThan(0));
         }
 
         [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]

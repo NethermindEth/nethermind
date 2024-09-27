@@ -22,6 +22,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -186,6 +187,7 @@ namespace Nethermind.Init.Steps
             BlockhashProvider blockhashProvider = new(
                 _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
 
+            IlAnalyzer.Initialize();
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,

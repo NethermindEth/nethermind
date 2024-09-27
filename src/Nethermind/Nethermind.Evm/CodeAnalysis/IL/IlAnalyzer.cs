@@ -19,38 +19,46 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
 /// Provides
 /// </summary>
-internal static class IlAnalyzer
+public static class IlAnalyzer
 {
-    private static Dictionary<Type, InstructionChunk> Patterns = new Dictionary<Type, InstructionChunk>();
-    public static void AddPattern(InstructionChunk handler)
+    private static Dictionary<Type, InstructionChunk> _patterns = new Dictionary<Type, InstructionChunk>();
+    internal static void AddPattern(InstructionChunk handler)
     {
-        lock (Patterns)
+        lock (_patterns)
         {
-            Patterns[handler.GetType()] = handler;
+            _patterns[handler.GetType()] = handler;
         }
     }
-    public static void AddPattern<T>() where T : InstructionChunk
+    internal static void AddPattern<T>() where T : InstructionChunk
     {
         var handler = Activator.CreateInstance<T>();
-        lock (Patterns)
+        lock (_patterns)
         {
-            Patterns[typeof(T)] = handler;
+            _patterns[typeof(T)] = handler;
         }
     }
-    public static T GetPatternHandler<T>() where T : InstructionChunk
+    internal static T GetPatternHandler<T>() where T : InstructionChunk
     {
-        lock (Patterns)
+        lock (_patterns)
         {
-            return (T)Patterns[typeof(T)];
+            return (T)_patterns[typeof(T)];
         }
     }
 
+    public static void Initialize()
+    {
+        Type[] InstructionChunks = typeof(InstructionChunk).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(InstructionChunk))).ToArray();
+        foreach (var chunkType in InstructionChunks)
+        {
+            _patterns[chunkType] = (InstructionChunk)Activator.CreateInstance(chunkType);
+        }
+    }
 
     /// <summary>
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode)
+    internal static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode)
     {
         return Task.Run(() => Analysis(codeInfo, mode));
     }
@@ -131,7 +139,7 @@ internal static class IlAnalyzer
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
         {
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
-            foreach (var (_, chunkHandler) in Patterns)
+            foreach (var (_, chunkHandler) in _patterns)
             {
                 for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
                 {
