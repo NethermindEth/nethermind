@@ -12,13 +12,11 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Receipts;
 using System.Threading.Tasks;
 using System.Threading;
-using System.Collections.Concurrent;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
 using Nethermind.Shutter.Config;
-using System.Linq;
 
 namespace Nethermind.Shutter;
 

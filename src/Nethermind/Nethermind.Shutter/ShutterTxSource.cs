@@ -10,7 +10,6 @@ using Nethermind.Logging;
 using System;
 using Nethermind.Core.Caching;
 using System.Threading.Tasks;
-using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core.Collections;
 
