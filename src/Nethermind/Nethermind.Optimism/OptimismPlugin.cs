@@ -20,6 +20,8 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
@@ -78,6 +80,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     {
         if (ShouldRunSteps(api))
         {
+            api.RegisterTxType(TxType.DepositTx, new OptimismTxDecoder<Transaction>(), Always.Valid);
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
         }
     }
