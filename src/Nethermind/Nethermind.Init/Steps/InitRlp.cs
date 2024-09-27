@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -27,6 +28,9 @@ namespace Nethermind.Init.Steps
         public virtual Task Execute(CancellationToken _)
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+
+            // we need to initialize everything transaction related before block tree
+            _api.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
 
             Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly is not null)

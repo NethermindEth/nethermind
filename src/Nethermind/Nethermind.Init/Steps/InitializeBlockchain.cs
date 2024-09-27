@@ -51,7 +51,6 @@ namespace Nethermind.Init.Steps
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
-            setApi.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
