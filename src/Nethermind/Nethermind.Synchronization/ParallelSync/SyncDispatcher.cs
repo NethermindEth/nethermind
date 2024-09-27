@@ -27,7 +27,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
 
-        [UseThisPlease]
         public SyncDispatcher(
             ISyncConfig syncConfig,
             ISyncFeed<T>? syncFeed,

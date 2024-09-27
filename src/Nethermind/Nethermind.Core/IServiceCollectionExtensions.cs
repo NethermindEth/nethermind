@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
-using Autofac.Core.Activators.Reflection;
 using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -62,29 +61,10 @@ public static class IServiceCollectionExtensions
         return configuration;
     }
 
-    public static void ForwardNamedTypeFromLifetime(this ContainerBuilder builder, string name, params Type[] types)
-    {
-        foreach (Type type in types)
-        {
-            builder.Register(ctx =>
-            {
-                var theLifetime = ctx.ResolveNamed<ILifetimeScope>(name);
-                Console.Error.WriteLine($"Attempting to resolve {type.Name} from {name} scope");
-                return theLifetime.Resolve(type);
-            }).Named(name, type);
-        }
-    }
-
-    public static void ForwardNamedTypeFromLifetimeButNotAsNamed<T>(this ContainerBuilder builder, string name) where T : notnull
-    {
-        builder.Register(ctx => ctx.ResolveNamed<ILifetimeScope>(name).Resolve<T>()).As<T>();
-    }
-
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder) where T : notnull
     {
         builder.RegisterType<T>()
             .As<T>()
-            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
             .WithAttributeFiltering()
             .SingleInstance();
 
@@ -105,7 +85,6 @@ public static class IServiceCollectionExtensions
         builder.RegisterType<TImpl>()
             .As<T>()
             .AsSelf()
-            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
             .WithAttributeFiltering()
             .SingleInstance();
 
@@ -117,7 +96,6 @@ public static class IServiceCollectionExtensions
         builder.RegisterType<T>()
             .As<T>()
             .AsSelf()
-            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
             .InstancePerLifetimeScope();
 
         return builder;
@@ -127,7 +105,6 @@ public static class IServiceCollectionExtensions
     {
         builder.RegisterType<TImpl>()
             .As<T>()
-            .FindConstructorsWith(new UseThisPleaseConstructorFinder())
             .InstancePerLifetimeScope();
 
         return builder;
@@ -155,19 +132,4 @@ public static class IServiceCollectionExtensions
 /// </summary>
 public class SkipServiceCollectionAttribute : Attribute
 {
-}
-
-public class UseThisPleaseAttribute : Attribute
-{
-}
-
-public class UseThisPleaseConstructorFinder : IConstructorFinder
-{
-    public ConstructorInfo[] FindConstructors(Type targetType)
-    {
-        ConstructorInfo[] constructors = targetType.GetConstructors();
-        ConstructorInfo? specifiedConstructor = constructors.FirstOrDefault(it => it.GetCustomAttribute<UseThisPleaseAttribute>() != null);
-        if (specifiedConstructor != null) return [specifiedConstructor];
-        return constructors;
-    }
 }
