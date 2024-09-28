@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [TestCase(0, 8)]
         [TestCase(1, 1)]
         [TestCase(1, 8)]
-        [CancelAfter(Timeout.MaxTestTime)]
+        [MaxTime(Timeout.MaxTestTime)]
         public void copies_state_between_dbs(int fullPruningMemoryBudgetMb, int maxDegreeOfParallelism)
         {
             TestMemDb trieDb = new();
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void cancel_coping_state_between_dbs()
         {
             MemDb trieDb = new();

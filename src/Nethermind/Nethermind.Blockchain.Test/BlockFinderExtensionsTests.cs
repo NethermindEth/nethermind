@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockFinderExtensionsTests
     {
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Can_upgrade_maybe_parent()
         {
             BlockHeader parent = Build.A.BlockHeader.TestObject;

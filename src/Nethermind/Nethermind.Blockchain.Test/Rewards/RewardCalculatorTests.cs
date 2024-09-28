@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Test.Rewards
 {
     public class RewardCalculatorTests
     {
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Two_uncles_from_the_same_coinbase()
         {
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Assert.That((long)rewards[2].Value, Is.EqualTo(3750000000000000000), "uncle2");
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void One_uncle()
         {
             Block uncle = Build.A.Block.WithNumber(1).TestObject;
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Assert.That((long)rewards[1].Value, Is.EqualTo(3750000000000000000), "uncle1");
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void No_uncles()
         {
             Block block = Build.A.Block.WithNumber(3).TestObject;
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Assert.That((long)rewards[0].Value, Is.EqualTo(5000000000000000000), "miner");
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Byzantium_reward_two_uncles()
         {
             long blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test.Rewards
             Assert.That((long)rewards[2].Value, Is.EqualTo(2250000000000000000), "uncle2");
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Constantinople_reward_two_uncles()
         {
             long blockNumber = MainnetSpecProvider.ConstantinopleFixBlockNumber;

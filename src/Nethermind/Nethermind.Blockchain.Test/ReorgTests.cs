@@ -97,7 +97,7 @@ public class ReorgTests
     [OneTimeTearDown]
     public void TearDown() => _blockchainProcessor?.Dispose();
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     [Retry(3)]
     public void Test()
     {

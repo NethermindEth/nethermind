@@ -25,7 +25,7 @@ public class ReceiptsRecoveryTests
         _receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(5, 5, true, ReceiptsRecoveryResult.NeedReinsert)]
     [TestCase(5, 5, false, ReceiptsRecoveryResult.Skipped)]
     [TestCase(0, 0, true, ReceiptsRecoveryResult.Skipped)]

@@ -20,24 +20,24 @@ namespace Nethermind.Blockchain.Test.Visitors;
 
 public class StartupTreeFixerTests
 {
-    [Test, CancelAfter(Timeout.MaxTestTime), Ignore("Not implemented")]
+    [Test, MaxTime(Timeout.MaxTestTime), Ignore("Not implemented")]
     public void Cleans_missing_references_from_chain_level_info()
     {
         // for now let us just look at the warnings (before we start adding cleanup)
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime), Ignore("Not implemented")]
+    [Test, MaxTime(Timeout.MaxTestTime), Ignore("Not implemented")]
     public void Warns_when_blocks_are_marked_as_processed_but_there_are_no_bodies()
     {
         // for now let us just look at the warnings (before we start adding cleanup)
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime), Ignore("Not implemented")]
+    [Test, MaxTime(Timeout.MaxTestTime), Ignore("Not implemented")]
     public void Warns_when_there_is_a_hole_in_processed_blocks()
     {
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Deletes_everything_after_the_missing_level()
     {
         MemDb blockInfosDb = new();
@@ -85,7 +85,7 @@ public class StartupTreeFixerTests
     }
 
     [Retry(30)]
-    [CancelAfter(Timeout.MaxTestTime * 4)]
+    [MaxTime(Timeout.MaxTestTime * 4)]
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
@@ -123,7 +123,7 @@ public class StartupTreeFixerTests
         Assert.That(tree.Head!.Number, Is.EqualTo(startingBlockNumber + suggestedBlocksAmount + 1));
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
@@ -149,7 +149,7 @@ public class StartupTreeFixerTests
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Fixer_should_not_suggest_block_with_null_block()
     {
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -185,7 +185,7 @@ public class StartupTreeFixerTests
         }
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
     {
         MemDb blockInfosDb = new();

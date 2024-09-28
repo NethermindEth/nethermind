@@ -210,7 +210,7 @@ public class WebSocketExtensionsTests
         await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>());
     }
 
-    [Test, CancelAfter(5000)]
+    [Test, MaxTime(5000)]
     public async Task Stops_on_dirty_disconnect()
     {
         Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();

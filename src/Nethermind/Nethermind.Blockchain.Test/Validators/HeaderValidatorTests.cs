@@ -55,7 +55,7 @@ public class HeaderValidatorTests
         _blockTree.SuggestBlock(_block);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Valid_when_valid()
     {
         _block.Header.SealEngineType = SealEngineType.None;
@@ -71,7 +71,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_too_high()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
@@ -82,7 +82,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_just_correct_high()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
@@ -93,7 +93,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_just_correct_low()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
@@ -104,7 +104,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_is_just_too_low()
     {
         _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
@@ -115,7 +115,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_used_above_gas_limit()
     {
         _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
@@ -126,7 +126,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_no_parent_invalid()
     {
         _block.Header.ParentHash = Keccak.Zero;
@@ -138,7 +138,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_timestamp_same_as_parent()
     {
         _block.Header.Timestamp = _parentBlock.Header.Timestamp;
@@ -149,7 +149,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_extra_data_too_long()
     {
         _block.Header.ExtraData = new byte[33];
@@ -160,7 +160,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_incorrect_difficulty_then_invalid()
     {
         _block.Header.Difficulty = 1;
@@ -171,7 +171,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_incorrect_number_then_invalid()
     {
         _block.Header.Number += 1;
@@ -182,7 +182,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(10000000, 4, 20000000, true)]
     [TestCase(10000000, 4, 20019530, true)]
     [TestCase(10000000, 4, 20019531, false)]
@@ -223,7 +223,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_is_long_max_value()
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
@@ -245,7 +245,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_block_number_is_negative()
     {
         _block.Header.Number = -1;
@@ -255,7 +255,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_used_is_negative()
     {
         _block.Header.GasUsed = -1;
@@ -265,7 +265,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()
     {
         _block.Header.Difficulty = 1;
@@ -278,7 +278,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(0, 0, true)]
     [TestCase(0, null, false)]
     [TestCase(0, 1, false)]
@@ -310,7 +310,7 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_gas_limit_is_negative()
     {
         _block.Header.GasLimit = -1;

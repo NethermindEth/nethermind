@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.Test.Validators;
 
 public class WithdrawalValidatorTests
 {
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Not_null_withdrawals_are_invalid_pre_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, London.Instance));
@@ -25,7 +25,7 @@ public class WithdrawalValidatorTests
         Assert.That(isValid, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Null_withdrawals_are_invalid_post_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
@@ -34,7 +34,7 @@ public class WithdrawalValidatorTests
         Assert.That(isValid, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Withdrawals_with_incorrect_withdrawals_root_are_invalid()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
@@ -44,7 +44,7 @@ public class WithdrawalValidatorTests
         Assert.That(isValid, Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Empty_withdrawals_are_valid_post_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
@@ -55,7 +55,7 @@ public class WithdrawalValidatorTests
         Assert.That(isValid, Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Correct_withdrawals_block_post_shanghai()
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));

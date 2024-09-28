@@ -43,7 +43,7 @@ public class UnclesValidatorTests
         _blockTree.SuggestHeader(_block.Header);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_more_than_two_uncles_returns_false()
     {
         BlockHeader[] uncles = GetValidUncles(3);
@@ -52,7 +52,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(Build.A.BlockHeader.TestObject, uncles), Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_uncle_is_self_returns_false()
     {
         BlockHeader[] uncles = new BlockHeader[1];
@@ -62,7 +62,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_uncle_is_brother_returns_false()
     {
         BlockHeader[] uncles = [Build.A.BlockHeader.TestObject];
@@ -73,7 +73,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_uncle_is_parent_returns_false()
     {
         BlockHeader[] uncles = [_parent.Header];
@@ -81,7 +81,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_uncle_was_already_included_return_false()
     {
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
@@ -99,7 +99,7 @@ public class UnclesValidatorTests
         return uncles;
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_all_is_fine_returns_true()
     {
         BlockHeader[] uncles = GetValidUncles(1);
@@ -108,7 +108,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(_block.Header, uncles));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Grandpas_brother_is_fine()
     {
         BlockHeader[] uncles = GetValidUncles(1);
@@ -119,7 +119,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Same_uncle_twice_returns_false()
     {
         BlockHeader[] uncles = GetValidUncles(1).Union(GetValidUncles(1)).ToArray();
@@ -128,7 +128,7 @@ public class UnclesValidatorTests
         Assert.That(unclesValidator.Validate(_block.Header, uncles), Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)] // because we decided to store the head block at 0x00..., eh
+    [Test, MaxTime(Timeout.MaxTestTime)] // because we decided to store the head block at 0x00..., eh
     public void Uncles_near_genesis_with_00_address_used()
     {
         Block falseUncle = Build.A.Block.WithParent(Build.A.Block.WithDifficulty(123).TestObject).TestObject;

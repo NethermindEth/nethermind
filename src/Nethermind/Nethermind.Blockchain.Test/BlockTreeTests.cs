@@ -64,7 +64,7 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(new[] { block0 }, true);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_genesis_shall_notify()
     {
         bool hasNotified = false;
@@ -83,7 +83,7 @@ public class BlockTreeTests
         Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_genesis_shall_work_even_with_0_difficulty()
     {
         bool hasNotified = false;
@@ -101,7 +101,7 @@ public class BlockTreeTests
         Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Suggesting_genesis_many_times_does_not_cause_any_trouble()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -111,7 +111,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(blockB).Should().Be(AddBlockResult.AlreadyKnown);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_notify_on_new_head_block_after_genesis()
     {
         bool hasNotified = false;
@@ -132,7 +132,7 @@ public class BlockTreeTests
         Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_notify_new_head_block_once_and_block_added_to_main_multiple_times_when_adding_multiple_blocks_at_once()
     {
         int newHeadBlockNotifications = 0;
@@ -157,7 +157,7 @@ public class BlockTreeTests
         blockAddedToMainNotifications.Should().Be(3, "block added to main");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_notify_on_new_suggested_block_after_genesis()
     {
         bool hasNotified = false;
@@ -177,7 +177,7 @@ public class BlockTreeTests
         Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_not_notify_but_add_on_lower_difficulty()
     {
         bool hasNotifiedBest = false;
@@ -202,7 +202,7 @@ public class BlockTreeTests
         Assert.That(hasNotifiedNewSuggested, Is.True, "NewSuggestedBlock");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_ignore_orphans()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -213,7 +213,7 @@ public class BlockTreeTests
         Assert.That(result, Is.EqualTo(AddBlockResult.UnknownParent));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_ignore_known()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -225,7 +225,7 @@ public class BlockTreeTests
         Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cleans_invalid_blocks_before_starting()
     {
         MemDb blockInfosDb = new MemDb();
@@ -262,7 +262,7 @@ public class BlockTreeTests
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
     {
         MemDb blockInfosDb = new();
@@ -309,7 +309,7 @@ public class BlockTreeTests
         Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_load_best_known_up_to_256million()
     {
         _blocksDb = new TestMemDb();
@@ -337,7 +337,7 @@ public class BlockTreeTests
         Assert.That(blockTree.BestKnownNumber, Is.EqualTo(256000000));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_and_find_branch()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -347,7 +347,7 @@ public class BlockTreeTests
         Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_on_branch_move_find()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -357,7 +357,7 @@ public class BlockTreeTests
         Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_on_branch_move_find_via_block_finder_interface()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -367,7 +367,7 @@ public class BlockTreeTests
         Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_on_branch_and_not_find_on_main()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -377,7 +377,7 @@ public class BlockTreeTests
         Assert.That(found, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_on_branch_and_not_find_on_main_via_block_finder_interface()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -387,7 +387,7 @@ public class BlockTreeTests
         Assert.That(found, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_basic()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -402,7 +402,7 @@ public class BlockTreeTests
         Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block2.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_beyond_what_is_known_returns_null()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -417,7 +417,7 @@ public class BlockTreeTests
         Assert.That(found, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_by_number_returns_null_when_block_is_missing()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -430,7 +430,7 @@ public class BlockTreeTests
         Assert.That(found, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_basic()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -447,7 +447,7 @@ public class BlockTreeTests
         Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_skip()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -464,7 +464,7 @@ public class BlockTreeTests
         Assert.That(headers[1].Hash, Is.EqualTo(block2.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_reverse()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -485,7 +485,7 @@ public class BlockTreeTests
         Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_reverse_skip()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -502,7 +502,7 @@ public class BlockTreeTests
         Assert.That(headers[1].Hash, Is.EqualTo(block0.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_headers_reverse_below_zero()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -519,7 +519,7 @@ public class BlockTreeTests
         Assert.That(headers[1], Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_finding_headers_does_not_find_a_header_it_breaks_the_loop()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -538,7 +538,7 @@ public class BlockTreeTests
         Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_finding_blocks_does_not_find_a_block_it_breaks_the_loop()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -557,7 +557,7 @@ public class BlockTreeTests
         Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_basic_longer()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -576,7 +576,7 @@ public class BlockTreeTests
         Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_basic_shorter()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -594,7 +594,7 @@ public class BlockTreeTests
         Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_basic()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -613,7 +613,7 @@ public class BlockTreeTests
         Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_reverse()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -632,7 +632,7 @@ public class BlockTreeTests
     }
 
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_zero_blocks()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -647,7 +647,7 @@ public class BlockTreeTests
         Assert.That(blocks.Count, Is.EqualTo(0));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_one_block()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -662,7 +662,7 @@ public class BlockTreeTests
         Assert.That(blocks.Count, Is.EqualTo(1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_basic_skip()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -679,7 +679,7 @@ public class BlockTreeTests
         Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Find_sequence_some_empty()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -695,7 +695,7 @@ public class BlockTreeTests
         Assert.That(blocks[3], Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Total_difficulty_is_calculated_when_exists_parent_with_total_difficulty()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -708,7 +708,7 @@ public class BlockTreeTests
         Assert.That((int)block1.TotalDifficulty!, Is.EqualTo(3));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Total_difficulty_is_null_when_no_parent()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -721,7 +721,7 @@ public class BlockTreeTests
         Assert.That(block2.TotalDifficulty, Is.EqualTo(null));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Head_block_gets_updated()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -733,7 +733,7 @@ public class BlockTreeTests
         Assert.That(blockTree.Head!.CalculateHash(), Is.EqualTo(block1.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Best_suggested_block_gets_updated()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -746,7 +746,7 @@ public class BlockTreeTests
         Assert.That(blockTree.BestSuggestedHeader!.CalculateHash(), Is.EqualTo(block1.Hash), "best suggested");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Sets_genesis_block()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -756,7 +756,7 @@ public class BlockTreeTests
         Assert.That(blockTree.Genesis!.CalculateHash(), Is.EqualTo(block0.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void ForkChoiceUpdated_update_hashes()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -767,7 +767,7 @@ public class BlockTreeTests
         Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Stores_multiple_blocks_per_level()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -783,7 +783,7 @@ public class BlockTreeTests
         Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block1B.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_init_head_block_from_db_by_hash()
     {
         Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -813,7 +813,7 @@ public class BlockTreeTests
         Assert.That(blockTree.Genesis?.Hash, Is.EqualTo(headBlock.Hash), "genesis");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Sets_head_block_hash_in_db_on_new_head_block()
     {
         TestMemDb blockInfosDb = new();
@@ -833,7 +833,7 @@ public class BlockTreeTests
         Assert.That(dec, Is.EqualTo(block1.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_check_if_block_was_processed()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -847,7 +847,7 @@ public class BlockTreeTests
         Assert.That(blockTree.WasProcessed(block1.Number, block1.Hash!), Is.True, "after");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Best_known_number_is_set()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -859,7 +859,7 @@ public class BlockTreeTests
         Assert.That(blockTree.BestKnownNumber, Is.EqualTo(1L));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Is_main_chain_returns_false_when_on_branch()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -871,7 +871,7 @@ public class BlockTreeTests
         Assert.That(blockTree.IsMainChain(block1.Hash!), Is.False);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Is_main_chain_returns_true_when_on_main()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -884,7 +884,7 @@ public class BlockTreeTests
         Assert.That(blockTree.IsMainChain(block1.Hash!), Is.True);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Pending_returns_head()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -900,7 +900,7 @@ public class BlockTreeTests
         ((IBlockFinder)blockTree).FindPendingBlock().Should().BeSameAs(block0);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Is_main_chain_returns_true_on_fast_sync_block()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -909,7 +909,7 @@ public class BlockTreeTests
         blockTree.IsMainChain(block0.Hash!).Should().BeTrue();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Was_processed_returns_true_on_fast_sync_block()
     {
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -917,7 +917,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
     }
 
-    [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched"), CancelAfter(Timeout.MaxTestTime)]
+    [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched"), MaxTime(Timeout.MaxTestTime)]
     public void When_moving_to_main_one_of_the_two_blocks_at_given_level_the_was_processed_check_is_executed_on_the_correct_block_index_regression()
     {
         TestMemDb blockInfosDb = new();
@@ -940,7 +940,7 @@ public class BlockTreeTests
         Assert.That(storedInDb, Is.EqualTo(block1.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_deleting_invalid_block_sets_head_bestKnown_and_suggested_right()
     {
         BlockTree tree = BuildBlockTree();
@@ -963,7 +963,7 @@ public class BlockTreeTests
         Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block1.Header));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_deleting_invalid_block_deletes_its_descendants()
     {
         BlockStore blockStore = new(new MemDb());
@@ -1000,7 +1000,7 @@ public class BlockTreeTests
         Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_deleting_invalid_block_deletes_its_descendants_even_if_not_first()
     {
         BlockStore blockStore = new(new MemDb());
@@ -1059,7 +1059,7 @@ public class BlockTreeTests
         repository.LoadLevel(3)!.BlockInfos.Length.Should().Be(1);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void After_removing_invalid_block_will_not_accept_it_again()
     {
         BlockTree tree = Build.A.BlockTree()
@@ -1081,7 +1081,7 @@ public class BlockTreeTests
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void After_deleting_invalid_block_will_accept_other_blocks()
     {
         BlockTree tree = Build.A.BlockTree()
@@ -1105,7 +1105,7 @@ public class BlockTreeTests
         Assert.That(result, Is.EqualTo(AddBlockResult.Added));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_deleting_invalid_block_does_not_delete_blocks_that_are_not_its_descendants()
     {
         BlockTree tree = Build.A.BlockTree()
@@ -1138,7 +1138,7 @@ public class BlockTreeTests
         Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
+    [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void Loads_lowest_inserted_header_correctly(long beginIndex, long insertedBlocks)
     {
         long? expectedResult = insertedBlocks == 0L ? null : beginIndex - insertedBlocks + 1L;
@@ -1170,7 +1170,7 @@ public class BlockTreeTests
         Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
+    [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
     {
         // left old code to prove that it does not matter for the result nowadays
@@ -1237,7 +1237,7 @@ public class BlockTreeTests
         new object[] {7280000L, 1L}
     };
 
-    [Test, CancelAfter(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
+    [Test, MaxTime(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
     public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
     {
         long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
@@ -1327,7 +1327,7 @@ public class BlockTreeTests
         Assert.That(loadedTree.Head?.Number, Is.EqualTo(50));
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(1L)]
     [TestCase(2L)]
     [TestCase(3L)]
@@ -1366,7 +1366,7 @@ public class BlockTreeTests
         Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_known_correctly_when_head_before_pivot()
     {
         int pivotNumber = 1000;
@@ -1387,7 +1387,7 @@ public class BlockTreeTests
         Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(head), "loaded tree");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_insert_genesis()
     {
         long pivotNumber = 0L;
@@ -1408,7 +1408,7 @@ public class BlockTreeTests
         Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_set_zero_total_difficulty()
     {
         long pivotNumber = 0L;
@@ -1436,7 +1436,7 @@ public class BlockTreeTests
         tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Inserts_blooms()
     {
         long pivotNumber = 5L;
@@ -1469,7 +1469,7 @@ public class BlockTreeTests
         }
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Block_loading_is_lazy()
     {
         SyncConfig syncConfig = new()
@@ -1503,7 +1503,7 @@ public class BlockTreeTests
         loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_block_is_moved_to_main_blooms_are_stored()
     {
         Transaction t1 = Build.A.Transaction.TestObject;
@@ -1529,7 +1529,7 @@ public class BlockTreeTests
     }
 
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_find_genesis_level()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1538,7 +1538,7 @@ public class BlockTreeTests
         Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_find_some_level()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1547,7 +1547,7 @@ public class BlockTreeTests
         Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_find_future_level()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1555,7 +1555,7 @@ public class BlockTreeTests
         Assert.That(info, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_a_future_slice()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1563,7 +1563,7 @@ public class BlockTreeTests
         Assert.That(blockTree.Head!.Number, Is.EqualTo(2));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_slice()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1573,7 +1573,7 @@ public class BlockTreeTests
         Assert.That(blockTree.FindLevel(2), Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Does_not_delete_outside_of_the_slice()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1583,7 +1583,7 @@ public class BlockTreeTests
         Assert.That(blockTree.FindLevel(1), Is.Not.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_one_block()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1591,7 +1591,7 @@ public class BlockTreeTests
         Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_two_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1600,42 +1600,42 @@ public class BlockTreeTests
         Assert.That(blockTree.FindLevel(2), Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_in_the_middle()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         blockTree.DeleteChainSlice(1, 1);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Throws_when_start_after_end()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(2, 1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Throws_when_start_at_zero()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(0, 1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Throws_when_start_below_zero()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(-1, 1));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_delete_too_many()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 52001));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_add_blocks_when_blocked()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1643,7 +1643,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(Build.A.Block.WithNumber(3).TestObject).Should().Be(AddBlockResult.CannotAccept);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_block_cannot_insert_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1655,7 +1655,7 @@ public class BlockTreeTests
         result.Should().Be(AddBlockResult.CannotAccept);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_skip_blocked_tree()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1667,7 +1667,7 @@ public class BlockTreeTests
         result.Should().Be(AddBlockResult.Added);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_block_and_unblock_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1681,7 +1681,7 @@ public class BlockTreeTests
         blockTree.CanAcceptNewBlocks.Should().BeTrue();
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(10, false, 10000000ul)]
     [TestCase(4, false, 4000000ul)]
     [TestCase(10, true, 10000000ul)]
@@ -1721,7 +1721,7 @@ public class BlockTreeTests
         }
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Visitor_can_block_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1732,7 +1732,7 @@ public class BlockTreeTests
         await acceptTask;
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task SuggestBlockAsync_should_wait_for_blockTree_unlock()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1744,7 +1744,7 @@ public class BlockTreeTests
         suggest.IsCompleted.Should().Be(true);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task SuggestBlockAsync_works_well_with_multiple_locks_and_unlocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1768,7 +1768,7 @@ public class BlockTreeTests
         suggest.IsCompleted.Should().Be(true);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task SuggestBlockAsync_works_well_when_there_are_no_blockades()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1777,7 +1777,7 @@ public class BlockTreeTests
         suggest.IsCompleted.Should().Be(true);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void SuggestBlock_should_work_with_zero_difficulty()
     {
         Block genesisWithZeroDifficulty = Build.A.Block.WithDifficulty(0).WithNumber(0).TestObject;
@@ -1790,7 +1790,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BlockAddedToMain_should_have_updated_Head()
     {
         BlockTree blockTree = BuildBlockTree();

@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Test.Producers
 {
     public class IfPoolIsNotEmptyTests
     {
-        [CancelAfter(Timeout.MaxTestTime)]
+        [MaxTime(Timeout.MaxTestTime)]
         [TestCase(0, false)]
         [TestCase(1, true)]
         public void Does_not_trigger_when_empty(int txCount, bool shouldTrigger)

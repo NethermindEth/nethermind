@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Filters;
 
 public class FilterStoreTests
 {
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_save_and_load_block_filter()
     {
         FilterStore store = new();
@@ -27,7 +27,7 @@ public class FilterStoreTests
         Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.BlockFilter), "type");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_save_and_load_log_filter()
     {
         FilterStore store = new();
@@ -37,7 +37,7 @@ public class FilterStoreTests
         Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_overwrite_filters()
     {
         FilterStore store = new();
@@ -47,7 +47,7 @@ public class FilterStoreTests
         Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Ids_are_incremented_when_storing_externally_created_filter()
     {
         FilterStore store = new();
@@ -62,7 +62,7 @@ public class FilterStoreTests
         Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Remove_filter_removes_and_notifies()
     {
         FilterStore store = new();
@@ -76,7 +76,7 @@ public class FilterStoreTests
         Assert.That(store.FilterExists(0), Is.False, "exists");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_get_filters_by_type()
     {
         FilterStore store = new();

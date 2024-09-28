@@ -39,45 +39,45 @@ namespace Nethermind.Blockchain.Test.Filters
             _logManager = LimboLogs.Instance;
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_default_filter_parameters()
             => LogsShouldNotBeEmpty(_ => { }, _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void many_logs_should_not_be_empty_for_default_filters_parameters()
             => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] { _ => { }, _ => { }, _ => { } },
                 new Action<ReceiptBuilder>[] { _ => { }, _ => { }, _ => { } });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_from_block_earliest_type()
             => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_from_block_pending_type()
             => LogsShouldNotBeEmpty(filter => filter.FromPendingBlock(), _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_from_block_latest_type()
             => LogsShouldNotBeEmpty(filter => filter.FromLatestBlock(), _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_to_block_earliest_type()
             => LogsShouldNotBeEmpty(filter => filter.ToEarliestBlock(), _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_to_block_pending_type()
             => LogsShouldNotBeEmpty(filter => filter.ToPendingBlock(), _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_to_block_latest_type()
             => LogsShouldNotBeEmpty(filter => filter.ToLatestBlock(), _ => { });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_from_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.FromBlock(1L),
                 receipt => receipt.WithBlockNumber(2L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void many_logs_should_not_be_empty_for_from_blocks_numbers_in_range()
             => LogsShouldNotBeEmpty(
                 new Action<FilterBuilder>[]
@@ -93,17 +93,17 @@ namespace Nethermind.Blockchain.Test.Filters
                     receipt => receipt.WithBlockNumber(10L)
                 });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_from_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(1L),
                 receipt => receipt.WithBlockNumber(0L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.ToBlock(2L),
                 receipt => receipt.WithBlockNumber(1L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void many_logs_should_not_be_empty_for_to_blocks_numbers_in_range()
             => LogsShouldNotBeEmpty(
                 new Action<FilterBuilder>[]
@@ -119,90 +119,90 @@ namespace Nethermind.Blockchain.Test.Filters
                     receipt => receipt.WithBlockNumber(3L)
                 });
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.ToBlock(1L),
                 receipt => receipt.WithBlockNumber(2L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_from_block_number_in_range_and_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.FromBlock(2L).ToBlock(6L),
                 receipt => receipt.WithBlockNumber(4L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_from_block_number_in_range_and_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(2L).ToBlock(3L),
                 receipt => receipt.WithBlockNumber(4L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(5L).ToBlock(7L),
                 receipt => receipt.WithBlockNumber(4L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(2L).ToBlock(3L),
                 receipt => receipt.WithBlockNumber(4L));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_address()
             => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
                 receipt => receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_non_existing_address()
             => LogsShouldBeEmpty(filter => filter.WithAddress(TestItem.AddressA),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_addresses()
             => LogsShouldNotBeEmpty(filter => filter.WithAddresses(TestItem.AddressA, TestItem.AddressB),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_non_existing_addresses()
             => LogsShouldBeEmpty(filter => filter.WithAddresses(TestItem.AddressA, TestItem.AddressB),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressC).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_specific_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_non_existing_specific_topic()
             => LogsShouldBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_any_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Any),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_or_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_non_existing_or_topic()
             => LogsShouldBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakD))),
                 receipt => receipt
                     .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_block_and_address_and_topics()
             => LogsShouldNotBeEmpty(filter => filter
                     .FromBlock(1L)
@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain.Test.Filters
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
                         .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_block_and_addresses_and_topics()
             => LogsShouldNotBeEmpty(filter => filter
                     .FromBlock(1L)
@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Test.Filters
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
                         .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_existing_block_and_addresses_and_non_existing_topic()
             => LogsShouldBeEmpty(filter => filter
                     .FromBlock(1L)

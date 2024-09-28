@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Test.Producers
             }
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Time_passing_does_not_break_the_block()
         {
             ITimestamper timestamper = new IncrementalTimestamper();
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Producers
             new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void Parent_timestamp_is_used_consistently()
         {
             ITimestamper timestamper = new IncrementalTimestamper(DateTime.UnixEpoch, TimeSpan.FromSeconds(1));

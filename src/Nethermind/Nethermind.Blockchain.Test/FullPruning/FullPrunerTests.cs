@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             _degreeOfParallelism = degreeOfParallelism;
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task can_prune()
         {
             TestContext test = CreateTest();
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.ShouldCopyAllValues();
         }
 
-        [CancelAfter(Timeout.MaxTestTime * 2)] // this is particular long test
+        [MaxTime(Timeout.MaxTestTime * 2)] // this is particular long test
         [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.Hash)]
         [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.HalfPath)]
         [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath)]
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.NodeStorage.Scheme.Should().Be(expectedNewScheme);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task pruning_deletes_old_db_on_success()
         {
             TestContext test = CreateTest(clearPrunedDb: true);
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.TrieDb.Count.Should().Be(0);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task pruning_keeps_old_db_on_fail()
         {
             TestContext test = CreateTest(false);
@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.TrieDb.Count.Should().Be(count);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task pruning_deletes_new_db_on_fail()
         {
             TestContext test = CreateTest(false);
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.CopyDb.Count.Should().Be(0);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task pruning_keeps_new_db_on_success()
         {
             TestContext test = CreateTest();
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.CopyDb.Count.Should().Be(count);
         }
 
-        [CancelAfter(Timeout.MaxTestTime)]
+        [MaxTime(Timeout.MaxTestTime)]
         [TestCase(true, FullPruningCompletionBehavior.None, false)]
         [TestCase(true, FullPruningCompletionBehavior.ShutdownOnSuccess, true)]
         [TestCase(true, FullPruningCompletionBehavior.AlwaysShutdown, true)]
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task can_not_start_pruning_when_other_is_in_progress()
         {
             TestContext test = CreateTest();
@@ -143,7 +143,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb.CanStartPruning.Should().BeTrue();
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task should_not_start_multiple_pruning()
         {
             TestContext test = CreateTest();
@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb.PruningStarted.Should().Be(1);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task should_duplicate_writes_while_pruning()
         {
             TestContext test = CreateTest();
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task should_duplicate_writes_to_batches_while_pruning()
         {
             TestContext test = CreateTest();

@@ -37,7 +37,7 @@ public class BlockhashProviderTests
         return provider;
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_get_parent_only_headers()
     {
         const int chainLength = 512;
@@ -53,7 +53,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(head?.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_with_headers_only()
     {
         const int chainLength = 512;
@@ -68,7 +68,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_with_headers_only_and_competing_branches()
     {
         const int chainLength = 512;
@@ -84,7 +84,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Not.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_soon_after_fast_sync()
     {
         const int chainLength = 512;
@@ -102,7 +102,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Not.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before_some_blocks_after_fast_sync()
     {
         const int chainLength = 512;
@@ -126,7 +126,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Not.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_handle_non_main_chain_in_fast_sync()
     {
         const int chainLength = 512;
@@ -148,7 +148,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Not.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_get_parent_hash()
     {
         const int chainLength = 512;
@@ -164,7 +164,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(head.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_ask_for_self()
     {
         const int chainLength = 512;
@@ -179,7 +179,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_ask_about_future()
     {
         const int chainLength = 512;
@@ -194,7 +194,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_lookup_up_to_256_before()
     {
         const int chainLength = 512;
@@ -209,7 +209,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_lookup_more_than_256_before()
     {
         const int chainLength = 512;
@@ -224,7 +224,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Null);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void UInt_256_overflow()
     {
         const int chainLength = 128;
@@ -239,7 +239,7 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(head.Hash));
     }
 
-    [CancelAfter(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(1)]
     [TestCase(512)]
     [TestCase(8192)]

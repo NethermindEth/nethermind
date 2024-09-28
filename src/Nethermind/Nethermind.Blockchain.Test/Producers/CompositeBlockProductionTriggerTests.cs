@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public class CompositeBlockProductionTriggerTests
     {
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public void On_pending_trigger_works()
         {
             int triggered = 0;

@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Producers
             }
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task FeeCollector_should_collect_burned_fees_when_eip1559_and_fee_collector_are_set()
         {
             long gasTarget = 3000000;
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task FeeCollector_should_not_collect_burned_fees_when_eip1559_is_not_set()
         {
             long gasTarget = 3000000;
@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Producers
             await scenario.Finish();
         }
 
-        [Test, CancelAfter(Timeout.MaxTestTime)]
+        [Test, MaxTime(Timeout.MaxTestTime)]
         public async Task FeeCollector_should_not_collect_burned_fees_when_transaction_is_free()
         {
             long gasTarget = 3000000;

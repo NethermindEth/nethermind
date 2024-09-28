@@ -439,7 +439,7 @@ public class BlockchainProcessorTests
     private static readonly Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
     private static readonly Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_ignore_lower_difficulty()
     {
         When.ProcessingBlocks
@@ -451,7 +451,7 @@ public class BlockchainProcessorTests
             .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_ignore_same_difficulty()
     {
         When.ProcessingBlocks
@@ -461,7 +461,7 @@ public class BlockchainProcessorTests
             .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_process_sequence()
     {
         When.ProcessingBlocks
@@ -472,7 +472,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block4D8).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     [Explicit("Does not work on CI")]
     public void Will_update_metrics_on_processing()
     {
@@ -485,7 +485,7 @@ public class BlockchainProcessorTests
         metricsAfter.Should().NotBe(metricsBefore);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_process_fast_sync_transition()
     {
         When.ProcessingBlocks
@@ -496,7 +496,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block4D8).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_process_fast_sync()
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
@@ -511,7 +511,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(testBlockchain.BlockTree.FindBlock(5)!).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_reorganize_just_head_block_twice()
     {
         When.ProcessingBlocks
@@ -523,7 +523,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockE2D300).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_reorganize_there_and_back()
     {
         When.ProcessingBlocks
@@ -537,7 +537,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block5D10).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime), Retry(3)]
+    [Test, MaxTime(Timeout.MaxTestTime), Retry(3)]
     public void Can_reorganize_to_longer_path()
     {
         When.ProcessingBlocks
@@ -551,7 +551,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block5D10).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_reorganize_to_same_length()
     {
         When.ProcessingBlocks
@@ -563,7 +563,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB3D8).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_reorganize_to_shorter_path()
     {
         When.ProcessingBlocks
@@ -574,7 +574,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockC2D100).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     [Retry(3)] // some flakiness
     public void Can_change_branch_on_invalid_block()
     {
@@ -590,7 +590,7 @@ public class BlockchainProcessorTests
                         "BRANCH A | BLOCK 2 | INVALID |  DISCARD" +
                         "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
                         "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +
-                        "BRANCH B | BLOCK 2 |   VALID | NEW HEAD"), CancelAfter(Timeout.MaxTestTime)]
+                        "BRANCH B | BLOCK 2 |   VALID | NEW HEAD"), MaxTime(Timeout.MaxTestTime)]
     public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue()
     {
         When.ProcessingBlocks
@@ -610,7 +610,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB2D4).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached()
     {
         When.ProcessingBlocks
@@ -631,7 +631,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB2D4).BecomesNewHead();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
     [Todo(Improve.Performance, "We can skip processing losing branches by implementing code to pass this test")]
     public void Never_process_branches_that_are_known_to_lose_in_the_future()
@@ -653,7 +653,7 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block2D4).IsKeptOnBranch();
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void IsProcessingBlocks_returns_true_when_processing_blocks()
     {
         When.ProcessingBlocks
@@ -667,7 +667,7 @@ public class BlockchainProcessorTests
             .IsProcessingBlocks(true, 1);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
     {
         When.ProcessingBlocks
@@ -682,7 +682,7 @@ public class BlockchainProcessorTests
             .IsProcessingBlocks(true, 1);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void ProcessorIsNotStarted_returns_false()
     {
         When.ProcessorIsNotStarted
@@ -691,7 +691,7 @@ public class BlockchainProcessorTests
             .IsProcessingBlocks(false, 10);
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void QueueCount_returns_correctly()
     {
         When.ProcessingBlocks

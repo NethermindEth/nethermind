@@ -21,7 +21,7 @@ public class DbBlocksLoaderTests
 {
     private readonly int _dbLoadTimeout = 5000;
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_load_blocks_from_db()
     {
         for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -67,7 +67,7 @@ public class DbBlocksLoaderTests
         }
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_load_blocks_from_db_odd()
     {
         for (int chainLength = 2; chainLength <= 32; chainLength++)
@@ -112,7 +112,7 @@ public class DbBlocksLoaderTests
         }
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB_and_a_valid_branch()
     {
         BlockStore blockStore = new(new MemDb());
@@ -182,7 +182,7 @@ public class DbBlocksLoaderTests
         Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
     }
 
-    [Test, CancelAfter(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_load_from_DB_when_there_is_only_an_invalid_chain_in_DB()
     {
         BlockStore blockStore = new(new MemDb());
