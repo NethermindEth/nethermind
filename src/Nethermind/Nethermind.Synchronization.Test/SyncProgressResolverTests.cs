@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.LowestInsertedBodyNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = CreateProgressResolver(blockTree, stateReader, false, syncConfig, LimboLogs.Instance);
-            Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished() ,Is.False);
+            Assert.That(syncProgressResolver.IsFastBlocksBodiesFinished(), Is.False);
         }
 
         [Test]

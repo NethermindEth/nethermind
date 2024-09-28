@@ -73,7 +73,7 @@ public class SnappyTests
     public void Can_load_block_rlp_test_file()
     {
         byte[] bytes = File.ReadAllBytes(_uncompressedTestFileName);
-        Assert.That(bytes.Length, Is.GreaterThan( 2.9 * 1024 * 1024));
+        Assert.That(bytes.Length, Is.GreaterThan(2.9 * 1024 * 1024));
     }
 
     [Test]

@@ -58,7 +58,7 @@ public class FilterStoreTests
         store.SaveFilter(filter);
 
         Assert.That(store.FilterExists(100), Is.True, "exists 100");
-        Assert.That(store.FilterExists(101), Is.True,"exists 101");
+        Assert.That(store.FilterExists(101), Is.True, "exists 101");
         Assert.That(store.GetFilterType(filter.Id), Is.EqualTo(FilterType.LogFilter), "type");
     }
 
