@@ -20,7 +20,7 @@ public class EnvConfigSourceTests
     {
         EnvConfigSource configSource = new();
         Environment.SetEnvironmentVariable("NETHERMIND_A_A", "12", EnvironmentVariableTarget.Process);
-        Assert.That(configSource.GetValue(typeof(int), "a", "A").IsSet, Is.False);
+        Assert.That(configSource.GetValue(typeof(int), "a", "A").IsSet, Is.True);
     }
 
     [TestCase(typeof(byte), "12", (byte)12)]

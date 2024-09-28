@@ -120,7 +120,7 @@ public class StateProviderTests
         WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
-        Assert.That(provider.IsEmptyAccount(_address1), Is.False);
+        Assert.That(provider.IsEmptyAccount(_address1), Is.True);
     }
 
     [Test]

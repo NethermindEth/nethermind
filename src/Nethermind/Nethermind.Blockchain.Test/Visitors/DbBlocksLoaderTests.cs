@@ -239,8 +239,8 @@ public class DbBlocksLoaderTests
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
         Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
 
-        Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
-        Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
-        Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
+        Assert.That(blockInfosDb.Get(1), Is.Null, "level 1");
+        Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
+        Assert.That(blockInfosDb.Get(3), Is.Null, "level 3");
     }
 }

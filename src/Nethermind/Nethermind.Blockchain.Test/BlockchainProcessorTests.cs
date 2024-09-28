@@ -408,7 +408,7 @@ public class BlockchainProcessorTests
                 _processingTestContext._resetEvent.WaitOne(IgnoreWait);
                 Assert.That(_processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
                 _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
-                Assert.That(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None), Is.True);
+                Assert.That(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None), Is.Null);
                 return _processingTestContext;
             }
         }
