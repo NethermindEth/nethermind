@@ -23,7 +23,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[TestFixture]
 public class TxValidatorTests
 {
     [SetUp]

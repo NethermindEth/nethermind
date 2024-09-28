@@ -26,7 +26,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-[TestFixture]
 public class ReorgTests
 {
     private BlockchainProcessor _blockchainProcessor = null!;

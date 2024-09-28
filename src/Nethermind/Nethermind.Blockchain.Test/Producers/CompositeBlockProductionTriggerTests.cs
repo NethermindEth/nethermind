@@ -5,25 +5,23 @@ using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Producers
-{
-    [TestFixture]
-    public class CompositeBlockProductionTriggerTests
-    {
-        [Test, MaxTime(Timeout.MaxTestTime)]
-        public void On_pending_trigger_works()
-        {
-            int triggered = 0;
-            BuildBlocksWhenRequested trigger1 = new();
-            BuildBlocksWhenRequested trigger2 = new();
-            IBlockProductionTrigger composite = trigger1.Or(trigger2);
-            composite.TriggerBlockProduction += (s, e) => triggered++;
-            trigger1.BuildBlock();
-            trigger2.BuildBlock();
-            trigger1.BuildBlock();
-            trigger2.BuildBlock();
+namespace Nethermind.Blockchain.Test.Producers;
 
-            triggered.Should().Be(4);
-        }
+public class CompositeBlockProductionTriggerTests
+{
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void On_pending_trigger_works()
+    {
+        int triggered = 0;
+        BuildBlocksWhenRequested trigger1 = new();
+        BuildBlocksWhenRequested trigger2 = new();
+        IBlockProductionTrigger composite = trigger1.Or(trigger2);
+        composite.TriggerBlockProduction += (s, e) => triggered++;
+        trigger1.BuildBlock();
+        trigger2.BuildBlock();
+        trigger1.BuildBlock();
+        trigger2.BuildBlock();
+
+        triggered.Should().Be(4);
     }
 }

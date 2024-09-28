@@ -18,7 +18,6 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-[TestFixture]
 public class GenesisLoaderTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
