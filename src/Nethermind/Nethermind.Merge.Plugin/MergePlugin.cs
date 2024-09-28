@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
 using Autofac.Extensions.DependencyInjection;
+using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -389,7 +390,21 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
 
-    public Task InitSynchronization()
+    public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
+    {
+        if (!MergeEnabled) return;
+
+        builder
+            .AddSingleton(_poSSwitcher)
+            .AddSingleton(_blockCacheService)
+            .AddSingleton(_mergeConfig)
+            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
+
+        builder
+            .RegisterModule(new MergeNetworkModule());
+    }
+
+    public Task InitSynchronization(IContainer container)
     {
         if (MergeEnabled)
         {
@@ -408,11 +423,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
 
             // ToDo strange place for validators initialization
-            PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
-            _peerRefresher = peerRefresher;
-            _api.DisposeStack.Push(peerRefresher);
-            _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
-
             MergeHeaderValidator headerValidator = new(
                     _poSSwitcher,
                     _api.HeaderValidator,
@@ -436,36 +446,11 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
-            _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _poSSwitcher, _api.LogManager);
 
-            _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
-
-            _api.Pivot = _beaconPivot;
-
-            ContainerBuilder builder = new ContainerBuilder();
-
-            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
-                .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-                .AddSingleton<IBeaconPivot>(_beaconPivot)
-                .AddSingleton(_mergeConfig)
-                .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
-
-            builder.RegisterModule(new SynchronizerModule(_syncConfig));
-            builder.RegisterModule(new MergeSynchronizerModule());
-
-            IContainer container = builder.Build();
-            _api.ApiWithNetworkServiceContainer = container;
-            _api.DisposeStack.Append(container);
-
-            PivotUpdator pivotUpdator = new(
-                _api.BlockTree,
-                _api.SyncModeSelector,
-                _api.SyncPeerPool,
-                _syncConfig,
-                _blockCacheService,
-                _beaconSync,
-                _api.DbProvider.MetadataDb,
-                _api.LogManager);
+            _peerRefresher = container.Resolve<PeerRefresher>();
+            _beaconPivot = container.Resolve<IBeaconPivot>();
+            _beaconSync = container.Resolve<BeaconSync>();
+            container.Resolve<PivotUpdator>();
         }
 
         return Task.CompletedTask;
@@ -474,4 +459,29 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
+}
+
+public class MergeNetworkModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+        builder
+            .AddSingleton<IPeerRefresher, PeerRefresher>()
+            .AddSingleton<PivotUpdator>()
+            .AddSingleton<IBeaconSyncStrategy, BeaconSync>();
+
+        builder
+            .RegisterType<BeaconPivot>()
+            .As<IBeaconPivot>()
+            .As<IPivot>()
+            .WithAttributeFiltering()
+            .SingleInstance();
+
+        builder
+            .RegisterDecorator<MergeBetterPeerStrategy, IBetterPeerStrategy>();
+
+        builder
+            .RegisterModule(new MergeSynchronizerModule());
+    }
 }

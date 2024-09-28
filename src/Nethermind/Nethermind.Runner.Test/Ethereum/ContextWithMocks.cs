@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Api;
@@ -43,30 +44,33 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Facade.Find;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Init.Steps;
+using Nethermind.Network.Config;
+using Nethermind.Network.P2P.Analyzers;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithMocks()
+        public static NethermindApi ContextWithoutContainer()
         {
             var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
                 new ChainSpec())
             {
+                NodeKey = new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.GetTempPath()),
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),
                 BlockTree = Substitute.For<IBlockTree>(),
-                SyncServer = Substitute.For<ISyncServer>(),
                 DbProvider = TestMemDbProvider.Init(),
-                PeerManager = Substitute.For<IPeerManager>(),
-                PeerPool = Substitute.For<IPeerPool>(),
                 SpecProvider = Substitute.For<ISpecProvider>(),
                 EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),
                 MainBlockProcessor = Substitute.For<IBlockProcessor>(),
@@ -75,12 +79,10 @@ namespace Nethermind.Runner.Test.Ethereum
                 BlockValidator = Substitute.For<IBlockValidator>(),
                 RewardCalculatorSource = Substitute.For<IRewardCalculatorSource>(),
                 TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>(),
-                StaticNodesManager = Substitute.For<IStaticNodesManager>(),
                 BloomStorage = Substitute.For<IBloomStorage>(),
                 Sealer = Substitute.For<ISealer>(),
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
                 BlockProducer = Substitute.For<IBlockProducer>(),
-                DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),
                 FileSystem = Substitute.For<IFileSystem>(),
                 FilterManager = Substitute.For<IFilterManager>(),
@@ -91,45 +93,86 @@ namespace Nethermind.Runner.Test.Ethereum
                 KeyStore = Substitute.For<IKeyStore>(),
                 LogFinder = Substitute.For<ILogFinder>(),
                 MonitoringService = Substitute.For<IMonitoringService>(),
-                ProtocolsManager = Substitute.For<IProtocolsManager>(),
-                ProtocolValidator = Substitute.For<IProtocolValidator>(),
-                RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
-                SessionMonitor = Substitute.For<ISessionMonitor>(),
                 WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),
-                NodeStatsManager = Substitute.For<INodeStatsManager>(),
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
-                SyncPeerPool = Substitute.For<ISyncPeerPool>(),
-                PeerDifficultyRefreshPool = Substitute.For<IPeerDifficultyRefreshPool>(),
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
-                EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
                 HealthHintService = Substitute.For<IHealthHintService>(),
                 TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
                 UnclesValidator = Substitute.For<IUnclesValidator>(),
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
-                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
                 BadBlocksStore = Substitute.For<IBlockStore>(),
+                BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>(),
 
                 ApiWithNetworkServiceContainer = new ContainerBuilder()
+                    .AddSingleton(Substitute.For<IDiscoveryApp>())
                     .AddSingleton(Substitute.For<ISyncModeSelector>())
-                    .AddSingleton(Substitute.For<ISyncProgressResolver>())
                     .AddSingleton(Substitute.For<ISynchronizer>())
+                    .AddSingleton(Substitute.For<ISyncPeerPool>())
+                    .AddSingleton(Substitute.For<IPivot>())
+                    .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
+                    .AddSingleton(Substitute.For<IBetterPeerStrategy>())
+                    .AddSingleton(Substitute.For<ISyncServer>())
+                    .AddSingleton(Substitute.For<IRlpxHost>())
+                    .AddSingleton(Substitute.For<ISessionMonitor>())
+                    .AddSingleton(Substitute.For<IEthSyncingInfo>())
+                    .AddSingleton(Substitute.For<IStaticNodesManager>())
+                    .AddSingleton(Substitute.For<IProtocolsManager>())
+                    .AddSingleton(Substitute.For<IPeerManager>())
+                    .AddSingleton(Substitute.For<IPeerPool>())
+                    .AddSingleton(Substitute.For<INodeStatsManager>())
                     .Build(),
             };
 
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
+            return api;
+        }
+
+        public static NethermindApi ContextWithMocks()
+        {
+            NethermindApi api = ContextWithoutContainer();
+            api.ApiWithNetworkServiceContainer = new ContainerBuilder()
+                .AddSingleton(Substitute.For<IDiscoveryApp>())
+                .AddSingleton(Substitute.For<ISyncModeSelector>())
+                .AddSingleton(Substitute.For<ISynchronizer>())
+                .AddSingleton(Substitute.For<ISyncPeerPool>())
+                .AddSingleton(Substitute.For<IPivot>())
+                .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
+                .AddSingleton(Substitute.For<IBetterPeerStrategy>())
+                .AddSingleton(Substitute.For<ISyncServer>())
+                .AddSingleton(Substitute.For<IRlpxHost>())
+                .AddSingleton(Substitute.For<ISessionMonitor>())
+                .AddSingleton(Substitute.For<IEthSyncingInfo>())
+                .AddSingleton(Substitute.For<IStaticNodesManager>())
+                .AddSingleton(Substitute.For<IProtocolsManager>())
+                .AddSingleton(Substitute.For<IPeerManager>())
+                .AddSingleton(Substitute.For<IPeerPool>())
+                .Build();
+
+            return api;
+        }
+
+        public static NethermindApi ContextWithMocksWithTestContainer()
+        {
+            NethermindApi api = ContextWithoutContainer();
+
+            var builder = new ContainerBuilder();
+            ((IApiWithNetwork)api).ConfigureContainerBuilderFromApiWithNetwork(builder);
+            builder.RegisterModule(new NetworkModule(new NetworkConfig(), new SyncConfig()));
+            api.ApiWithNetworkServiceContainer = builder.Build();
+
             return api;
         }
     }

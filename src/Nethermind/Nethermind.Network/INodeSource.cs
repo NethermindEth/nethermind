@@ -12,4 +12,6 @@ public interface INodeSource
 {
     IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken);
     event EventHandler<NodeEventArgs> NodeRemoved;
+
+    public const string EnrSource = nameof(EnrSource);
 }

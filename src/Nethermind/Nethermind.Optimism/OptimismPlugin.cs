@@ -26,6 +26,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
@@ -125,7 +126,32 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         return Task.CompletedTask;
     }
 
-    public Task InitSynchronization()
+    public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
+    {
+        if (_api is null || !ShouldRunSteps(_api))
+            return;
+
+        builder
+            .AddSingleton(_blockCacheService!)
+            .AddSingleton(_mergeConfig)
+            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker!)
+            .AddSingleton<PeerRefresher>()
+            .AddSingleton<PivotUpdator>()
+            .AddSingleton<BeaconSync, IBeaconSyncStrategy>();
+
+        builder
+            .RegisterType<BeaconPivot>()
+            .As<IBeaconPivot>()
+            .As<IPivot>()
+            .SingleInstance();
+
+        builder
+            .RegisterDecorator<MergeBetterPeerStrategy, IBetterPeerStrategy>();
+
+        builder.RegisterModule(new MergeSynchronizerModule());
+    }
+
+    public Task InitSynchronization(IContainer container)
     {
         if (_api is null || !ShouldRunSteps(_api))
             return Task.CompletedTask;
@@ -144,39 +170,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
-        _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
-        _api.Pivot = _beaconPivot;
-
-        ContainerBuilder builder = new ContainerBuilder();
-        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
-            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton(_beaconPivot)
-            .AddSingleton(_api.PoSSwitcher)
-            .AddSingleton(_mergeConfig)
-            .AddSingleton(_invalidChainTracker);
-
-        builder.RegisterModule(new SynchronizerModule(_syncConfig));
-        builder.RegisterModule(new MergeSynchronizerModule());
-
-        IContainer container = builder.Build();
-
-        _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Append(container);
-
-        _ = new PivotUpdator(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.DbProvider.MetadataDb,
-            _api.LogManager);
+        _peerRefresher = container.Resolve<PeerRefresher>();
+        _beaconPivot = container.Resolve<BeaconPivot>();
+        _beaconSync = container.Resolve<BeaconSync>();
+        _ = container.Resolve<PivotUpdator>();
 
         return Task.CompletedTask;
     }

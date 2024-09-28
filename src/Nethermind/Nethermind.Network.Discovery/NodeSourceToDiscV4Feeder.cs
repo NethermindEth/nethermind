@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Stats.Model;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Network.Discovery;
 
@@ -10,6 +11,11 @@ public class NodeSourceToDiscV4Feeder
     private readonly INodeSource _nodeSource;
     private readonly IDiscoveryApp _discoveryApp;
     private readonly int _maxNodes;
+
+    public NodeSourceToDiscV4Feeder([KeyFilter(INodeSource.EnrSource)] INodeSource nodeSource, IDiscoveryApp discoveryApp)
+        : this(nodeSource, discoveryApp, 50)
+    {
+    }
 
     public NodeSourceToDiscV4Feeder(INodeSource nodeSource, IDiscoveryApp discoveryApp, int maxNodes)
     {

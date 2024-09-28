@@ -20,7 +20,7 @@ public class EthStatsPluginTests
     [SetUp]
     public void Setup()
     {
-        _context = Build.ContextWithMocks();
+        _context = Build.ContextWithMocksWithTestContainer();
         _plugin = new EthStatsPlugin();
     }
 

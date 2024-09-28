@@ -291,6 +291,9 @@ public class DiscoveryV5App : IDiscoveryApp
 
                     await Task.WhenAll(discoverTasks);
                 }
+                catch (OperationCanceledException)
+                {
+                }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);

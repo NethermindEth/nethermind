@@ -56,6 +56,7 @@ namespace Nethermind.Db
                 sc.AddKeyedSingleton<IDb>(dbName, db);
                 sc.AddKeyedSingleton<IDbMeta>(dbName, db);
                 sc.AddKeyedSingleton<ITunableDb>(dbName, db as ITunableDb ?? new NoopTunableDb());
+                sc.AddKeyedSingleton<IReadOnlyKeyValueStore>(dbName, db);
             }
 
             IColumnsDb<ReceiptsColumns> receiptColumnDb = GetColumnDb<ReceiptsColumns>(DbNames.Receipts);

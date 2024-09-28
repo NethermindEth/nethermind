@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
+using Autofac.Core.Registration;
+using Autofac.Diagnostics;
 using Autofac.Extensions.DependencyInjection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,7 +26,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -55,58 +61,37 @@ namespace Nethermind.Synchronization.Test
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            SyncConfig quickConfig = new() { FastSync = false };
 
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
-            _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
-            SyncConfig syncConfig = new();
+            SyncConfig syncConfig = new() { FastSync = false };
 
             NodeStorage nodeStorage = new NodeStorage(_stateDb);
             TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
-            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            Pivot pivot = new(syncConfig);
 
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             ContainerBuilder builder = new ContainerBuilder()
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddSingleton(Substitute.For<ITimerFactory>())
+                .AddSingleton<INetworkConfig>(new NetworkConfig())
                 .AddSingleton(_blockTree)
                 .AddSingleton(_receiptStorage)
-                .AddSingleton(_pool)
-                .AddSingleton<INodeStatsManager>(stats)
+                .AddSingleton<IReceiptFinder>(_receiptStorage)
                 .AddSingleton<ISyncConfig>(syncConfig)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton<IPivot>(pivot)
                 .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
                 .AddSingleton(new ChainSpec())
                 .AddSingleton(stateReader)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
             dbProvider.ConfigureServiceCollection(builder);
-
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
-
+            builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
             IContainer container = builder.Build();
 
-            _synchronizer = container.Resolve<Synchronizer>();
-
-            _syncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
-                _codeDb,
-                _blockTree,
-                _receiptStorage,
-                Always.Valid,
-                Always.Valid,
-                _pool,
-                container.Resolve<ISyncModeSelector>(),
-                quickConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
+            _pool = container.Resolve<ISyncPeerPool>();
+            _synchronizer = container.Resolve<ISynchronizer>();
+            _syncServer = container.Resolve<ISyncServer>();
         }
 
         [TearDown]
@@ -155,6 +140,7 @@ namespace Nethermind.Synchronization.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
+            Stopwatch sw = Stopwatch.StartNew();
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);

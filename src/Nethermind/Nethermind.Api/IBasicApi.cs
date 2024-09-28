@@ -17,6 +17,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -43,7 +44,7 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
-        IBetterPeerStrategy? BetterPeerStrategy { get; set; }
+        IBetterPeerStrategy? BetterPeerStrategy { get; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
         IProcessExitSource? ProcessExit { get; set; }
@@ -61,9 +62,9 @@ namespace Nethermind.Api
 
         public ContainerBuilder ConfigureContainerBuilderFromBasicApi(ContainerBuilder builder)
         {
-            builder
-                .AddPropertiesFrom<IBasicApi>(this)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
+            builder.AddPropertiesFrom<IBasicApi>(this);
+            builder.Register<IEthereumEcdsa, IEcdsa>(ecdsa => ecdsa);
+            builder.RegisterSource(new ConfigRegistrationSource());
 
             DbProvider!.ConfigureServiceCollection(builder);
 
