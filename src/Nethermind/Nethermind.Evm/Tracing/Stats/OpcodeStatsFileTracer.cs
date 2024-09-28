@@ -15,11 +15,22 @@ using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 using Nethermind.Core.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
+using Nethermind.Core.Resettables;
 
 namespace Nethermind.Evm.Tracing.OpcodeStats;
 
-public class OpcodeStatsFileTracer : OpcodeStatsTracer
+public class OpcodeStatsFileTracer : BlockTracerBase<OpcodeStatsTxTrace, OpcodeStatsTxTracer>
 {
+
+
+    long _initialBlock = 0;
+    long _currentBlock = 0;
+    private OpcodeStatsTxTracer _tracer;
+    protected int _bufferSize;
+    private StatsAnalyzer _statsAnalyzer;
+    private McsLock _processingLock = new();
+    private HashSet<Instruction> _ignore;
+    private static readonly object _lock = new object();
 
     const string DefaultFile = "op_code_stats.json";
     private readonly string _fileName;
@@ -31,10 +42,17 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
     private static readonly object _fileLock = new object();
     private int _writeFreq = 1;
     private int _pos = 0;
+    private DisposableResettableList<Instruction> _buffer = new DisposableResettableList<Instruction>();
 
 
-    public OpcodeStatsFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer, HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, string? fileName) : base(bufferSize, statsAnalyzer, ignore)
+    public OpcodeStatsFileTracer(int processingQueueSize, int bufferSize, StatsAnalyzer statsAnalyzer, HashSet<Instruction> ignore, IFileSystem fileSystem, ILogger logger, int writeFreq, string? fileName) : base()
     {
+
+        _bufferSize = bufferSize;
+        _statsAnalyzer = statsAnalyzer;
+        _ignore = ignore;
+
+        _tracer = new OpcodeStatsTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _writeFreq = writeFreq;
         _fileTracingQueueSize = processingQueueSize;
@@ -46,10 +64,12 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
 
     public override void EndBlockTrace()
     {
+
         if (_fileTracingQueueSize < 1) return;
 
         _pos = (_pos + 1) % _writeFreq;
 
+        if (_pos != 0) return;
 
         if ((_fileTracingQueue.Count >= _fileTracingQueueSize) && _fileTracingQueue.Count > 0)
         {
@@ -69,18 +89,30 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
             }
         }
 
-        var pos = _pos;
+        var tracer = _tracer;
+        var initialBlockNumber = _initialBlock;
+        var currentBlockNumber = _currentBlock;
+
+        _buffer = new DisposableResettableList<Instruction>();
+        _tracer = new OpcodeStatsTxTracer(_buffer, _ignore, _bufferSize, _processingLock, _statsAnalyzer);
+
         var task = Task.Run(() =>
         {
-            try
-            {
-                base.EndBlockTrace();
-                DumpStats(pos);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error in EndBlockTrace task: {ex.Message}");
-            }
+
+                lock (_fileLock)
+                {
+                    try
+                    {
+                        var processingLock = _processingLock.Acquire();
+                        WriteTrace(initialBlockNumber, currentBlockNumber, tracer, _fileName, _fileSystem, _serializerOptions);
+                        processingLock.Dispose();
+                    }
+                    catch (IOException ex)
+                    {
+                        _logger.Error($"Error writing to file {_fileName}: {ex.Message}");
+                        throw;
+                    }
+                }
         });
 
         _fileTracingQueue.Add(task);
@@ -93,45 +125,49 @@ public class OpcodeStatsFileTracer : OpcodeStatsTracer
         _fileTracingQueue.RemoveAll(t => t.IsCompleted || t.IsFaulted || t.IsCanceled);
     }
 
-
-
-    private void DumpStats(int pos)
+    public override void EndTxTrace()
     {
-        var trace = BuildResult().First();
-        if (pos != 0 ) return;
+        _tracer.AddTxEndMarker();
+    }
 
-        if (_logger.IsInfo) _logger.Info($"Writing stats to file: {_fileName}");
+    public static void WriteTrace(long initialBlockNumber, long currentBlockNumber, OpcodeStatsTxTracer tracer, string fileName, IFileSystem fileSystem, JsonSerializerOptions serializerOptions)
+    {
+        OpcodeStatsTxTrace trace = tracer.BuildResult();
+        trace.InitialBlockNumber = initialBlockNumber;
+        trace.CurrentBlockNumber = currentBlockNumber;
 
-        // Ensure only one task writes to the file at a time
-        lock (_fileLock)
+        File.WriteAllText(fileName, string.Empty);
+
+        // Open the file for writing, using 'using' block to ensure it is closed after writing
+        using (var _file = fileSystem.File.OpenWrite(fileName))
+        using (var jsonWriter = new Utf8JsonWriter(_file))
         {
-            try
-            {
-                File.WriteAllText(_fileName, string.Empty);
-
-                // Open the file for writing, using 'using' block to ensure it is closed after writing
-                using (var _file = _fileSystem.File.OpenWrite(_fileName))
-                using (var jsonWriter = new Utf8JsonWriter(_file))
-                {
-                    JsonSerializer.Serialize(jsonWriter, trace, _serializerOptions);
-                }
-            }
-            catch (IOException ex)
-            {
-                _logger.Error($"Error writing to file {_fileName}: {ex.Message}");
-                throw;
-            }
+            JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
         }
     }
-    private void _DumpStats()
+
+    public OpcodeStatsTxTracer StartNewTxTrace(Transaction? tx) => _tracer;
+
+    public override void StartNewBlockTrace(Block block)
     {
-        if (_logger.IsInfo) _logger.Info($"Building Result.....");
-        var trace = BuildResult().First();
-        if (_logger.IsInfo) _logger.Info($"Built Result, writing to file: {_fileName}");
-        File.WriteAllText(_fileName, String.Empty);
-        var _file = _fileSystem.File.OpenWrite(_fileName);
-        var jsonWriter = new Utf8JsonWriter(_file);
-        JsonSerializer.Serialize(jsonWriter, trace, _serializerOptions);
+            base.StartNewBlockTrace(block);
+            var number = block.Header.Number;
+            if (_initialBlock == 0)
+                _initialBlock = number;
+            _currentBlock = number;
+
+    }
+
+
+    protected override OpcodeStatsTxTracer OnStart(Transaction? tx)
+    {
+        return _tracer;
+    }
+
+
+    protected override OpcodeStatsTxTrace OnEnd(OpcodeStatsTxTracer txTracer)
+    {
+        throw new NotImplementedException();
     }
 
 }

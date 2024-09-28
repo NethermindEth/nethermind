@@ -9,20 +9,14 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
     public class OpcodeStatsQueue : IDisposable
     {
 
-        public readonly int Size;
         private StatsAnalyzer _statsAnalyzer;
         private DisposableResettableList<Instruction> _queue;
-        //private Instruction[] _queue;
-        //private int bufferPos = 0;
         private bool disposed = false;
-        private readonly McsLock _processingLock;
 
-        public OpcodeStatsQueue(int size, StatsAnalyzer statsAnalyzer, McsLock processingLock)
+        public OpcodeStatsQueue(DisposableResettableList<Instruction> buffer, StatsAnalyzer statsAnalyzer)
         {
-            Size = size;
             _statsAnalyzer = statsAnalyzer;
-            _queue = new DisposableResettableList<Instruction>(); //new Instruction[size];
-            _processingLock = processingLock;
+            _queue = buffer;
         }
 
         public void Enqueue(Instruction item)
@@ -47,10 +41,8 @@ namespace Nethermind.Evm.CodeAnalysis.StatsAnalyzer
             {
                 if (disposing)
                 {
-                    var dispasable = _processingLock.Acquire();
                     _statsAnalyzer.Add(_queue);
-                    dispasable.Dispose();
-                    _queue.Dispose();
+                    _queue.Reset();
 
                 }
                 disposed = true;

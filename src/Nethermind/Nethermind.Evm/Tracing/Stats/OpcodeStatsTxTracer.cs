@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.CodeAnalysis.StatsAnalyzer;
 
@@ -18,7 +19,7 @@ public class OpcodeStatsTxTracer : TxTracer
     private OpcodeStatsQueue? _queue = null;
     private HashSet<Instruction> _ignoreSet;
     private McsLock _processingLock;
-
+    DisposableResettableList<Instruction> _buffer;
     //  public OpcodeStatsTxTracer(OpcodeStatsTracer blockTracer, OpcodeStatsQueue queue, StatsAnalyzer statsAnalyzer)
     //  {
     //      _statsAnalyzer = statsAnalyzer;
@@ -27,12 +28,13 @@ public class OpcodeStatsTxTracer : TxTracer
     //      IsTracingInstructions = true;
     //  }
 
-    public OpcodeStatsTxTracer(HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
+    public OpcodeStatsTxTracer(DisposableResettableList<Instruction> buffer, HashSet<Instruction> ignoreSet, int size, McsLock processingLock, StatsAnalyzer statsAnalyzer)
     {
         _ignoreSet = ignoreSet;
         _statsAnalyzer = statsAnalyzer;
         _processingLock = processingLock;
-        _queue = new(size, statsAnalyzer, processingLock);
+        _buffer = buffer;
+        _queue = new(buffer, statsAnalyzer);
         IsTracingInstructions = true;
     }
 
@@ -47,7 +49,7 @@ public class OpcodeStatsTxTracer : TxTracer
         using (var q = _queue)
         {
             _queue = null;
-            _queue = new(q.Size, _statsAnalyzer, _processingLock);
+            _queue = new(_buffer, _statsAnalyzer);
             q.Dispose();
         }
     }
