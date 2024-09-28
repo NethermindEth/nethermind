@@ -79,21 +79,21 @@ namespace Nethermind.Blockchain.Test.Receipts
             { MigratedBlockNumber = 0 };
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Returns_null_for_missing_tx()
         {
             Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void ReceiptsIterator_doesnt_throw_on_empty_span()
         {
             _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
             iterator.TryGetNext(out _).Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void ReceiptsIterator_doesnt_throw_on_null()
         {
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null!);
@@ -101,13 +101,13 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out _).Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Get_returns_empty_on_empty_span()
         {
             _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block()
         {
             var (block, receipts) = InsertBlock();
@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Length.Should().Be(receipts.Length);
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Should_not_cache_empty_non_processed_blocks()
         {
             Block block = Build.A.Block
@@ -181,7 +181,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Get(block).Should().BeEquivalentTo(receipts);
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
         {
             var (block, receipts) = InsertBlock();
@@ -193,7 +193,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block_with_iterator()
         {
             var (block, _) = InsertBlock();
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
         {
             var (block, receipts) = InsertBlock();
@@ -221,27 +221,27 @@ namespace Nethermind.Blockchain.Test.Receipts
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Should_handle_inserting_null_receipts()
         {
             Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
             _storage.Insert(block, null);
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void HasBlock_should_returnFalseForMissingHash()
         {
             _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void HasBlock_should_returnTrueForKnownHash()
         {
             var (block, _) = InsertBlock();
             _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void EnsureCanonical_should_change_tx_blockhash(
             [Values(false, true)] bool ensureCanonical,
             [Values(false, true)] bool isFinalized)

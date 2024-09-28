@@ -247,7 +247,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
         }
 
-        [Test, Timeout(10000)]
+        [Test, CancelAfter(10000)]
         public async Task Simple_test_sync()
         {
             TestSyncFeed syncFeed = new();

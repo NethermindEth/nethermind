@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test
 {
     public class TransactionComparisonTests
     {
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         [TestCase(10, 10, 0)]
         [TestCase(15, 10, -1)]
         [TestCase(2, 3, 1)]
@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Test
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         [TestCase(10, 10, 0)]
         [TestCase(15, 10, -1)]
         [TestCase(2, 3, 1)]
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         // head block number before eip 1559 transition
         [TestCase(10, 10, 0, 0, 0)]
         [TestCase(15, 10, 10, 1, -1)]
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test
             AssertLegacyTransactions(comparer, gasPriceX, gasPriceY, expectedResult);
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         // head block number before eip 1559 transition
         [TestCase(10, 10, 0, 0, 0)]
         [TestCase(15, 10, 10, 1, -1)]
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain.Test
             Assert.That(result, Is.EqualTo(expectedResult));
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         [TestCase(10, 5, 12, 4, 4, 6, -1)]
         [TestCase(10, 5, 12, 4, 10, 6, 1)]
         [TestCase(10, 4, 12, 4, 4, 6, 1)]
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Test
             Assert1559Transactions(comparer, feeCapX, gasPremiumX, feeCapY, gasPremiumY, expectedResult);
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         [TestCase(4, 3, 1, 3, 1)]
         [TestCase(4, 3, 3, 1, -1)]
         [TestCase(4, 3, 0, 0, 0)]
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test
             Assert.That(result, Is.EqualTo(expectedResult));
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [CancelAfter(Timeout.MaxTestTime)]
         [TestCase(10, 5, 12, 4, 4, 6, -1)]
         [TestCase(10, 5, 12, 4, 10, 6, 1)]
         [TestCase(10, 4, 12, 4, 4, 6, 1)]

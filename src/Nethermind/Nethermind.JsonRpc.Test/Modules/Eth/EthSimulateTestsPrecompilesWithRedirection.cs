@@ -16,7 +16,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
 
@@ -68,7 +67,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
-        Assert.IsNotNull(returnData);
+        Assert.That(returnData, Is.Not.Null);
     }
 
 
@@ -182,7 +181,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
-        Assert.IsTrue(chain.State.AccountExists(contractAddress));
+        Assert.That(chain.State.AccountExists(contractAddress), Is.True);
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 

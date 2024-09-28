@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class DaoDataTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Test()
         {
             DaoData.DaoAccounts.Should().HaveCount(116);

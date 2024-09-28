@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public class DevBlockProducerTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Test()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;

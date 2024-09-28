@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public class BuildBlocksWhenRequestedTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void Manual_trigger_works()
         {
             bool triggered = false;

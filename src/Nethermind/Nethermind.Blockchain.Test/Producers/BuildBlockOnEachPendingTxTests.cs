@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public class BuildBlockOnEachPendingTxTests
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, CancelAfter(Timeout.MaxTestTime)]
         public void On_pending_trigger_works()
         {
             int triggered = 0;
