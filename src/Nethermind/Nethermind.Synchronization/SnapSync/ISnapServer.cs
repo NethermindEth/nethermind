@@ -25,6 +25,8 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface ISnapServer
 {
+    bool IsEnabled { get; }
+
     IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
     IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 

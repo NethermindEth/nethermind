@@ -13,6 +13,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -43,6 +44,20 @@ namespace Nethermind.Network.Rlpx
         private readonly IEventExecutorGroup _group;
         private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
+
+        public RlpxHost(
+            IMessageSerializationService serializationService,
+            ProtectedPrivateKey nodeKey,
+            INetworkConfig networkConfig,
+            IHandshakeService handshakeService,
+            ISessionMonitor sessionMonitor,
+            IDisconnectsAnalyzer disconnectsAnalyzer,
+            ILogManager logManager
+        ) : this(serializationService, nodeKey.PublicKey, networkConfig.ProcessingThreadCount, networkConfig.P2PPort,
+            networkConfig.LocalIp, networkConfig.ConnectTimeoutMs, handshakeService, sessionMonitor, disconnectsAnalyzer,
+            logManager, TimeSpan.FromMilliseconds(networkConfig.SimulateSendLatencyMs))
+        {
+        }
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,

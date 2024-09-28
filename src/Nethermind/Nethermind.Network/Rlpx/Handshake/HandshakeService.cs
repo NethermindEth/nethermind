@@ -34,6 +34,17 @@ namespace Nethermind.Network.Rlpx.Handshake
             IEciesCipher eciesCipher,
             ICryptoRandom cryptoRandom,
             IEcdsa ecdsa,
+            ProtectedPrivateKey privateKey,
+            ILogManager logManager)
+            : this(messageSerializationService, eciesCipher, cryptoRandom, ecdsa, privateKey.Unprotect(), logManager)
+        {
+        }
+
+        public HandshakeService(
+            IMessageSerializationService messageSerializationService,
+            IEciesCipher eciesCipher,
+            ICryptoRandom cryptoRandom,
+            IEcdsa ecdsa,
             PrivateKey privateKey,
             ILogManager logManager)
         {

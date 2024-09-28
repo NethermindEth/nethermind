@@ -55,6 +55,7 @@ namespace Nethermind.Db
                 var db = GetDb<IDb>(dbName);
                 sc.AddKeyedSingleton<IDb>(dbName, db);
                 sc.AddKeyedSingleton<IDbMeta>(dbName, db);
+                sc.AddKeyedSingleton<IReadOnlyKeyValueStore>(dbName, db);
                 if (db is ITunableDb tunableDb)
                 {
                     sc.AddKeyedSingleton<ITunableDb>(dbName, tunableDb);

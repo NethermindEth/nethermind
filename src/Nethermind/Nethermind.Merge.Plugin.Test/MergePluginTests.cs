@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -12,6 +13,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -36,7 +38,7 @@ public class MergePluginTests
         BlocksConfig? miningConfig = new();
         IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
-        _context = Build.ContextWithMocks();
+        _context = Build.ContextWithoutContainer();
         _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
@@ -68,6 +70,15 @@ public class MergePluginTests
         _consensusPlugin = new();
     }
 
+    private ContainerBuilder CreateContainerBuilder()
+    {
+        ContainerBuilder builder = new ContainerBuilder();
+        ((IApiWithNetwork)_context).ConfigureContainerBuilderFromApiWithNetwork(builder);
+        builder.RegisterModule(new NetworkModule());
+        builder.RegisterModule(new SynchronizerModule(syncConfig));
+        return builder;
+    }
+
     [TearDown]
     public void TearDown() => _plugin.DisposeAsync().GetAwaiter().GetResult();
 
@@ -95,7 +106,12 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
+
+        ContainerBuilder builder = CreateContainerBuilder();
+        _plugin.ConfigureSynchronizationBuilder(builder);
+        IContainer container = builder.Build();
+
+        Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization(container));
         Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
         Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
@@ -106,7 +122,12 @@ public class MergePluginTests
     {
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(_context));
         await _plugin.Init(_context);
-        await _plugin.InitSynchronization();
+
+        ContainerBuilder builder = CreateContainerBuilder();
+        _plugin.ConfigureSynchronizationBuilder(builder);
+        IContainer container = builder.Build();
+
+        await _plugin.InitSynchronization(container);
         await _plugin.InitNetworkProtocol();
         ISyncConfig syncConfig = _context.Config<ISyncConfig>();
         Assert.IsTrue(syncConfig.NetworkingEnabled);
