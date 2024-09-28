@@ -178,7 +178,7 @@ namespace Nethermind.Clique.Test
                     MinGasPrice = 0
                 };
                 ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider, blocksConfig);
-                TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+                TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline, ConstantEip4844Config.Instance);
                 CliqueBlockProducer blockProducer = new(
                     txPoolTxSource,
                     minerProcessor,

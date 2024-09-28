@@ -3,6 +3,7 @@
 
 using System.Reflection.Metadata;
 using System.Text;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -17,6 +18,20 @@ namespace Nethermind.Config
 
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;
+
+        public int? BlobProductionLimit
+        {
+            get => _eip4844Config?.GetMaxBlobsPerBlock();
+            set
+            {
+                if (BlobProductionLimit != value)
+                {
+                    _eip4844Config = value is null || value == ConstantEip4844Config.Instance.GetMaxBlobsPerBlock()
+                        ? null
+                        : new CappedEip4844Config(value.Value);
+                }
+            }
+        }
 
         public UInt256 MinGasPrice { get; set; } = 1.Wei();
 
@@ -54,5 +69,8 @@ namespace Nethermind.Config
         {
             return _extraDataBytes;
         }
+
+        private IEip4844Config _eip4844Config = null;
+        public IEip4844Config GetEip4844Config() => _eip4844Config ?? ConstantEip4844Config.Instance;
     }
 }

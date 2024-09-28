@@ -21,30 +21,20 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class TxPoolTxSource : ITxSource
+    public class TxPoolTxSource(
+        ITxPool? transactionPool,
+        ISpecProvider? specProvider,
+        ITransactionComparerProvider? transactionComparerProvider,
+        ILogManager? logManager,
+        ITxFilterPipeline? txFilterPipeline,
+        IEip4844Config eip4844Config)
+        : ITxSource
     {
-        private readonly ITxPool _transactionPool;
-        private readonly ITransactionComparerProvider _transactionComparerProvider;
-        private readonly ITxFilterPipeline _txFilterPipeline;
-        private readonly ISpecProvider _specProvider;
-        protected readonly ILogger _logger;
-        private readonly IEip4844Config _eip4844Config;
-
-        public TxPoolTxSource(
-            ITxPool? transactionPool,
-            ISpecProvider? specProvider,
-            ITransactionComparerProvider? transactionComparerProvider,
-            ILogManager? logManager,
-            ITxFilterPipeline? txFilterPipeline,
-            IEip4844Config? eip4844ConstantsProvider = null)
-        {
-            _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
-            _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
-            _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-            _eip4844Config = eip4844ConstantsProvider ?? ConstantEip4844Config.Instance;
-        }
+        private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+        private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
+        private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
@@ -62,7 +52,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new(_eip4844Config.GetMaxBlobsPerBlock());
+            using ArrayPoolList<Transaction> selectedBlobTxs = new(eip4844Config.GetMaxBlobsPerBlock());
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
@@ -128,7 +118,7 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock)
+                if (blobGasCounter >= eip4844Config.MaxBlobGasPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
                     break;
@@ -136,8 +126,8 @@ namespace Nethermind.Consensus.Producers
 
                 checkedBlobTransactions++;
 
-                ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
-                if (txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
+                ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * eip4844Config.GasPerBlob;
+                if (txBlobGas > eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;

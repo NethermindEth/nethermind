@@ -331,7 +331,7 @@ public class TestBlockchain : IDisposable
             MinGasPrice = 0
         };
         ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LogManager, SpecProvider, blocksConfig);
-        return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
+        return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline, blocksConfig.GetEip4844Config());
     }
 
     public BlockBuilder GenesisBlockBuilder { get; set; } = null!;

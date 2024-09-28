@@ -39,6 +39,7 @@ public class StartBlockProducerAuRa
     private INethermindApi NethermindApi => _api;
 
     private readonly IAuraConfig _auraConfig;
+    private readonly IBlocksConfig _blocksConfig;
     private IAuRaValidator? _validator;
     private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
     private TxPriorityContract? _txPriorityContract;
@@ -49,6 +50,7 @@ public class StartBlockProducerAuRa
     {
         _api = api;
         _auraConfig = NethermindApi.Config<IAuraConfig>();
+        _blocksConfig = NethermindApi.Config<IBlocksConfig>();
     }
 
     private IAuRaStepCalculator StepCalculator
@@ -99,7 +101,7 @@ public class StartBlockProducerAuRa
             gasLimitCalculator,
             _api.SpecProvider,
             _api.LogManager,
-            _api.ConfigProvider.GetConfig<IBlocksConfig>());
+            _blocksConfig);
 
         return blockProducer;
     }
@@ -130,7 +132,7 @@ public class StartBlockProducerAuRa
                 _api.FinalizationManager,
                 NullTxSender.Instance,
                 NullTxPool.Instance,
-                NethermindApi.Config<IBlocksConfig>(),
+                _blocksConfig,
                 _api.LogManager,
                 _api.EngineSigner,
                 _api.SpecProvider,
@@ -207,9 +209,9 @@ public class StartBlockProducerAuRa
 
             return new TxPriorityTxSource(
                 _api.TxPool,
-                _api.StateReader,
                 _api.LogManager,
                 txFilterPipeline,
+                _blocksConfig.GetEip4844Config(),
                 whitelistContractDataStore,
                 prioritiesContractDataStore,
                 _api.SpecProvider,
@@ -268,7 +270,7 @@ public class StartBlockProducerAuRa
             .WithCustomTxFilter(txSourceFilter)
             .WithBaseFeeFilter(_api.SpecProvider)
             .Build;
-        return new TxPoolTxSource(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline);
+        return new TxPoolTxSource(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline, _blocksConfig.GetEip4844Config());
     }
 
     private ITxFilter CreateAuraTxFilterForProducer() => TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, _minGasPricesContractDataStore);
@@ -353,13 +355,13 @@ public class StartBlockProducerAuRa
         return txSource;
     }
 
-    private static IGasLimitCalculator CreateGasLimitCalculator(AuRaNethermindApi api)
+    private IGasLimitCalculator CreateGasLimitCalculator(AuRaNethermindApi api)
     {
         if (api.ChainSpec is null) throw new StepDependencyException(nameof(api.ChainSpec));
         var blockGasLimitContractTransitions = api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
         IGasLimitCalculator gasLimitCalculator =
-            new TargetAdjustedGasLimitCalculator(api.SpecProvider, api.Config<IBlocksConfig>());
+            new TargetAdjustedGasLimitCalculator(api.SpecProvider, _blocksConfig);
         if (blockGasLimitContractTransitions?.Any() == true)
         {
             AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(

@@ -12,7 +12,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -25,14 +24,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public TxPriorityTxSource(
             ITxPool transactionPool,
-            IStateReader stateReader,
             ILogManager logManager,
             ITxFilterPipeline txFilterPipeline,
+            IEip4844Config eip4844Config,
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities,
             ISpecProvider specProvider,
             ITransactionComparerProvider transactionComparerProvider) // expected SortedList based
-            : base(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline)
+            : base(transactionPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, eip4844Config)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));

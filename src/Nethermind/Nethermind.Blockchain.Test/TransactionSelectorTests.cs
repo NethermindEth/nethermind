@@ -259,8 +259,7 @@ namespace Nethermind.Blockchain.Test
 
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
+            TxPoolTxSource poolTxSource = new(transactionPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, ConstantEip4844Config.Instance);
 
             BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)

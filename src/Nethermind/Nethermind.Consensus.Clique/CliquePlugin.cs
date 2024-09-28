@@ -134,14 +134,15 @@ namespace Nethermind.Consensus.Clique
                 TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
                     _nethermindApi.LogManager,
                     getFromApi.SpecProvider,
-                    _blocksConfig);
+                    _blocksConfig!);
 
             TxPoolTxSource txPoolTxSource = new(
                 getFromApi.TxPool,
                 getFromApi.SpecProvider,
                 transactionComparerProvider,
                 getFromApi.LogManager,
-                txFilterPipeline);
+                txFilterPipeline,
+                _blocksConfig!.GetEip4844Config());
 
             IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
