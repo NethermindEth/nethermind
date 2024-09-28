@@ -370,11 +370,11 @@ namespace Nethermind.Synchronization.Test
                     .AddSingleton(beaconPivot)
                     .AddSingleton(_logManager);
 
-                Nethermind.Synchronization.Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+                builder.RegisterModule(new SynchronizerModule(syncConfig));
 
                 if (IsMerge(synchronizerType))
                 {
-                    MergeSynchronizer.ConfigureMergeComponent(builder);
+                    builder.RegisterModule(new MergeSynchronizerModule());
                 }
 
                 IContainer container = builder.Build();

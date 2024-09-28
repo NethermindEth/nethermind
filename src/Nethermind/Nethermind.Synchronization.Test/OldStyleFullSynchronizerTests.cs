@@ -87,7 +87,8 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
             dbProvider.ConfigureServiceCollection(builder);
-            Synchronizer.ConfigureContainerBuilder(builder, syncConfig);
+
+            builder.RegisterModule(new SynchronizerModule(syncConfig));
 
             IContainer container = builder.Build();
 

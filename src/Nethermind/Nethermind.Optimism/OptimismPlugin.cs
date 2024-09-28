@@ -159,8 +159,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             .AddSingleton(_api.PoSSwitcher)
             .AddSingleton(_mergeConfig)
             .AddSingleton(_invalidChainTracker);
-        Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
-        MergeSynchronizer.ConfigureMergeComponent(builder);
+
+        builder.RegisterModule(new SynchronizerModule(_syncConfig));
+        builder.RegisterModule(new MergeSynchronizerModule());
+
         IContainer container = builder.Build();
 
         _api.ApiWithNetworkServiceContainer = container;

@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
@@ -54,119 +55,6 @@ namespace Nethermind.Synchronization
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
         public ISyncModeSelector SyncModeSelector => syncModeSelector;
-
-        public static void ConfigureContainerBuilder(ContainerBuilder builder, ISyncConfig syncConfig)
-        {
-            builder
-                .AddSingleton<ISynchronizer, Synchronizer>()
-
-                .AddSingleton<ISyncModeSelector, MultiSyncModeSelector>()
-                .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
-                .AddSingleton<ISyncReport, SyncReport>()
-                .AddSingleton<IFullStateFinder, FullStateFinder>()
-                .AddSingleton<SyncDbTuner>()
-                .AddSingleton<MallocTrimmer>()
-
-            // For blocks. There are two block scope, Fast and Full
-                .AddScoped<FeedComponent<BlocksRequest>>()
-                .AddScoped<ISyncDownloader<BlocksRequest>, BlockDownloader>()
-                .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
-                .AddScoped<SyncDispatcher<BlocksRequest>>()
-
-            // For headers. There are two header scope, Fast and Beacon
-                .AddScoped<FeedComponent<HeadersSyncBatch>>()
-                .AddScoped<ISyncDownloader<HeadersSyncBatch>, HeadersSyncDownloader>()
-                .AddScoped<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
-                .AddScoped<SyncDispatcher<HeadersSyncBatch>>()
-
-            // SyncProgress resolver need one header sync batch feed, which is the fast header one.
-                .Register(ctx => ctx
-                    .ResolveNamed<FeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
-                    .Feed)
-                .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
-
-            ConfigureSnapComponent(builder, syncConfig);
-            ConfigureReceiptSyncComponent(builder, syncConfig);
-            ConfigureBodiesSyncComponent(builder, syncConfig);
-            ConfigureStateSyncComponent(builder, syncConfig);
-
-            builder
-                .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed),
-                    scopeConfig =>
-                    {
-                        if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync)
-                        {
-                            scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, NoopSyncFeed<HeadersSyncBatch>>();
-                        }
-                        else
-                        {
-                            scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, HeadersSyncFeed>();
-                        }
-                    })
-                .RegisterNamedComponentInItsOwnLifetime<FeedComponent<BlocksRequest>>(nameof(FastSyncFeed),
-                scopeConfig => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FastSyncFeed>())
-                .RegisterNamedComponentInItsOwnLifetime<FeedComponent<BlocksRequest>>(nameof(FullSyncFeed),
-                    scopeConfig => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>());
-        }
-
-        private static void ConfigureSnapComponent(ContainerBuilder serviceCollection, ISyncConfig syncConfig)
-        {
-            serviceCollection
-                .AddSingleton<ProgressTracker>()
-                .AddSingleton<ISnapProvider, SnapProvider>();
-
-            ConfigureSingletonSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
-
-            if (!syncConfig.FastSync || !syncConfig.SnapSync)
-            {
-                serviceCollection.AddSingleton<ISyncFeed<SnapSyncBatch>, NoopSyncFeed<SnapSyncBatch>>();
-            }
-        }
-
-        private static void ConfigureReceiptSyncComponent(ContainerBuilder serviceCollection, ISyncConfig syncConfig)
-        {
-            ConfigureSingletonSyncFeed<ReceiptsSyncBatch, ReceiptsSyncFeed, ReceiptsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
-
-            if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
-                !syncConfig.DownloadBodiesInFastSync ||
-                !syncConfig.DownloadReceiptsInFastSync)
-            {
-                serviceCollection.AddSingleton<ISyncFeed<ReceiptsSyncBatch>, NoopSyncFeed<ReceiptsSyncBatch>>();
-            }
-        }
-
-        private static void ConfigureBodiesSyncComponent(ContainerBuilder serviceCollection, ISyncConfig syncConfig)
-        {
-            ConfigureSingletonSyncFeed<BodiesSyncBatch, BodiesSyncFeed, BodiesSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
-
-            if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
-                !syncConfig.DownloadBodiesInFastSync)
-            {
-                serviceCollection.AddSingleton<ISyncFeed<BodiesSyncBatch>, NoopSyncFeed<BodiesSyncBatch>>();
-            }
-
-        }
-
-        private static void ConfigureStateSyncComponent(ContainerBuilder serviceCollection, ISyncConfig syncConfig)
-        {
-            serviceCollection
-                .AddSingleton<TreeSync>();
-
-            ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
-
-            // Disable it by setting noop
-            if (!syncConfig.FastSync) serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
-        }
-
-        private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>
-        {
-            serviceCollection
-                .AddSingleton<ISyncFeed<TBatch>, TFeed>()
-                .AddSingleton<FeedComponent<TBatch>>()
-                .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()
-                .AddSingleton<IPeerAllocationStrategyFactory<TBatch>, TAllocationStrategy>()
-                .AddSingleton<SyncDispatcher<TBatch>>();
-        }
 
         public virtual void Start()
         {
@@ -372,4 +260,123 @@ namespace Nethermind.Synchronization
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
     }
+}
+
+public class SynchronizerModule(ISyncConfig syncConfig) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder
+            .AddSingleton<ISynchronizer, Synchronizer>()
+
+            .AddSingleton<ISyncModeSelector, MultiSyncModeSelector>()
+            .AddSingleton<ISyncProgressResolver, SyncProgressResolver>()
+            .AddSingleton<ISyncReport, SyncReport>()
+            .AddSingleton<IFullStateFinder, FullStateFinder>()
+            .AddSingleton<SyncDbTuner>()
+            .AddSingleton<MallocTrimmer>()
+
+            // For blocks. There are two block scope, Fast and Full
+            .AddScoped<FeedComponent<BlocksRequest>>()
+            .AddScoped<ISyncDownloader<BlocksRequest>, BlockDownloader>()
+            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
+            .AddScoped<SyncDispatcher<BlocksRequest>>()
+
+            // For headers. There are two header scope, Fast and Beacon
+            .AddScoped<FeedComponent<HeadersSyncBatch>>()
+            .AddScoped<ISyncDownloader<HeadersSyncBatch>, HeadersSyncDownloader>()
+            .AddScoped<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
+            .AddScoped<SyncDispatcher<HeadersSyncBatch>>()
+
+            // SyncProgress resolver need one header sync batch feed, which is the fast header one.
+            .Register(ctx => ctx
+                .ResolveNamed<FeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
+                .Feed)
+            .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
+
+        ConfigureSnapComponent(builder);
+        ConfigureReceiptSyncComponent(builder);
+        ConfigureBodiesSyncComponent(builder);
+        ConfigureStateSyncComponent(builder);
+
+        builder
+            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed),
+                scopeConfig =>
+                {
+                    if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync)
+                    {
+                        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, NoopSyncFeed<HeadersSyncBatch>>();
+                    }
+                    else
+                    {
+                        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, HeadersSyncFeed>();
+                    }
+                })
+            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<BlocksRequest>>(nameof(FastSyncFeed),
+                scopeConfig => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FastSyncFeed>())
+            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<BlocksRequest>>(nameof(FullSyncFeed),
+                scopeConfig => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>());
+    }
+
+    private void ConfigureSnapComponent(ContainerBuilder serviceCollection)
+    {
+        serviceCollection
+            .AddSingleton<ProgressTracker>()
+            .AddSingleton<ISnapProvider, SnapProvider>();
+
+        ConfigureSingletonSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
+
+        if (!syncConfig.FastSync || !syncConfig.SnapSync)
+        {
+            serviceCollection.AddSingleton<ISyncFeed<SnapSyncBatch>, NoopSyncFeed<SnapSyncBatch>>();
+        }
+    }
+
+    private void ConfigureReceiptSyncComponent(ContainerBuilder serviceCollection)
+    {
+        ConfigureSingletonSyncFeed<ReceiptsSyncBatch, ReceiptsSyncFeed, ReceiptsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
+
+        if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
+            !syncConfig.DownloadBodiesInFastSync ||
+            !syncConfig.DownloadReceiptsInFastSync)
+        {
+            serviceCollection.AddSingleton<ISyncFeed<ReceiptsSyncBatch>, NoopSyncFeed<ReceiptsSyncBatch>>();
+        }
+    }
+
+    private void ConfigureBodiesSyncComponent(ContainerBuilder serviceCollection)
+    {
+        ConfigureSingletonSyncFeed<BodiesSyncBatch, BodiesSyncFeed, BodiesSyncDownloader, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
+
+        if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
+            !syncConfig.DownloadBodiesInFastSync)
+        {
+            serviceCollection.AddSingleton<ISyncFeed<BodiesSyncBatch>, NoopSyncFeed<BodiesSyncBatch>>();
+        }
+
+    }
+
+    private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
+    {
+        serviceCollection
+            .AddSingleton<TreeSync>();
+
+        ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
+
+        // Disable it by setting noop
+        if (!syncConfig.FastSync) serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
+    }
+
+    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>
+    {
+        serviceCollection
+            .AddSingleton<ISyncFeed<TBatch>, TFeed>()
+            .AddSingleton<FeedComponent<TBatch>>()
+            .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<TBatch>, TAllocationStrategy>()
+            .AddSingleton<SyncDispatcher<TBatch>>();
+    }
+
 }

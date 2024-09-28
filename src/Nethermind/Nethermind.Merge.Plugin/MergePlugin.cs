@@ -447,8 +447,9 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 .AddSingleton<IBeaconPivot>(_beaconPivot)
                 .AddSingleton(_mergeConfig)
                 .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
-            Synchronizer.ConfigureContainerBuilder(builder, _syncConfig);
-            MergeSynchronizer.ConfigureMergeComponent(builder);
+
+            builder.RegisterModule(new SynchronizerModule(_syncConfig));
+            builder.RegisterModule(new MergeSynchronizerModule());
 
             IContainer container = builder.Build();
             _api.ApiWithNetworkServiceContainer = container;

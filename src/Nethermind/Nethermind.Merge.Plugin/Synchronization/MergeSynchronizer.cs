@@ -26,21 +26,6 @@ public class MergeSynchronizer(
     private readonly CancellationTokenSource? _syncCancellation = new();
     private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
-    public static void ConfigureMergeComponent(ContainerBuilder serviceCollection)
-    {
-        serviceCollection
-            .AddSingleton<ISynchronizer, MergeSynchronizer>()
-
-            .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
-            .AddScoped<BlockDownloader, MergeBlockDownloader>()
-            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
-
-            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed),
-                scopeConfig => scopeConfig
-                    .AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
-                    .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>());
-    }
-
     public event EventHandler<SyncEventArgs>? SyncEvent
     {
         add => baseSynchronizer.SyncEvent += value;
@@ -88,5 +73,27 @@ public class MergeSynchronizer(
     public void Dispose()
     {
         baseSynchronizer.Dispose();
+    }
+}
+
+public class MergeSynchronizerModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            .RegisterType<MergeBlockDownloader>()
+            .As<BlockDownloader>()
+            .As<ISyncDownloader<BlocksRequest>>()
+            .InstancePerLifetimeScope();
+
+        builder
+            .AddSingleton<ISynchronizer, MergeSynchronizer>()
+            .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
+            .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
+
+            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed),
+                scopeConfig => scopeConfig
+                    .AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
+                    .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>());
     }
 }
