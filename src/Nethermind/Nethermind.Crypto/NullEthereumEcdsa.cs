@@ -12,6 +12,8 @@ namespace Nethermind.Crypto
     {
         public static NullEthereumEcdsa Instance { get; } = new();
 
+        public ulong ChainId => 0;
+
         private NullEthereumEcdsa()
         {
         }
@@ -57,11 +59,6 @@ namespace Nethermind.Crypto
         }
 
         public Address? RecoverAddress(AuthorizationTuple tuple)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public AuthorizationTuple Sign(PrivateKey authority, ulong chainId, Address codeAddress, ulong nonce)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

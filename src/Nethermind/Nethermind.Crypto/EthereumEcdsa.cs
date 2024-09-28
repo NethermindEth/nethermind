@@ -37,32 +37,6 @@ namespace Nethermind.Crypto
             _chainIdValue = chainId;
         }
 
-        public void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled)
-        {
-            if (tx.Type != TxType.Legacy)
-            {
-                tx.ChainId = _chainIdValue;
-            }
-
-            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
-            tx.Signature = Sign(privateKey, hash);
-
-            if (tx.Type == TxType.Legacy && isEip155Enabled)
-            {
-                tx.Signature.V = tx.Signature.V + 8 + 2 * _chainIdValue;
-            }
-        }
-
-        public AuthorizationTuple Sign(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
-        {
-            using NettyRlpStream rlp = _tupleDecoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
-            Span<byte> code = stackalloc byte[rlp.Length + 1];
-            code[0] = Eip7702Constants.Magic;
-            rlp.AsSpan().CopyTo(code.Slice(1));
-            Signature sig = Sign(signer, Keccak.Compute(code));
-            return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
-        }
-
         /// <summary>
         ///
         /// </summary>
@@ -141,6 +115,36 @@ namespace Nethermind.Crypto
                 false);
 
             return !success ? null : PublicKey.ComputeAddress(publicKey.Slice(1, 64));
+        }
+    }
+
+    public static class EthereumEcdsaExtension
+    {
+
+        public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
+        {
+            using NettyRlpStream rlp = AuthorizationTupleDecoder.Instance.EncodeWithoutSignature(chainId, codeAddress, nonce);
+            Span<byte> preImage = stackalloc byte[rlp.Length + 1];
+            preImage[0] = Eip7702Constants.Magic;
+            rlp.AsSpan().CopyTo(preImage.Slice(1));
+            Signature sig = ecdsa.Sign(signer, Keccak.Compute(preImage));
+            return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
+        }
+
+        public static void Sign(this IEthereumEcdsa ecdsa, PrivateKey privateKey, Transaction tx, bool isEip155Enabled = true)
+        {
+            if (tx.Type != TxType.Legacy)
+            {
+                tx.ChainId = ecdsa.ChainId;
+            }
+
+            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, ecdsa.ChainId).Bytes);
+            tx.Signature = ecdsa.Sign(privateKey, hash);
+
+            if (tx.Type == TxType.Legacy && isEip155Enabled)
+            {
+                tx.Signature.V = tx.Signature.V + 8 + 2 * ecdsa.ChainId;
+            }
         }
     }
 }

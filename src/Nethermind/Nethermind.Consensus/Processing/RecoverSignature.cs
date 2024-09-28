@@ -82,7 +82,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (tx.HasAuthorizationList)
                     {
-                        for(int i = 0; i < tx.AuthorizationList.Length; i++)
+                        for (int i = 0; i < tx.AuthorizationList.Length; i++)
                         {
                             AuthorizationTuple tuple = tx.AuthorizationList[i];
                             if (tuple.Authority is null)
@@ -142,14 +142,14 @@ namespace Nethermind.Consensus.Processing
                 {
                     Parallel.ForEach(tx.AuthorizationList, (tuple) =>
                     {
-                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
                     });
                 }
                 else
                 {
                     foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                     {
-                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                        tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
                     }
                 }
             }
@@ -157,6 +157,6 @@ namespace Nethermind.Consensus.Processing
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ShouldRecoverSignatures(Transaction tx)
-            => tx.IsSigned && tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a=>a.Authority is null));
+            => tx.IsSigned && tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a => a.Authority is null));
     }
 }
