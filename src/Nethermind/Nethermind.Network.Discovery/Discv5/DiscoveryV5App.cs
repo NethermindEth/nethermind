@@ -25,11 +25,15 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
+using Prometheus;
 
 namespace Nethermind.Network.Discovery.Discv5;
 
 public class DiscoveryV5App : IDiscoveryApp
 {
+    private Counter DiscV5NodeAdded = Prometheus.Metrics.CreateCounter("discv5_node_added", "Peer count");
+    private Counter DiscV5TryGetNodeStatus = Prometheus.Metrics.CreateCounter("discv5_try_get_node", "Discv5 try get node", "status");
+
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
     private readonly IDb _discoveryDb;
@@ -138,21 +142,25 @@ public class DiscoveryV5App : IDiscoveryApp
         if (!enr.HasKey(EnrEntryKey.Tcp))
         {
             if (_logger.IsTrace) _logger.Trace($"Enr declined, no TCP port.");
+            DiscV5TryGetNodeStatus.WithLabels("no_tcp").Inc();
             return false;
         }
         if (!enr.HasKey(EnrEntryKey.Ip))
         {
             if (_logger.IsTrace) _logger.Trace($"Enr declined, no IP.");
+            DiscV5TryGetNodeStatus.WithLabels("no_ip").Inc();
             return false;
         }
         if (!enr.HasKey(EnrEntryKey.Secp256K1))
         {
             if (_logger.IsTrace) _logger.Trace($"Enr declined, no signature.");
+            DiscV5TryGetNodeStatus.WithLabels("no_signature").Inc();
             return false;
         }
         if (enr.HasKey(EnrEntryKey.Eth2))
         {
             if (_logger.IsTrace) _logger.Trace($"Enr declined, ETH2 detected.");
+            DiscV5TryGetNodeStatus.WithLabels("eth2").Inc();
             return false;
         }
 
@@ -160,6 +168,7 @@ public class DiscoveryV5App : IDiscoveryApp
         if (key is null)
         {
             if (_logger.IsTrace) _logger.Trace($"Enr declined, unable to extract public key.");
+            DiscV5TryGetNodeStatus.WithLabels("pubkey_extract_failure").Inc();
             return false;
         }
 
@@ -167,6 +176,7 @@ public class DiscoveryV5App : IDiscoveryApp
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
 
         node = new(key, ip.ToString(), tcpPort);
+        DiscV5TryGetNodeStatus.WithLabels("ok").Inc();
         return true;
     }
 
@@ -203,7 +213,7 @@ public class DiscoveryV5App : IDiscoveryApp
     {
         await _discv5Protocol.InitAsync();
 
-        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
+        if (_logger.IsError) _logger.Error($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
     }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
@@ -251,6 +261,7 @@ public class DiscoveryV5App : IDiscoveryApp
                     _discoveryReport?.NodeFound();
                 }
 
+                DiscV5NodeAdded.Inc();
                 if (!checkedNodes.Add(newEntry))
                 {
                     continue;

@@ -18,6 +18,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
+using Prometheus;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
@@ -35,6 +36,8 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;
     private readonly INetworkConfig _networkConfig;
+
+    private Counter DiscV4NodeAdded = Prometheus.Metrics.CreateCounter("discv4_node_added", "Peer count");
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _storageCommitTask;
@@ -483,6 +486,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     private void OnNodeDiscovered(object? sender, NodeEventArgs e)
     {
+        DiscV4NodeAdded.Inc();
         NodeAdded?.Invoke(this, e);
     }
 

@@ -167,6 +167,11 @@ namespace Nethermind.Network
             return _updateCounter > 0 || _removeCounter > 0;
         }
 
+        public void Clear()
+        {
+            _fullDb.Clear();
+        }
+
         private static NetworkNode GetNode(byte[] networkNodeRaw)
         {
             NetworkNode persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);

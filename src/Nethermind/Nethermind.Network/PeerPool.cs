@@ -15,6 +15,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Prometheus;
 
 namespace Nethermind.Network
 {
@@ -40,6 +41,12 @@ namespace Nethermind.Network
         public int ActivePeerCount => ActivePeers.Count;
         public int StaticPeerCount => _staticPeers.Count;
 
+        private Gauge PeerCountG = Prometheus.Metrics.CreateGauge("peer_pool_peer_count", "Peer count");
+        private Gauge ActivePeerCountG = Prometheus.Metrics.CreateGauge("peer_pool_active_peer_count", "Peer count");
+        private Counter ThrottledC = Prometheus.Metrics.CreateCounter("peer_pool_throttled", "Peer count");
+        private Counter TryAddC = Prometheus.Metrics.CreateCounter("peer_pool_try_add", "Peer count");
+        private Counter AddedC = Prometheus.Metrics.CreateCounter("peer_pool_added", "Peer count");
+
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
         readonly Func<PublicKeyAsKey, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNodePeer;
@@ -56,6 +63,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _peerStorage.Clear();
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -73,11 +81,15 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
+            PeerCountG.Set(PeerCount);
+            ActivePeerCountG.Set(ActivePeerCount);
             return Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
         }
 
         public Peer GetOrAdd(NetworkNode node)
         {
+            PeerCountG.Set(PeerCount);
+            ActivePeerCountG.Set(ActivePeerCount);
             return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
         }
 
@@ -94,6 +106,7 @@ namespace Nethermind.Network
                 arg.Statics.TryAdd(arg.Node.Id, peer);
             }
 
+            AddedC.Inc();
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
         }
@@ -103,17 +116,22 @@ namespace Nethermind.Network
             Node node = new(arg.Node);
             Peer peer = new(node, _stats.GetOrAdd(node));
 
+            AddedC.Inc();
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
         }
 
         public bool TryGet(PublicKey id, out Peer peer)
         {
+            ActivePeerCountG.Set(ActivePeerCount);
+            PeerCountG.Set(PeerCount);
             return Peers.TryGetValue(id, out peer);
         }
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
+            ActivePeerCountG.Set(ActivePeerCount);
+            PeerCountG.Set(PeerCount);
             if (Peers.TryRemove(id, out peer))
             {
                 _staticPeers.TryRemove(id, out _);
@@ -130,6 +148,8 @@ namespace Nethermind.Network
 
         public Peer Replace(ISession session)
         {
+            ActivePeerCountG.Set(ActivePeerCount);
+            PeerCountG.Set(PeerCount);
             if (Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer previousPeer))
             {
                 // this should happen
@@ -280,10 +300,12 @@ namespace Nethermind.Network
                 while (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers)
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                    ThrottledC.Inc();
                     await Task.Delay(1000, token);
                 }
 
                 GetOrAdd(node);
+                TryAddC.Inc();
             }
         }
 

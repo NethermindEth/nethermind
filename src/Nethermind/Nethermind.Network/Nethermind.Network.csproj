@@ -35,4 +35,9 @@
   <ItemGroup>
     <None Remove="Whisper\**" />
   </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Prometheus.NetStandard">
+      <HintPath>..\..\..\..\..\.nuget\packages\prometheus-net\8.2.1\lib\net7.0\Prometheus.NetStandard.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 </Project>

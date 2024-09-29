@@ -18,5 +18,6 @@ namespace Nethermind.Network
         void StartBatch();
         void Commit();
         bool AnyPendingChange();
+        void Clear();
     }
 }
