@@ -24,6 +24,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv5;
 using NBitcoin.Secp256k1;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery;
 
@@ -72,8 +73,21 @@ public class DiscoveryV5App : IDiscoveryApp
                 .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
             // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
+            .. _discoveryDb.GetAllValues().Select(enr =>
+                {
+                    try
+                    {
+                        return enrFactory.CreateFromBytes(enr, identityVerifier);
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"unable to decode enr {e}");
+                        return null;
+                    }
+                })
+                .Where(enr => enr != null)!
             ];
+        _discoveryDb.Clear();
 
         EnrBuilder enrBuilder = new EnrBuilder()
             .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
