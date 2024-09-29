@@ -199,9 +199,11 @@ public class DiscoveryV5App : IDiscoveryApp
         channel.Pipeline.AddLast(handler);
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
-        return Task.CompletedTask;
+        await _discv5Protocol.InitAsync();
+
+        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
     }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
@@ -268,9 +270,6 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
         Random random = new();
-        await _discv5Protocol.InitAsync();
-
-        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
 
         const int RandomNodesToLookupCount = 3;
 
