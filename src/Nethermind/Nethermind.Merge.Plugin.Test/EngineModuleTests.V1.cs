@@ -1583,7 +1583,7 @@ public partial class EngineModuleTests
         var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
         var logger = new ILogger(iLogger);
-        loggerManager.GetClassLogger().Returns(logger);
+        loggerManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
         chain.LogManager = loggerManager;
 
