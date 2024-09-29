@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
@@ -51,6 +51,23 @@ namespace Nethermind.Db.Test
             {
                 Assert.True(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value));
             }
+        }
+
+        [Test]
+        public void Clear()
+        {
+            using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+            tempPath.Dispose();
+
+            SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
+            using (filePublicKeyDb.StartWriteBatch())
+            {
+                filePublicKeyDb[[1, 2, 3]] = [1, 2, 3];
+            }
+
+            filePublicKeyDb.KeyExists([1, 2, 3]).Should().BeTrue();
+            filePublicKeyDb.Clear();
+            filePublicKeyDb.KeyExists([1, 2, 3]).Should().BeFalse();
         }
     }
 }
