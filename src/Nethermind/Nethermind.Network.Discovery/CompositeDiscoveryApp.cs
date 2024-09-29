@@ -42,7 +42,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly ICryptoRandom? _cryptoRandom;
     private readonly INodeStatsManager _nodeStatsManager;
     private readonly IIPResolver _ipResolver;
-    private readonly IPeerManager? _peerManager;
     private readonly IConnectionsPool _connections;
 
     private IDiscoveryApp? _v4;
@@ -53,7 +52,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
-        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver, IPeerManager? peerManager
+        INodeStatsManager? nodeStatsManager, IIPResolver? ipResolver
     )
     {
         _nodeKey = nodeKey ?? throw new ArgumentNullException(nameof(nodeKey));
@@ -67,7 +66,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _cryptoRandom = cryptoRandom;
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
-        _peerManager = peerManager;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
     }
 
@@ -203,7 +201,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath),
             _logManager);
 
-        _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _peerManager, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
+        _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
         _v5.Initialize(_nodeKey.PublicKey);
     }
 

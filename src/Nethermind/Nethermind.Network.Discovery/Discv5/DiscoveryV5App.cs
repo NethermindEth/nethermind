@@ -31,23 +31,19 @@ namespace Nethermind.Network.Discovery.Discv5;
 public class DiscoveryV5App : IDiscoveryApp
 {
     private readonly IDiscv5Protocol _discv5Protocol;
-    private readonly IPeerManager? _peerManager;
     private readonly Logging.ILogger _logger;
-    private readonly IDiscoveryConfig _discoveryConfig;
     private readonly IDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, IPeerManager? peerManager, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(ipResolver);
 
         _logger = logManager.GetClassLogger();
-        _discoveryConfig = discoveryConfig;
         _discoveryDb = discoveryDb;
-        _peerManager = peerManager;
 
         IdentityVerifierV4 identityVerifier = new();
 
