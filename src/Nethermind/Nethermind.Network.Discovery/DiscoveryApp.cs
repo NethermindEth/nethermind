@@ -490,6 +490,7 @@ public class DiscoveryApp : IDiscoveryApp
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        // TODO: Rewrote this to properly support throttling.
         Channel<Node> ch = Channel.CreateBounded<Node>(64); // Some reasonably large value
         EventHandler<NodeEventArgs> handler = (_, args) =>
         {

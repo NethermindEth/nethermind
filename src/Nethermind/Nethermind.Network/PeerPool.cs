@@ -277,7 +277,14 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                while (PeerCount >= _networkConfig.CandidatePeerCountCleanupThreshold)
+                // Once it reach about 90% of max active peer, start throttling
+                if (ActivePeerCount >= _networkConfig.MaxActivePeers * 0.9)
+                {
+                    await Task.Delay(1000, token);
+                }
+
+                // Block it completely. Sync peer is full.
+                while (ActivePeerCount >= _networkConfig.MaxActivePeers)
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                     await Task.Delay(1000, token);
