@@ -490,10 +490,18 @@ public class DiscoveryApp : IDiscoveryApp
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+        Channel<Node> ch = Channel.CreateBounded<Node>(64); // Some reasonably large value
         EventHandler<NodeEventArgs> handler = (_, args) =>
         {
-            ch.Writer.TryWrite(args.Node);
+            if (!ch.Writer.TryWrite(args.Node))
+            {
+                // Keep in mind, the channel is already buffered, so forgetting this node is probably fine.
+                _nodesLocator.ShouldThrottle = true;
+            }
+            else
+            {
+                _nodesLocator.ShouldThrottle = false;
+            }
         };
 
         try
@@ -509,6 +517,7 @@ public class DiscoveryApp : IDiscoveryApp
         finally
         {
             NodeAdded -= handler;
+            _nodesLocator.ShouldThrottle = false;
         }
     }
 
