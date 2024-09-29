@@ -70,7 +70,7 @@ namespace Nethermind.Logging.NLog
         private static ILogger BuildNamedLogger(string loggerName)
             => new(new NLogLogger(loggerName));
         private static ILogger BuildClassLogger(string filePath)
-            => new(new NLogLogger(Path.GetFileNameWithoutExtension(filePath)));
+            => new(new NLogLogger());
 
         public ILogger GetClassLogger(Type type) => s_loggers.GetOrAdd(type, s_loggerBuilder);
 
@@ -80,9 +80,7 @@ namespace Nethermind.Logging.NLog
             s_namedLoggers.GetOrAdd(filePath, s_classLoggerBuilder) :
             new(new NLogLogger());
 
-        public ILogger GetLogger(string loggerName) => !string.IsNullOrEmpty(loggerName) ?
-            s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder) :
-            new(new NLogLogger());
+        public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
         public void SetGlobalVariable(string name, object value)
         {
