@@ -537,9 +537,10 @@ namespace Nethermind.Network.Test
             ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
+
             foreach (var node in staticNodes)
             {
-                ctx.DiscoveryApp.NodeAdded += Raise.EventWith(new NodeEventArgs(new Node(TestItem.PublicKeyA, node.Host, node.Port)));
+                ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
 
             await Task.Delay(_travisDelay);
@@ -625,6 +626,7 @@ namespace Nethermind.Network.Test
             public IPeerPool PeerPool { get; }
             public INetworkConfig NetworkConfig { get; }
             public IStaticNodesManager StaticNodesManager { get; }
+            public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = new();
 
             public Context(int parallelism = 0, int maxActivePeers = 25)
@@ -643,7 +645,8 @@ namespace Nethermind.Network.Test
                 NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
                 StaticNodesManager.LoadInitialList().Returns(new List<Node>());
-                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager);
+                TestNodeSource = new TestNodeSource();
+                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);
                 CreatePeerManager();
             }
@@ -710,9 +713,7 @@ namespace Nethermind.Network.Test
             {
                 for (int i = 0; i < count; i++)
                 {
-                    DiscoveryApp.NodeAdded +=
-                        Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey,
-                            "1.2.3.4", 1234)));
+                    TestNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 1234));
                 }
             }
 

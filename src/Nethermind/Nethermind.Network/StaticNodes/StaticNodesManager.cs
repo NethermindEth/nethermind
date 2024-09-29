@@ -7,8 +7,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -139,7 +142,30 @@ namespace Nethermind.Network.StaticNodes
         public List<Node> LoadInitialList() =>
             _nodes.Values.Select(n => new Node(n)).ToList();
 
-        public event EventHandler<NodeEventArgs>? NodeAdded;
+        public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+            EventHandler<NodeEventArgs> handler = (_, args) =>
+            {
+                ch.Writer.TryWrite(args.Node);
+            };
+
+            try
+            {
+                NodeAdded += handler;
+
+                await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
+                {
+                    yield return node;
+                }
+            }
+            finally
+            {
+                NodeAdded -= handler;
+            }
+        }
+
+        private event EventHandler<NodeEventArgs>? NodeAdded;
 
         public event EventHandler<NodeEventArgs>? NodeRemoved;
     }

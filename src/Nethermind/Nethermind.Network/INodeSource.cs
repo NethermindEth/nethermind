@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
@@ -10,6 +11,6 @@ namespace Nethermind.Network;
 public interface INodeSource
 {
     List<Node> LoadInitialList() => [];
-    event EventHandler<NodeEventArgs> NodeAdded;
+    IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken);
     event EventHandler<NodeEventArgs> NodeRemoved;
 }

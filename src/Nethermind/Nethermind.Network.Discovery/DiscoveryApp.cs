@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.NetworkInformation;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -485,6 +487,30 @@ public class DiscoveryApp : IDiscoveryApp
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
+
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+        EventHandler<NodeEventArgs> handler = (_, args) =>
+        {
+            ch.Writer.TryWrite(args.Node);
+        };
+
+        try
+        {
+            // TODO: Use lookup like kademlia
+            NodeAdded += handler;
+
+            await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return node;
+            }
+        }
+        finally
+        {
+            NodeAdded -= handler;
+        }
+    }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

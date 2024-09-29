@@ -13,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -46,6 +47,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
     private IDiscoveryApp? _v4;
     private IDiscoveryApp? _v5;
+    private INodeSource _compositeNodeSource = null!;
 
     public CompositeDiscoveryApp(ProtectedPrivateKey? nodeKey,
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
@@ -69,43 +71,24 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
     }
 
-    public event EventHandler<NodeEventArgs>? NodeAdded
-    {
-        add
-        {
-            if (_v4 != null) _v4.NodeAdded += value;
-            if (_v5 != null) _v5.NodeAdded += value;
-        }
-        remove
-        {
-            if (_v4 != null) _v4.NodeAdded -= value;
-            if (_v5 != null) _v5.NodeAdded -= value;
-        }
-    }
-
-    public event EventHandler<NodeEventArgs>? NodeRemoved
-    {
-        add
-        {
-            if (_v4 != null) _v4.NodeRemoved += value;
-            if (_v5 != null) _v5.NodeRemoved += value;
-        }
-        remove
-        {
-            if (_v4 != null) _v4.NodeRemoved -= value;
-            if (_v5 != null) _v5.NodeRemoved -= value;
-        }
-    }
-
     public void Initialize(PublicKey masterPublicKey)
     {
         var nodeKeyProvider = new SameKeyGenerator(_nodeKey.Unprotect());
+        List<INodeSource> allNodeSources = new();
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
+        {
             InitDiscoveryV4(_discoveryConfig, nodeKeyProvider);
+            allNodeSources.Add(_v4!);
+        }
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
+        {
             InitDiscoveryV5(nodeKeyProvider);
+            allNodeSources.Add(_v5!);
+        }
+
+        _compositeNodeSource = new CompositeNodeSource(allNodeSources.ToArray());
     }
 
     public void InitializeChannel(IChannel channel)
@@ -241,5 +224,16 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         }
 
         return selfNodeRecord;
+    }
+
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+    {
+        return _compositeNodeSource.DiscoverNodes(cancellationToken);
+    }
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved
+    {
+        add => _compositeNodeSource.NodeRemoved += value;
+        remove => _compositeNodeSource.NodeRemoved -= value;
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -60,6 +61,11 @@ namespace Nethermind.Network
                 .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic).ToList();
         }
 
+        public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+        {
+            return AsyncEnumerable.Empty<Node>();
+        }
+
         private void LoadPeersFromDb(List<Node> peers)
         {
             if (!_networkConfig.IsPeersPersistenceOn)
@@ -113,7 +119,6 @@ namespace Nethermind.Network
             }
         }
 
-        public event EventHandler<NodeEventArgs>? NodeAdded { add { } remove { } }
 
         public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
     }
