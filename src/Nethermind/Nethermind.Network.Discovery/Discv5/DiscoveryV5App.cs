@@ -281,13 +281,16 @@ public class DiscoveryV5App : IDiscoveryApp
             {
                 try
                 {
-                    await DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId);
+                    List<Task> discoverTasks = new List<Task>();
+                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
 
                     for (int i = 0; i < RandomNodesToLookupCount; i++)
                     {
                         random.NextBytes(randomNodeId);
-                        await DiscoverAsync(GetStartingNodes(), randomNodeId);
+                        discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
                     }
+
+                    await Task.WhenAll(discoverTasks);
                 }
                 catch (Exception ex)
                 {
