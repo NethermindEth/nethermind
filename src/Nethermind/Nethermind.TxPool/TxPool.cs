@@ -66,7 +66,7 @@ namespace Nethermind.TxPool
         /// </summary>
         private ulong _txIndex;
 
-        private readonly ITimer? _timer;
+        private ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
         private Transaction[]? _blobTransactionSnapshot;
         private long _lastBlockNumber = -1;
@@ -369,7 +369,7 @@ namespace Nethermind.TxPool
 
         public void AddPeer(ITxPoolPeer peer)
         {
-            if (_broadcaster.AddPeer(peer))
+            if (!_disabled && _broadcaster.AddPeer(peer))
             {
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
 
@@ -399,6 +399,8 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (_disabled) return AcceptTxResult.AlreadyKnown;
+
             Metrics.PendingTransactionsReceived++;
 
             // assign a sequence number to transaction so we can order them by arrival times when
@@ -752,11 +754,21 @@ namespace Nethermind.TxPool
 
         public void Dispose()
         {
-            _timer?.Dispose();
-            TxPoolHeadChanged -= _broadcaster.OnNewHead;
-            _broadcaster.Dispose();
-            _headInfo.HeadChanged -= OnHeadChange;
-            _headBlocksChannel.Writer.Complete();
+            if (!_disabled)
+            {
+                _timer?.Dispose();
+                TxPoolHeadChanged -= _broadcaster.OnNewHead;
+                _broadcaster.Dispose();
+                _headInfo.HeadChanged -= OnHeadChange;
+                _headBlocksChannel.Writer.Complete();
+            }
+        }
+
+        private bool _disabled = false;
+        void ITxPool.Disable()
+        {
+            Dispose();
+            _disabled = true;
         }
 
         /// <summary>
