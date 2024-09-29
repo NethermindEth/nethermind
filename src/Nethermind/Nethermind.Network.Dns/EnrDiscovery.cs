@@ -49,6 +49,7 @@ public class EnrDiscovery : INodeSource
                 catch (DnsResponseException dnsException)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Searching the tree of \"{_domain}\" had an error: {dnsException.DnsError}");
+                    yield break;
                 }
 
                 if (!hasNext)
