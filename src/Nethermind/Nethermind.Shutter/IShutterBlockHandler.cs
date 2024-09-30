@@ -9,5 +9,5 @@ using Nethermind.Core;
 namespace Nethermind.Shutter;
 public interface IShutterBlockHandler : IDisposable
 {
-    Task<Block?> WaitForBlockInSlot(ulong slot, CancellationToken cancellationToken);
+    Task<Block?> WaitForBlockInSlot(ulong slot, CancellationToken cancellationToken, Func<int, CancellationTokenSource>? initTimeoutSource = null);
 }

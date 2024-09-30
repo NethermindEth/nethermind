@@ -25,7 +25,7 @@ public class ShutterApi : IShutterApi
 {
     public virtual TimeSpan BlockWaitCutoff { get => _blockWaitCutoff; }
 
-    public readonly IShutterBlockHandler BlockHandler;
+    public readonly ShutterBlockHandler BlockHandler;
     public readonly IShutterKeyValidator KeyValidator;
     public readonly IShutterEon Eon;
     public readonly ShutterTxLoader TxLoader;
@@ -42,7 +42,6 @@ public class ShutterApi : IShutterApi
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
     private readonly IShutterConfig _cfg;
-
     private readonly TimeSpan _blockWaitCutoff;
 
     public ShutterApi(

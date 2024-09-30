@@ -31,21 +31,21 @@ class ShutterBlockHandlerTests : EngineModuleTests
     }
 
     [Test]
-    public async Task Wait_times_out_at_cutoff()
+    public void Wait_times_out_at_cutoff()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
         Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
         ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
 
         using CancellationTokenSource source = new();
-        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token);
-
-        await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2));
+        using CancellationTokenSource timeoutSource = new();
+        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token, (int waitTime) => {
+            Assert.That(waitTime, Is.EqualTo((int)api.BlockWaitCutoff.TotalMilliseconds));
+            return timeoutSource;
+        });
 
         Assert.That(waitTask.IsCompleted, Is.False);
-
-        await Task.Delay((int)(api.BlockWaitCutoff.TotalMilliseconds / 2) + 100);
-
+        timeoutSource.Cancel();
         Assert.That(waitTask.IsCompletedSuccessfully);
     }
 
