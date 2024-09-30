@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -37,7 +39,7 @@ public class NodesLoaderTests
     [Test]
     public void When_no_peers_then_no_peers_nada_zero()
     {
-        List<Node> peers = _loader.LoadInitialList();
+        List<Node> peers = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(peers.Count, Is.EqualTo(0));
     }
 
@@ -49,7 +51,7 @@ public class NodesLoaderTests
     public void Can_load_static_nodes()
     {
         _networkConfig.StaticPeers = enodesString;
-        List<Node> nodes = _loader.LoadInitialList();
+        List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(2));
         foreach (Node node in nodes)
         {
@@ -62,7 +64,7 @@ public class NodesLoaderTests
     {
         _discoveryConfig.Bootnodes = enodesString;
         _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
-        List<Node> nodes = _loader.LoadInitialList();
+        List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(2));
         foreach (Node node in nodes)
         {
@@ -73,13 +75,27 @@ public class NodesLoaderTests
     [Test]
     public void Can_load_persisted()
     {
-        _peerStorage.GetPersistedNodes().Returns([new NetworkNode(enode1String), new NetworkNode(enode2String)]);
-        List<Node> nodes = _loader.LoadInitialList();
+        _peerStorage.GetPersistedNodes().Returns(new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) });
+        List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(2));
         foreach (Node node in nodes)
         {
             Assert.That(node.IsBootnode, Is.False);
             Assert.That(node.IsStatic, Is.False);
+        }
+    }
+
+    [Test]
+    public void Can_load_only_static_nodes()
+    {
+        _networkConfig.StaticPeers = enode1String;
+        _networkConfig.Bootnodes = enode2String;
+        _networkConfig.OnlyStaticPeers = true;
+        List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
+        Assert.That(nodes.Count, Is.EqualTo(1));
+        foreach (Node node in nodes)
+        {
+            Assert.That(node.IsStatic, Is.True);
         }
     }
 }
