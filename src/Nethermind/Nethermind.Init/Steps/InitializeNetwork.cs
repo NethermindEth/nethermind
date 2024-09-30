@@ -302,7 +302,7 @@ public class InitializeNetwork : IStep
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
-            _api.NodeStatsManager, _api.IpResolver, _api.PeerManager
+            _api.NodeStatsManager, _api.IpResolver
         );
 
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
@@ -453,12 +453,19 @@ public class InitializeNetwork : IStep
         // I do not use the key here -> API is broken - no sense to use the node signer here
         NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
         EnrRecordParser enrRecordParser = new(nodeRecordSigner);
-        EnrDiscovery enrDiscovery = new(enrRecordParser, _api.LogManager); // initialize with a proper network
+
+        if (_networkConfig.DiscoveryDns == null)
+        {
+            string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
+            _networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
+        }
+
+        EnrDiscovery enrDiscovery = new(enrRecordParser, _networkConfig, _api.LogManager); // initialize with a proper network
 
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
+            _ = new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
         }
 
         CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
@@ -469,16 +476,6 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             _networkConfig,
             _api.LogManager);
-
-        string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
-        string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
-        _ = enrDiscovery.SearchTree(domain).ContinueWith(t =>
-        {
-            if (t.IsFaulted)
-            {
-                _logger.Error($"ENR discovery failed: {t.Exception}");
-            }
-        });
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -38,7 +40,7 @@ namespace Nethermind.Network.Test
         [Test]
         public void When_no_peers_then_no_peers_nada_zero()
         {
-            List<Node> peers = _loader.LoadInitialList();
+            List<Node> peers = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
             Assert.That(peers.Count, Is.EqualTo(0));
         }
 
@@ -50,7 +52,7 @@ namespace Nethermind.Network.Test
         public void Can_load_static_nodes()
         {
             _networkConfig.StaticPeers = enodesString;
-            List<Node> nodes = _loader.LoadInitialList();
+            List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
             Assert.That(nodes.Count, Is.EqualTo(2));
             foreach (Node node in nodes)
             {
@@ -63,7 +65,7 @@ namespace Nethermind.Network.Test
         {
             _discoveryConfig.Bootnodes = enodesString;
             _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
-            List<Node> nodes = _loader.LoadInitialList();
+            List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
             Assert.That(nodes.Count, Is.EqualTo(2));
             foreach (Node node in nodes)
             {
@@ -75,7 +77,7 @@ namespace Nethermind.Network.Test
         public void Can_load_persisted()
         {
             _peerStorage.GetPersistedNodes().Returns(new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) });
-            List<Node> nodes = _loader.LoadInitialList();
+            List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
             Assert.That(nodes.Count, Is.EqualTo(2));
             foreach (Node node in nodes)
             {
