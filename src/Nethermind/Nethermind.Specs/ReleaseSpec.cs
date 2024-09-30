@@ -51,15 +51,16 @@ namespace Nethermind.Specs
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
-        public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
 
         // used only in testing
-        public ReleaseSpec Clone()
+        public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
+
+        public bool IsEip1559Enabled
         {
-            return (ReleaseSpec)MemberwiseClone();
+            get => _isEip1559Enabled || IsEip4844Enabled;
+            set => _isEip1559Enabled = value;
         }
 
-        public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
         public bool IsEip3607Enabled { get; set; }
@@ -81,9 +82,18 @@ namespace Nethermind.Specs
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
         public bool IsRip7212Enabled { get; set; }
+        public bool IsOpGraniteEnabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
+        public bool IsEip7002Enabled { get; set; }
+
+        private Address _eip7002ContractAddress;
+        public Address Eip7002ContractAddress
+        {
+            get => IsEip7002Enabled ? _eip7002ContractAddress : null;
+            set => _eip7002ContractAddress = value;
+        }
 
         private Address _eip4788ContractAddress;
         public Address Eip4788ContractAddress
@@ -92,15 +102,26 @@ namespace Nethermind.Specs
             set => _eip4788ContractAddress = value;
         }
 
+        public bool IsEip6110Enabled { get; set; }
+
+        private Address _depositContractAddress;
+        public Address DepositContractAddress
+        {
+            get => IsEip6110Enabled ? _depositContractAddress : null;
+            set => _depositContractAddress = value;
+        }
         public bool IsEip2935Enabled { get; set; }
         public bool IsEip7709Enabled { get; set; }
 
         private Address _eip2935ContractAddress;
+        private bool _isEip1559Enabled;
+
         public Address Eip2935ContractAddress
         {
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
+
 
     }
 }

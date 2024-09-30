@@ -44,6 +44,7 @@
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
+    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.2" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.1.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.2.2" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
@@ -66,7 +67,7 @@
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.10.0.45817" />
+    <PackageVersion Include="RocksDB" Version="9.4.0.50294" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
     <PackageVersion Include="Snappier" Version="1.1.6" />

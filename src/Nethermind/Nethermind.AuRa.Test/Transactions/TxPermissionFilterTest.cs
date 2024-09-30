@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -295,14 +296,14 @@ public class TxPermissionFilterTest
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
+                new BeaconBlockRootHandler(TxProcessor),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                TxProcessor,
                 null,
-                PermissionBasedTxFilter,
-                null,
-                null,
-                CreateBlockCachePreWarmer());
+                txFilter: PermissionBasedTxFilter,
+                preWarmer: CreateBlockCachePreWarmer());
         }
 
         protected override async Task AddBlocksOnStart()

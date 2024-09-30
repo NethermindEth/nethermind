@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
@@ -36,14 +39,15 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             return new AuRaMergeBlockProcessor(
                 _api.SpecProvider!,
                 _api.BlockValidator!,
-                _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor!, worldState),
+                _api.RewardCalculatorSource!.Get(transactionProcessor),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage!,
+                new BeaconBlockRootHandler(transactionProcessor),
                 _api.LogManager,
                 _api.BlockTree!,
-                new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
+                transactionProcessor,
                 CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),

@@ -3,10 +3,12 @@
 
 using System;
 using System.IO;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -39,6 +41,32 @@ public class BlockDecoderTests
             uncles[i] = Build.A.BlockHeader
                 .WithWithdrawalsRoot(i % 3 == 0 ? null : Keccak.Compute(i.ToString()))
                 .TestObject;
+        }
+
+        var requests = new ConsensusRequest[8];
+
+        for (var i = 0; i < requests.Length; i++)
+        {
+            if (i % 2 == 0)
+            {
+                requests[i] = Build.A.Deposit
+                    .WithIndex(long.MaxValue)
+                    .WithPublicKey(new byte[] { (byte)i })
+                    .WithSignature(new byte[] { (byte)i })
+                    .WithWithdrawalCredentials(new byte[] { (byte)i })
+                    .WithAmount(int.MaxValue)
+                    .TestObject;
+            }
+            else
+            {
+                byte[] ValidatorPubkey = new byte[48];
+                ValidatorPubkey[11] = 11;
+                requests[i] = Build.A.WithdrawalRequest
+                    .WithSourceAddress(TestItem.AddressA)
+                    .WithValidatorPubkey(ValidatorPubkey)
+                    .WithAmount(int.MaxValue)
+                    .TestObject;
+            }
         }
 
         _scenarios = new[]
@@ -86,6 +114,16 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            Build.A.Block.WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithBlobGasUsed(ulong.MaxValue)
+                .WithExcessBlobGas(ulong.MaxValue)
+                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithConsensusRequests(requests)
                 .TestObject
         };
     }

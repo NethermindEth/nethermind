@@ -66,9 +66,10 @@ namespace Nethermind.Network
                 return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
             }
 
-            if (_forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head?.Header) != ValidationResult.Valid)
+            ValidationResult validationResult = _forkInfo.ValidateForkId(syncPeerArgs.ForkId.Value, _blockTree.Head?.Header);
+            if (validationResult != ValidationResult.Valid)
             {
-                return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, "invalid fork id");
+                return Disconnect(session, DisconnectReason.InvalidForkId, CompatibilityValidationType.InvalidForkId, $"{validationResult}, network id {syncPeerArgs.NetworkId} fork id {syncPeerArgs.ForkId.Value}");
             }
 
             return true;

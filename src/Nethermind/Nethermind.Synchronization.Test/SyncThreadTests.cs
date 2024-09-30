@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -301,6 +302,8 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
+                txProcessor,
+                new BeaconBlockRootHandler(txProcessor),
                 new BlockhashStore(specProvider, stateProvider),
                 logManager);
 
@@ -323,6 +326,8 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
+                devTxProcessor,
+                new BeaconBlockRootHandler(devTxProcessor),
                 new BlockhashStore(specProvider, devState),
                 logManager);
 

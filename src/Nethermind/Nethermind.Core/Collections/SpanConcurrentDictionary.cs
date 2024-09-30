@@ -1072,7 +1072,7 @@ namespace Nethermind.Core.Collections
         public TValue GetOrAdd(TKey[] key, Func<TKey[], TValue> valueFactory)
         {
             ArgumentNullException.ThrowIfNull(key);
-            ArgumentNullException.ThrowIfNull(nameof(valueFactory));
+            ArgumentNullException.ThrowIfNull(valueFactory);
             return GetOrAddInternal(key, key, valueFactory(key));
         }
 
@@ -1210,8 +1210,8 @@ namespace Nethermind.Core.Collections
         public TValue AddOrUpdate<TArg>(TKey[] key, Func<TKey[], TArg, TValue> addValueFactory, Func<TKey[], TValue, TArg, TValue> updateValueFactory, TArg factoryArgument)
         {
             ArgumentNullException.ThrowIfNull(key);
-            ArgumentNullException.ThrowIfNull(nameof(addValueFactory));
-            ArgumentNullException.ThrowIfNull(nameof(updateValueFactory));
+            ArgumentNullException.ThrowIfNull(addValueFactory);
+            ArgumentNullException.ThrowIfNull(updateValueFactory);
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
             int hashcode = comparer.GetHashCode(key);
@@ -1260,8 +1260,8 @@ namespace Nethermind.Core.Collections
         public TValue AddOrUpdate(TKey[] key, Func<TKey[], TValue> addValueFactory, Func<TKey[], TValue, TValue> updateValueFactory)
         {
             ArgumentNullException.ThrowIfNull(key);
-            ArgumentNullException.ThrowIfNull(nameof(addValueFactory));
-            ArgumentNullException.ThrowIfNull(nameof(updateValueFactory));
+            ArgumentNullException.ThrowIfNull(addValueFactory);
+            ArgumentNullException.ThrowIfNull(updateValueFactory);
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
             int hashcode = comparer.GetHashCode(key);
@@ -1308,7 +1308,7 @@ namespace Nethermind.Core.Collections
         public TValue AddOrUpdate(TKey[] key, TValue addValue, Func<TKey[], TValue, TValue> updateValueFactory)
         {
             ArgumentNullException.ThrowIfNull(key);
-            ArgumentNullException.ThrowIfNull(nameof(updateValueFactory));
+            ArgumentNullException.ThrowIfNull(updateValueFactory);
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
             int hashcode = comparer.GetHashCode(key);
@@ -2172,7 +2172,7 @@ namespace Nethermind.Core.Collections
 
         public IDictionaryDebugView(IDictionary<TKey, TValue> dictionary)
         {
-            ArgumentNullException.ThrowIfNull(nameof(dictionary));
+            ArgumentNullException.ThrowIfNull(dictionary);
 
             _dictionary = dictionary;
         }
