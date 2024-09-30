@@ -11,21 +11,12 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using System.Threading;
-using Nethermind.Abi;
-using Nethermind.Blockchain;
-using Nethermind.Crypto;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Logging;
-using Nethermind.Core.Specs;
-using Nethermind.State;
-using Nethermind.Shutter.Config;
-using Nethermind.Facade.Find;
-using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
+using Nethermind.Merge.Plugin.Test;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-public class ShutterIntegrationTests
+public class ShutterIntegrationTests : EngineModuleTests
 {
     private readonly int _buildingSlot = (int)ShutterTestsCommon.InitialSlot;
     private readonly ulong _buildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;

@@ -1087,7 +1087,7 @@ public partial class EngineModuleTests
         }
     }
 
-    public static async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
+    protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
         ulong slotLength = 12, TimeSpan? payloadImprovementDelay = null)
@@ -1234,7 +1234,7 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    private static async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
+    protected async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
         IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
         ulong timestamp, Hash256 random, Address feeRecipient, TimeSpan? payloadImprovementDelay = null)
     {

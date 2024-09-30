@@ -84,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Test
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
-        public static ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
+        protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
             Block? head = blockTree.Head;
             if (head is null) throw new NotSupportedException();

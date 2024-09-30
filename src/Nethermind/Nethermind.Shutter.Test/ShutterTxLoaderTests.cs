@@ -10,12 +10,12 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
-using static Nethermind.Merge.Plugin.Test.EngineModuleTests;
+using Nethermind.Merge.Plugin.Test;
 
 namespace Nethermind.Shutter.Test;
 
 [TestFixture]
-class ShutterTxLoaderTests
+class ShutterTxLoaderTests : EngineModuleTests
 {
     private class ShutterEventSimulatorHalfInvalid(Random rnd, ulong chainId, ulong threshold, ulong slot, IAbiEncoder abiEncoder, Address sequencerContractAddress) : ShutterEventSimulator(rnd, chainId, threshold, slot, abiEncoder, sequencerContractAddress)
     {
