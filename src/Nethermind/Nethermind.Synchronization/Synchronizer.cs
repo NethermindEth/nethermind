@@ -31,19 +31,19 @@ namespace Nethermind.Synchronization
         ISyncConfig syncConfig,
         ILogManager logManager,
         INodeStatsManager nodeStatsManager,
-        [KeyFilter(nameof(FullSyncFeed))] FeedComponent<BlocksRequest> fullSyncComponent,
-        [KeyFilter(nameof(FastSyncFeed))] FeedComponent<BlocksRequest> fastSyncComponent,
-        FeedComponent<StateSyncBatch> stateSyncComponent,
-        FeedComponent<SnapSyncBatch> snapSyncComponent,
-        [KeyFilter(nameof(HeadersSyncFeed))] FeedComponent<HeadersSyncBatch> fastHeaderComponent,
-        FeedComponent<BodiesSyncBatch> oldBodiesComponent,
-        FeedComponent<ReceiptsSyncBatch> oldReceiptsComponent,
+        [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> fullSyncComponent,
+        [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> fastSyncComponent,
+        SyncFeedComponent<StateSyncBatch> stateSyncComponent,
+        SyncFeedComponent<SnapSyncBatch> snapSyncComponent,
+        [KeyFilter(nameof(HeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> fastHeaderComponent,
+        SyncFeedComponent<BodiesSyncBatch> oldBodiesComponent,
+        SyncFeedComponent<ReceiptsSyncBatch> oldReceiptsComponent,
 #pragma warning disable CS9113 // Parameter is unread. But it need to be instantiated to function
         SyncDbTuner syncDbTuner,
         MallocTrimmer mallocTrimmer,
 #pragma warning restore CS9113 // Parameter is unread.
         IProcessExitSource exitSource)
-         : ISynchronizer
+        : ISynchronizer
     {
         private const int FeedsTerminationTimeout = 5_000;
 
@@ -279,20 +279,20 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<MallocTrimmer>()
 
             // For blocks. There are two block scope, Fast and Full
-            .AddScoped<FeedComponent<BlocksRequest>>()
+            .AddScoped<SyncFeedComponent<BlocksRequest>>()
             .AddScoped<ISyncDownloader<BlocksRequest>, BlockDownloader>()
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()
 
             // For headers. There are two header scope, Fast and Beacon
-            .AddScoped<FeedComponent<HeadersSyncBatch>>()
+            .AddScoped<SyncFeedComponent<HeadersSyncBatch>>()
             .AddScoped<ISyncDownloader<HeadersSyncBatch>, HeadersSyncDownloader>()
             .AddScoped<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<HeadersSyncBatch>>()
 
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
             .Register(ctx => ctx
-                .ResolveNamed<FeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
+                .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
 
@@ -302,22 +302,38 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         ConfigureStateSyncComponent(builder);
 
         builder
-            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed),
-                scopeConfig =>
-                {
-                    if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync)
-                    {
-                        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, NoopSyncFeed<HeadersSyncBatch>>();
-                    }
-                    else
-                    {
-                        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, HeadersSyncFeed>();
-                    }
-                })
-            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<BlocksRequest>>(nameof(FastSyncFeed),
-                scopeConfig => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FastSyncFeed>())
-            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<BlocksRequest>>(nameof(FullSyncFeed),
-                scopeConfig => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>());
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync);
+    }
+
+    private void ConfigureFullSync(ContainerBuilder scopeConfig)
+    {
+        scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>();
+    }
+
+    private void ConfigureFastSync(ContainerBuilder scopeConfig)
+    {
+        if (syncConfig.FastSync)
+        {
+            scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FastSyncFeed>();
+        }
+        else
+        {
+            scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, NoopSyncFeed<BlocksRequest>>();
+        }
+    }
+
+    private void ConfigureFastHeader(ContainerBuilder scopeConfig)
+    {
+        if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync)
+        {
+            scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, NoopSyncFeed<HeadersSyncBatch>>();
+        }
+        else
+        {
+            scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, HeadersSyncFeed>();
+        }
     }
 
     private void ConfigureSnapComponent(ContainerBuilder serviceCollection)
@@ -373,7 +389,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     {
         serviceCollection
             .AddSingleton<ISyncFeed<TBatch>, TFeed>()
-            .AddSingleton<FeedComponent<TBatch>>()
+            .AddSingleton<SyncFeedComponent<TBatch>>()
             .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()
             .AddSingleton<IPeerAllocationStrategyFactory<TBatch>, TAllocationStrategy>()
             .AddSingleton<SyncDispatcher<TBatch>>();

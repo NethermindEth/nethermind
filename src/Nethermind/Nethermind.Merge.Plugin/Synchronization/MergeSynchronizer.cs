@@ -17,7 +17,7 @@ using Nethermind.Synchronization.ParallelSync;
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeSynchronizer(
-    [KeyFilter(nameof(BeaconHeadersSyncFeed))] FeedComponent<HeadersSyncBatch> beaconHeaderComponent,
+    [KeyFilter(nameof(BeaconHeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> beaconHeaderComponent,
     ISyncConfig syncConfig,
     Synchronizer baseSynchronizer,
     ILogManager logManager)
@@ -91,9 +91,12 @@ public class MergeSynchronizerModule : Module
             .AddSingleton<IChainLevelHelper, ChainLevelHelper>()
             .AddScoped<IPeerAllocationStrategyFactory<BlocksRequest>, MergeBlocksSyncPeerAllocationStrategyFactory>()
 
-            .RegisterNamedComponentInItsOwnLifetime<FeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed),
-                scopeConfig => scopeConfig
-                    .AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
-                    .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>());
+            .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(BeaconHeadersSyncFeed), ConfigureBeaconHeader);
+    }
+
+    private void ConfigureBeaconHeader(ContainerBuilder scopeConfig)
+    {
+        scopeConfig.AddScoped<ISyncFeed<HeadersSyncBatch>, BeaconHeadersSyncFeed>()
+            .AddScoped<ISyncDownloader<HeadersSyncBatch>, BeaconHeadersSyncDownloader>();
     }
 }

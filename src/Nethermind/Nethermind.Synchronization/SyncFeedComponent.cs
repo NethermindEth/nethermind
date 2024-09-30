@@ -7,7 +7,12 @@ using Autofac;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 
-public class FeedComponent<TBatch>(Lazy<ISyncFeed<TBatch>> feed, Lazy<SyncDispatcher<TBatch>> dispatcher, Lazy<ISyncDownloader<TBatch>> blockDownloader, ILifetimeScope lifetimeScope) : IDisposable, IAsyncDisposable
+namespace Nethermind.Synchronization;
+
+/// <summary>
+/// Container to make it simpler to get a bunch of components within a same named scoped.
+/// </summary>
+public class SyncFeedComponent<TBatch>(Lazy<ISyncFeed<TBatch>> feed, Lazy<SyncDispatcher<TBatch>> dispatcher, Lazy<ISyncDownloader<TBatch>> blockDownloader, ILifetimeScope lifetimeScope) : IDisposable, IAsyncDisposable
 {
     public ISyncFeed<TBatch> Feed => feed.Value;
     public SyncDispatcher<TBatch> Dispatcher => dispatcher.Value;
