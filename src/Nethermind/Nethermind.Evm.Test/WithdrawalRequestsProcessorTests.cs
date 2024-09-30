@@ -83,7 +83,7 @@ public class WithdrawalRequestProcessorTests
             Amount = 0
         };
 
-        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(block, _stateProvider, spec).ToList();
+        var withdrawalRequests = withdrawalRequestsProcessor.ReadRequests(block, _stateProvider, spec).ToList();
 
         Assert.That(withdrawalRequests, Has.Count.EqualTo(16));
 
