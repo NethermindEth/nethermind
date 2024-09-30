@@ -44,7 +44,6 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
-    private readonly bool _keepImproving;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
@@ -66,7 +65,6 @@ public class PayloadPreparationService : IPayloadPreparationService
         _cleanupOldPayloadDelay = 3 * timePerSlot; // 3 * slots time
         _improvementDelay = improvementDelay ?? DefaultImprovementDelay;
         _minTimeForProduction = minTimeForProduction ?? DefaultMinTimeForProduction;
-        _keepImproving = blockImprovementContextFactory.KeepImproving;
         ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
         timer.Elapsed += CleanupOldPayloads;
         timer.Start();
@@ -116,7 +114,6 @@ public class PayloadPreparationService : IPayloadPreparationService
     private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        bool haveImproved = false;
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
         blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
@@ -125,31 +122,23 @@ public class PayloadPreparationService : IPayloadPreparationService
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + _minTimeForProduction;
             DateTimeOffset slotFinished = startDateTime + _timePerSlot;
 
-            if (_keepImproving || !haveImproved)
+            if (whenWeCouldFinishNextProduction < slotFinished)
             {
-                if (whenWeCouldFinishNextProduction < slotFinished)
+                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
+                await Task.Delay(_improvementDelay);
+                if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
-                    await Task.Delay(_improvementDelay);
-                    if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
-                    {
-                        Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                        ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
-                        haveImproved = true;
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
-                    }
+                    Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
+                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
                 }
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved again");
+                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, no more time in slot");
             }
         });
 

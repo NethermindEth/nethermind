@@ -37,7 +37,6 @@ public class ShutterBlockImprovementContextFactory(
                                            startDateTime,
                                            slotLength,
                                            logManager);
-    public bool KeepImproving => false;
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
