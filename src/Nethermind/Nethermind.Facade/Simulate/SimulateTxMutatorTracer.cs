@@ -47,12 +47,22 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        AddTransferLog(from, to, value);
+    }
+
+    private void AddTransferLog(Address from, Address to, in UInt256 value)
+    {
         if (value > UInt256.Zero)
         {
-            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
-                value);
+            var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256), value);
             _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash(), to.ToHash()]));
         }
+    }
+
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        AddTransferLog(address, refundAddress, balance);
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
