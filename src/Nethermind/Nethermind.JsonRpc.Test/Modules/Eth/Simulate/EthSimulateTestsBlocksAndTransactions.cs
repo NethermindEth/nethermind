@@ -140,7 +140,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 before = chain.State.GetBalance(TestItem.AddressA);
         await chain.AddBlock(true, txMainnetAtoB);
         UInt256 after = chain.State.GetBalance(TestItem.AddressA);
-        Assert.Less(after, before);
+        Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
@@ -224,7 +224,7 @@ public class EthSimulateTestsBlocksAndTransactions
         UInt256 before = chain.State.GetBalance(TestItem.AddressA);
         await chain.AddBlock(true, txMainnetAtoB);
         UInt256 after = chain.State.GetBalance(TestItem.AddressA);
-        Assert.Less(after, before);
+        Assert.That(after, Is.LessThan(before));
 
         chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
 
@@ -237,7 +237,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.IsTrue(result.Result!.Error!.Contains("higher than sender balance"));
+        Assert.That(result.Result!.Error!.Contains("higher than sender balance"), Is.True);
     }
 
 

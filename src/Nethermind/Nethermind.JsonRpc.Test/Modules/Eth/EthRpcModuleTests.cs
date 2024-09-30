@@ -41,7 +41,6 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 [Parallelizable(ParallelScope.All)]
-[TestFixture]
 [SetCulture("en-US")]
 public partial class EthRpcModuleTests
 {
@@ -517,7 +516,7 @@ public partial class EthRpcModuleTests
 
         using JsonRpcResponse? newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
-        Assert.IsTrue(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse);
+        Assert.That(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse, Is.True);
 
         string getFilterLogsSerialized = await test.TestEthRpc("eth_getFilterLogs", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
 
@@ -762,7 +761,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "", "true");
-        Assert.True(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""));
+        Assert.That(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""), Is.True);
     }
 
     [Test]

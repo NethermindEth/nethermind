@@ -77,6 +77,6 @@ new object[] {"multicall-transaction-too-low-nonce-38010", "{\"blockStateCalls\"
 
         Console.WriteLine();
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Data, Is.Not.Null);
     }
 }

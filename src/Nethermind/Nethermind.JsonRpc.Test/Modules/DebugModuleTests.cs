@@ -32,7 +32,6 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules;
 
 [Parallelizable(ParallelScope.Self)]
-[TestFixture]
 public class DebugModuleTests
 {
     private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
@@ -69,7 +68,7 @@ public class DebugModuleTests
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key.ToHexString(true)) as
                 JsonRpcSuccessResponse;
 
-        Assert.NotNull(response);
+        Assert.That(response, Is.Not.Null);
     }
 
     [TestCase("1")]
@@ -88,7 +87,7 @@ public class DebugModuleTests
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
         var chainLevel = response?.Result as ChainLevelForRpc;
-        Assert.NotNull(chainLevel);
+        Assert.That(chainLevel, Is.Not.Null);
         Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
         Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
     }
@@ -401,7 +400,7 @@ public class DebugModuleTests
         debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", "100");
-        Assert.NotNull(response);
+        Assert.That(response, Is.Not.Null);
     }
 
     [Test]
