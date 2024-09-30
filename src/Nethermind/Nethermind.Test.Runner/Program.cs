@@ -68,9 +68,9 @@ namespace Nethermind.Test.Runner
             while (!string.IsNullOrWhiteSpace(input))
             {
                 if (options.VerkleTest)
-                    await RunBlockTest(input, source => new VerkleBlockchainTestsRunner(source, options.Filter));
+                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter, new VerkleBlockChainTestBase()));
                 else if (options.BlockTest)
-                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter));
+                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter, new BlockchainTestBase()));
                 else
                     RunStateTest(input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack, options.Filter));
                 if (!options.Stdin)

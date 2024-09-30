@@ -35,7 +35,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Test.Base
 {
-    public abstract class VerkleBlockChainTestBase
+    public class VerkleBlockChainTestBase: IBlockchainTestBase
     {
         private static InterfaceLogger _logger = new NUnitLogger(LogLevel.Trace);
         // private static ILogManager _logManager = new OneLoggerLogManager(_logger);
@@ -70,7 +70,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
+        public async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
         {
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 

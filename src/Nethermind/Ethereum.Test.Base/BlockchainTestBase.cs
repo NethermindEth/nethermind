@@ -39,7 +39,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Test.Base
 {
-    public abstract class BlockchainTestBase
+    public class BlockchainTestBase: IBlockchainTestBase
     {
         private static InterfaceLogger _logger = new NUnitLogger(LogLevel.Trace);
         // private static ILogManager _logManager = new OneLoggerLogManager(_logger);
@@ -74,7 +74,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
+        public async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
         {
             TestContext.WriteLine($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             if (test.NetworkAfterTransition is not null)
