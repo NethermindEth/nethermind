@@ -10,6 +10,8 @@ using Nethermind.Core;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
+using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Optimism.Test.Rpc;
 
@@ -68,5 +70,38 @@ public class OptimismTransactionForRpcTests
         }
         json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
         json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+    }
+
+    private static readonly IEnumerable<(string, string)> MalformedJsonTransactions = [
+        (nameof(OptimismTransactionForRpc.Gas), """{"type":"0x7e","nonce":null,"gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"value":"0x1","input":"0x616263646566","v":null,"r":null,"s":null,"to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001","isSystemTx":false,"hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+        (nameof(OptimismTransactionForRpc.Value), """{"type":"0x7e","nonce":null,"gas": "0x1234", "gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"input":"0x616263646566","v":null,"r":null,"s":null,"to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001","isSystemTx":false,"hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+        (nameof(OptimismTransactionForRpc.Input), """{"type":"0x7e","nonce":null,"gas": "0x1234", "gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"value":"0x1","v":null,"r":null,"s":null,"to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001","isSystemTx":false,"hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+        (nameof(OptimismTransactionForRpc.From), """{"type":"0x7e","nonce":null,"gas": "0x1234", "gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"value":"0x1","input":"0x616263646566","v":null,"r":null,"s":null,"to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","isSystemTx":false,"hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+        (nameof(OptimismTransactionForRpc.SourceHash), """{"type":"0x7e","nonce":null,"gas": "0x1234", "gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"value":"0x1","input":"0x616263646566","v":null,"r":null,"s":null,"to":null,"from":"0x0000000000000000000000000000000000000001","isSystemTx":false,"hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+    ];
+
+    [TestCaseSource(nameof(MalformedJsonTransactions))]
+    public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
+    {
+        var rpcTx = new EthereumJsonSerializer().Deserialize<OptimismTransactionForRpc>(testCase.json);
+        rpcTx.Should().NotBeNull();
+
+        var toTransaction = rpcTx.ToTransaction;
+        toTransaction.Should().Throw<ArgumentNullException>().WithParameterName(testCase.missingField);
+    }
+
+    private static readonly IEnumerable<(string, string)> ValidJsonTransactions = [
+        (nameof(OptimismTransactionForRpc.Mint), """{"type":"0x7e","nonce":null,"gas": "0x1234", "gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"value":"0x1","input":"0x616263646566","v":null,"r":null,"s":null,"to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001","isSystemTx":false,"hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+        (nameof(OptimismTransactionForRpc.IsSystemTx), """{"type":"0x7e","nonce":null,"gas": "0x1234", "gasPrice":null,"maxPriorityFeePerGas":null,"maxFeePerGas":null,"value":"0x1","input":"0x616263646566","v":null,"r":null,"s":null,"to":null,"sourceHash":"0x0000000000000000000000000000000000000000000000000000000000000000","from":"0x0000000000000000000000000000000000000001","hash":"0xa4341f3db4363b7ca269a8538bd027b2f8784f84454ca917668642d5f6dffdf9"}"""),
+    ];
+
+    [TestCaseSource(nameof(ValidJsonTransactions))]
+    public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
+    {
+        var rpcTx = new EthereumJsonSerializer().Deserialize<OptimismTransactionForRpc>(testCase.json);
+        rpcTx.Should().NotBeNull();
+
+        var toTransaction = rpcTx.ToTransaction;
+        toTransaction.Should().NotThrow();
     }
 }

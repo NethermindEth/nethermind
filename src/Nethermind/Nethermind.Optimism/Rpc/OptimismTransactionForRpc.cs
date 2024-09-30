@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Eth;
+using System;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -21,22 +22,22 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<Opt
 
     public override TxType? Type => TxType;
 
-    public Hash256 SourceHash { get; set; }
+    public Hash256? SourceHash { get; set; }
 
-    public Address From { get; set; }
+    public Address? From { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Address? To { get; set; }
 
     public UInt256? Mint { get; set; }
 
-    public UInt256 Value { get; set; }
+    public UInt256? Value { get; set; }
 
-    public ulong Gas { get; set; }
+    public ulong? Gas { get; set; }
 
-    public bool IsSystemTx { get; set; }
+    public bool? IsSystemTx { get; set; }
 
-    public byte[] Input { get; set; }
+    public byte[]? Input { get; set; }
 
     public UInt256? Nonce { get; set; }
 
@@ -45,10 +46,8 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<Opt
     public UInt256? DepositReceiptVersion { get; set; }
     #endregion
 
-#pragma warning disable CS8618
     [JsonConstructor]
     public OptimismTransactionForRpc() { }
-#pragma warning restore CS8618
 
     public OptimismTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
         : base(transaction, txIndex, blockHash, blockNumber)
@@ -71,15 +70,15 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<Opt
     {
         var tx = base.ToTransaction();
 
-        tx.SourceHash = SourceHash;
-        tx.SenderAddress = From;
+        tx.SourceHash = SourceHash ?? throw new ArgumentNullException(nameof(SourceHash));
+        tx.SenderAddress = From ?? throw new ArgumentNullException(nameof(From));
         tx.To = To;
         tx.Mint = Mint ?? 0;
-        tx.Value = Value;
+        tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
         // TODO: Unsafe cast
-        tx.GasLimit = (long)Gas;
-        tx.IsOPSystemTransaction = IsSystemTx;
-        tx.Data = Input;
+        tx.GasLimit = (long)(Gas ?? throw new ArgumentNullException(nameof(Gas)));
+        tx.IsOPSystemTransaction = IsSystemTx ?? false;
+        tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
 
         return tx;
     }
