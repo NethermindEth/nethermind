@@ -92,7 +92,7 @@ namespace Nethermind.Network.Test
             _networkConfig.StaticPeers = enode1String;
             _networkConfig.Bootnodes = enode2String;
             _networkConfig.OnlyStaticPeers = true;
-            List<Node> nodes = _loader.LoadInitialList();
+            List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
             Assert.That(nodes.Count, Is.EqualTo(1));
             foreach (Node node in nodes)
             {
