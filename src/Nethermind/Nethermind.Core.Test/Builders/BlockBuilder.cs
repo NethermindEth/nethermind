@@ -293,7 +293,7 @@ namespace Nethermind.Core.Test.Builders
 
             TestObjectInternal.Header.RequestsRoot = requests is null
                 ? null
-                : new RequestsTrie(requests).RootHash;
+                : requests.CalculateRootHash();
 
             return this;
         }

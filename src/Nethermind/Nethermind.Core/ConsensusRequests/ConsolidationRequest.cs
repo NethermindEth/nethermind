@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 using System;
+using System.Linq;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.ConsensusRequests;
@@ -27,5 +28,26 @@ public class ConsolidationRequest : ConsensusRequest
             {nameof(TargetPubkey)}: {TargetPubkey?.Span.ToHexString()},
             }}";
 
+    public override byte[] Encode()
+    {
+        byte[] sourceAddress = SourceAddress?.Bytes ?? Array.Empty<byte>();
+        byte[] sourcePubkey = SourcePubkey?.ToArray() ?? Array.Empty<byte>();
+        byte[] targetPubkey = TargetPubkey?.ToArray() ?? Array.Empty<byte>();
+        byte[] type = new byte[] { (byte)Type };
+        return type.Concat(sourceAddress).Concat(sourcePubkey).Concat(targetPubkey).ToArray();
+    }
 
+    public override ConsensusRequest Decode(byte[] data)
+    {
+        if (data.Length < 2)
+        {
+            throw new ArgumentException("Invalid data length");
+        }
+
+        Type = (ConsensusRequestsType)data[0];
+        SourceAddress = new Address(data.Slice(1, Address.Size));
+        SourcePubkey = data.AsMemory().Slice(1 + Address.Size);
+        TargetPubkey = data.AsMemory().Slice(1 + Address.Size + SourcePubkey.Value.Length);
+        return this;
+    }
 }

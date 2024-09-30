@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.ConsensusRequests;
@@ -32,5 +33,31 @@ public class Deposit : ConsensusRequest
             {nameof(Signature)}: {Signature?.ToHexString()},
             {nameof(Pubkey)}: {Pubkey?.Span.ToHexString()}}}";
 
+    public override byte[] Encode()
+    {
+        byte[] pubkey = Pubkey?.ToArray() ?? Array.Empty<byte>();
+        byte[] withdrawalCredentials = WithdrawalCredentials ?? Array.Empty<byte>();
+        byte[] amount = BitConverter.GetBytes(Amount);
+        byte[] signature = Signature ?? Array.Empty<byte>();
+        byte[] index = Index.HasValue ? BitConverter.GetBytes(Index.Value) : Array.Empty<byte>();
+        byte[] type = new byte[] { (byte)Type };
+        return type.Concat(pubkey).Concat(withdrawalCredentials).Concat(amount).Concat(signature).Concat(index).ToArray();
+    }
+
+    public override ConsensusRequest Decode(byte[] data)
+    {
+        if (data.Length < 2)
+        {
+            throw new ArgumentException("Invalid data length");
+        }
+
+        Type = (ConsensusRequestsType)data[0];
+        Pubkey = data.AsMemory()[1..];
+        WithdrawalCredentials = data.Slice(1 + Pubkey.Value.Length, 32);
+        Amount = BitConverter.ToUInt64(data, 1 + Pubkey.Value.Length + 32);
+        Signature = data.Slice(1 + Pubkey.Value.Length + 32 + sizeof(ulong));
+        Index = data.Length > 1 + Pubkey.Value.Length + 32 + sizeof(ulong) + Signature!.Length ? BitConverter.ToUInt64(data, 1 + Pubkey.Value.Length + 32 + sizeof(ulong) + Signature!.Length) : null;
+        return this;
+    }
 
 }

@@ -466,7 +466,7 @@ public class BlockValidator(
             return header.RequestsRoot is null;
         }
 
-        return (requestsRoot = new RequestsTrie(body.Requests).RootHash) == header.RequestsRoot;
+        return (requestsRoot = body.Requests.CalculateRootHash()) == header.RequestsRoot;
     }
 
     private static string Invalid(Block block) =>

@@ -5,6 +5,7 @@
 using System;
 using System.Text.Json.Serialization;
 
+
 namespace Nethermind.Core.ConsensusRequests;
 
 public enum ConsensusRequestsType : byte
@@ -18,6 +19,21 @@ public abstract class ConsensusRequest
 {
     [JsonIgnore]
     public ConsensusRequestsType Type { get; protected set; }
+
+    /// <summary>
+    /// Encodes the request into a byte array
+    /// reference: https://eips.ethereum.org/EIPS/eip-7685
+    /// </summary>
+    /// <returns> request = request_type ++ request_data </returns>
+    public abstract byte[] Encode();
+
+    /// <summary>
+    /// Decodes the request from a byte array
+    /// reference: https://eips.ethereum.org/EIPS/eip-7685
+    /// </summary>
+    /// <param name="data"> request = request_type ++ request_data </param>
+    /// <returns> request </returns>
+    public abstract ConsensusRequest Decode(byte[] data);
 }
 
 public static class ConsensusRequestExtensions
@@ -75,4 +91,33 @@ public static class ConsensusRequestExtensions
 
         return (deposits, withdrawalRequests, consolidationRequests);
     }
+
+    public static byte[][] Encode(this ConsensusRequest[]? requests)
+    {
+        if (requests is null) return Array.Empty<byte[]>();
+        byte[][] requestsEncoded = new byte[requests.Length][];
+        for (int i = 0; i < requests.Length; i++)
+        {
+            requestsEncoded[i] = requests[i].Encode();
+        }
+        return requestsEncoded;
+    }
+
+    public static ConsensusRequest Decode(byte[] data)
+    {
+        if (data.Length < 2)
+        {
+            throw new ArgumentException("Invalid data length");
+        }
+
+        ConsensusRequestsType type = (ConsensusRequestsType)data[0];
+        return type switch
+        {
+            ConsensusRequestsType.Deposit => new Deposit().Decode(data),
+            ConsensusRequestsType.WithdrawalRequest => new WithdrawalRequest().Decode(data),
+            ConsensusRequestsType.ConsolidationRequest => new ConsolidationRequest().Decode(data),
+            _ => throw new ArgumentException("Invalid request type")
+        };
+    }
+
 }

@@ -116,16 +116,14 @@ namespace Nethermind.Serialization.Rlp
 
                 if (lengthWasRead)
                 {
-                    int requestsLength = rlpStream.ReadSequenceLength();
-                    int requestsCheck = rlpStream.Position + requestsLength;
+                    // read an array of byte arrays
+                    byte[][] requestsEncoded = rlpStream.DecodeByteArrays();
                     requests = new();
-
-                    while (rlpStream.Position < requestsCheck)
+                    for (int i = 0; i < requestsEncoded.Length; i++)
                     {
-                        requests.Add(Rlp.Decode<ConsensusRequest>(rlpStream));
+                        requests.Add(ConsensusRequestExtensions.Decode(requestsEncoded[i]));
                     }
 
-                    rlpStream.Check(requestsCheck);
                 }
             }
 
@@ -359,12 +357,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (requestsLength.HasValue)
             {
-                stream.StartSequence(requestsLength.Value);
-
-                for (int i = 0; i < item.Requests.Length; i++)
-                {
-                    stream.Encode(item.Requests[i]);
-                }
+                stream.Encode(item.Requests.Encode());
             }
         }
 

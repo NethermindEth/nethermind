@@ -32,7 +32,7 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
         requestsList.AddRange(_consolidationRequestsProcessor.ReadConsolidationRequests(block, state, spec));
 
         ConsensusRequest[] requests = requestsList.ToArray();
-        Hash256 root = new RequestsTrie(requests).RootHash;
+        Hash256 root = requests.CalculateRootHash();
         block.Body.Requests = requests;
         block.Header.RequestsRoot = root;
     }

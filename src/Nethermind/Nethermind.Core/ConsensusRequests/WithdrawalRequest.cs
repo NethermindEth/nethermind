@@ -3,7 +3,7 @@
 
 using System;
 using Nethermind.Core.Extensions;
-using System.Text;
+using System.Linq;
 
 namespace Nethermind.Core.ConsensusRequests;
 
@@ -30,4 +30,26 @@ public class WithdrawalRequest : ConsensusRequest
             {nameof(Amount)}: {Amount}}}";
 
 
+    public override byte[] Encode()
+    {
+        byte[] sourceAddress = SourceAddress?.Bytes ?? Array.Empty<byte>();
+        byte[] validatorPubkey = ValidatorPubkey?.ToArray() ?? Array.Empty<byte>();
+        byte[] amount = BitConverter.GetBytes(Amount);
+        byte[] type = new byte[] { (byte)Type };
+        return type.Concat(sourceAddress).Concat(validatorPubkey).Concat(amount).ToArray();
+    }
+
+    public override ConsensusRequest Decode(byte[] data)
+    {
+        if (data.Length < 2)
+        {
+            throw new ArgumentException("Invalid data length");
+        }
+
+        Type = (ConsensusRequestsType)data[0];
+        SourceAddress = new Address(data.Slice(1, Address.Size));
+        ValidatorPubkey = data.AsMemory().Slice(1 + Address.Size);
+        Amount = BitConverter.ToUInt64(data, 1 + Address.Size + ValidatorPubkey.Value.Length);
+        return this;
+    }
 }

@@ -33,3 +33,18 @@ public class RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = fal
         return rootHash;
     }
 }
+
+
+public static class ConsensusRequestExtensions
+{
+    public static Hash256 CalculateRootHash(this ConsensusRequest[]? requests)
+    {
+        Rlp[] encodedRequests = new Rlp[requests!.Length];
+        for (int i = 0; i < encodedRequests.Length; i++)
+        {
+            encodedRequests[i] = Rlp.Encode(requests![i].Encode());
+        }
+
+        return Keccak.Compute(Rlp.Encode(encodedRequests).Bytes);
+    }
+}
