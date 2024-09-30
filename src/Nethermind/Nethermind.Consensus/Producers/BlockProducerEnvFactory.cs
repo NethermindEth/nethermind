@@ -134,7 +134,7 @@ namespace Nethermind.Consensus.Producers
             ILogManager logManager)
         {
             ITxFilterPipeline txSourceFilterPipeline = CreateTxSourceFilter(blocksConfig);
-            return new TxPoolTxSource(txPool, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline);
+            return new TxPoolTxSource(txPool, _specProvider, transactionComparerProvider, logManager, txSourceFilterPipeline, _blocksConfig.GetEip4844Config());
         }
 
         protected virtual ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig) =>

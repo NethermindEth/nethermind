@@ -49,6 +49,7 @@ namespace Nethermind.Consensus.Ethash
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
+            IBlocksConfig blocksConfig = getFromApi.Config<IBlocksConfig>();
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
@@ -62,7 +63,8 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.SpecProvider,
                 getFromApi.TransactionComparerProvider!,
                 getFromApi.LogManager,
-                txFilterPipeline);
+                txFilterPipeline,
+                blocksConfig.GetEip4844Config());
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
@@ -102,7 +104,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.BlockTree,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
-                getFromApi.Config<IBlocksConfig>(),
+                blocksConfig,
                 getFromApi.LogManager);
 
             return blockProducer;
