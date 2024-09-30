@@ -19,12 +19,12 @@ namespace Nethermind.Config
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;
 
-        public int? BlobProductionLimit
+        public int? TargetBlobProductionLimit
         {
             get => _eip4844Config?.GetMaxBlobsPerBlock();
             set
             {
-                if (BlobProductionLimit != value)
+                if (TargetBlobProductionLimit != value)
                 {
                     _eip4844Config = value is null || value == ConstantEip4844Config.Instance.GetMaxBlobsPerBlock()
                         ? null

@@ -29,11 +29,12 @@ public class ConstantEip4844Config : IEip4844Config
 
 public class CappedEip4844Config : IEip4844Config
 {
+    private const int MinimumBlobs = 1;
     private readonly int _maxBlobsPerBlock;
 
     public CappedEip4844Config(int maxBlobsPerBlockCap)
     {
-        _maxBlobsPerBlock = Math.Min(Eip4844Constants.GetMaxBlobsPerBlock(), Math.Max(0, maxBlobsPerBlockCap));
+        _maxBlobsPerBlock = Math.Min(Eip4844Constants.GetMaxBlobsPerBlock(), Math.Max(MinimumBlobs, maxBlobsPerBlockCap));
         MaxBlobGasPerBlock = GasPerBlob * (ulong)_maxBlobsPerBlock;
     }
 

@@ -18,8 +18,8 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "null")]
     long? TargetBlockGasLimit { get; set; }
 
-    [ConfigItem(Description = "The produced block limit of included blobs.", DefaultValue = "null")]
-    int? BlobProductionLimit { get; set; }
+    [ConfigItem(Description = "The blob limit after which the block producer should stop adding blobs. Minimum value is 1.", DefaultValue = "null")]
+    int? TargetBlobProductionLimit { get; set; }
 
     [ConfigItem(
         Description = "The minimum gas premium (or the gas price before the London hard fork) for transactions accepted by the block producer.",
