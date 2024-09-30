@@ -157,6 +157,6 @@ namespace Nethermind.Consensus.Processing
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool ShouldRecoverSignatures(Transaction tx)
-            => tx.IsSigned && tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a => a.Authority is null));
+            => tx.IsSigned && (tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a => a.Authority is null)));
     }
 }

@@ -33,11 +33,6 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public void Sign(PrivateKey privateKey, Transaction tx, bool _)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
         public Address RecoverAddress(Transaction tx, bool useSignatureChainId = false)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
@@ -54,11 +49,6 @@ namespace Nethermind.Crypto
         }
 
         public bool Verify(Address sender, Transaction tx)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public Address? RecoverAddress(AuthorizationTuple tuple)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

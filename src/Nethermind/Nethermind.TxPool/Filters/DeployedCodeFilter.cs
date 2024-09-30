@@ -15,9 +15,9 @@ namespace Nethermind.TxPool.Filters
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
-            return specProvider.GetCurrentHeadSpec().IsEip3607Enabled
-                && state.SenderAccount.HasCode
-                && (!specProvider.GetCurrentHeadSpec().IsEip7702Enabled || !codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
+            return worldState.IsInvalidContractSender(specProvider.GetCurrentHeadSpec(),
+                tx.SenderAddress!,
+                () => codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
                 ? AcceptTxResult.SenderIsContract
                 : AcceptTxResult.Accepted;
         }

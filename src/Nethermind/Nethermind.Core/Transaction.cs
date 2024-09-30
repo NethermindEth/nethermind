@@ -321,7 +321,10 @@ namespace Nethermind.Core
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public class SystemTransaction : Transaction { }
+    public class SystemTransaction : Transaction
+    {
+        private new const long GasLimit = 30_000_000L;
+    }
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size

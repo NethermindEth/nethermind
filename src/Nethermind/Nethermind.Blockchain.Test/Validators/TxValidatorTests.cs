@@ -60,7 +60,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
+    private static byte CalculateV() => (byte)EthereumEcdsaExtensions.CalculateV(TestBlockchainIds.ChainId);
 
     [Test, Timeout(Timeout.MaxTestTime)]
     public void Zero_s_is_not_valid()

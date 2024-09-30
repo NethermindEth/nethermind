@@ -11,10 +11,7 @@ namespace Nethermind.Crypto
     public interface IEthereumEcdsa : IEcdsa
     {
         ulong ChainId { get; }
-        Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false);
-        Address? RecoverAddress(AuthorizationTuple tuple);
         Address? RecoverAddress(Signature signature, Hash256 message);
         Address? RecoverAddress(Span<byte> signatureBytes, Hash256 message);
-        bool Verify(Address sender, Transaction tx);
     }
 }
