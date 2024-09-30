@@ -136,7 +136,7 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
-            IBlockProcessor blockProcessor = new BlockProcessor(
+            BlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
                 rewardCalculator,
@@ -152,6 +152,7 @@ namespace Ethereum.Test.Base
                 NullWitnessCollector.Instance,
                 blockTree,
                 _logManager);
+            blockProcessor.ShouldVerifyIncomingWitness = true;
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
@@ -253,6 +254,11 @@ namespace Ethereum.Test.Base
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {
                             Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders[uncleIndex].Hash)));
+                        }
+
+                        if (testBlockJson.Witness is not null)
+                        {
+                            suggestedBlock.Body.ExecutionWitness = testBlockJson.Witness;
                         }
 
                         correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
