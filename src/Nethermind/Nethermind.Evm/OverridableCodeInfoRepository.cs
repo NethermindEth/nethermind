@@ -11,7 +11,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : ICodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
@@ -40,4 +40,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
         _codeOverwrites[key] = value;
     }
+
+    public void ResetOverrides() => _codeOverwrites.Clear();
 }

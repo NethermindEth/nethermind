@@ -31,7 +31,9 @@ using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Facade.Simulate;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -146,11 +148,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                WorldStateManager,
-                roBlockTree,
-                SpecProvider,
-                LimboLogs.Instance);
+
+            IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(DbProvider, true);
+            OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, WorldStateManager!.TrieStore, LogManager);
+            var reusableWorldStateManager = new OverlayWorldStateManager(editableDbProvider, overlayTrieStore, LogManager, true);
+            ReadOnlyTxProcessingEnv processingEnv = new(reusableWorldStateManager, roBlockTree, SpecProvider, LimboLogs.Instance);
+
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 WorldStateManager,
                 roBlockTree,

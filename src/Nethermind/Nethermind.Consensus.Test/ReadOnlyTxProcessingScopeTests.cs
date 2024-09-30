@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using NSubstitute;
@@ -16,6 +17,8 @@ public class ReadOnlyTxProcessingScopeTests
     public void Test_WhenDispose_ThenStateRootWillRevert()
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
+            Substitute.For<IOverridableCodeInfoRepository>(),
+            Substitute.For<IStateReader>(),
             Substitute.For<ITransactionProcessor>(),
             Substitute.For<IWorldState>(),
             TestItem.KeccakB

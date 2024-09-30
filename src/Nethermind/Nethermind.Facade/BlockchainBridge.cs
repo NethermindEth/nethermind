@@ -26,7 +26,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
@@ -192,13 +191,17 @@ namespace Nethermind.Facade
         {
             using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
 
+            scope.WorldState.ApplyStateOverrides(_processingEnv.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number, true);
+            header.StateRoot = scope.WorldState.StateRoot;
+
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
                 header,
                 tx,
                 stateOverride,
                 true,
-                estimateGasTracer.WithCancellation(cancellationToken));
+                estimateGasTracer.WithCancellation(cancellationToken),
+                scope);
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState,
                 _specProvider, _blocksConfig);
@@ -238,11 +241,14 @@ namespace Nethermind.Facade
             Transaction transaction,
             Dictionary<Address, AccountOverride>? stateOverride,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            IReadOnlyTxProcessingScope? scope = null)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer);
+                return scope == null
+                    ? CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer)
+                    : CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer, scope);
             }
             catch (InsufficientBalanceException ex)
             {
@@ -257,10 +263,20 @@ namespace Nethermind.Facade
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            transaction.SenderAddress ??= Address.SystemUser;
+            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(blockHeader.StateRoot!);
+            return CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer, scope);
+        }
 
-            Hash256 stateRoot = blockHeader.StateRoot!;
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(stateRoot);
+        private TransactionResult CallAndRestore(
+            BlockHeader blockHeader,
+            Transaction transaction,
+            Dictionary<Address, AccountOverride>? stateOverride,
+            bool treatBlockHeaderAsParentBlock,
+            ITxTracer tracer,
+            IReadOnlyTxProcessingScope scope)
+        {
+            transaction.SenderAddress ??= Address.SystemUser;
+            Hash256? stateRoot = blockHeader.StateRoot!;
 
             if (transaction.Nonce == 0)
             {

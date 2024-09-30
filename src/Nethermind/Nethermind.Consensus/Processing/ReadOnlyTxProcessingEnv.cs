@@ -27,6 +27,8 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
+        public IWorldStateManager WorldStateManager { get; }
+
         public IVirtualMachine Machine { get; }
 
         public OverridableCodeInfoRepository CodeInfoRepository { get; }
@@ -52,6 +54,7 @@ namespace Nethermind.Consensus.Processing
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
+            WorldStateManager = worldStateManager;
 
             _logManager = logManager;
         }
@@ -65,7 +68,7 @@ namespace Nethermind.Consensus.Processing
         {
             Hash256 originalStateRoot = StateProvider.StateRoot;
             StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            return new ReadOnlyTxProcessingScope(CodeInfoRepository, StateReader, TransactionProcessor, StateProvider, originalStateRoot);
         }
     }
 }

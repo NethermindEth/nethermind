@@ -75,9 +75,15 @@ namespace Nethermind.Api
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
 
+            IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(DbProvider, true);
+            var overlayTrieStore = new OverlayTrieStore(editableDbProvider.StateDb, WorldStateManager!.TrieStore, LogManager);
+            var overridableWorldStateManager = new OverlayWorldStateManager(
+                editableDbProvider, overlayTrieStore, LogManager, useOverridableWorldState: true
+            );
+
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                WorldStateManager!,
+                overridableWorldStateManager,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
