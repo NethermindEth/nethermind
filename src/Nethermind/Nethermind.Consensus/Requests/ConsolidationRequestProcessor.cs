@@ -6,59 +6,36 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Requests;
 
 // https://eips.ethereum.org/EIPS/eip-7251#block-processing
-public class ConsolidationRequestsProcessor(ITransactionProcessor transactionProcessor)
+public class ConsolidationRequestsProcessor(ITransactionProcessor transactionProcessor) : RequestProcessor<ConsolidationRequest>(transactionProcessor), IRequestProcessor<ConsolidationRequest>
 {
-    private const long GasLimit = 30_000_000L;
     private const int SizeOfClass = 20 + 48 + 48;
 
-    public IEnumerable<ConsolidationRequest> ReadConsolidationRequests(Block block, IWorldState state, IReleaseSpec spec)
+    public IEnumerable<ConsolidationRequest> ReadRequests(Block block, IWorldState state, IReleaseSpec spec)
     {
-        if (!spec.ConsolidationRequestsEnabled)
-            yield break;
-
-        Address eip7251Account = spec.Eip7251ContractAddress;
-        if (!state.AccountExists(eip7251Account))
-            yield break;
-
-        CallOutputTracer tracer = new();
-
-        Transaction? transaction = new()
-        {
-            Value = UInt256.Zero,
-            Data = Array.Empty<byte>(),
-            To = spec.Eip7251ContractAddress,
-            SenderAddress = Address.SystemUser,
-            GasLimit = GasLimit,
-            GasPrice = UInt256.Zero,
-        };
-        transaction.Hash = transaction.CalculateHash();
-
-        transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
-        var result = tracer.ReturnValue;
-        if (result == null || result.Length == 0)
-            yield break;
-
-        Memory<byte> memory = result.AsMemory();
-        int count = memory.Length / SizeOfClass;
+        return base.ReadRequests(block, state, spec, spec.Eip7251ContractAddress);
+    }
+    protected override bool IsEnabledInSpec(IReleaseSpec spec)
+    {
+        return spec.ConsolidationRequestsEnabled;
+    }
+    protected override IEnumerable<ConsolidationRequest> ParseResult(Memory<byte> result)
+    {
+        int count = result.Length / SizeOfClass;
 
         for (int i = 0; i < count; ++i)
         {
             int offset = i * SizeOfClass;
             ConsolidationRequest request = new()
             {
-                SourceAddress = new Address(memory.Slice(offset, 20).ToArray()),
-                SourcePubkey = memory.Slice(offset + 20, 48),
-                TargetPubkey = memory.Slice(offset + 68, 48)
+                SourceAddress = new Address(result.Slice(offset, 20).ToArray()),
+                SourcePubkey = result.Slice(offset + 20, 48),
+                TargetPubkey = result.Slice(offset + 68, 48)
             };
 
             yield return request;
