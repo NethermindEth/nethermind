@@ -12,7 +12,8 @@ namespace Nethermind.Shutter.Test;
 
 public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null) : MergeAuRaTestBlockchain(null, null)
 {
-    public ShutterApiSimulator? Api;
+    public ShutterApiSimulator? Api { get => _api; }
+    private ShutterApiSimulator? _api;
     protected readonly Random _rnd = rnd;
     protected readonly ITimestamper? _timestamper = timestamper;
 
@@ -21,11 +22,11 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
     protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
-        Api = CreateShutterApi();
-        _additionalTxSource = Api.TxSource;
+        _api = CreateShutterApi();
+        _additionalTxSource = _api.TxSource;
         return base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
     }
 
     protected override IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
-        => Api!.GetBlockImprovementContextFactory(blockProducer);
+        => _api!.GetBlockImprovementContextFactory(blockProducer);
 }
