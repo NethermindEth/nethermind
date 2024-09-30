@@ -17,6 +17,7 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
@@ -74,8 +75,7 @@ public class MergePluginTests
     {
         ContainerBuilder builder = new ContainerBuilder();
         ((IApiWithNetwork)_context).ConfigureContainerBuilderFromApiWithNetwork(builder);
-        builder.RegisterModule(new NetworkModule());
-        builder.RegisterModule(new SynchronizerModule(syncConfig));
+        builder.RegisterModule(new NetworkModule(new NetworkConfig(), new SyncConfig()));
         return builder;
     }
 

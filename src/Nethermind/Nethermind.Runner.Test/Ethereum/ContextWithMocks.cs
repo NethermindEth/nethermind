@@ -47,10 +47,12 @@ using Nethermind.Specs;
 using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Init.Steps;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 
 namespace Nethermind.Runner.Test.Ethereum
@@ -161,13 +163,22 @@ namespace Nethermind.Runner.Test.Ethereum
             return api;
         }
 
-        public static NethermindApi ContextWithMocksWithTestContainer()
+        public static NethermindApi ContextWithMocksWithTestContainer(INetworkConfig networkConfig = null, ISyncConfig syncConfig = null)
         {
             NethermindApi api = ContextWithoutContainer();
 
+            if (networkConfig == null)
+            {
+                networkConfig = new NetworkConfig();
+            }
+            if (syncConfig == null)
+            {
+                syncConfig = new SyncConfig();
+            }
+
             var builder = new ContainerBuilder();
             ((IApiWithNetwork)api).ConfigureContainerBuilderFromApiWithNetwork(builder);
-            builder.RegisterModule(new NetworkModule());
+            builder.RegisterModule(new NetworkModule(networkConfig, syncConfig));
             api.ApiWithNetworkServiceContainer = builder.Build();
 
             return api;

@@ -425,7 +425,6 @@ public class NetworkModule(INetworkConfig networkConfig, ISyncConfig syncConfig)
             {
                 IEthereumEcdsa ecdsa = ctx.Resolve<IEthereumEcdsa>();
                 ILogManager logManager = ctx.Resolve<ILogManager>();
-                INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
                 ChainSpec chainSpec = ctx.Resolve<ChainSpec>();
 
                 // I do not use the key here -> API is broken - no sense to use the node signer here
