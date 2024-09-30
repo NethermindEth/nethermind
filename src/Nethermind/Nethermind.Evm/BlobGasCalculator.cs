@@ -88,7 +88,7 @@ public static class BlobGasCalculator
         return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out blobGasPricePerUnit);
     }
 
-    public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)
+    public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec, BlockHeader header)
     {
         if (!releaseSpec.IsEip4844Enabled)
         {
@@ -102,8 +102,8 @@ public static class BlobGasCalculator
 
         ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
         excessBlobGas += parentBlockHeader.BlobGasUsed ?? 0;
-        return excessBlobGas < Eip4844Constants.TargetBlobGasPerBlock
+        return excessBlobGas < header.TargetBlobCount * Eip4844Constants.GasPerBlob
             ? 0
-            : (excessBlobGas - Eip4844Constants.TargetBlobGasPerBlock);
+            : (excessBlobGas - header.TargetBlobCount * Eip4844Constants.GasPerBlob);
     }
 }

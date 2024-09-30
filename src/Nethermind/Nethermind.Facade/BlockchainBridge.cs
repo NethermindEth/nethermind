@@ -288,7 +288,7 @@ namespace Nethermind.Facade
             {
                 callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
                 callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
-                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
+                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec, blockHeader)
                     : blockHeader.ExcessBlobGas;
             }
             callHeader.MixHash = blockHeader.MixHash;

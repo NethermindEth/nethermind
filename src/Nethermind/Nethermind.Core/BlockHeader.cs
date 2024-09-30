@@ -84,6 +84,8 @@ public class BlockHeader
 
     public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }
+    public ulong TargetBlobCount { get; set; }
+    public ulong MaxBlobCount { get; set; }
 
     public string ToString(string indent)
     {

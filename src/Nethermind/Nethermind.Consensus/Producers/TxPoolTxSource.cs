@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new(_eip4844Config.GetMaxBlobsPerBlock());
+            using ArrayPoolList<Transaction> selectedBlobTxs = new((int) parent.MaxBlobCount);
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
@@ -128,20 +128,9 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
-                    break;
-                }
-
                 checkedBlobTransactions++;
 
                 ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
-                if (txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
-                    continue;
-                }
 
                 if (blobGasPrice.IsZero && !TryUpdateBlobGasPrice(blobTx, parent, spec, out blobGasPrice))
                 {
@@ -188,7 +177,7 @@ namespace Nethermind.Consensus.Producers
 
         private bool TryUpdateBlobGasPrice(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 blobGasPrice)
         {
-            ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            ulong? excessDataGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec, parent);
             if (excessDataGas is null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, the specification is not configured to handle shard blob transactions.");

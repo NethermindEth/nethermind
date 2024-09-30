@@ -111,6 +111,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public ulong TargetBlobCount { get; set; }
+
+    public ulong MaxBlobCount { get; set; }
+
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
@@ -131,6 +135,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Timestamp = block.Timestamp,
             BaseFeePerGas = block.BaseFeePerGas,
             Withdrawals = block.Withdrawals,
+            TargetBlobCount = block.Header.TargetBlobCount,
+            MaxBlobCount = block.Header.MaxBlobCount,
         };
         executionPayload.SetTransactions(block.Transactions);
         return executionPayload;
@@ -170,6 +176,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
                 TotalDifficulty = totalDifficulty,
                 TxRoot = TxTrie.CalculateRoot(transactions),
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
+                TargetBlobCount = TargetBlobCount,
+                MaxBlobCount = MaxBlobCount
             };
 
             block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);

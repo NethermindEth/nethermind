@@ -271,9 +271,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.Multiple(() =>
         {
             Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
-            Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
             Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(Eip4844Constants.TargetBlobGasPerBlock, Is.EqualTo(131072));
         });
     }
 
@@ -430,9 +428,7 @@ public class ChainSpecBasedSpecProviderTests
 
                      // Skip EIP-4844 parameter validation
                      .Where(p => p.Name != nameof(Eip4844Constants.BlobGasPriceUpdateFraction))
-                     .Where(p => p.Name != nameof(Eip4844Constants.MaxBlobGasPerBlock))
                      .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
-                     .Where(p => p.Name != nameof(Eip4844Constants.TargetBlobGasPerBlock))
 
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
