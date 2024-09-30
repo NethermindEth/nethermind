@@ -1747,7 +1747,7 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -1757,8 +1757,6 @@ namespace Nethermind.TxPool.Test
                 new TxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
-                new CodeInfoRepository(specProvider.ChainId),
-                _stateProvider,
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 thereIsPriorityContract);

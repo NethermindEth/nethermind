@@ -43,11 +43,11 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverwrites[key] = value;
     }
 
-    public int SetDelegations(IWorldState worldState, AuthorizationTuple?[] authorizations, ISet<Address> accessedAddresses, IReleaseSpec spec) =>
-        codeInfoRepository.SetDelegations(worldState, authorizations, accessedAddresses, spec);
+    public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec) =>
+        codeInfoRepository.SetDelegation(state, codeSource, authority, spec);
 
-    public bool TryGetDelegatedAddress(IWorldState worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        codeInfoRepository.TryGetDelegatedAddress(worldState, address, out delegatedAddress);
+    public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
+        codeInfoRepository.TryGetDelegation(worldState, address, out delegatedAddress);
 
     public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address) =>
         codeInfoRepository.GetExecutableCodeHash(worldState, address);

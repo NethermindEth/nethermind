@@ -12,6 +12,8 @@ namespace Nethermind.Crypto
     {
         public static NullEthereumEcdsa Instance { get; } = new();
 
+        public ulong ChainId => 0;
+
         private NullEthereumEcdsa()
         {
         }
@@ -27,11 +29,6 @@ namespace Nethermind.Crypto
         }
 
         public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Hash256 message)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public void Sign(PrivateKey privateKey, Transaction tx, bool _)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -52,16 +49,6 @@ namespace Nethermind.Crypto
         }
 
         public bool Verify(Address sender, Transaction tx)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public Address? RecoverAddress(AuthorizationTuple tuple)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public AuthorizationTuple Sign(PrivateKey authority, ulong chainId, Address codeAddress, ulong nonce)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

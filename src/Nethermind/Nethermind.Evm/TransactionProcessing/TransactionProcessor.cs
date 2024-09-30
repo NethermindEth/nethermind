@@ -151,11 +151,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             _accessedAddresses.Clear();
-            int delegationRefunds = 0;
-            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
-            {
-                delegationRefunds = _codeInfoRepository.SetDelegations(WorldState, tx.AuthorizationList, _accessedAddresses, spec);
-            }
+            int delegationRefunds = ProcessDelegations(tx, spec, _accessedAddresses);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _accessedAddresses);
 
@@ -207,6 +203,74 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return TransactionResult.Ok;
+        }
+
+        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, HashSet<Address> accessedAddresses)
+        {
+            int refunds = 0;
+            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
+            {
+                foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
+                {
+                    authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
+
+                    if (!IsValidForExecution(authTuple, accessedAddresses, out _))
+                    {
+                        if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid");
+                    }
+                    else
+                    {
+                        if (!WorldState.AccountExists(authTuple.Authority!))
+                        {
+                            WorldState.CreateAccount(authTuple.Authority, 0, 1);
+                        }
+                        else
+                        {
+                            refunds++;
+                            WorldState.IncrementNonce(authTuple.Authority);
+                        }
+
+                        _codeInfoRepository.SetDelegation(WorldState, authTuple.CodeAddress, authTuple.Authority, spec);
+                    }
+                }
+
+            }
+
+            return refunds;
+
+            bool IsValidForExecution(
+                AuthorizationTuple authorizationTuple,
+                ISet<Address> accessedAddresses,
+                [NotNullWhen(false)] out string? error)
+            {
+                if (authorizationTuple.Authority is null)
+                {
+                    error = "Bad signature.";
+                    return false;
+                }
+                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
+                {
+                    error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                    return false;
+                }
+
+                accessedAddresses.Add(authorizationTuple.Authority);
+
+                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
+                {
+                    error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+                    return false;
+                }
+                UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
+                if (authNonce != authorizationTuple.Nonce)
+                {
+                    error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
         }
 
         protected virtual IReleaseSpec GetSpec(Transaction tx, BlockHeader header) => SpecProvider.GetSpec(header);

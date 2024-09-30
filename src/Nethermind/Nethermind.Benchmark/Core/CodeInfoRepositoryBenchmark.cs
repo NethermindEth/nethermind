@@ -50,7 +50,7 @@ public class CodeInfoRepositoryBenchmark
 
         _accessedAddresses = new HashSet<Address>();
         _ethereumEcdsa = new(1);
-        sut = new(1);
+        sut = new();
         var list = new List<AuthorizationTuple>();
         var rnd = new Random();
         var addressBuffer = new byte[20];
@@ -83,27 +83,27 @@ public class CodeInfoRepositoryBenchmark
         }
     }
 
-    [Benchmark]
-    public void Build1Tuples()
-    {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples1, _accessedAddresses, _spec);
-    }
-
-    [Benchmark]
-    public void Build5Tuples()
-    {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples5, _accessedAddresses, _spec);
-    }
-
-    [Benchmark]
-    public void Build10Tuples()
-    {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples10, _accessedAddresses, _spec);
-    }
-
-    [Benchmark]
-    public void Build100Tuples()
-    {
-        sut.InsertFromAuthorizations(_stateProvider, Tuples100, _accessedAddresses, _spec);
-    }
+    // [Benchmark]
+    // public void Build1Tuples()
+    // {
+    //     sut.InsertFromAuthorizations(_stateProvider, Tuples1, _accessedAddresses, _spec);
+    // }
+    //
+    // [Benchmark]
+    // public void Build5Tuples()
+    // {
+    //     sut.InsertFromAuthorizations(_stateProvider, Tuples5, _accessedAddresses, _spec);
+    // }
+    //
+    // [Benchmark]
+    // public void Build10Tuples()
+    // {
+    //     sut.InsertFromAuthorizations(_stateProvider, Tuples10, _accessedAddresses, _spec);
+    // }
+    //
+    // [Benchmark]
+    // public void Build100Tuples()
+    // {
+    //     sut.InsertFromAuthorizations(_stateProvider, Tuples100, _accessedAddresses, _spec);
+    // }
 }

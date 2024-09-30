@@ -127,7 +127,7 @@ namespace Ethereum.Test.Base
         {
             Transaction transaction = new();
 
-            transaction.Type = string.IsNullOrEmpty(transactionJson.Type) ? TxType.Legacy : (TxType)ParseFromHex(transactionJson.Type);
+            transaction.Type = transactionJson.Type;
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
             transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
@@ -163,10 +163,10 @@ namespace Ethereum.Test.Base
                 transaction.AuthorizationList =
                     transactionJson.AuthorizationList
                     .Select(i => new AuthorizationTuple(
-                        ParseFromHex(i.ChainId),
+                        System.Convert.ToUInt64(i.ChainId, 16),
                         new Address(i.Address),
-                        ParseFromHex(i.Nonce),
-                        ParseFromHex(i.V),
+                        System.Convert.ToUInt64(i.Nonce, 16),
+                        System.Convert.ToUInt64(i.V, 16),
                         Bytes.FromHexString(i.R),
                         Bytes.FromHexString(i.S))).ToArray();
                 if (transaction.AuthorizationList.Any())
@@ -176,24 +176,6 @@ namespace Ethereum.Test.Base
             }
 
             return transaction;
-
-            static ulong ParseFromHex(string i)
-            {
-                Span<byte> bytes = stackalloc byte[8];
-                var bytes1 = Bytes.FromHexString(i).AsSpan();
-                if (bytes1.Length <= 8)
-                {
-                    bytes1.Reverse();
-                    bytes1.CopyTo(bytes);
-                }
-                else
-                {
-                    throw new InvalidDataException("Transaction json contains an invalid value for uint64.");
-                }
-
-                var result = BitConverter.ToUInt64(bytes);
-                return result;
-            }
         }
 
         private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
@@ -244,7 +226,6 @@ namespace Ethereum.Test.Base
             }
 
             List<GeneralStateTest> blockchainTests = new();
-            Console.WriteLine($"Loaded {testJson}");
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;

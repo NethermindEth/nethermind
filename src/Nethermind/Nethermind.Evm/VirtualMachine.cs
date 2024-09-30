@@ -482,7 +482,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         bool notOutOfGas = ChargeAccountGas(ref gasAvailable, vmState, address, spec);
         return notOutOfGas
                && chargeForDelegation
-               && vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegatedAddress(_state, address, out Address delegated)
+               && vmState.Env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegated)
             ? ChargeAccountGas(ref gasAvailable, vmState, delegated, spec)
             : notOutOfGas;
 
@@ -1901,7 +1901,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (_state.AccountExists(address)
                             && !_state.IsDeadAccount(address)
-                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegatedAddress(_state, address, out Address delegatedAddress) || _state.AccountExists(delegatedAddress)))
+                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegatedAddress) || _state.AccountExists(delegatedAddress)))
                         {
                             stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
                         }

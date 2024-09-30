@@ -13,6 +13,6 @@ public class IsValidTxSender(IWorldState worldState, ICodeInfoRepository codeInf
     {
         return specProvider.GetCurrentHeadSpec().IsEip3607Enabled
             && worldState.HasCode(sender)
-            && (!specProvider.GetCurrentHeadSpec().IsEip7702Enabled || !codeInfoRepository.TryGetDelegatedAddress(worldState, sender, out _));
+            && (!specProvider.GetCurrentHeadSpec().IsEip7702Enabled || !codeInfoRepository.TryGetDelegation(worldState, sender, out _));
     }
 }
