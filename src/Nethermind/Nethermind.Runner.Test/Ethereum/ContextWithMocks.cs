@@ -114,25 +114,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
                 BadBlocksStore = Substitute.For<IBlockStore>(),
                 BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>(),
-
-                ApiWithNetworkServiceContainer = new ContainerBuilder()
-                    .AddSingleton(Substitute.For<IDiscoveryApp>())
-                    .AddSingleton(Substitute.For<ISyncModeSelector>())
-                    .AddSingleton(Substitute.For<ISynchronizer>())
-                    .AddSingleton(Substitute.For<ISyncPeerPool>())
-                    .AddSingleton(Substitute.For<IPivot>())
-                    .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
-                    .AddSingleton(Substitute.For<IBetterPeerStrategy>())
-                    .AddSingleton(Substitute.For<ISyncServer>())
-                    .AddSingleton(Substitute.For<IRlpxHost>())
-                    .AddSingleton(Substitute.For<ISessionMonitor>())
-                    .AddSingleton(Substitute.For<IEthSyncingInfo>())
-                    .AddSingleton(Substitute.For<IStaticNodesManager>())
-                    .AddSingleton(Substitute.For<IProtocolsManager>())
-                    .AddSingleton(Substitute.For<IPeerManager>())
-                    .AddSingleton(Substitute.For<IPeerPool>())
-                    .AddSingleton(Substitute.For<INodeStatsManager>())
-                    .Build(),
             };
 
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
