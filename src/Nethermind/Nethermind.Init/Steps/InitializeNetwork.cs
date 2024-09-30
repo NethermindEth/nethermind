@@ -468,7 +468,9 @@ public class InitializeNetwork : IStep
             _ = new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
         }
 
-        CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
+            ? new(_api.StaticNodesManager, nodesLoader)
+            : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
         _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,

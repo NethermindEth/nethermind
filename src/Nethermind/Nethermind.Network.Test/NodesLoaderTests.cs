@@ -85,5 +85,19 @@ namespace Nethermind.Network.Test
                 Assert.False(node.IsStatic);
             }
         }
+
+        [Test]
+        public void Can_load_only_static_nodes()
+        {
+            _networkConfig.StaticPeers = enode1String;
+            _networkConfig.Bootnodes = enode2String;
+            _networkConfig.OnlyStaticPeers = true;
+            List<Node> nodes = _loader.LoadInitialList();
+            Assert.That(nodes.Count, Is.EqualTo(1));
+            foreach (Node node in nodes)
+            {
+                Assert.True(node.IsStatic);
+            }
+        }
     }
 }

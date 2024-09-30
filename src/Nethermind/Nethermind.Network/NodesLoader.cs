@@ -44,11 +44,14 @@ namespace Nethermind.Network
             List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
 
-            LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+            if (!_networkConfig.OnlyStaticPeers)
             {
-                n.IsBootnode = true;
-                if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
-            });
+                LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
+                {
+                    n.IsBootnode = true;
+                    if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
+                });
+            }
 
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
