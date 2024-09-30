@@ -1090,7 +1090,7 @@ public partial class EngineModuleTests
     protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
-        ulong slotLength = 12, TimeSpan? payloadImprovementDelay = null)
+        ulong slotLength = 12)
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
@@ -1104,7 +1104,7 @@ public partial class EngineModuleTests
         {
             ExecutionPayload? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
                 parentBlock.Timestamp + slotLength,
-                random ?? TestItem.KeccakA, Address.Zero, payloadImprovementDelay);
+                random ?? TestItem.KeccakA, Address.Zero);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
             if (setHead)
@@ -1236,18 +1236,13 @@ public partial class EngineModuleTests
 
     protected async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
         IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
-        ulong timestamp, Hash256 random, Address feeRecipient, TimeSpan? payloadImprovementDelay = null)
+        ulong timestamp, Hash256 random, Address feeRecipient)
     {
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
 
         // we're using payloadService directly, because we can't use fcU for branch
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
-
-        if (payloadImprovementDelay is not null)
-        {
-            await Task.Delay((int)payloadImprovementDelay.Value.TotalMilliseconds);
-        }
 
         ResultWrapper<ExecutionPayload?> getPayloadResult =
             await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));

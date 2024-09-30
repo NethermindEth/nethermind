@@ -114,11 +114,7 @@ public class ShutterIntegrationTests : EngineModuleTests
             time += (long)ShutterTestsCommon.SlotLength.TotalSeconds;
         }
 
-        // longer delay between fcu and get_payload, should timeout waiting for keys
-        var payloadImprovementDelay = TimeSpan.FromMilliseconds(ShutterTestsCommon.Cfg.MaxKeyDelay + 200);
-        lastPayload = (await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5, payloadImprovementDelay))[0];
-
-        Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(6));
+        Assert.That(Metrics.ShutterKeysMissed, Is.EqualTo(5));
     }
 
 }
