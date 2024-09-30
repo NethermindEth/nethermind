@@ -15,6 +15,7 @@
     <PackageReference Include="Crc32.NET" />
     <PackageReference Include="Nethermind.DotNetty.Handlers" />
     <PackageReference Include="Snappier" />
+    <PackageReference Include="System.Linq.Async" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />
