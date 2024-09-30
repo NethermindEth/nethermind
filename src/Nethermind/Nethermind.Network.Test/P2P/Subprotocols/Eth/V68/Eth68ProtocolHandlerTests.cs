@@ -279,7 +279,7 @@ public class Eth68ProtocolHandlerTests
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {
-        TxDecoder txDecoder = new();
+        TxDecoder txDecoder = TxDecoder.Instance;
         types = new(txCount);
         sizes = new(txCount);
         hashes = new(txCount);

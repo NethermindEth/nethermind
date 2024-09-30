@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.IL;
 using Nethermind.Evm.Tracing;
@@ -123,8 +124,6 @@ internal class ILCompiler
 
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
-
-        Dictionary<int, long> gasCost = BuildCostLookup(code);
         for (int i = 0; i < code.Length; i++)
         {
             OpcodeInfo op = code[i];
@@ -135,8 +134,8 @@ internal class ILCompiler
                 method.MarkLabel(jumpDestinations[op.ProgramCounter]);
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
-                continue;
             }
+
 
             // check if opcode is activated in current spec
             method.LoadArgument(4);
@@ -148,25 +147,48 @@ internal class ILCompiler
             method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
             method.StoreLocal(programCounter);
 
-            // load gasAvailable
-            method.LoadLocal(gasAvailable);
+            if (op.Metadata.GasCost != 0)
+            {
+                // load gasAvailable
+                method.LoadLocal(gasAvailable);
 
-            // get pc gas cost
-            method.LoadConstant(op.Metadata.GasCost);
+                // get pc gas cost
+                method.LoadConstant(op.Metadata.GasCost);
 
-            // subtract the gas cost
-            method.Subtract();
-            // check if gas is available
-            method.Duplicate();
-            method.StoreLocal(gasAvailable);
-            method.LoadConstant((long)0);
+                // subtract the gas cost
+                method.Subtract();
+                // check if gas is available
+                method.Duplicate();
+                method.StoreLocal(gasAvailable);
+                method.LoadConstant((long)0);
 
-            // if gas is not available, branch to out of gas
-            method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+                // if gas is not available, branch to out of gas
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+            }
+
+            if(op.Metadata.StackBehaviorPop > 0)
+            {
+                method.LoadLocal(head);
+                method.LoadConstant(op.Metadata.StackBehaviorPop);
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+            }
+
+            if(op.Metadata.StackBehaviorPush > 0)
+            {
+                int delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
+                method.LoadLocal(head);
+                method.LoadConstant(delta);
+                method.Add();
+                method.LoadConstant(EvmStack.MaxStackSize);
+                method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+            }
 
             // else emit
             switch (op.Operation)
             {
+                case Instruction.JUMPDEST:
+                    // we do nothing
+                    break;
                 case Instruction.STOP:
                     method.LoadArgument(0);
                     method.LoadConstant(true);
@@ -182,13 +204,13 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ChainId)));
                     method.Call(Word.SetULong0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.NOT:
                     method.Load(stack, head);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                    method.StackPop(head);
 
                     method.LoadLocalAddress(uint256A);
                     method.LoadLocalAddress(uint256R);
@@ -217,11 +239,11 @@ internal class ILCompiler
                     method.Branch(jumpTable);
 
                     method.MarkLabel(noJump);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
                     break;
                 case Instruction.PUSH0:
                     method.CleanWord(stack, head);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.PUSH1:
                 case Instruction.PUSH2:
@@ -264,7 +286,7 @@ internal class ILCompiler
                     method.LoadConstant(op.Arguments.Value);
                     method.LoadElement<byte[]>();
                     method.Call(Word.SetArray);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.ADD:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
@@ -420,7 +442,65 @@ internal class ILCompiler
                     EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Xor), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels, uint256A, uint256B);
                     break;
                 case Instruction.EXP:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    Label powerIsZero = method.DefineLabel();
+                    Label baseIsOneOrZero = method.DefineLabel();
+                    Label endOfExpImpl = method.DefineLabel();
+
+                    method.StackLoadPrevious(stack, head, 1);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256A);
+                    method.StackLoadPrevious(stack, head, 2);
+                    method.Duplicate();
+                    method.Call(Word.LeadingZeroProp);
+                    method.StoreLocal(uint64A);
+                    method.Call(Word.GetUInt256);
+                    method.StoreLocal(uint256B);
+                    method.StackPop(head, 2);
+
+                    method.LoadLocalAddress(uint256B);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZero)).GetMethod!);
+                    method.BranchIfTrue(powerIsZero);
+
+                    // load spec
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExpByteCost)));
+                    method.LoadConstant((long)32);
+                    method.LoadLocal(uint64A);
+                    method.Subtract();
+                    method.Multiply();
+                    method.Subtract();
+                    method.Duplicate();
+                    method.StoreLocal(gasAvailable);
+                    method.LoadConstant((long)0);
+                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadLocalAddress(uint256A);
+                    method.Call(typeof(UInt256).GetProperty(nameof(UInt256.IsZeroOrOne)).GetMethod!);
+                    method.BranchIfTrue(baseIsOneOrZero);
+
+                    method.LoadLocalAddress(uint256A);
+                    method.LoadLocalAddress(uint256B);
+                    method.LoadLocalAddress(uint256R);
+                    method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
+                    method.Branch(endOfExpImpl);
+
+                    method.MarkLabel(powerIsZero);
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadConstant(1);
+                    method.StoreField(Word.Byte0Field);
+                    method.Branch(endOfExpImpl);
+
+                    method.MarkLabel(baseIsOneOrZero);
+                    method.CleanWord(stack, head);
+                    method.Load(stack, head);
+                    method.LoadLocal(uint256A);
+                    method.Call(Word.SetUInt256);
+                    method.Branch(endOfExpImpl);
+
+                    method.MarkLabel(endOfExpImpl);
+                    method.StackPush(head);
                     break;
                 case Instruction.LT:
                     EmitComparaisonUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, uint256A, uint256B);
@@ -442,17 +522,17 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetIsZero);
                     method.StoreLocal(byte8A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     // we convert the result to a Uint256 and store it in the stack
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadLocal(byte8A);
                     method.StoreField(Word.Byte0Field);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.POP:
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                    method.StackPop(head);
                     break;
                 case Instruction.DUP1:
                 case Instruction.DUP2:
@@ -475,7 +555,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, count);
                     method.LoadObject(typeof(Word));
                     method.StoreObject(typeof(Word));
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.SWAP1:
                 case Instruction.SWAP2:
@@ -518,14 +598,14 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadConstant(code.Length);
                     method.Call(Word.SetInt0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.PC:
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.LoadLocal(programCounter);
                     method.Call(Word.SetUInt0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.COINBASE:
                     method.CleanWord(stack, head);
@@ -535,7 +615,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary), false, out _));
                     method.Call(Word.SetAddress);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.TIMESTAMP:
                     method.CleanWord(stack, head);
@@ -545,7 +625,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Timestamp), false, out _));
                     method.Call(Word.SetULong0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.NUMBER:
                     method.CleanWord(stack, head);
@@ -555,7 +635,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.Number), false, out _));
                     method.Call(Word.SetULong0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.GASLIMIT:
                     method.CleanWord(stack, head);
@@ -565,7 +645,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo<BlockHeader>(nameof(BlockHeader.GasLimit), false, out _));
                     method.Call(Word.SetULong0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.CALLER:
                     method.CleanWord(stack, head);
@@ -574,7 +654,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Caller)));
                     method.Call(Word.SetAddress);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.ADDRESS:
                     method.CleanWord(stack, head);
@@ -583,7 +663,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                     method.Call(Word.SetAddress);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.ORIGIN:
                     method.CleanWord(stack, head);
@@ -592,7 +672,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
                     method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.Origin), false, out _));
                     method.Call(Word.SetAddress);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.CALLVALUE:
                     method.CleanWord(stack, head);
@@ -601,7 +681,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.Value)));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.GASPRICE:
                     method.CleanWord(stack, head);
@@ -610,7 +690,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
                     method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.GasPrice), false, out _));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.CALLDATACOPY:
                     Label endOfOpcode = method.DefineLabel();
@@ -624,15 +704,13 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 3);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256C);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 3);
+                    method.StackPop(head, 3);
 
                     method.LoadLocal(gasAvailable);
                     method.LoadLocalAddress(uint256C);
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling)));
                     method.LoadConstant(GasCostOf.Memory);
                     method.Multiply();
-                    method.LoadConstant(GasCostOf.VeryLow);
-                    method.Add();
                     method.Subtract();
                     method.StoreLocal(gasAvailable);
 
@@ -672,7 +750,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
@@ -687,7 +765,7 @@ internal class ILCompiler
                     method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
                     method.LoadField(GetFieldInfo(typeof(ZeroPaddedSpan), nameof(ZeroPaddedSpan.Span)));
                     method.Call(Word.SetSpan);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.CALLDATASIZE:
                     method.CleanWord(stack, head);
@@ -696,7 +774,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.InputBuffer)));
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                     method.Call(Word.SetInt0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.MSIZE:
                     method.CleanWord(stack, head);
@@ -706,7 +784,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                     method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
                     method.Call(Word.SetULong0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.MSTORE:
                     method.StackLoadPrevious(stack, head, 1);
@@ -715,7 +793,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256B);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -744,7 +822,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.LoadField(Word.Byte0Field);
                     method.StoreLocal(byte8A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -772,7 +850,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -795,7 +873,7 @@ internal class ILCompiler
                     method.LoadConstant(BitConverter.IsLittleEndian);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.MCOPY:
                     method.StackLoadPrevious(stack, head, 1);
@@ -810,7 +888,7 @@ internal class ILCompiler
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256C);
 
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 3);
+                    method.StackPop(head, 3);
 
                     method.LoadLocal(gasAvailable);
                     method.LoadLocalAddress(uint256C);
@@ -851,7 +929,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256B);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadLocal(gasAvailable);
                     method.LoadLocalAddress(uint256B);
@@ -877,7 +955,7 @@ internal class ILCompiler
                     method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                     method.Call(typeof(ValueKeccak).GetMethod(nameof(ValueKeccak.Compute), [typeof(ReadOnlySpan<byte>)]));
                     method.Call(Word.SetKeccak);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.BYTE:
                     // load a
@@ -887,7 +965,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetSpan);
                     method.StoreLocal(localReadonOnlySpan);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     Label pushZeroLabel = method.DefineLabel();
                     Label endOfInstructionImpl = method.DefineLabel();
@@ -909,14 +987,14 @@ internal class ILCompiler
                     method.Call(typeof(ReadOnlySpan<byte>).GetMethod("get_Item"));
                     method.LoadIndirect<byte>();
                     method.StoreField(Word.Byte0Field);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     method.Branch(endOfInstructionImpl);
 
                     method.MarkLabel(pushZeroLabel);
                     method.CleanWord(stack, head);
                     method.Load(stack, head);
                     method.Call(Word.SetToZero);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
 
                     method.MarkLabel(endOfInstructionImpl);
                     break;
@@ -932,7 +1010,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 3);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256C);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 3);
+                    method.StackPop(head, 3);
 
                     method.LoadLocal(gasAvailable);
                     method.LoadLocalAddress(uint256C);
@@ -979,7 +1057,7 @@ internal class ILCompiler
                     method.LoadLocal(gasAvailable);
                     method.Call(Word.SetULong0);
 
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.RETURNDATASIZE:
                     method.CleanWord(stack, head);
@@ -988,7 +1066,7 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ReturnBuffer)));
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
                     method.Call(Word.SetInt0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.RETURNDATACOPY:
                     endOfOpcode = method.DefineLabel();
@@ -1002,7 +1080,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 3);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256C);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 3);
+                    method.StackPop(head, 3);
 
                     method.LoadLocal(gasAvailable);
                     method.LoadLocalAddress(uint256C);
@@ -1052,7 +1130,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256B);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -1092,7 +1170,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                     method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.BaseFeePerGas), false, out _));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.BLOBBASEFEE:
                     method.CleanWord(stack, head);
@@ -1102,7 +1180,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.BlobBaseFee), false, out _));
                     method.Call(GetPropertyInfo(typeof(UInt256?), nameof(Nullable<UInt256>.Value), false, out _));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.PREVRANDAO:
                     Label isPostMergeBranch = method.DefineLabel();
@@ -1120,12 +1198,12 @@ internal class ILCompiler
                     method.LoadLocalAddress(localReadonOnlySpan);
                     method.LoadConstant(BitConverter.IsLittleEndian);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     method.Branch(endOfOpcode);
 
                     method.MarkLabel(isPostMergeBranch);
                     method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Difficulty), false, out _));
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
 
                     method.MarkLabel(endOfOpcode);
                     break;
@@ -1136,7 +1214,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetInt0);
                     method.StoreLocal(uint32A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
@@ -1170,7 +1248,7 @@ internal class ILCompiler
                     method.Call(Word.SetToZero);
 
                     method.MarkLabel(endOfOpcode);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.BLOCKHASH:
                     Label blockHashReturnedNull = method.DefineLabel();
@@ -1182,7 +1260,7 @@ internal class ILCompiler
                     method.LoadConstant(long.MaxValue);
                     method.Call(typeof(Math).GetMethod(nameof(Math.Min), [typeof(long), typeof(long)]));
                     method.StoreLocal(int64A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadArgument(1);
                     method.LoadArgument(0);
@@ -1216,7 +1294,7 @@ internal class ILCompiler
                     method.LoadConstant(BitConverter.IsLittleEndian);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.SIGNEXTEND:
                     Label signIsNegative = method.DefineLabel();
@@ -1228,7 +1306,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetSpan);
                     method.StoreLocal(localSpan);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadConstant((uint)31);
                     method.LoadLocal(uint32A);
@@ -1252,7 +1330,7 @@ internal class ILCompiler
                     method.LoadConstant(0);
                     method.LoadLocal(uint32A);
                     method.Convert<int>();
-                    method.Call(typeof(MemoryExtensions).GetMethod(nameof(MemoryExtensions.AsSpan), [typeof(byte[]), typeof(int), typeof(int)]));
+                    method.Call(typeof(System.MemoryExtensions).GetMethod(nameof(System.MemoryExtensions.AsSpan), [typeof(byte[]), typeof(int), typeof(int)]));
                     method.LoadLocalAddress(localSpan);
                     method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                     break;
@@ -1278,7 +1356,7 @@ internal class ILCompiler
                     method.Call(Word.GetArray);
                     method.StoreLocal(localArray);
 
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
@@ -1296,7 +1374,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
@@ -1314,7 +1392,7 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadLocal(localReadonOnlySpan);
                     method.Call(Word.SetSpan);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
 
                 case Instruction.SSTORE:
@@ -1324,7 +1402,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 2);
                     method.Call(Word.GetSpan);
                     method.StoreLocal(localReadonOnlySpan);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 2);
+                    method.StackPop(head, 2);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
@@ -1364,7 +1442,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256A);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
@@ -1392,7 +1470,7 @@ internal class ILCompiler
                     method.Load(stack, head);
                     method.LoadLocal(localReadonOnlySpan);
                     method.Call(Word.SetSpan);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
 
                 case Instruction.EXTCODESIZE:
@@ -1405,7 +1483,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetAddress);
                     method.StoreLocal(address);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadArgument(0);
@@ -1431,7 +1509,7 @@ internal class ILCompiler
                     method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
 
                     method.Call(Word.SetInt0);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
 
                 case Instruction.EXTCODECOPY:
@@ -1455,7 +1533,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 4);
                     method.Call(Word.GetUInt256);
                     method.StoreLocal(uint256C);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 4);
+                    method.StackPop(head, 4);
 
                     method.LoadLocal(gasAvailable);
                     method.LoadLocalAddress(uint256C);
@@ -1522,7 +1600,7 @@ internal class ILCompiler
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetAddress);
                     method.StoreLocal(address);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadArgument(0);
@@ -1552,7 +1630,7 @@ internal class ILCompiler
                     method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetCodeHash)));
                     method.Call(Word.SetKeccak);
                     method.MarkLabel(endOfOpcode);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.SELFBALANCE:
                     method.CleanWord(stack, head);
@@ -1563,13 +1641,19 @@ internal class ILCompiler
                     method.LoadField(GetFieldInfo(typeof(ExecutionEnvironment), nameof(ExecutionEnvironment.ExecutingAccount)));
                     method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 case Instruction.BALANCE:
+                    method.LoadLocal(gasAvailable);
+                    method.LoadArgument(4);
+                    method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetBalanceCost)));
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+
                     method.StackLoadPrevious(stack, head, 1);
                     method.Call(Word.GetAddress);
                     method.StoreLocal(address);
-                    method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], 1);
+                    method.StackPop(head, 1);
 
                     method.LoadLocalAddress(gasAvailable);
                     method.LoadArgument(0);
@@ -1587,7 +1671,7 @@ internal class ILCompiler
                     method.LoadLocal(address);
                     method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetBalance)));
                     method.Call(Word.SetUInt256);
-                    method.StackPush(head, evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                    method.StackPush(head);
                     break;
                 default:
                     throw new NotSupportedException();
@@ -1642,9 +1726,9 @@ internal class ILCompiler
         method.Call(Word.GetInt0);
         method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
         method.StoreLocal(jmpDestination);
-        method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+        method.StackPop(head);
 
-        method.StackPop(head, evmExceptionLabels[EvmExceptionType.StackUnderflow], consumeJumpCondition);
+        method.StackPop(head, consumeJumpCondition);
         method.LoadConstant(0);
         method.StoreLocal(consumeJumpCondition);
 
@@ -1758,18 +1842,18 @@ internal class ILCompiler
         il.Call(Word.GetInt0);
         il.LoadLocalAddress(uint256R);
         il.Call(shiftOp);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
         il.CleanWord(stack.span, stack.idx);
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+        il.StackPush(stack.idx, 1);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
         il.CleanWord(stack.span, stack.idx);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+        il.StackPush(stack.idx, 1);
 
         il.MarkLabel(endOfOpcode);
     }
@@ -1798,16 +1882,16 @@ internal class ILCompiler
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.RightShift), [typeof(int), typeof(Int256.Int256).MakeByRefType()]));
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
         il.CleanWord(stack.span, stack.idx);
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow], 1);
+        il.StackPush(stack.idx, 1);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
 
         il.LoadLocalAddress(locals[0]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
@@ -1818,7 +1902,7 @@ internal class ILCompiler
         il.CleanWord(stack.span, stack.idx);
         il.Load(stack.span, stack.idx);
         il.Call(Word.SetToZero);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
         il.Branch(endOfOpcode);
 
         // sign
@@ -1829,7 +1913,7 @@ internal class ILCompiler
         il.Call(GetAsMethodInfo<Int256.Int256, UInt256>());
         il.LoadObject<UInt256>();
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(endOfOpcode);
@@ -1845,7 +1929,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[0]);
@@ -1858,7 +1942,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
     }
 
     private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1870,7 +1954,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[0]);
@@ -1887,7 +1971,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
     }
 
     private static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1901,7 +1985,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
 
         // invoke op  on the uint256
         il.LoadLocalAddress(locals[0]);
@@ -1934,7 +2018,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
     }
 
     private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1948,7 +2032,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -1967,7 +2051,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
     }
 
     private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -1981,7 +2065,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -2003,7 +2087,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
     }
 
     private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
@@ -2020,7 +2104,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 3);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[2]);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 3);
+        il.StackPop(stack.idx, 3);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
@@ -2040,7 +2124,7 @@ internal class ILCompiler
         il.Load(stack.span, stack.idx);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, exceptions[EvmExceptionType.StackOverflow]);
+        il.StackPush(stack.idx);
     }
 
 
@@ -2103,7 +2187,7 @@ internal class ILCompiler
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(uint256B); // length
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], 2);
+        il.StackPop(stack.idx, 2);
         // UpdateMemoryCost
         il.LoadArgument(0);
         il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
@@ -2149,7 +2233,7 @@ internal class ILCompiler
         // Creat an LogEntry Object from Items on the Stack
         il.NewObject(typeof(LogEntry), typeof(Address), typeof(byte[]), typeof(Hash256[]));
         il.StoreLocal(logEntry);
-        il.StackPop(stack.idx, exceptions[EvmExceptionType.StackUnderflow], topicsCount);
+        il.StackPop(stack.idx, topicsCount);
 
         il.LoadArgument(0);
         il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));

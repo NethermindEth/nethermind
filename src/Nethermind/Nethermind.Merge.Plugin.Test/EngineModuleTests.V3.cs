@@ -146,9 +146,8 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        TxDecoder rlpEncoder = new();
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => rlpEncoder.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
@@ -215,6 +214,26 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be("INVALID");
         Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+    }
+
+    [Test]
+    public async Task NewPayloadV3_UnsupportedTxType_BlockIsRejectedWithCorrectErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+
+        payload.TryGetBlock(out Block? b);
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.GetTransactions()[0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        txRlp[0] = 100; // set TxType to 100
+        payload.Transactions = [txRlp];
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
     }
 
     [Test]
@@ -356,10 +375,13 @@ public partial class EngineModuleTests
                  Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+                 Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
                  newPayloadHandlerMock,
                  Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
                  Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),

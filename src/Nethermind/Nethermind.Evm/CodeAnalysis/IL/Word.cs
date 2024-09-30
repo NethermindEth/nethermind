@@ -11,6 +11,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -230,6 +231,26 @@ internal struct Word
         }
     }
 
+
+    public unsafe long LeadingZeros
+    {
+        get
+        {
+            fixed (byte* ptr = _buffer)
+            {
+                byte* end = ptr + 32;
+                byte* current = ptr;
+                while (current < end && *current == 0)
+                {
+                    current++;
+                }
+
+                return current - ptr;
+            }
+        }
+    }
+
+    public static readonly MethodInfo LeadingZeroProp = typeof(Word).GetProperty(nameof(LeadingZeros))!.GetMethod;
     public static readonly FieldInfo Byte0Field = typeof(Word).GetField(nameof(_uByte0));
 
     public static readonly MethodInfo GetInt0 = typeof(Word).GetProperty(nameof(Int0))!.GetMethod;
@@ -268,4 +289,5 @@ internal struct Word
             return result;
         }
     }
+
 }

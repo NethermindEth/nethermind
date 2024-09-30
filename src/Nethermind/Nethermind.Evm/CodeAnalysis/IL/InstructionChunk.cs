@@ -12,7 +12,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// Represents a chunk of <see cref="Instruction"/>s that is optimized and ready to be run in an efficient manner.
 /// </summary>
 ///
-interface InstructionChunk
+internal interface InstructionChunk
 {
     string Name { get; }
     byte[] Pattern { get; }

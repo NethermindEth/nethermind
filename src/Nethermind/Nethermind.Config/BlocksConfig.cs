@@ -26,6 +26,10 @@ namespace Nethermind.Config
 
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
 
+        public int BlockProductionTimeoutMs { get; set; } = 4_000;
+
+        public int GenesisTimeoutMs { get; set; } = 40_000;
+
         public string ExtraData
         {
             get

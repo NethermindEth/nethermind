@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Config;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -21,17 +22,25 @@ namespace Nethermind.Evm.CodeAnalysis
         // IL-EVM
         private int _callCount;
 
-        public async void NoticeExecution(ITxTracer tracer)
+        public async void NoticeExecution(IVMConfig vmConfig)
         {
             // IL-EVM info already created
-            if (_callCount > Math.Max(IlAnalyzer.IlCompilerThreshold, IlAnalyzer.CompoundOpThreshold))
+            if (_callCount > Math.Max(vmConfig.JittingThreshold, vmConfig.PatternMatchingThreshold))
                 return;
 
+            Interlocked.Increment(ref _callCount);
             // use Interlocked just in case of concurrent execution to run it only once
-            IlInfo.ILMode mode = Interlocked.Increment(ref _callCount) == IlAnalyzer.CompoundOpThreshold
-                ? IlInfo.ILMode.PatternMatching
-                : _callCount == IlAnalyzer.IlCompilerThreshold ? IlInfo.ILMode.SubsegmentsCompiling : IlInfo.ILMode.NoIlvm;
-            await IlAnalyzer.StartAnalysis(this, mode, tracer);
+            IlInfo.ILMode mode =
+                 vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
+                    ? IlInfo.ILMode.PatternMatching
+                    : vmConfig.IsJitEnabled && _callCount == vmConfig.JittingThreshold
+                        ? IlInfo.ILMode.SubsegmentsCompiling
+                        : IlInfo.ILMode.NoIlvm;
+
+            if (mode == IlInfo.ILMode.NoIlvm)
+                return;
+
+            await IlAnalyzer.StartAnalysis(this, mode).ConfigureAwait(false);
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());

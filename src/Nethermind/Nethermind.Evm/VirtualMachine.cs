@@ -73,9 +73,6 @@ public class VirtualMachine : IVirtualMachine
         _evm = logger.IsTrace
             ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger)
             : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, _config, logger);
-
-        IlAnalyzer.CompoundOpThreshold = _config.PatternMatchingThreshold;
-        IlAnalyzer.IlCompilerThreshold = _config.JittingThreshold;
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -390,7 +387,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             // parity induced if else for vmtrace
                             if (_txTracer.IsTracingInstructions)
                             {
-                                _txTracer.ReportMemoryChange((long)previousCallOutputDestination, previousCallOutput);
+                                _txTracer.ReportMemoryChange(previousCallOutputDestination, previousCallOutput);
                             }
                         }
 
@@ -640,6 +637,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 _state.IncrementNonce(env.ExecutingAccount);
             }
+
+            if (_vmConfig.IsVmOptimizationEnabled)
+            {
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig);
+            }
         }
 
         if (env.CodeInfo.MachineCode.Length == 0)
@@ -651,10 +653,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             goto Empty;
         }
 
-        if (_vmConfig.IsVmOptimizationEnabled)
-        {
-            vmState.Env.CodeInfo.NoticeExecution(_txTracer);
-        }
 
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
@@ -741,13 +739,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 if (chunkExecutionResult.Value.ShouldReturn)
                 {
-                    returnData = chunkExecutionResult.Value.ReturnData;
+                    returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
                     goto DataReturn;
                 }
                 if (chunkExecutionResult.Value.ShouldRevert)
                 {
                     isRevert = true;
-                    returnData = chunkExecutionResult.Value.ReturnData;
+                    returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
                     goto DataReturn;
                 }
                 if (chunkExecutionResult.Value.ShouldStop)
@@ -777,6 +775,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         case EvmExceptionType.StaticCallViolation:
                             goto StaticCallViolation;
                     }
+                }
+
+                if (programCounter >= codeLength)
+                {
+                    goto EmptyReturnNoTrace;
                 }
             }
 
@@ -1199,7 +1202,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, in a, b)) goto OutOfGas;
 
                         bytes = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+
+                        // Compute the KECCAK256 directly to the stack slot
+                        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref stack.PushBytesRef()));
                         break;
                     }
                 case Instruction.ADDRESS:
@@ -1275,7 +1280,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, slice);
+                                _txTracer.ReportMemoryChange(a, slice);
                             }
                         }
 
@@ -1302,7 +1307,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             slice = code.SliceWithZeroPadding(in b, (int)result);
                             vmState.Memory.Save(in a, in slice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, in slice);
                         }
 
                         break;
@@ -1328,6 +1333,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             bool optimizeAccess = false;
                             Instruction nextInstruction = (Instruction)code[programCounter];
+                            // Thrown away result
+                            if (nextInstruction == Instruction.POP)
+                            {
+                                programCounter++;
+                                // Add gas cost for POP
+                                gasAvailable -= GasCostOf.Base;
+                                break;
+                            }
                             // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {
@@ -1397,7 +1410,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
+                                _txTracer.ReportMemoryChange(a, in slice);
                             }
                         }
 
@@ -1435,7 +1448,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
+                                _txTracer.ReportMemoryChange(a, in slice);
                             }
                         }
 
@@ -1448,7 +1461,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.BlockHash;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        long number = a > long.MaxValue ? long.MaxValue : (long)a;
+                        long number = a.ToLong();
 
                         Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
 
@@ -1595,7 +1608,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bytes = stack.PopWord256();
                         if (!UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, bytes);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
 
                         break;
                     }
@@ -1607,7 +1620,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         byte data = stack.PopByte();
                         if (!UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
                         vmState.Memory.SaveByte(in result, data);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, data);
+                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, data);
 
                         break;
                     }
@@ -2192,7 +2205,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
 
-        long gasLimitUl = (long)gasLimit;
+        long gasLimitUl = gasLimit.ToLong();
         if (!UpdateGas(gasLimitUl, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         if (!transferValue.IsZero)
@@ -2263,8 +2276,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             executionType,
             isTopLevel: false,
             snapshot,
-            (long)outputOffset,
-            (long)outputLength,
+            outputOffset.ToLong(),
+            outputLength.ToLong(),
             instruction == Instruction.STATICCALL || vmState.IsStatic,
             vmState,
             isContinuation: false,
@@ -2531,7 +2544,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
         if (!UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                length.ToLong() * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
