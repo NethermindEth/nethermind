@@ -139,12 +139,16 @@ namespace Nethermind.Network.StaticNodes
             => File.WriteAllTextAsync(_staticNodesPath,
                 JsonSerializer.Serialize(_nodes.Select(n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
-        public List<Node> LoadInitialList() =>
-            _nodes.Values.Select(n => new Node(n)).ToList();
-
         public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
         {
             Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
+
+            foreach (Node node in _nodes.Values.Select(n => new Node(n)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return node;
+            }
+
             EventHandler<NodeEventArgs> handler = (_, args) =>
             {
                 ch.Writer.TryWrite(args.Node);

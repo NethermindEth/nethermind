@@ -39,7 +39,7 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         }
 
-        public List<Node> LoadInitialList()
+        public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
             List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
@@ -56,14 +56,11 @@ namespace Nethermind.Network
                 if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
             });
 
-            return allPeers
+            IEnumerable<Node> combined = allPeers
                 .Where(p => p.Id != _rlpxHost.LocalNodeId)
-                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic).ToList();
-        }
+                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic);
 
-        public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
-        {
-            return AsyncEnumerable.Empty<Node>();
+            return combined.ToAsyncEnumerable();
         }
 
         private void LoadPeersFromDb(List<Node> peers)

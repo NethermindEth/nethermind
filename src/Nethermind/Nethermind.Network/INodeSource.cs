@@ -10,7 +10,6 @@ namespace Nethermind.Network;
 
 public interface INodeSource
 {
-    List<Node> LoadInitialList() => [];
     IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken);
     event EventHandler<NodeEventArgs> NodeRemoved;
 }

@@ -261,12 +261,6 @@ namespace Nethermind.Network
 
         public void Start()
         {
-            List<Node> initialNodes = _nodeSource.LoadInitialList();
-            foreach (Node initialNode in initialNodes)
-            {
-                GetOrAdd(initialNode);
-            }
-
             _ = FeedFromNodeSource();
             StartPeerPersistenceTimer();
         }

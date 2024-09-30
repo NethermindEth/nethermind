@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
@@ -534,7 +535,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             const int nodesCount = 5;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
+            ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
@@ -554,7 +555,7 @@ namespace Nethermind.Network.Test
             const int nodesCount = 5;
             var disconnections = 0;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
+            ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
@@ -633,7 +634,7 @@ namespace Nethermind.Network.Test
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
-                DiscoveryApp.LoadInitialList().Returns(new List<Node>());
+                DiscoveryApp.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
@@ -644,7 +645,7 @@ namespace Nethermind.Network.Test
                 NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
                 NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
-                StaticNodesManager.LoadInitialList().Returns(new List<Node>());
+                StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 TestNodeSource = new TestNodeSource();
                 CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);

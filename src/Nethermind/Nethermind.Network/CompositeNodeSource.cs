@@ -16,17 +16,6 @@ public class CompositeNodeSource : INodeSource
 {
     private readonly INodeSource[] _nodeSources;
 
-    public List<Node> LoadInitialList()
-    {
-        List<Node> all = new();
-        foreach (INodeSource nodeSource in _nodeSources)
-        {
-            all.AddRange(nodeSource.LoadInitialList());
-        }
-
-        return all;
-    }
-
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
