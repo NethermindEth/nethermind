@@ -251,12 +251,12 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-            TransactionForRpc tx = new LegacyTransactionForRpc
-            {
-                From = TestItem.AddressA,
-                To = TestItem.AddressB,
-                GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
-            };
+        TransactionForRpc tx = new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+        };
 
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
 
@@ -276,13 +276,13 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-            TransactionForRpc tx = new LegacyTransactionForRpc
-            {
-                From = TestItem.AddressA,
-                To = TestItem.AddressB,
-                GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
-            };
-            _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash!));
+        TransactionForRpc tx = new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+        };
+        _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash!));
 
         EthereumJsonSerializer serializer = new();
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Hash}");
@@ -300,12 +300,12 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-            TransactionForRpc tx = new LegacyTransactionForRpc
-            {
-                From = TestItem.AddressA,
-                To = TestItem.AddressB,
-                GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
-            };
+        TransactionForRpc tx = new LegacyTransactionForRpc
+        {
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+        };
 
         EthereumJsonSerializer serializer = new();
         string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
@@ -780,12 +780,12 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-            TransactionForRpc tx = new LegacyTransactionForRpc
-            {
-                From = from,
-                To = TestItem.AddressB,
-                GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
-            };
+        TransactionForRpc tx = new LegacyTransactionForRpc
+        {
+            From = from,
+            To = TestItem.AddressB,
+            GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
+        };
 
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
@@ -827,14 +827,14 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-            TransactionForRpc tx = new LegacyTransactionForRpc
-            {
-                // we are testing system transaction here when From is null
-                From = from,
-                To = TestItem.AddressB,
-                GasPrice = gasPrice,
-                Nonce = 1000
-            };
+        TransactionForRpc tx = new LegacyTransactionForRpc
+        {
+            // we are testing system transaction here when From is null
+            From = from,
+            To = TestItem.AddressB,
+            GasPrice = gasPrice,
+            Nonce = 1000
+        };
 
         CallResultWithProof callResultWithProof = _proofRpcModule.proof_call(tx, new BlockParameter(blockOnTop.Number)).Data;
         Assert.That(callResultWithProof.Accounts.Length, Is.GreaterThan(0));
