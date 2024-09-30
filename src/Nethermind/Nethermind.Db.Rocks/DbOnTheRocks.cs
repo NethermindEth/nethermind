@@ -791,9 +791,31 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
 
                 iterator.Seek(key);
-                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
+                ReadOnlySpan<byte> keySpan = iterator.GetKeySpan();
+                try
                 {
-                    return iterator.Value();
+                    if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
+                    {
+                        _db.DangerousReleaseMemory(keySpan);
+                        keySpan = default;
+
+                        ReadOnlySpan<byte> valueSpan = iterator.GetValueSpan();
+                        try
+                        {
+                            byte[] value = valueSpan.Length == 0 ? Array.Empty<byte>() : valueSpan.ToArray();
+                            return value;
+                        }
+                        finally
+                        {
+                            if (!valueSpan.IsNull())
+                                _db.DangerousReleaseMemory(valueSpan);
+                        }
+                    }
+                }
+                finally
+                {
+                    if (!keySpan.IsNull())
+                        _db.DangerousReleaseMemory(keySpan);
                 }
             }
 
