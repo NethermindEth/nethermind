@@ -32,7 +32,7 @@ public class EthStatsPluginTests
     public void Init_eth_stats_plugin_does_not_throw_exception(bool enabled)
     {
         StatsConfig = new EthStatsConfig() { Enabled = enabled };
-        Assert.DoesNotThrow(() => _plugin.InitRlpDecoders(_context));
+        Assert.DoesNotThrow(() => _plugin.InitTxTypesAndRlpDecoders(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
