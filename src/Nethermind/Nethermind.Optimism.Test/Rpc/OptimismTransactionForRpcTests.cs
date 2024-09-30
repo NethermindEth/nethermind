@@ -17,6 +17,8 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class OptimismTransactionForRpcTests
 {
+    private readonly IJsonSerializer serializer = new EthereumJsonSerializer();
+
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
     public static readonly Transaction[] Transactions = [
         Build.TestObject,
@@ -44,7 +46,7 @@ public class OptimismTransactionForRpcTests
     public void Always_satisfies_schema(Transaction transaction)
     {
         TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
-        string serialized = new EthereumJsonSerializer().Serialize(rpcTransaction);
+        string serialized = serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
         ValidateSchema(json);
@@ -83,7 +85,7 @@ public class OptimismTransactionForRpcTests
     [TestCaseSource(nameof(MalformedJsonTransactions))]
     public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = new EthereumJsonSerializer().Deserialize<OptimismTransactionForRpc>(testCase.json);
+        var rpcTx = serializer.Deserialize<OptimismTransactionForRpc>(testCase.json);
         rpcTx.Should().NotBeNull();
 
         var toTransaction = rpcTx.ToTransaction;
@@ -98,7 +100,7 @@ public class OptimismTransactionForRpcTests
     [TestCaseSource(nameof(ValidJsonTransactions))]
     public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = new EthereumJsonSerializer().Deserialize<OptimismTransactionForRpc>(testCase.json);
+        var rpcTx = serializer.Deserialize<OptimismTransactionForRpc>(testCase.json);
         rpcTx.Should().NotBeNull();
 
         var toTransaction = rpcTx.ToTransaction;
