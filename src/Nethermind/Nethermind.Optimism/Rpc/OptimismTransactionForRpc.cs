@@ -84,10 +84,8 @@ public class OptimismTransactionForRpc : TransactionForRpc, IFromTransaction<Opt
         return tx;
     }
 
-    public override void EnsureDefaults(long? gasCap)
-    {
-        // TODO: Are there any defaults to set in Optimism transactions?
-    }
+    // NOTE: No defaulting mechanism for Optimism transactions
+    public override void EnsureDefaults(long? gasCap) { }
 
     public override bool ShouldSetBaseFee() => false;
 
