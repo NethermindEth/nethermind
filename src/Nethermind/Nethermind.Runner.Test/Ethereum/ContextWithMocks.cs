@@ -164,13 +164,22 @@ namespace Nethermind.Runner.Test.Ethereum
             return api;
         }
 
-        public static NethermindApi ContextWithMocksWithTestContainer()
+        public static NethermindApi ContextWithMocksWithTestContainer(INetworkConfig networkConfig = null, ISyncConfig syncConfig = null)
         {
             NethermindApi api = ContextWithoutContainer();
 
+            if (networkConfig == null)
+            {
+                networkConfig = new NetworkConfig();
+            }
+            if (syncConfig == null)
+            {
+                syncConfig = new SyncConfig();
+            }
+
             var builder = new ContainerBuilder();
             ((IApiWithNetwork)api).ConfigureContainerBuilderFromApiWithNetwork(builder);
-            builder.RegisterModule(new NetworkModule(new NetworkConfig(), new SyncConfig()));
+            builder.RegisterModule(new NetworkModule(networkConfig, syncConfig));
             api.ApiWithNetworkServiceContainer = builder.Build();
 
             return api;
