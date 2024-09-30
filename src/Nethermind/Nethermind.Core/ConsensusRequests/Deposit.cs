@@ -35,13 +35,13 @@ public class Deposit : ConsensusRequest
 
     public override byte[] Encode()
     {
-        byte[] pubkey = Pubkey?.ToArray() ?? Array.Empty<byte>();
-        byte[] withdrawalCredentials = WithdrawalCredentials ?? Array.Empty<byte>();
-        byte[] amount = BitConverter.GetBytes(Amount);
-        byte[] signature = Signature ?? Array.Empty<byte>();
-        byte[] index = Index.HasValue ? BitConverter.GetBytes(Index.Value) : Array.Empty<byte>();
         byte[] type = new byte[] { (byte)Type };
-        return type.Concat(pubkey).Concat(withdrawalCredentials).Concat(amount).Concat(signature).Concat(index).ToArray();
+        return type
+            .Concat(Pubkey?.ToArray() ?? Array.Empty<byte>())
+            .Concat(WithdrawalCredentials ?? Array.Empty<byte>())
+            .Concat(BitConverter.GetBytes(Amount))
+            .Concat(Signature ?? Array.Empty<byte>())
+            .Concat(Index.HasValue ? BitConverter.GetBytes(Index.Value) : Array.Empty<byte>()).ToArray();
     }
 
     public override ConsensusRequest Decode(byte[] data)

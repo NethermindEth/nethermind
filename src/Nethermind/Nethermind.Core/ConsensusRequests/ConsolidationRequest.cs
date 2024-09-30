@@ -30,11 +30,11 @@ public class ConsolidationRequest : ConsensusRequest
 
     public override byte[] Encode()
     {
-        byte[] sourceAddress = SourceAddress?.Bytes ?? Array.Empty<byte>();
-        byte[] sourcePubkey = SourcePubkey?.ToArray() ?? Array.Empty<byte>();
-        byte[] targetPubkey = TargetPubkey?.ToArray() ?? Array.Empty<byte>();
         byte[] type = new byte[] { (byte)Type };
-        return type.Concat(sourceAddress).Concat(sourcePubkey).Concat(targetPubkey).ToArray();
+        return type
+            .Concat(SourceAddress?.Bytes ?? Array.Empty<byte>())
+            .Concat(SourcePubkey?.ToArray() ?? Array.Empty<byte>())
+            .Concat(TargetPubkey?.ToArray() ?? Array.Empty<byte>()).ToArray();
     }
 
     public override ConsensusRequest Decode(byte[] data)

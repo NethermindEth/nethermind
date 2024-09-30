@@ -32,11 +32,11 @@ public class WithdrawalRequest : ConsensusRequest
 
     public override byte[] Encode()
     {
-        byte[] sourceAddress = SourceAddress?.Bytes ?? Array.Empty<byte>();
-        byte[] validatorPubkey = ValidatorPubkey?.ToArray() ?? Array.Empty<byte>();
-        byte[] amount = BitConverter.GetBytes(Amount);
         byte[] type = new byte[] { (byte)Type };
-        return type.Concat(sourceAddress).Concat(validatorPubkey).Concat(amount).ToArray();
+        return type
+            .Concat(SourceAddress?.Bytes ?? Array.Empty<byte>())
+            .Concat(ValidatorPubkey?.ToArray() ?? Array.Empty<byte>())
+            .Concat(BitConverter.GetBytes(Amount)).ToArray();
     }
 
     public override ConsensusRequest Decode(byte[] data)
