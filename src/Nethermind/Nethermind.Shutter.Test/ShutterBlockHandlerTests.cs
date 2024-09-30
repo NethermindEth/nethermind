@@ -39,7 +39,8 @@ class ShutterBlockHandlerTests : EngineModuleTests
 
         using CancellationTokenSource source = new();
         using CancellationTokenSource timeoutSource = new();
-        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token, (int waitTime) => {
+        Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(ShutterTestsCommon.InitialSlot, source.Token, (int waitTime) =>
+        {
             Assert.That(waitTime, Is.EqualTo((int)api.BlockWaitCutoff.TotalMilliseconds));
             return timeoutSource;
         });
