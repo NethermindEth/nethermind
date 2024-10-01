@@ -760,7 +760,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching);
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching, NullLogger.Instance);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
@@ -789,7 +789,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.SubsegmentsCompiling);
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.SubsegmentsCompiling, NullLogger.Instance);
 
             codeInfo.IlInfo.Segments.Count.Should().Be(2);
         }

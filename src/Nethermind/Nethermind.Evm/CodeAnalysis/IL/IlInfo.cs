@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using NonBlocking;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
@@ -64,7 +65,7 @@ internal class IlInfo
     public ConcurrentDictionary<ushort, InstructionChunk> Chunks { get; } = new();
     public ConcurrentDictionary<ushort, SegmentExecutionCtx> Segments { get; } = new();
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
+    public bool TryExecute<TTracingInstructions>(ILogger logger, EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         result = null;
@@ -74,10 +75,12 @@ internal class IlInfo
         var executionResult = new ILChunkExecutionResult();
         if (Mode.HasFlag(ILMode.SubsegmentsCompiling) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
+
             vmState.DataStackHead = stack.Head;
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
+            if(logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
 
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
@@ -102,6 +105,7 @@ internal class IlInfo
         {
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
+            if (logger.IsInfo) logger.Info($"Executing segment {chunk.Name} at {programCounter}");
 
             chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
 

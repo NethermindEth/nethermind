@@ -9,6 +9,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -22,7 +23,7 @@ namespace Nethermind.Evm.CodeAnalysis
         // IL-EVM
         private int _callCount;
 
-        public async void NoticeExecution(IVMConfig vmConfig)
+        public async void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
             if (_callCount > Math.Max(vmConfig.JittingThreshold, vmConfig.PatternMatchingThreshold))
@@ -40,7 +41,7 @@ namespace Nethermind.Evm.CodeAnalysis
             if (mode == IlInfo.ILMode.NoIlvm)
                 return;
 
-            await IlAnalyzer.StartAnalysis(this, mode).ConfigureAwait(false);
+            await IlAnalyzer.StartAnalysis(this, mode, logger).ConfigureAwait(false);
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());

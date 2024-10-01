@@ -640,7 +640,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (_vmConfig.IsVmOptimizationEnabled)
             {
-                vmState.Env.CodeInfo.NoticeExecution(_vmConfig);
+                vmState.Env.CodeInfo.NoticeExecution(_vmConfig, _logger);
             }
         }
 
@@ -734,7 +734,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
+            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, _codeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
                    .GetValueOrDefault(false))
             {
                 if (chunkExecutionResult.Value.ShouldReturn)
