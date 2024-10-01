@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -137,6 +138,9 @@ public class Era1ModuleTests
     public async Task CreateEraAndVerifyAccumulators()
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        testBlockchain.State.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+        testBlockchain.State.RecalculateStateRoot();
+
         using MemoryStream stream = new();
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
@@ -154,13 +158,13 @@ public class Era1ModuleTests
             {
                 transactions[y] = Build.A.Transaction.WithTo(TestItem.GetRandomAddress())
                                                      .WithNonce(nonce)
-                                                     .WithValue(TestItem.GetRandomAmount())
+                                                     .WithValue(TestContext.CurrentContext.Random.NextUInt(10))
                                                      .SignedAndResolved(TestItem.PrivateKeyA)
-                                                     .WithSenderAddress(null).TestObject;
+                                                     .TestObject;
                 nonce++;
             }
             blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
-                                    .WithBaseFeePerGas(1000)
+                                    .WithBaseFeePerGas(1)
                                     .WithTotalDifficulty(blocks[i].TotalDifficulty + blocks[i].Difficulty)
                                     .WithTransactions(transactions)
                                     .WithParent(blocks[i]).TestObject);
@@ -245,6 +249,9 @@ public class Era1ModuleTests
     public async Task TestBigBlocksExportImportHistory()
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        testBlockchain.State.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
+        testBlockchain.State.RecalculateStateRoot();
+
         using MemoryStream stream = new();
         using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
@@ -266,11 +273,11 @@ public class Era1ModuleTests
                                                      .WithNonce(nonce)
                                                      .WithValue(1)
                                                      .SignedAndResolved(TestItem.PrivateKeyA)
-                                                     .WithSenderAddress(null).TestObject;
+                                                     .TestObject;
                 nonce++;
             }
             blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
-                                    .WithBaseFeePerGas(1000)
+                                    .WithBaseFeePerGas(1)
                                     .WithWithdrawals(100)
                                     .WithTotalDifficulty(1000000L + blocks[i].Difficulty)
                                     .WithTransactions(transactions)
@@ -282,6 +289,8 @@ public class Era1ModuleTests
 
         foreach (var block in blocks)
         {
+            foreach (var item in block.Transactions)
+                item.SenderAddress = null;
             await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
         }
 
