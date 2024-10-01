@@ -27,6 +27,10 @@ public class PayloadAttributes
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
+    public ulong? TargetBlobCount { get; set; }
+
+    public ulong? MaxBlobCount { get; set; }
+
     public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
@@ -46,6 +50,16 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
+        }
+
+        if (TargetBlobCount is not null)
+        {
+            sb.Append($", {nameof(TargetBlobCount)} : {TargetBlobCount}");
+        }
+
+        if (MaxBlobCount is not null)
+        {
+            sb.Append($", {nameof(MaxBlobCount)} : {MaxBlobCount}");
         }
 
         sb.Append('}');
@@ -111,6 +125,18 @@ public class PayloadAttributes
             position += Keccak.Size;
         }
 
+        if (TargetBlobCount.HasValue)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetBlobCount.Value);
+            position += sizeof(ulong);
+        }
+
+        if (MaxBlobCount.HasValue)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), MaxBlobCount.Value);
+            position += sizeof(ulong);
+        }
+
         return position;
     }
 
@@ -167,6 +193,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { MaxBlobCount: not null, TargetBlobCount: not null } => EngineApiVersions.Prague,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
@@ -175,6 +202,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7742Enabled: true} => EngineApiVersions.Prague,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
