@@ -132,19 +132,22 @@ public class ShutterTxLoader(
         try
         {
             ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
-            G1 key = new(stackalloc byte[G1.Sz]);
+            G1 key = new(stackalloc long[G1.Sz]);
             key.Decode(decryptionKey.Key.Span);
-            G1 identity = new(stackalloc byte[G1.Sz]);
+            G1 identity = new(stackalloc long[G1.Sz]);
             ShutterCrypto.ComputeIdentity(identity, decryptionKey.IdentityPreimage.Span);
+            G1 sequencedIdentity = new(stackalloc long[G1.Sz]);
+            sequencedIdentity.Decode(sequencedTransaction.Identity.AsSpan());
 
-            if (!identity.IsEqual(new(sequencedTransaction.Identity.AsSpan())))
+            if (!identity.IsEqual(sequencedIdentity))
             {
                 if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
                 return null;
             }
 
             int len = ShutterCrypto.GetDecryptedDataLength(encryptedMessage);
-            Span<byte> encodedTransaction = stackalloc byte[len];
+            using ArrayPoolList<byte> buf = new(len, len);
+            Span<byte> encodedTransaction = buf.AsSpan();
             ShutterCrypto.Decrypt(ref encodedTransaction, encryptedMessage, key);
 
             if (_logger.IsDebug) _logger.Debug($"Decrypted Shutter transaction, got encoded transaction data: {Convert.ToHexString(encodedTransaction)}");
@@ -212,8 +215,8 @@ public class ShutterTxLoader(
         e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
         e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
 
-        G1 identity = new(stackalloc byte[G1.Sz]);
-        ShutterCrypto.ComputeIdentity(identity, identityPreimage);
+        G1 identity = new(stackalloc long[G1.Sz]);
+        ShutterCrypto.ComputeIdentity(identity, identityPreimage.AsSpan());
 
         return new()
         {

@@ -45,7 +45,7 @@ public static class ShutterCrypto
         ComputeIdentity(p, preimage);
     }
 
-    public static void Decrypt(ref Span<byte> res, EncryptedMessage encryptedMessage, G1 key)
+    public static void Decrypt(ref Span<byte> res, EncryptedMessage encryptedMessage, scoped G1 key)
     {
         RecoverSigma(out Span<byte> sigma, encryptedMessage, key.ToAffine());
         ComputeBlockKeys(res, sigma, encryptedMessage.C3.Length / 32);
