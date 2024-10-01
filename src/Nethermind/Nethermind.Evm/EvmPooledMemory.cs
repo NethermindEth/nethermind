@@ -247,11 +247,12 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
-    public static long Div32Ceiling(in UInt256 length)
+    public static long Div32Ceiling(in UInt256 length, out bool outOfGas)
     {
         if (length.IsLargerThanULong())
         {
-            ThrowOutOfGasException();
+            outOfGas = true;
+            return 0;
         }
 
         ulong result = length.u0;
@@ -264,10 +265,23 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (result > int.MaxValue)
         {
+            outOfGas = true;
+            return 0;
+        }
+
+        outOfGas = false;
+        return (long)result;
+    }
+
+    public static long Div32Ceiling(in UInt256 length)
+    {
+        long result = Div32Ceiling(in length, out bool outOfGas);
+        if (outOfGas)
+        {
             ThrowOutOfGasException();
         }
 
-        return (long)result;
+        return result;
     }
 
     private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
