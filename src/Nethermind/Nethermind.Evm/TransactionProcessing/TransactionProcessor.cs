@@ -235,6 +235,7 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <param name="spec">The release spec with which the transaction will be executed</param>
         /// <param name="opts">Options (Flags) to use for execution</param>
         /// <param name="intrinsicGas">Calculated intrinsic gas</param>
+        /// <param name="floorGas"></param>
         /// <returns></returns>
         protected TransactionResult ValidateStatic(
             Transaction tx,
@@ -244,6 +245,7 @@ namespace Nethermind.Evm.TransactionProcessing
             out long intrinsicGas)
         {
             intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
+            var floorGas = IntrinsicGasCalculator.CalculateFloorGas(tx, spec);
 
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
@@ -270,7 +272,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return "EIP-3860 - transaction size over max init code size";
             }
 
-            return ValidateGas(tx, header, intrinsicGas, validate);
+            return ValidateGas(tx, header, Math.Max(intrinsicGas, floorGas), validate);
         }
 
         protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate)
@@ -632,6 +634,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
+                var floorGas = IntrinsicGasCalculator.CalculateFloorGas(tx, spec);
+                spentGas = Math.Max(spentGas, floorGas);
                 long refund = substate.ShouldRevert
                     ? 0
                     : RefundHelper.CalculateClaimableRefund(spentGas,

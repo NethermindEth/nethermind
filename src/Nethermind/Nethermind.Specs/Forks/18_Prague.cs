@@ -19,6 +19,7 @@ public class Prague : Cancun
         IsEip6110Enabled = true;
         IsEip7002Enabled = true;
         IsRip7212Enabled = true;
+        IsEip7623Enabled = true;
         Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
     }
 

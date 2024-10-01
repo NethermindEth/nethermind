@@ -3,15 +3,11 @@
 
 using System;
 using System.IO;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using System.Runtime.Intrinsics;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -19,11 +15,17 @@ public static class IntrinsicGasCalculator
 {
     public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long result = GasCostOf.Transaction;
+        var result = GasCostOf.Transaction;
         result += DataCost(transaction, releaseSpec);
         result += CreateCost(transaction, releaseSpec);
         result += AccessListCost(transaction, releaseSpec);
         return result;
+    }
+
+    public static long CalculateFloorGas(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        return GasCostOf.Transaction
+               + FloorCallDataCost(transaction, releaseSpec);
     }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec)
@@ -79,5 +81,15 @@ public static class IntrinsicGasCalculator
         }
 
         return accessListCost;
+    }
+
+    private static long FloorCallDataCost(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!releaseSpec.IsEip7623Enabled) return 0;
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+
+        var totalZeros = data.CountZeros();
+        var totalTokens = totalZeros + (data.Length - totalZeros) * 4;
+        return totalTokens * GasCostOf.TotalCostFloorPerTokenEip7623;
     }
 }

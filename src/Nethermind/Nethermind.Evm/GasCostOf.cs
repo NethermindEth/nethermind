@@ -62,5 +62,7 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+
+        public const long TotalCostFloorPerTokenEip7623 = 10;
     }
 }
