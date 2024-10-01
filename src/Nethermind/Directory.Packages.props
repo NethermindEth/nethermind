@@ -58,9 +58,9 @@
     <PackageVersion Include="NLog.Targets.Seq" Version="4.0.1" />
     <PackageVersion Include="NonBlocking" Version="2.1.2" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
-    <PackageVersion Include="NUnit" Version="3.14.0" />
-    <PackageVersion Include="NUnit.Analyzers" Version="3.9.0" />
-    <PackageVersion Include="NUnit3TestAdapter" Version="4.5.0" />
+    <PackageVersion Include="NUnit" Version="4.2.2" />
+    <PackageVersion Include="NUnit.Analyzers" Version="4.3.0" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="4.6.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.4.1" />
