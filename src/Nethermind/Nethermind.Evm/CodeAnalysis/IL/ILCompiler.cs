@@ -2442,6 +2442,7 @@ internal class ILCompiler
                     costStart = op.ProgramCounter;
                     coststack = op.Metadata.GasCost;
                     break;
+                case Instruction.GAS:
                 case Instruction.JUMPI:
                 case Instruction.JUMP:
                     coststack += op.Metadata.GasCost;
