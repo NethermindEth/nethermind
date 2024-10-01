@@ -88,13 +88,13 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// Gets or sets <see cref="Block.TargetBlobCount"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7742">EIP-7742</see>.
     /// </summary>
-    [JsonRequired]
+    // [JsonRequired] TODO: should be on ExecutionPayloadV4?
     public sealed override ulong? TargetBlobCount { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.MaxBlobCount"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7742">EIP-7742</see>.
     /// </summary>
-    [JsonRequired]
+    // [JsonRequired] TODO: should be on ExecutionPayloadV4?
     public sealed override ulong? MaxBlobCount { get; set; }
 }
