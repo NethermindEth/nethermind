@@ -91,10 +91,7 @@ public static class BlobTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        // NOTE: This does not look correct since we are not checking for the exact value (`0x3`).
-        // Essentially we're accepting all hex values `0x00 ... 0xFF`, including `0x`
-        json.GetProperty("type").GetString().Should().MatchRegex("^0x([0-9a-fA-F]?){1,2}$");
-
+        json.GetProperty("type").GetString().Should().MatchRegex("^0x3$");
         json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
         json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
