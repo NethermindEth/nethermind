@@ -59,7 +59,7 @@ namespace Nethermind.Api
         public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
         {
             return ConfigureContainerBuilderFromApiWithBlockchain(builder)
-                .AddPropertiesFrom(this);
+                .AddPropertiesFrom<IApiWithNetwork>(this);
         }
     }
 }
