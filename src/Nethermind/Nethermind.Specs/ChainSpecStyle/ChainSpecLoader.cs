@@ -160,6 +160,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
             DepositContractAddress = chainSpecJson.Params.DepositContractAddress ?? Eip6110Constants.MainnetDepositContractAddress,
             Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
+            Eip7623TransitionTimestamp = chainSpecJson.Params.Eip7623TransitionTimestamp,
             Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
             Eip7251ContractAddress = chainSpecJson.Params.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,

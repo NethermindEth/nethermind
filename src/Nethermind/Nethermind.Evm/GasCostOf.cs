@@ -63,5 +63,6 @@ namespace Nethermind.Evm
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
         public const long PerAuthBaseCost = 2500; // eip-7702
+        public const long TotalCostFloorPerTokenEip7623 = 10;
     }
 }

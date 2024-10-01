@@ -79,6 +79,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public bool IsEip7623Enabled => spec.IsEip7623Enabled;
+
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
