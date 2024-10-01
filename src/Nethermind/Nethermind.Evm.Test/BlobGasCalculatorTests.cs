@@ -23,7 +23,7 @@ public class BlobGasCalculatorTests
                 .WithBlobGasUsed(BlobGasCalculator.CalculateBlobGas(testCase.parentBlobsCount))
                 .WithExcessBlobGas(testCase.parentExcessBlobGas).TestObject;
 
-            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
+            Assert.That(BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec, parentHeader), Is.EqualTo(areBlobsEnabled ? testCase.expectedExcessBlobGas : null));
         }
 
         Test(Homestead.Instance, false);

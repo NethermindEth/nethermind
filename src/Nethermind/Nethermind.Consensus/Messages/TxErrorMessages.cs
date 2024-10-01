@@ -46,6 +46,9 @@ public static class TxErrorMessages
     public const string BlobTxMissingBlobVersionedHashes =
         "BlobTxMissingBlobVersionedHashes: Must be set.";
 
+    public static readonly string BlobTxGasLimitExceeded =
+        $"BlobTxGasLimitExceeded: Transaction exceeded {Eip4844Constants.MaxBlobGasPerTransaction}.";
+
     public const string BlobTxMissingBlobs =
         "BlobTxMissingBlobs: Blob transaction must have blobs.";
 

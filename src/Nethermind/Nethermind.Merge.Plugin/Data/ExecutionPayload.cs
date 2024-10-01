@@ -111,9 +111,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     [JsonIgnore]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
-    public ulong TargetBlobCount { get; set; }
+    public ulong? TargetBlobCount { get; set; }
 
-    public ulong MaxBlobCount { get; set; }
+    public ulong? MaxBlobCount { get; set; }
 
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 

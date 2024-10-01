@@ -132,7 +132,7 @@ namespace Ethereum.Test.Base
                     BlobGasUsed = (ulong)test.ParentBlobGasUsed,
                     ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
                 };
-                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec, header);
             }
 
             Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;

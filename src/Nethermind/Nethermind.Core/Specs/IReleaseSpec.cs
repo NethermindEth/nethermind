@@ -303,6 +303,8 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsRip7212Enabled { get; }
 
+        bool IsEip7742Enabled { get; }
+
         /// OP Granite
         bool IsOpGraniteEnabled { get; }
 

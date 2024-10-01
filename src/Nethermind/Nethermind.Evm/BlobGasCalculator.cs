@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -102,8 +103,13 @@ public static class BlobGasCalculator
 
         ulong excessBlobGas = parentBlockHeader.ExcessBlobGas ?? 0;
         excessBlobGas += parentBlockHeader.BlobGasUsed ?? 0;
-        return excessBlobGas < header.TargetBlobCount * Eip4844Constants.GasPerBlob
+        var targetBlobCount = releaseSpec.IsEip7742Enabled
+            ? header.TargetBlobCount * Eip4844Constants.GasPerBlob
+              ?? throw new InvalidDataException("header is missing target blob count")
+            : Eip4844Constants.TargetBlobGasPerBlock;
+
+        return excessBlobGas < targetBlobCount
             ? 0
-            : (excessBlobGas - header.TargetBlobCount * Eip4844Constants.GasPerBlob);
+            : excessBlobGas - targetBlobCount;
     }
 }

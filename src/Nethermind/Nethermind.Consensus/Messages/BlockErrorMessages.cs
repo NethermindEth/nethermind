@@ -95,6 +95,10 @@ public static class BlockErrorMessages
     public const string HeaderGasUsedMismatch =
         "HeaderGasUsedMismatch: Gas used in header does not match calculated.";
 
+    //Block's blob gas used in header is above the limit.
+    public static readonly string BlobGasUsedAboveBlockLimit =
+        $"BlockBlobGasExceeded: A block cannot have more than {Eip4844Constants.MaxBlobGasPerBlock} blob gas.";
+
     //Block's excess blob gas in header is incorrect.
     public const string IncorrectExcessBlobGas =
         "HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated.";

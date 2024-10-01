@@ -19,6 +19,24 @@ public class Eip4844Constants
     public const ulong GasPerBlob = 131072;
 
     /// <summary>
+    /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter.
+    /// </summary>
+    /// <remarks>Defaults to 786432.</remarks>
+    public static ulong MaxBlobGasPerBlock { get; private set; } = 786432;
+
+    /// <summary>
+    /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter.
+    /// </summary>
+    /// <remarks>The same as <see cref="MaxBlobGasPerBlock"/>.</remarks>
+    public static ulong MaxBlobGasPerTransaction => MaxBlobGasPerBlock;
+
+    /// <summary>
+    /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter.
+    /// </summary>
+    /// <remarks>Defaults to 393216.</remarks>
+    public static ulong TargetBlobGasPerBlock { get; private set; } = MaxBlobGasPerBlock / 2;
+
+    /// <summary>
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
@@ -34,12 +52,22 @@ public class Eip4844Constants
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
     public static void OverrideIfAny(
         UInt256? blobGasPriceUpdateFraction = null,
-        UInt256? minBlobGasPrice = null)
+        ulong? maxBlobGasPerBlock = null,
+        UInt256? minBlobGasPrice = null,
+        ulong? targetBlobGasPerBlock = null)
     {
         if (blobGasPriceUpdateFraction.HasValue)
             BlobGasPriceUpdateFraction = blobGasPriceUpdateFraction.Value;
 
+        if (maxBlobGasPerBlock.HasValue)
+            MaxBlobGasPerBlock = maxBlobGasPerBlock.Value;
+
         if (minBlobGasPrice.HasValue)
             MinBlobGasPrice = minBlobGasPrice.Value;
+
+        if (targetBlobGasPerBlock.HasValue)
+            TargetBlobGasPerBlock = targetBlobGasPerBlock.Value;
     }
+
+    public static ulong GetMaxBlobsPerBlock() => MaxBlobGasPerBlock / GasPerBlob;
 }

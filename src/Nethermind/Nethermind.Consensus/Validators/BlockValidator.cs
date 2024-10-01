@@ -405,6 +405,13 @@ public class BlockValidator(
 
         ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
+        if (!spec.IsEip7742Enabled && blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
+        {
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit;
+            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
+            return false;
+        }
+
         if (blobGasUsed != block.Header.BlobGasUsed)
         {
             error = BlockErrorMessages.HeaderBlobGasMismatch;
