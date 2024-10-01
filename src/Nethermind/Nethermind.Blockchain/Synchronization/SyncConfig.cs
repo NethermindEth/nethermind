@@ -31,7 +31,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
-        public long AncientHeadersBarrier { get; set; }
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
@@ -68,7 +67,6 @@ namespace Nethermind.Blockchain.Synchronization
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public bool TrieHealing { get; set; } = true;
         public string ImportDirectory { get; set; }
-        public bool NoPremergeHistory { get; set; }
 
         public override string ToString()
         {

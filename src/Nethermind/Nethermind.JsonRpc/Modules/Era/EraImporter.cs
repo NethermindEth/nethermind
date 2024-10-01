@@ -121,7 +121,6 @@ public class EraImporter : IEraImporter
                     throw new EraImportException($"Unexpected block without a body found in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
                 }
 
-                cancellation.ThrowIfCancellationRequested();
                 if (processBlock)
                     await SuggestBlock(b, r, processBlock);
                 else

@@ -16,8 +16,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -28,9 +26,10 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class HeadersSyncFeed : BarrierSyncFeed<HeadersSyncBatch?>
+    public class HeadersSyncFeed : ActivatedSyncFeed<HeadersSyncBatch?>
     {
 
+        private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         protected readonly ISyncReport _syncReport;
         protected readonly IBlockTree _blockTree;
@@ -43,6 +42,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected Hash256 _nextHeaderHash;
         protected UInt256? _nextHeaderDiff;
+
+        protected long _pivotNumber;
 
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again
@@ -71,12 +72,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _headersEstimate;
 
         protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
+
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
         protected virtual MeasuredProgress HeadersSyncQueueReport => _syncReport.HeadersInQueue;
 
-        protected virtual long HeadersDestinationNumber => _barrier;
-        protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) <= _barrier
-            || WithinOldBarrierDefault;
+        protected virtual long HeadersDestinationNumber => 0;
+        protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
 
         public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
@@ -150,19 +151,18 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         public HeadersSyncFeed(
-            ISpecProvider specProvider,
             IBlockTree? blockTree,
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
-            IDb metadataDb,
             ILogManager? logManager,
-            bool alwaysStartHeaderSync = false) : base(metadataDb, specProvider, logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed)))
+            bool alwaysStartHeaderSync = false)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
@@ -182,7 +182,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 PostFinishCleanUp();
                 ResetPivot();
-                InitBarrier();
             }
             finally
             {
@@ -190,16 +189,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
-        }
-
-        private void InitBarrier()
-        {
-            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientHeadersBarrierCalc)
-            {
-                _pivotNumber = _syncConfig.PivotNumberParsed;
-                _barrier = _syncConfig.AncientHeadersBarrierCalc;
-                InitializeMetadataDb();
-            }
         }
 
         protected virtual void ResetPivot()
@@ -301,15 +290,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 return lowest is not null && _dependencies.ContainsKey(lowest.Value - 1);
             }
         }
-
-        protected override long? LowestInsertedNumber => _blockTree.LowestInsertedBodyNumber;
-
-        protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.HeaderBodiesBarrierWhenStarted;
-
-        protected override long SyncConfigBarrierCalc => _syncConfig.AncientHeadersBarrierCalc;
-
-        protected override Func<bool> HasPivot =>
-            () => _blockTree.LowestInsertedHeader is not null && _blockTree.LowestInsertedHeader.Number <= _syncConfig.PivotNumberParsed;
 
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {

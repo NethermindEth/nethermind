@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization
         private static MallocTrimmer? s_trimmer;
         private static SyncDbTuner? s_dbTuner;
 
-        protected readonly ISpecProvider _specProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockDownloaderFactory _blockDownloaderFactory;
         private readonly INodeStatsManager _nodeStatsManager;
@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        protected readonly IDbProvider _dbProvider;
+        private readonly IDbProvider _dbProvider;
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
@@ -189,7 +189,7 @@ namespace Nethermind.Synchronization
         private HeadersSyncFeed? CreateHeadersSyncFeed()
         {
             if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync) return null;
-            return new HeadersSyncFeed(_specProvider, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.MetadataDb, _logManager);
+            return new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
         }
 
         private BodiesSyncFeed? CreateBodiesSyncFeed()

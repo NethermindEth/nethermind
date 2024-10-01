@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -82,7 +81,6 @@ public class BeaconHeadersSyncTests
 
         private BeaconHeadersSyncFeed? _feed;
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
-            Substitute.For<ISpecProvider>(),
             PoSSwitcher,
             BlockTree,
             PeerPool,
@@ -91,7 +89,6 @@ public class BeaconHeadersSyncTests
             BeaconPivot,
             MergeConfig,
             InvalidChainTracker,
-            Substitute.For<IDb>(),
             LimboLogs.Instance
         );
 

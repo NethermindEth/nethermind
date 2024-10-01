@@ -357,7 +357,7 @@ public class Era1ModuleTests
                 Assert.That(r[y].PostTransactionState, Is.EqualTo(expectedReceipts[y].PostTransactionState));
                 Assert.That(r[y].GasUsedTotal, Is.EqualTo(expectedReceipts[y].GasUsedTotal));
                 Assert.That(r[y].Bloom, Is.EqualTo(expectedReceipts[y].Bloom));
-                Assert.That(r[y].Logs, Is.EquivalentTo(expectedReceipts[y].Logs));
+                Assert.That(r[y].Logs, Is.EquivalentTo(expectedReceipts[y].Logs!));
                 if (expectedReceipts[y].Error == null)
                     Assert.That(r[y].Error, new OrConstraint(Is.Null, Is.Empty));
                 else
@@ -401,7 +401,7 @@ public class Era1ModuleTests
     [Test]
     public async Task EraExportAndImportWithValidation()
     {
-        const int ChainLength = 100000;
+        const int ChainLength = EraWriter.MaxEra1Size * 3;
         var fileSystem = new MockFileSystem();
         BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -428,7 +428,7 @@ public class Era1ModuleTests
         Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
         Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
 
-        Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
+        Assert.That(importTree.BestKnownNumber, Is.EqualTo(exportTree.BestKnownNumber));
     }
 
     [Test]
