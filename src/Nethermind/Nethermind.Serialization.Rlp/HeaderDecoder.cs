@@ -313,12 +313,15 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
                                 + (item.BaseFeePerGas.IsZero ? 0 : Rlp.LengthOf(item.BaseFeePerGas))
-                                + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.WithdrawalsRoot is null && item.BlobGasUsed is null &&
+                                   item.ExcessBlobGas is null
+                                    ? 0
+                                    : Rlp.LengthOfKeccakRlp)
                                 + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
                                 + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value))
                                 + (item.RequestsRoot is null ? 0 : Rlp.LengthOf(item.RequestsRoot))
-                                + Rlp.LengthOf(item.TargetBlobCount);
+                                + (item.TargetBlobCount is null ? 0 : Rlp.LengthOf(item.TargetBlobCount));
 
             if (notForSealing)
             {
