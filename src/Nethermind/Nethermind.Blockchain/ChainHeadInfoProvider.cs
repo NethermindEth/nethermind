@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentBaseFee { get; private set; }
 
-        public UInt256 CurrentPricePerBlobGas { get; internal set; }
+        public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
@@ -55,9 +55,9 @@ namespace Nethermind.Blockchain
             HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
-            CurrentPricePerBlobGas =
-                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(e.Block.Header, out UInt256 currentPricePerBlobGas)
-                    ? currentPricePerBlobGas
+            CurrentFeePerBlobGas =
+                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, out UInt256 currentFeePerBlobGas)
+                    ? currentFeePerBlobGas
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
         }
