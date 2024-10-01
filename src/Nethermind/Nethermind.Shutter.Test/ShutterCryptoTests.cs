@@ -31,7 +31,8 @@ class ShutterCryptoTests
 
         GT p1 = new(key, G2.Generator().Mult(r.ToLittleEndian()));
         Span<byte> h1 = ShutterCrypto.Hash2(p1);
-        GT p2 = ShutterCrypto.GTExp(new GT(identity, eonKey), r);
+        GT p2 = new(identity, eonKey);
+        ShutterCrypto.GTExp(ref p2, r);
         Span<byte> h2 = ShutterCrypto.Hash2(p2);
 
         Assert.That(h1.ToArray(), Is.EqualTo(h2.ToArray()));
@@ -48,12 +49,12 @@ class ShutterCryptoTests
         G2 eonKey = G2.Generator().Mult(sk.ToLittleEndian());
         Span<byte> sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
 
-        TestContext.WriteLine("eon key for " + sk + ": " + Convert.ToHexString(eonKey.Compress()));
+        TestContext.Out.WriteLine("eon key for " + sk + ": " + Convert.ToHexString(eonKey.Compress()));
 
         EncryptedMessage encryptedMessage = ShutterCrypto.Encrypt(msg, identity, eonKey, sigma);
         G1 key = identity.Dup().Mult(sk.ToLittleEndian());
 
-        ShutterCrypto.RecoverSigma(out Span<byte> recoveredSigma, encryptedMessage, key);
+        ShutterCrypto.RecoverSigma(out Span<byte> recoveredSigma, encryptedMessage, key.ToAffine());
         Assert.That(recoveredSigma.ToArray(), Is.EqualTo(sigma.ToArray()));
 
         Span<byte> decryptedMessage = stackalloc byte[ShutterCrypto.GetDecryptedDataLength(encryptedMessage)];
@@ -84,9 +85,10 @@ class ShutterCryptoTests
         G1 dk = new(Convert.FromHexString(dkHex));
         G2 eonKey = new(Convert.FromHexString(eonKeyHex));
         byte[] identityPreimage = Convert.FromHexString(identityPreimageHex);
-        G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
+        G1 identity = new();
+        ShutterCrypto.ComputeIdentity(identity, identityPreimage);
 
-        Assert.That(ShutterCrypto.CheckDecryptionKey(dk, eonKey, identity), Is.EqualTo(expected));
+        Assert.That(ShutterCrypto.CheckDecryptionKey(dk.ToAffine(), eonKey.ToAffine(), identity.ToAffine()), Is.EqualTo(expected));
     }
 
     [Test]
@@ -119,14 +121,15 @@ class ShutterCryptoTests
         byte[] msg = Convert.FromHexString(msgHex);
         byte[] expected = Convert.FromHexString(expectedHex);
 
-        G1 identity = ShutterCrypto.ComputeIdentity(Convert.FromHexString(identityPreimageHex));
+        G1 identity = new();
+        ShutterCrypto.ComputeIdentity(identity, Convert.FromHexString(identityPreimageHex));
         G2 eonKey = new(Convert.FromHexString(eonKeyHex));
         Span<byte> sigma = Convert.FromHexString(sigmaHex).AsSpan();
 
         EncryptedMessage c = ShutterCrypto.Encrypt(msg, identity, eonKey, sigma);
 
         Span<byte> encoded = ShutterCrypto.EncodeEncryptedMessage(c);
-        TestContext.WriteLine("encrypted msg: " + Convert.ToHexString(encoded));
+        TestContext.Out.WriteLine("encrypted msg: " + Convert.ToHexString(encoded));
         Assert.That(encoded.ToArray(), Is.EqualTo(expected));
     }
 
@@ -156,7 +159,7 @@ class ShutterCryptoTests
         int len = ShutterCrypto.GetDecryptedDataLength(c);
         Span<byte> decryptedMessage = stackalloc byte[len];
         ShutterCrypto.Decrypt(ref decryptedMessage, c, decryptionKey);
-        TestContext.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
+        TestContext.Out.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
 
         Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
     }

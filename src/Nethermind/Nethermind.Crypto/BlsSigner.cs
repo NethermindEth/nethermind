@@ -3,11 +3,14 @@
 
 using System;
 using System.Text;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
 using G1 = Bls.P1;
+using G1Affine = Bls.P1Affine;
 using G2 = Bls.P2;
+using G2Affine = Bls.P2Affine;
 using GT = Bls.PT;
 
 public class BlsSigner
@@ -17,34 +20,46 @@ public class BlsSigner
 
     public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
     {
-        G2 p = G2.Generator();
+        G2 p = new(stackalloc long[G2.Sz]);
         p.HashTo(message, Cryptosuite);
         p.SignWith(sk);
         return new(p.Compress());
     }
 
-    public static bool Verify(G1 publicKey, Signature signature, ReadOnlySpan<byte> message)
+    public static void GetPublicKey(G1 res, Bls.SecretKey sk)
+        => res.FromSk(sk);
+
+    public static G1 GetPublicKey(Bls.SecretKey sk)
     {
+        G1 p = new();
+        GetPublicKey(p, sk);
+        return p;
+    }
+
+    public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
+    {
+        int len = 2 * GT.Sz;
+        using ArrayPoolList<long> buf = new(len, len);
         try
         {
-            G2 sig = new(signature.Bytes);
-            GT p1 = new(sig, G1.Generator());
+            G2Affine sig = new(stackalloc long[G2Affine.Sz]);
+            sig.Decode(signature.Bytes);
+            GT p1 = new(buf.AsSpan()[..GT.Sz]);
+            p1.MillerLoop(sig, G1Affine.Generator(stackalloc long[G1Affine.Sz]));
 
-            G2 m = G2.Generator();
+            G2 m = new(stackalloc long[G2.Sz]);
             m.HashTo(message, Cryptosuite);
-            GT p2 = new(m, publicKey);
+            GT p2 = new(buf.AsSpan()[GT.Sz..]);
+            p2.MillerLoop(m.ToAffine(), publicKey);
 
             return GT.FinalVerify(p1, p2);
         }
-        catch (Bls.Exception)
+        catch (Bls.BlsException)
         {
             // point not on curve
             return false;
         }
     }
-
-    public static G1 GetPublicKey(Bls.SecretKey sk)
-        => new(sk);
 
     // Compressed G2 point
     public readonly ref struct Signature()
@@ -55,7 +70,7 @@ public class BlsSigner
         {
             if (s.Length != 96)
             {
-                throw new Bls.Exception(Bls.ERROR.BADENCODING);
+                throw new Bls.BlsException(Bls.ERROR.BADENCODING);
             }
             Bytes = s;
         }

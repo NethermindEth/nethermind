@@ -27,7 +27,7 @@ public class BlsTests
     {
         Bls.SecretKey sk = new(_skBytes, Bls.ByteOrder.LittleEndian);
         BlsSigner.Signature s = BlsSigner.Sign(sk, _msgBytes);
-        Assert.That(BlsSigner.Verify(BlsSigner.GetPublicKey(sk), s, _msgBytes));
+        Assert.That(BlsSigner.Verify(BlsSigner.GetPublicKey(sk).ToAffine(), s, _msgBytes));
     }
 
     [Test]
@@ -40,7 +40,7 @@ public class BlsTests
         bytes[34] += 1;
         BlsSigner.Signature bad = new(bytes);
 
-        Assert.That(BlsSigner.Verify(BlsSigner.GetPublicKey(sk), bad, _msgBytes), Is.False);
+        Assert.That(BlsSigner.Verify(BlsSigner.GetPublicKey(sk).ToAffine(), bad, _msgBytes), Is.False);
     }
 
     [Test]

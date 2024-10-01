@@ -120,7 +120,8 @@ public class ShutterEventSimulator
             _rnd.NextBytes(sigma);
 
             ulong txIndex = _eonData[eon].TxIndex++;
-            G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
+            G1 identity = new();
+            ShutterCrypto.ComputeIdentity(identity, identityPreimage);
             G1 key = identity.Dup().Mult(_eonData[eon].SecretKey.ToLittleEndian());
 
             byte[] encodedTx = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;

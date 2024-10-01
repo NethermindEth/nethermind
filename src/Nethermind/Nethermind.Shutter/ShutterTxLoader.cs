@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Blockchain.Find;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
@@ -133,8 +132,10 @@ public class ShutterTxLoader(
         try
         {
             ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
-            G1 key = new(decryptionKey.Key.Span);
-            G1 identity = ShutterCrypto.ComputeIdentity(decryptionKey.IdentityPreimage.Span);
+            G1 key = new(stackalloc byte[G1.Sz]);
+            key.Decode(decryptionKey.Key.Span);
+            G1 identity = new(stackalloc byte[G1.Sz]);
+            ShutterCrypto.ComputeIdentity(identity, decryptionKey.IdentityPreimage.Span);
 
             if (!identity.IsEqual(new(sequencedTransaction.Identity.AsSpan())))
             {
@@ -154,7 +155,7 @@ public class ShutterTxLoader(
         {
             if (_logger.IsDebug) _logger.Error($"Could not decode encrypted Shutter transaction", e);
         }
-        catch (Bls.Exception e)
+        catch (Bls.BlsException e)
         {
             if (_logger.IsDebug) _logger.Error("Could not decrypt Shutter transaction with invalid key", e);
         }
@@ -211,13 +212,16 @@ public class ShutterTxLoader(
         e.IdentityPrefix.AsSpan().CopyTo(identityPreimage.AsSpan());
         e.Sender.Bytes.CopyTo(identityPreimage.AsSpan()[32..]);
 
+        G1 identity = new(stackalloc byte[G1.Sz]);
+        ShutterCrypto.ComputeIdentity(identity, identityPreimage);
+
         return new()
         {
             Index = index,
             Eon = eon,
             EncryptedTransaction = e.EncryptedTransaction,
             GasLimit = e.GasLimit,
-            Identity = ShutterCrypto.ComputeIdentity(identityPreimage.AsSpan()).Compress(),
+            Identity = identity.Compress(),
             IdentityPreimage = identityPreimage
         };
     }

@@ -11,11 +11,14 @@ using Nethermind.Int256;
 using Nethermind.Crypto;
 using Nethermind.Merkleization;
 using System.Text;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Shutter;
 
 using G1 = Bls.P1;
+using G1Affine = Bls.P1Affine;
 using G2 = Bls.P2;
+using G2Affine = Bls.P2Affine;
 using GT = Bls.PT;
 
 public static class ShutterCrypto
@@ -34,17 +37,17 @@ public static class ShutterCrypto
 
     public class ShutterCryptoException(string message, Exception? innerException = null) : Exception(message, innerException);
 
-    public static G1 ComputeIdentity(ReadOnlySpan<byte> identityPrefix, Address sender)
+    public static void ComputeIdentity(G1 p, scoped ReadOnlySpan<byte> identityPrefix, in Address sender)
     {
         Span<byte> preimage = stackalloc byte[52];
         identityPrefix.CopyTo(preimage);
         sender.Bytes.CopyTo(preimage[32..]);
-        return ComputeIdentity(preimage);
+        ComputeIdentity(p, preimage);
     }
 
     public static void Decrypt(ref Span<byte> res, EncryptedMessage encryptedMessage, G1 key)
     {
-        RecoverSigma(out Span<byte> sigma, encryptedMessage, key);
+        RecoverSigma(out Span<byte> sigma, encryptedMessage, key.ToAffine());
         ComputeBlockKeys(res, sigma, encryptedMessage.C3.Length / 32);
 
         res.Xor(encryptedMessage.C3);
@@ -88,15 +91,17 @@ public static class ShutterCrypto
                 C3 = c3
             };
         }
-        catch (Bls.Exception e)
+        catch (Bls.BlsException e)
         {
             throw new ShutterCryptoException("Encrypted Shutter message had invalid c1", e);
         }
     }
 
-    public static void RecoverSigma(out Span<byte> res, EncryptedMessage encryptedMessage, G1 decryptionKey)
+    public static void RecoverSigma(out Span<byte> res, EncryptedMessage encryptedMessage, G1Affine decryptionKey)
     {
-        GT p = new(decryptionKey, encryptedMessage.C1);
+        using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
+        GT p = new(buf.AsSpan());
+        p.MillerLoop(encryptedMessage.C1.ToAffine(), decryptionKey);
         res = Hash2(p); // key
         res.Xor(encryptedMessage.C2);
     }
@@ -132,42 +137,57 @@ public static class ShutterCrypto
     }
 
     // Hash1 in spec
-    public static G1 ComputeIdentity(scoped ReadOnlySpan<byte> bytes)
+    public static void ComputeIdentity(G1 p, scoped ReadOnlySpan<byte> bytes)
     {
-        Span<byte> preimage = stackalloc byte[bytes.Length + 1];
+        int len = bytes.Length + 1;
+        using ArrayPoolList<byte> buf = new(len, len);
+        Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x1;
         bytes.CopyTo(preimage[1..]);
-
-        return G1.Generator().HashTo(preimage, DST);
+        p.HashTo(preimage, DST);
     }
 
     public static Span<byte> Hash2(GT p)
     {
-        Span<byte> preimage = stackalloc byte[577];
+        using ArrayPoolList<byte> buf = new(577, 577);
+        Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x2;
         p.FinalExp().ToBendian().CopyTo(preimage[1..]);
         return HashBytesToBlock(preimage);
     }
 
-    public static GT GTExp(GT x, UInt256 exp)
+    // res should be intialised to one
+    public static void GTExp(ref GT x, UInt256 exp)
     {
-        GT a = x;
-        GT acc = GT.One();
+        if (exp == 0)
+        {
+            return;
+        }
+        exp -= 1;
 
+        using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
+        x.Fp12.CopyTo(buf.AsSpan());
+        GT a = new(buf.AsSpan());
         for (; exp > 0; exp >>= 1)
         {
             if ((exp & 1) == 1)
             {
-                acc.Mul(a);
+                x.Mul(a);
             }
             a.Sqr();
         }
-
-        return acc;
     }
 
-    public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity) =>
-        GT.FinalVerify(new(decryptionKey, G2.Generator()), new(identity, eonPublicKey));
+    public static bool CheckDecryptionKey(G1Affine decryptionKey, G2Affine eonPublicKey, G1Affine identity)
+    {
+        int len = GT.Sz * 2;
+        using ArrayPoolList<long> buf = new(len, len);
+        GT p1 = new(buf.AsSpan()[..GT.Sz]);
+        p1.MillerLoop(G2Affine.Generator(stackalloc long[G2Affine.Sz]), decryptionKey);
+        GT p2 = new(buf.AsSpan()[GT.Sz..]);
+        p2.MillerLoop(eonPublicKey, identity);
+        return GT.FinalVerify(p1, p2);
+    }
 
     private static readonly Ecdsa _ecdsa = new();
 
@@ -200,13 +220,17 @@ public static class ShutterCrypto
         BlsSigner.Signature sig = new(sigBytes);
         ValueHash256 h = ValueKeccak.Compute(msgBytes);
 
-        return BlsSigner.Verify(new(pkBytes), sig, h.Bytes);
+        G1Affine pk = new(stackalloc long[G1Affine.Sz]);
+        pk.Decode(pkBytes);
+        return BlsSigner.Verify(pk, sig, h.Bytes);
     }
 
     public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, ReadOnlySpan<byte> sigma)
     {
+        int len = PaddedLength(msg);
+        using ArrayPoolList<byte> buf = new(len, len);
         ComputeR(sigma, msg, out UInt256 r);
-        ReadOnlySpan<byte> msgBlocks = PadAndSplit(msg);
+        ReadOnlySpan<byte> msgBlocks = PadAndSplit(buf.AsSpan(), msg);
         Span<byte> c3 = new byte[msgBlocks.Length];
         ComputeC3(c3, msgBlocks, sigma);
 
@@ -254,35 +278,40 @@ public static class ShutterCrypto
         blocks = blocks[..(blocks.Length - n)];
     }
 
-    private static Span<byte> ComputeC2(ReadOnlySpan<byte> sigma, UInt256 r, G1 identity, G2 eonKey)
+    private static Span<byte> ComputeC2(scoped ReadOnlySpan<byte> sigma, UInt256 r, G1 identity, G2 eonKey)
     {
-        GT p = new(identity, eonKey);
-        GT preimage = GTExp(p, r);
-        Span<byte> res = Hash2(preimage); //key
+        using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
+        GT p = new(buf.AsSpan());
+        p.MillerLoop(eonKey, identity);
+        GTExp(ref p, r);
+        Span<byte> res = Hash2(p); //key
         res.Xor(sigma);
         return res;
     }
 
-    private static void ComputeC3(Span<byte> res, ReadOnlySpan<byte> msgBlocks, ReadOnlySpan<byte> sigma)
+    private static void ComputeC3(Span<byte> res, scoped ReadOnlySpan<byte> msgBlocks, ReadOnlySpan<byte> sigma)
     {
         // res = keys ^ msgs
         ComputeBlockKeys(res, sigma, msgBlocks.Length / 32);
         res.Xor(msgBlocks);
     }
 
-    private static Span<byte> PadAndSplit(ReadOnlySpan<byte> bytes)
+    private static int PaddedLength(ReadOnlySpan<byte> bytes)
+        => bytes.Length + (32 - (bytes.Length % 32));
+
+    private static Span<byte> PadAndSplit(Span<byte> res, scoped ReadOnlySpan<byte> bytes)
     {
         int n = 32 - (bytes.Length % 32);
-
-        Span<byte> res = new byte[bytes.Length + n];
-        res.Fill((byte)n);
         bytes.CopyTo(res);
+        res[bytes.Length..].Fill((byte)n);
         return res;
     }
 
-    private static void ComputeR(ReadOnlySpan<byte> sigma, ReadOnlySpan<byte> msg, out UInt256 res)
+    private static void ComputeR(scoped ReadOnlySpan<byte> sigma, scoped ReadOnlySpan<byte> msg, out UInt256 res)
     {
-        Span<byte> preimage = stackalloc byte[32 + msg.Length];
+        int len = 32 + msg.Length;
+        using ArrayPoolList<byte> buf = new(len, len);
+        Span<byte> preimage = buf.AsSpan();
         sigma.CopyTo(preimage);
         msg.CopyTo(preimage[32..]);
         Hash3(preimage, out res);
@@ -312,7 +341,9 @@ public static class ShutterCrypto
 
     private static void Hash3(ReadOnlySpan<byte> bytes, out UInt256 res)
     {
-        Span<byte> preimage = stackalloc byte[bytes.Length + 1];
+        int len = bytes.Length + 1;
+        using ArrayPoolList<byte> buf = new(len, len);
+        Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x3;
         bytes.CopyTo(preimage[1..]);
         ReadOnlySpan<byte> hash = ValueKeccak.Compute(preimage).Bytes;
@@ -321,7 +352,9 @@ public static class ShutterCrypto
 
     private static ValueHash256 Hash4(ReadOnlySpan<byte> bytes)
     {
-        Span<byte> preimage = stackalloc byte[bytes.Length + 1];
+        int len = bytes.Length + 1;
+        using ArrayPoolList<byte> buf = new(len, len);
+        Span<byte> preimage = buf.AsSpan();
         preimage[0] = 0x4;
         bytes.CopyTo(preimage[1..]);
         return ValueKeccak.Compute(preimage);

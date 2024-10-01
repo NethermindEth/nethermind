@@ -77,7 +77,7 @@ public class ShutterEon(
         {
             if (_logger.IsError) _logger.Error($"Error when calling Shutter Keyper contracts.", e);
         }
-        catch (Bls.Exception e)
+        catch (Bls.BlsException e)
         {
             if (_logger.IsError) _logger.Error($"Invalid Shutter Eon key ", e);
         }

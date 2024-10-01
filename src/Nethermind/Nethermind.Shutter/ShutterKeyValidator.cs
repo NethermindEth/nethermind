@@ -14,6 +14,8 @@ using Nethermind.Core.Collections;
 namespace Nethermind.Shutter;
 
 using G1 = Bls.P1;
+using G1Affine = Bls.P1Affine;
+using G2Affine = Bls.P2Affine;
 
 public class ShutterKeyValidator(
     IShutterConfig shutterConfig,
@@ -83,22 +85,28 @@ public class ShutterKeyValidator(
             return false;
         }
 
+        int len = G1Affine.Sz + G1.Sz + G2Affine.Sz;
+        using ArrayPoolList<long> buf = new(len, len);
+
         // skip placeholder transaction
         foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
         {
-            G1 dk, identity;
+            G1Affine dk = new(buf.AsSpan()[..G1Affine.Sz]);
+            G1 identity = new(buf.AsSpan()[G1Affine.Sz..]);
+            G2Affine eonKey = new(buf.AsSpan()[(G1Affine.Sz + G1.Sz)..]);
             try
             {
-                dk = new(key.Key_.Span);
-                identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
+                dk.Decode(key.Key_.Span);
+                ShutterCrypto.ComputeIdentity(identity, key.Identity.Span);
             }
-            catch (Bls.Exception e)
+            catch (Bls.BlsException e)
             {
                 if (_logger.IsDebug) _logger.Error("Invalid Shutter decryption keys received.", e);
                 return false;
             }
 
-            if (!ShutterCrypto.CheckDecryptionKey(dk, new(eonInfo.Key), identity))
+            eonKey.Decode(eonInfo.Key.AsSpan());
+            if (!ShutterCrypto.CheckDecryptionKey(dk, eonKey, identity.ToAffine()))
             {
                 if (_logger.IsDebug) _logger.Debug("Invalid Shutter decryption keys received: decryption key did not match eon key.");
                 return false;
