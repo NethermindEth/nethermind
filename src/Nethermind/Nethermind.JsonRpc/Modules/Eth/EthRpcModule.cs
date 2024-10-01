@@ -284,12 +284,7 @@ public partial class EthRpcModule(
         Transaction tx = rpcTx.ToTransaction();
         tx.ChainId = _blockchainBridge.GetChainId();
 
-        // TODO: We might want to lift `Nonce` to `TransactionForRpc`
-        UInt256? nonce = null;
-        if (rpcTx is LegacyTransactionForRpc legacyTx)
-        {
-            nonce = legacyTx.Nonce;
-        }
+        UInt256? nonce = rpcTx is LegacyTransactionForRpc legacy ? legacy.Nonce : null;
 
         TxHandlingOptions options = nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);

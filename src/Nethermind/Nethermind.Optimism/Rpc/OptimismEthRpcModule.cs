@@ -12,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -106,7 +107,7 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         return GetBlockReceipts(_receiptFinder, blockParameter, _blockFinder, _specProvider, _opSpecHelper);
     }
 
-    public async Task<ResultWrapper<Hash256>> eth_sendTransaction(OptimismTransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Transaction tx = rpcTx.ToTransaction();
         tx.ChainId = _blockchainBridge.GetChainId();
@@ -115,12 +116,6 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         if (tx.SenderAddress is null)
         {
             return ResultWrapper<Hash256>.Fail("Failed to recover sender");
-        }
-
-        // TODO: Optimism transactions do not have a Nonce (it's always 0 when queried)
-        if (rpcTx.Nonce is null)
-        {
-            tx.Nonce = _accountStateProvider.GetNonce(tx.SenderAddress);
         }
 
         await _sealer.Seal(tx, TxHandlingOptions.None);
