@@ -85,15 +85,13 @@ public class ShutterKeyValidator(
             return false;
         }
 
-        int len = G1Affine.Sz + G1.Sz + G2Affine.Sz;
-        using ArrayPoolList<long> buf = new(len, len);
+        G1Affine dk = new(stackalloc long[G1Affine.Sz]);
+        G1 identity = new(stackalloc long[G1.Sz]);
+        G2Affine eonKey = new(stackalloc long[G2Affine.Sz]);
 
         // skip placeholder transaction
         foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
         {
-            G1Affine dk = new(buf.AsSpan()[..G1Affine.Sz]);
-            G1 identity = new(buf.AsSpan()[G1Affine.Sz..]);
-            G2Affine eonKey = new(buf.AsSpan()[(G1Affine.Sz + G1.Sz)..]);
             try
             {
                 dk.Decode(key.Key_.Span);
