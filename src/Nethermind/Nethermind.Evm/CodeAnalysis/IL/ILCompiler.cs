@@ -158,7 +158,7 @@ internal class ILCompiler
                 method.StoreLocal(gasAvailable);
             }
 
-            if(i == code.Length - 1)
+            if (i == code.Length - 1)
             {
                 method.LoadConstant(op.ProgramCounter + op.Metadata.AdditionalBytes);
                 method.StoreLocal(programCounter);
@@ -171,7 +171,7 @@ internal class ILCompiler
                 method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
             }
 
-            if(op.Metadata.StackBehaviorPush > 0)
+            if (op.Metadata.StackBehaviorPush > 0)
             {
                 int delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
                 method.LoadLocal(head);

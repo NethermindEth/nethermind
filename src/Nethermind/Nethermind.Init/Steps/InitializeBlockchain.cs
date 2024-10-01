@@ -186,7 +186,7 @@ namespace Nethermind.Init.Steps
             BlockhashProvider blockhashProvider = new(
                 _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
 
-            if(_api.VMConfig is not null && _api.VMConfig.IsPatternMatchingEnabled)
+            if (_api.VMConfig is not null && _api.VMConfig.IsPatternMatchingEnabled)
             {
                 IlAnalyzer.Initialize();
             }

@@ -731,7 +731,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var tests = GeJitBytecodesSamples().Select(test => test.Item1);
 
-            
+
 
             List<Instruction> notCovered = new List<Instruction>();
             foreach (var opcode in instructions)

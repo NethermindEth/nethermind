@@ -107,7 +107,7 @@ static class EmitExtensions
         il.StoreLocal(idx);
     }
 
-    public static MethodInfo MethodInfo<T>(string name,Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
+    public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
         return typeof(T).GetMethods().First(m => m.Name == name && m.ReturnType == returnType && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(argTypes));
     }
