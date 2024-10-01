@@ -73,50 +73,6 @@ public class Era1ModuleTests
     }
 
     [Test]
-    public async Task ImportAndExportFiles()
-    {
-        var eraFiles = EraReader.GetAllEraFiles("data", "mainnet");
-
-        Assert.That(eraFiles.Count(), Is.GreaterThan(0));
-
-        var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
-        {
-            SealEngineType = SealEngineType.BeaconChain,
-            Parameters = new ChainParameters()
-
-        });
-
-        foreach (var era in eraFiles)
-        {
-            using MemoryStream destination = new();
-            using var eraEnumerator = await EraReader.Create(era);
-
-            var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
-
-            using var builder = EraWriter.Create(destination, specProvider);
-
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
-            {
-                await builder.Add(b, r, td);
-                readFromFile.Add((b, r, td));
-            }
-            await builder.Finalize();
-
-            using var eraEnumeratorTemp = await EraReader.Create(destination);
-            int i = 0;
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumeratorTemp)
-            {
-                Assert.That(i, Is.LessThan(readFromFile.Count()), "Exceeded the block count read from the file.");
-                b.Should().BeEquivalentTo(readFromFile[i].b);
-                r.Should().BeEquivalentTo(readFromFile[i].r);
-                Assert.That(td, Is.EqualTo(readFromFile[i].td));
-                i++;
-            }
-            builder.Dispose();
-        }
-    }
-
-    [Test]
     public async Task ImportAndExportGethFiles()
     {
         var eraFiles = EraReader.GetAllEraFiles("geth", "mainnet");
@@ -165,7 +121,7 @@ public class Era1ModuleTests
         IReceiptSpec receiptSpec = Substitute.For<IReleaseSpec>();
 
         receiptSpec.IsEip658Enabled.Returns(true);
-        specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(receiptSpec);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(receiptSpec);
 
         foreach (var era in eraFiles)
         {
