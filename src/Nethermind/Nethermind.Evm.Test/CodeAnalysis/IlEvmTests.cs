@@ -31,6 +31,7 @@ using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 using Nethermind.Evm.CodeAnalysis.IL.Patterns;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
+using Polly;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -116,6 +117,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .PushData(23)
                 .PushData(7)
                 .ADD()
+                .MSTORE(0, Enumerable.Range(0, 32).Select(i => (byte)i).ToArray())
+                .RETURN(0, 32)
                 .STOP().Done;
             TestState.CreateAccount(Address.FromNumber(23), 1000000);
             TestState.InsertCode(Address.FromNumber(23), code, SpecProvider.GenesisSpec);
@@ -175,6 +178,571 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             };
 
             base.Setup();
+        }
+        public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
+        {
+            yield return (null, Prepare.EvmCode
+                    .Done);
+            yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
+                    .PUSHx([1])
+                    .PUSHx([0, 7])
+                    .JUMPI()
+                    .JUMPDEST()
+                    .Done);
+            yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
+                    .PUSHx([0, 5])
+                    .JUMP()
+                    .JUMPDEST()
+                    .Done);
+            yield return (typeof(MethodSelector), Prepare.EvmCode
+                    .PushData(0)
+                    .PushData(23)
+                    .MSTORE()
+                    .CALLVALUE()
+                    .DUPx(1)
+                    .Done);
+            yield return (typeof(IsContractCheck), Prepare.EvmCode
+                    .EXTCODESIZE(Address.SystemUser)
+                    .DUPx(1)
+                    .ISZERO()
+                    .Done);
+        }
+
+        public static IEnumerable<(Instruction?, byte[], EvmExceptionType)> GeJitBytecodesSamples()
+        {
+            yield return (null, Prepare.EvmCode
+                    .Done, EvmExceptionType.None);
+            yield return (Instruction.PUSH32, Prepare.EvmCode
+                    .PushSingle(1)
+                    .Done, EvmExceptionType.None);
+            yield return (Instruction.ISZERO, Prepare.EvmCode
+                    .ISZERO(7)
+                    .ISZERO(0)
+                    .ISZERO(7)
+                    .Done, EvmExceptionType.None);
+            yield return (Instruction.SUB, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .SUB()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.ADD, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.ADDMOD, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .PushSingle(5)
+                    .ADDMOD()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MUL, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .MUL()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.EXP, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .EXP()
+                    .PushSingle(0)
+                    .PushSingle(7)
+                    .EXP()
+                    .PushSingle(1)
+                    .PushSingle(7)
+                    .EXP()
+                    .PushSingle(1)
+                    .PushSingle(0)
+                    .EXP()
+                    .PushSingle(1)
+                    .PushSingle(1)
+                    .EXP()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MOD, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .MOD()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.DIV, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .DIV()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MSTORE | Instruction.MLOAD, Prepare.EvmCode
+                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                    .MLOAD(0)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MSTORE8, Prepare.EvmCode
+                    .MSTORE8(0, ((UInt256)23).PaddedBytes(32))
+                    .MLOAD(0)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MCOPY, Prepare.EvmCode
+                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                    .MCOPY(32, 0, 32)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.EQ, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .EQ()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.GT, Prepare.EvmCode
+                    .PushSingle(7)
+                    .PushSingle(23)
+                    .GT()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LT, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .LT()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.NOT, Prepare.EvmCode
+                    .PushSingle(1)
+                    .NOT()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.BLOBHASH, Prepare.EvmCode
+                    .PushSingle(0)
+                    .BLOBHASH()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.BLOCKHASH, Prepare.EvmCode
+                    .BLOCKHASH(0)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CALLDATACOPY, Prepare.EvmCode
+                    .CALLDATACOPY(0, 0, 32)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CALLDATALOAD, Prepare.EvmCode
+                    .CALLDATALOAD(0)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MSIZE, Prepare.EvmCode
+                    .MSIZE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.GASPRICE, Prepare.EvmCode
+                    .GASPRICE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CODESIZE, Prepare.EvmCode
+                    .CODESIZE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.PC, Prepare.EvmCode
+                    .PC()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.COINBASE, Prepare.EvmCode
+                    .COINBASE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.TIMESTAMP, Prepare.EvmCode
+                    .TIMESTAMP()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.NUMBER, Prepare.EvmCode
+                    .NUMBER()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.GASLIMIT, Prepare.EvmCode
+                    .GASLIMIT()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CALLER, Prepare.EvmCode
+                    .CALLER()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.ADDRESS, Prepare.EvmCode
+                    .ADDRESS()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.ORIGIN, Prepare.EvmCode
+                    .ORIGIN()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CALLVALUE, Prepare.EvmCode
+                    .CALLVALUE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CHAINID, Prepare.EvmCode
+                    .CHAINID()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.GAS, Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(46)
+                    .ADD()
+                    .POP()
+                    .GAS()
+                    .PushData(23)
+                    .PushData(46)
+                    .ADD()
+                    .POP()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.RETURNDATASIZE, Prepare.EvmCode
+                    .RETURNDATASIZE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.BASEFEE, Prepare.EvmCode
+                    .BASEFEE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.RETURN, Prepare.EvmCode
+                    .StoreDataInMemory(0, [2, 3, 5, 7])
+                    .RETURN(0, 32)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.REVERT, Prepare.EvmCode
+                    .StoreDataInMemory(0, [2, 3, 5, 7])
+                    .REVERT(0, 32)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CALLDATASIZE, Prepare.EvmCode
+                    .CALLDATASIZE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.JUMPI | Instruction.JUMPDEST, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .JUMPI(9)
+                    .PushSingle(3)
+                    .JUMPDEST()
+                    .PushSingle(0)
+                    .MUL()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.JUMP | Instruction.JUMPDEST, Prepare.EvmCode
+                    .PushSingle(23)
+                    .JUMP(10)
+                    .JUMPDEST()
+                    .PushSingle(3)
+                    .MUL()
+                    .STOP()
+                    .JUMPDEST()
+                    .JUMP(5)
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SHL, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SHL()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SHR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SHR()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SAR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SAR()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.AND, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .AND()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.OR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .OR()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.XOR, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .XOR()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SLT, Prepare.EvmCode
+                    .PushData(23)
+                    .PushSingle(4)
+                    .SLT()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SGT, Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(1)
+                    .SGT()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.BYTE, Prepare.EvmCode
+                    .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.JUMP | Instruction.JUMPDEST, Prepare.EvmCode
+                .JUMP(31)
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LOG0, Prepare.EvmCode
+                .Log(0, 0)
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LOG1, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .Log(1, 0, [TestItem.KeccakA])
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LOG2, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(64)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(96)
+                .Op(Instruction.MSTORE)
+                .Log(4, 0, [TestItem.KeccakA, TestItem.KeccakB])
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LOG3, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .Log(2, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LOG4, Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(64)
+                .Op(Instruction.MSTORE)
+                .Log(3, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .TSTORE()
+                .PushData(7)
+                .TLOAD()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SSTORE | Instruction.SLOAD, Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .SSTORE()
+                .PushData(7)
+                .SLOAD()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.EXTCODESIZE, Prepare.EvmCode
+                .EXTCODESIZE(Address.FromNumber(1))
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.EXTCODEHASH, Prepare.EvmCode
+                .EXTCODEHASH(Address.FromNumber(1))
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.EXTCODECOPY, Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .EXTCODECOPY(Address.FromNumber(1))
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.BALANCE, Prepare.EvmCode
+                .BALANCE(Address.FromNumber(1))
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SELFBALANCE, Prepare.EvmCode
+                .SELFBALANCE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.INVALID, Prepare.EvmCode
+                .INVALID()
+                .Done, EvmExceptionType.BadInstruction);
+
+            yield return (Instruction.STOP, Prepare.EvmCode
+                .STOP()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.POP, Prepare.EvmCode
+                .PUSHx()
+                .POP()
+                .Done, EvmExceptionType.None);
+
+            for (byte opcode = (byte)Instruction.DUP1; opcode <= (byte)Instruction.DUP16; opcode++)
+            {
+                int n = opcode - (byte)Instruction.DUP1 + 1;
+                var test = Prepare.EvmCode;
+                for (int i = 0; i < n; i++)
+                {
+                    test.PushData(i);
+                }
+                test.Op((Instruction)opcode);
+
+                yield return ((Instruction)opcode, test.Done, EvmExceptionType.None);
+            }
+
+            for (byte opcode = (byte)Instruction.PUSH0; opcode <= (byte)Instruction.PUSH32; opcode++)
+            {
+                int n = opcode - (byte)Instruction.PUSH0;
+                byte[] args = n == 0 ? null : Enumerable.Range(0, n).Select(i => (byte)i).ToArray();
+
+                yield return ((Instruction)opcode, Prepare.EvmCode.PUSHx(args).Done, EvmExceptionType.None);
+            }
+
+            for (byte opcode = (byte)Instruction.SWAP1; opcode <= (byte)Instruction.SWAP16; opcode++)
+            {
+                int n = opcode - (byte)Instruction.SWAP1 + 2;
+                var test = Prepare.EvmCode;
+                for (int i = 0; i < n; i++)
+                {
+                    test.PushData(i);
+                }
+                test.Op((Instruction)opcode);
+
+                yield return ((Instruction)opcode, test.Done, EvmExceptionType.None);
+            }
+
+            yield return (Instruction.SDIV, Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .SDIV()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SMOD, Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .SMOD()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.CODECOPY, Prepare.EvmCode
+                .PushData(0)
+                .PushData(32)
+                .PushData(7)
+                .CODECOPY()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.MULMOD, Prepare.EvmCode
+                .PushData(23)
+                .PushData(3)
+                .PushData(7)
+                .MULMOD()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.KECCAK256, Prepare.EvmCode
+                .MSTORE(0, Enumerable.Range(0, 16).Select(i => (byte)i).ToArray())
+                .PushData(0)
+                .PushData(16)
+                .KECCAK256()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.PREVRANDAO, Prepare.EvmCode
+                .PREVRANDAO()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.RETURNDATACOPY, Prepare.EvmCode
+                .PushData(0)
+                .PushData(32)
+                .PushData(0)
+                .RETURNDATACOPY()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.BLOBBASEFEE, Prepare.EvmCode
+                .Op(Instruction.BLOBBASEFEE)
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SIGNEXTEND, Prepare.EvmCode
+                .PushData(1024)
+                .PushData(16)
+                .SIGNEXTEND()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.INVALID, Prepare.EvmCode
+                .JUMPDEST()
+                .MUL(23, 3)
+                .POP()
+                .JUMP(0)
+                .Done, EvmExceptionType.OutOfGas);
+
+            yield return (Instruction.INVALID, Prepare.EvmCode
+                .JUMPDEST()
+                .PUSHx()
+                .DUPx(1)
+                .DUPx(1)
+                .DUPx(1)
+                .DUPx(1)
+                .DUPx(1)
+                .DUPx(1)
+                .DUPx(1)
+                .JUMP(0)
+                .Done, EvmExceptionType.StackOverflow);
+
+            yield return (Instruction.INVALID, Prepare.EvmCode
+                .JUMPDEST()
+                .MUL(23)
+                .JUMP(0)
+                .Done, EvmExceptionType.StackUnderflow);
+        }
+
+        [Test]
+        public void All_Stateless_Opcodes_Are_Covered_in_JIT_Tests()
+        {
+            List<Instruction> instructions = System.Enum.GetValues<Instruction>().ToList();
+            instructions.Remove(Instruction.MSTORE);
+            instructions.Remove(Instruction.MLOAD);
+            instructions.Remove(Instruction.SSTORE);
+            instructions.Remove(Instruction.SLOAD);
+            instructions.Remove(Instruction.TSTORE);
+            instructions.Remove(Instruction.TLOAD);
+            instructions.Remove(Instruction.JUMP);
+            instructions.Remove(Instruction.JUMPI);
+            instructions.Remove(Instruction.JUMPDEST);
+
+            instructions.Add(Instruction.MSTORE | Instruction.MLOAD);
+            instructions.Add(Instruction.TSTORE | Instruction.TLOAD);
+            instructions.Add(Instruction.SSTORE | Instruction.SLOAD);
+            instructions.Add(Instruction.JUMP | Instruction.JUMPDEST);
+            instructions.Add(Instruction.JUMPI | Instruction.JUMPDEST);
+
+            var tests = GeJitBytecodesSamples().Select(test => test.Item1);
+
+            
+
+            List<Instruction> notCovered = new List<Instruction>();
+            foreach (var opcode in instructions)
+            {
+                if (!opcode.IsStateful() && !tests.Contains(opcode))
+                {
+                    notCovered.Add(opcode);
+                }
+            }
+
+            Assert.That(notCovered.Count, Is.EqualTo(0), $"[{String.Join(", ", notCovered)}]");
         }
 
         [Test]
@@ -285,7 +853,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
-        public void ILVM_JIT_Execution_Equivalence_Tests((Instruction? opcode, byte[] bytecode) testcase)
+        public void ILVM_JIT_Execution_Equivalence_Tests((Instruction? opcode, byte[] bytecode, EvmExceptionType _) testcase)
         {
             int repeatCount = 32;
 
@@ -558,399 +1126,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(notYetImplemented.Count == 0, $"{notYetImplemented.Count} opcodes missing: [{missingOpcodes}]");
         }
 
-        public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
-        {
-            yield return (null, Prepare.EvmCode
-                    .Done);
-            yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
-                    .PUSHx([1])
-                    .PUSHx([0, 7])
-                    .JUMPI()
-                    .JUMPDEST()
-                    .Done);
-            yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
-                    .PUSHx([0, 5])
-                    .JUMP()
-                    .JUMPDEST()
-                    .Done);
-            yield return (typeof(MethodSelector), Prepare.EvmCode
-                    .PushData(0)
-                    .PushData(23)
-                    .MSTORE()
-                    .CALLVALUE()
-                    .DUPx(1)
-                    .Done);
-            yield return (typeof(IsContractCheck), Prepare.EvmCode
-                    .EXTCODESIZE(Address.SystemUser)
-                    .DUPx(1)
-                    .ISZERO()
-                    .Done);
-        }
-
-        public static IEnumerable<(Instruction?, byte[])> GeJitBytecodesSamples()
-        {
-            yield return (null, Prepare.EvmCode
-                    .Done);
-            yield return (Instruction.PUSH32, Prepare.EvmCode
-                    .PushSingle(1)
-                    .Done);
-            yield return (Instruction.ISZERO, Prepare.EvmCode
-                    .ISZERO(7)
-                    .ISZERO(0)
-                    .ISZERO(7)
-                    .Done);
-            yield return (Instruction.SUB, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .SUB()
-                    .Done);
-
-            yield return (Instruction.ADD, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .Done);
-
-            yield return (Instruction.ADDMOD, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .PushSingle(5)
-                    .ADDMOD()
-                    .Done);
-
-            yield return (Instruction.MUL, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .MUL()
-                    .Done);
-
-            yield return (Instruction.EXP, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .EXP()
-                    .PushSingle(0)
-                    .PushSingle(7)
-                    .EXP()
-                    .PushSingle(1)
-                    .PushSingle(7)
-                    .EXP()
-                    .PushSingle(1)
-                    .PushSingle(0)
-                    .EXP()
-                    .PushSingle(1)
-                    .PushSingle(1)
-                    .EXP()
-                    .Done);
-
-            yield return (Instruction.MOD, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .MOD()
-                    .Done);
-
-            yield return (Instruction.DIV, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .DIV()
-                    .Done);
-
-            yield return (Instruction.MSTORE, Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
-                    .Done);
-
-            yield return (Instruction.MLOAD, Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
-                    .MLOAD(0)
-                    .Done);
-
-            yield return (Instruction.MCOPY, Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
-                    .MCOPY(32, 0, 32)
-                    .Done);
-
-            yield return (Instruction.EQ, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .EQ()
-                    .Done);
-
-            yield return (Instruction.GT, Prepare.EvmCode
-                    .PushSingle(7)
-                    .PushSingle(23)
-                    .GT()
-                    .Done);
-
-            yield return (Instruction.LT, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .LT()
-                    .Done);
-
-            yield return (Instruction.NOT, Prepare.EvmCode
-                    .PushSingle(1)
-                    .NOT()
-                    .Done);
-
-            yield return (Instruction.BLOBHASH, Prepare.EvmCode
-                    .PushSingle(0)
-                    .BLOBHASH()
-                    .Done);
-
-            yield return (Instruction.BLOCKHASH, Prepare.EvmCode
-                    .BLOCKHASH(0)
-                    .Done);
-
-            yield return (Instruction.CALLDATACOPY, Prepare.EvmCode
-                    .CALLDATACOPY(0, 0, 32)
-                    .Done);
-
-            yield return (Instruction.CALLDATALOAD, Prepare.EvmCode
-                    .CALLDATALOAD(0)
-                    .Done);
-
-            yield return (Instruction.MSIZE, Prepare.EvmCode
-                    .MSIZE()
-                    .Done);
-
-            yield return (Instruction.GASPRICE, Prepare.EvmCode
-                    .GASPRICE()
-                    .Done);
-
-            yield return (Instruction.CODESIZE, Prepare.EvmCode
-                    .CODESIZE()
-                    .Done);
-
-            yield return (Instruction.PC, Prepare.EvmCode
-                    .PC()
-                    .Done);
-
-            yield return (Instruction.COINBASE, Prepare.EvmCode
-                    .COINBASE()
-                    .Done);
-
-            yield return (Instruction.TIMESTAMP, Prepare.EvmCode
-                    .TIMESTAMP()
-                    .Done);
-
-            yield return (Instruction.NUMBER, Prepare.EvmCode
-                    .NUMBER()
-                    .Done);
-
-            yield return (Instruction.GASLIMIT, Prepare.EvmCode
-                    .GASLIMIT()
-                    .Done);
-
-            yield return (Instruction.CALLER, Prepare.EvmCode
-                    .CALLER()
-                    .Done);
-
-            yield return (Instruction.ADDRESS, Prepare.EvmCode
-                    .ADDRESS()
-                    .Done);
-
-            yield return (Instruction.ORIGIN, Prepare.EvmCode
-                    .ORIGIN()
-                    .Done);
-
-            yield return (Instruction.CALLVALUE, Prepare.EvmCode
-                    .CALLVALUE()
-                    .Done);
-
-            yield return (Instruction.CHAINID, Prepare.EvmCode
-                    .CHAINID()
-                    .Done);
-
-            yield return (Instruction.GAS, Prepare.EvmCode
-                    .GAS()
-                    .Done);
-
-            yield return (Instruction.RETURNDATASIZE, Prepare.EvmCode
-                    .RETURNDATASIZE()
-                    .Done);
-
-            yield return (Instruction.BASEFEE, Prepare.EvmCode
-                    .BASEFEE()
-                    .Done);
-
-            yield return (Instruction.RETURN, Prepare.EvmCode
-                    .StoreDataInMemory(0, [2, 3, 5, 7])
-                    .RETURN(0, 32)
-                    .Done);
-
-            yield return (Instruction.REVERT, Prepare.EvmCode
-                    .StoreDataInMemory(0, [2, 3, 5, 7])
-                    .REVERT(0, 32)
-                    .Done);
-
-            yield return (Instruction.CALLDATASIZE, Prepare.EvmCode
-                    .CALLDATASIZE()
-                    .Done);
-
-            yield return (Instruction.JUMPI, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .JUMPI(9)
-                    .PushSingle(3)
-                    .JUMPDEST()
-                    .PushSingle(0)
-                    .MUL()
-                    .Done);
-
-            yield return (Instruction.JUMP, Prepare.EvmCode
-                    .PushSingle(23)
-                    .JUMP(10)
-                    .JUMPDEST()
-                    .PushSingle(3)
-                    .MUL()
-                    .STOP()
-                    .JUMPDEST()
-                    .JUMP(5)
-                    .Done);
-
-            yield return (Instruction.SHL, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .SHL()
-                    .Done);
-
-            yield return (Instruction.SHR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .SHR()
-                    .Done);
-
-            yield return (Instruction.SAR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .SAR()
-                    .Done);
-
-            yield return (Instruction.AND, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .AND()
-                    .Done);
-
-            yield return (Instruction.OR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .OR()
-                    .Done);
-
-            yield return (Instruction.XOR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .XOR()
-                    .Done);
-
-            yield return (Instruction.SLT, Prepare.EvmCode
-                    .PushData(23)
-                    .PushSingle(4)
-                    .SLT()
-                    .Done);
-
-            yield return (Instruction.SGT, Prepare.EvmCode
-                    .PushData(23)
-                    .PushData(1)
-                    .SGT()
-                    .Done);
-
-            yield return (Instruction.BYTE, Prepare.EvmCode
-                    .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
-                    .Done);
-
-            yield return (Instruction.JUMP, Prepare.EvmCode
-                .JUMP(31)
-                .Done);
-
-            yield return (Instruction.LOG0, Prepare.EvmCode
-                .Log(0, 0)
-                .Done);
-
-            yield return (Instruction.LOG1, Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .Log(1, 0, [TestItem.KeccakA])
-                .Done);
-
-            yield return (Instruction.LOG2, Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(32)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(64)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(96)
-                .Op(Instruction.MSTORE)
-                .Log(4, 0, [TestItem.KeccakA, TestItem.KeccakB])
-                .Done);
-
-            yield return (Instruction.LOG3, Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(32)
-                .Op(Instruction.MSTORE)
-                .Log(2, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
-                .Done);
-
-            yield return (Instruction.LOG4, Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(32)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(64)
-                .Op(Instruction.MSTORE)
-                .Log(3, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
-                .Done);
-
-            yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .TSTORE()
-                .PushData(7)
-                .TLOAD()
-                .Done);
-
-            yield return (Instruction.SSTORE | Instruction.SLOAD, Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .SSTORE()
-                .PushData(7)
-                .SLOAD()
-                .Done);
-
-            yield return (Instruction.EXTCODESIZE, Prepare.EvmCode
-                .EXTCODESIZE(Address.FromNumber(1))
-                .Done);
-
-            yield return (Instruction.EXTCODEHASH, Prepare.EvmCode
-                .EXTCODEHASH(Address.FromNumber(1))
-                .Done);
-
-            yield return (Instruction.EXTCODECOPY, Prepare.EvmCode
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .EXTCODECOPY(Address.FromNumber(1))
-                .Done);
-
-            yield return (Instruction.BALANCE, Prepare.EvmCode
-                .BALANCE(Address.FromNumber(1))
-                .Done);
-
-            yield return (Instruction.SELFBALANCE, Prepare.EvmCode
-                .SELFBALANCE()
-                .Done);
-        }
 
         [Test]
         public void ILAnalyzer_Initialize_Add_All_Patterns()
@@ -963,14 +1138,16 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
-        public void Ensure_Evm_ILvm_Compatibility((Instruction? opcode, byte[] bytecode) testcase)
+        public void Ensure_Evm_ILvm_Compatibility((Instruction? opcode, byte[] bytecode, EvmExceptionType exceptionType) testcase)
         {
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
             var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()]);
             var envExCtx = new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
             var stack = new byte[1024 * 32];
             var inputBuffer = envExCtx.InputData;
-            var returnBuffer = ReadOnlyMemory<byte>.Empty;
+            var returnBuffer =
+                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
+                .Select(i => (byte)i).ToArray());
 
             TestState.CreateAccount(Address.FromNumber(1), 1000000);
             TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
@@ -993,7 +1170,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
 
-            Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
+            Assert.IsTrue(iLEvmState.EvmException == testcase.exceptionType);
         }
 
 

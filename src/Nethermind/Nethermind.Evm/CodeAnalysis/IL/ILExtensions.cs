@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Org.BouncyCastle.Tls;
 using Sigil;
 using System;
 using System.Diagnostics;
@@ -106,6 +107,11 @@ static class EmitExtensions
         il.StoreLocal(idx);
     }
 
+    public static MethodInfo MethodInfo<T>(string name,Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
+    {
+        return typeof(T).GetMethods().First(m => m.Name == name && m.ReturnType == returnType && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(argTypes));
+    }
+
     /// <summary>
     /// Moves the stack <paramref name="count"/> words down.
     /// </summary>
@@ -115,6 +121,16 @@ static class EmitExtensions
         il.LoadConstant(count);
         il.Subtract();
         il.StoreLocal(idx);
+    }
+
+    public static void EmitAsSpan<T>(this Emit<T> il)
+    {
+        MethodInfo method = typeof(System.MemoryExtensions).GetMethods()
+            .Where(m => m.Name == nameof(System.MemoryExtensions.AsSpan)
+                        && m.GetParameters().Length == 3
+                        && m.IsGenericMethod)
+            .First();
+        il.Call(method.MakeGenericMethod(typeof(byte)));
     }
 
     /// <summary>
