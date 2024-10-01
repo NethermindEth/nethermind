@@ -80,7 +80,23 @@ namespace Nethermind.Config
                     var value = configItem.Value;
                     if (value.ValueKind == JsonValueKind.Number)
                     {
-                        itemsDict[key] = value.GetInt64().ToString();
+                        try
+                        {
+                            itemsDict[key] = value.GetInt64().ToString();
+                        }
+                        catch (FormatException)
+                        {
+                            // If parsing as Int64 fails, try to parse as double
+                            try
+                            {
+                                itemsDict[key] = value.GetDouble().ToString();
+                            }
+                            catch (FormatException ex)
+                            {
+                                // Handle case if neither Int64 nor double parsing works
+                                itemsDict[key] = $"Parsing error: {ex.Message}";
+                            }
+                        }
                     }
                     else if (value.ValueKind == JsonValueKind.True)
                     {
