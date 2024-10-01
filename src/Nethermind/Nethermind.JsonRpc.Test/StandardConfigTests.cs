@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Test
                 .OrderBy(n => n).ToArray();
             foreach (string dll in dlls)
             {
-                TestContext.WriteLine($"Verifying {nameof(StandardJsonRpcTests)} on {Path.GetFileName(dll)}");
+                TestContext.Out.WriteLine($"Verifying {nameof(StandardJsonRpcTests)} on {Path.GetFileName(dll)}");
                 Assembly assembly = Assembly.LoadFile(dll);
                 Type[] modules = assembly.GetExportedTypes().Where(FilterTypes).ToArray();
 

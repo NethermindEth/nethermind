@@ -16,7 +16,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Abi.Test;
 
-[TestFixture]
 public class AbiTests
 {
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
@@ -132,7 +131,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.True(Bytes.AreEqual((byte[])arguments[0], data));
+        Assert.That(Bytes.AreEqual((byte[])arguments[0], data), Is.True);
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -158,7 +157,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.True(Bytes.AreEqual((byte[])arguments[0], data));
+        Assert.That(Bytes.AreEqual((byte[])arguments[0], data), Is.True);
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
@@ -213,7 +212,7 @@ public class AbiTests
         AbiSignature signature = new AbiSignature("abc", type);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.True(Bytes.AreEqual((byte[])arguments[0], data));
+        Assert.That(Bytes.AreEqual((byte[])arguments[0], data), Is.True);
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]

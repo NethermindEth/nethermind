@@ -309,6 +309,9 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsRip7212Enabled { get; }
 
+        /// OP Granite
+        bool IsOpGraniteEnabled { get; }
+
         /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>

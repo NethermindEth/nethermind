@@ -23,13 +23,13 @@ namespace Nethermind.Overseer.Test.Framework
             var passedCount = _results.Count(r => r.Passed);
             var failedCount = _results.Count - passedCount;
 
-            TestContext.WriteLine("=========================== TESTS RESULTS ===========================");
-            TestContext.WriteLine($"TESTS PASSED: {passedCount}, FAILED: {failedCount}");
+            TestContext.Out.WriteLine("=========================== TESTS RESULTS ===========================");
+            TestContext.Out.WriteLine($"TESTS PASSED: {passedCount}, FAILED: {failedCount}");
             foreach (var testResult in _results)
             {
                 string message = $"{testResult.Order}. {testResult.Name} has " +
                                  $"{(testResult.Passed ? "passed [+]" : "failed [-]")}";
-                TestContext.WriteLine(message);
+                TestContext.Out.WriteLine(message);
             }
         }
 
@@ -58,7 +58,7 @@ namespace Nethermind.Overseer.Test.Framework
                 }
                 catch (Exception e)
                 {
-                    TestContext.WriteLine(e.ToString());
+                    TestContext.Out.WriteLine(e.ToString());
                     throw;
                 }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Overseer.Test.Framework
                 }
                 catch (Exception e)
                 {
-                    TestContext.WriteLine(e.ToString());
+                    TestContext.Out.WriteLine(e.ToString());
                     throw;
                 }
 
@@ -94,18 +94,18 @@ namespace Nethermind.Overseer.Test.Framework
             // queue up the work
             ScenarioCompletion = ScenarioCompletion.ContinueWith(async task =>
             {
-                TestContext.WriteLine($"Awaiting step {step.Name}");
+                TestContext.Out.WriteLine($"Awaiting step {step.Name}");
                 try
                 {
                     _results.Add(await step.ExecuteAsync());
                 }
                 catch (Exception e)
                 {
-                    TestContext.WriteLine($"Step {step.Name} failed with error: {e}");
+                    TestContext.Out.WriteLine($"Step {step.Name} failed with error: {e}");
                     throw;
                 }
 
-                TestContext.WriteLine($"Step {step.Name} complete");
+                TestContext.Out.WriteLine($"Step {step.Name} complete");
             }, TaskContinuationOptions.OnlyOnRanToCompletion).Unwrap();
         }
 
@@ -216,7 +216,7 @@ namespace Nethermind.Overseer.Test.Framework
                 File.Copy(baseConfigFile, configPath);
                 int p2pPort = _startPort + _nodeCounter;
                 int httpPort = _startHttpPort + _nodeCounter;
-                TestContext.WriteLine($"Creating {name} at {p2pPort}, http://localhost:{httpPort}");
+                TestContext.Out.WriteLine($"Creating {name} at {p2pPort}, http://localhost:{httpPort}");
                 value = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
                 Nodes[name] = value;
                 _nodeCounter++;
@@ -277,7 +277,7 @@ namespace Nethermind.Overseer.Test.Framework
                 throw new IOException($"Runner not found at {sourceDirectory}");
             }
 
-            TestContext.WriteLine($"Copying runner files from {sourceDirectory} to {targetDirectory}");
+            TestContext.Out.WriteLine($"Copying runner files from {sourceDirectory} to {targetDirectory}");
             CopyDir(sourceDirectory, targetDirectory);
             string chainsDir = Path.Combine(Directory.GetCurrentDirectory(), "chainspec");
             CopyDir(chainsDir, Path.Combine(targetDirectory, "chainspec"));
