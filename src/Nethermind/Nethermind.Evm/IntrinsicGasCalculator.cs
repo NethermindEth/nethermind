@@ -7,9 +7,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -24,6 +24,12 @@ public static class IntrinsicGasCalculator
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
+
+    public static long CalculateFloorGas(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        return GasCostOf.Transaction
+               + FloorCallDataCost(transaction, releaseSpec);
+    }
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
@@ -87,5 +93,15 @@ public static class IntrinsicGasCalculator
         {
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
         }
+    }
+
+    private static long FloorCallDataCost(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!releaseSpec.IsEip7623Enabled) return 0;
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+
+        var totalZeros = data.CountZeros();
+        var totalTokens = totalZeros + (data.Length - totalZeros) * 4;
+        return totalTokens * GasCostOf.TotalCostFloorPerTokenEip7623;
     }
 }
