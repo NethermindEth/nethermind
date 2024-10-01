@@ -79,34 +79,22 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        public static IEnumerable<AuthorizationTuple> AuthorityTupleTestCaseSources()
+        [Test]
+        [Repeat(3)]
+        public void RecoverAddress_AuthorizationTupleOfDifferentSize_RecoversAddressCorrectly()
         {
-            yield return CreateAuthorizationTuple(ulong.MaxValue, Build.A.Address.TestObjectInternal, ulong.MaxValue);
-            yield return CreateAuthorizationTuple(1, Address.Zero, 0);
-        }
+            PrivateKey signer = Build.A.PrivateKey.TestObject;
+            AuthorizationTuple authorizationTuple = new EthereumEcdsa(BlockchainIds.GenericNonRealNetwork)
+                .Sign(signer,
+                TestContext.CurrentContext.Random.NextULong(),
+                Build.A.Address.TestObjectInternal,
+                TestContext.CurrentContext.Random.NextULong());
 
-        [TestCaseSource(nameof(AuthorityTupleTestCaseSources))]
-        public void RecoverAddress_AuthorizationTupleOfDifferentSize_RecoversAddressCorrectly(AuthorizationTuple authorization)
-        {
             EthereumEcdsa ecdsa = new(BlockchainIds.GenericNonRealNetwork);
 
-            Address? authority = ecdsa.RecoverAddress(authorization);
+            Address? authority = ecdsa.RecoverAddress(authorizationTuple);
 
-            Assert.That(authority, Is.EqualTo(authorization.Authority));
-        }
-
-        private static AuthorizationTuple CreateAuthorizationTuple(ulong chainId, Address codeAddress, ulong nonce)
-        {
-            AuthorizationTupleDecoder decoder = new();
-            using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
-            Span<byte> code = stackalloc byte[rlp.Length + 1];
-            code[0] = Eip7702Constants.Magic;
-            rlp.AsSpan().CopyTo(code.Slice(1));
-            EthereumEcdsa ecdsa = new(1);
-            PrivateKey signer = Build.A.PrivateKey.TestObject;
-            Signature sig = ecdsa.Sign(signer, Keccak.Compute(code));
-
-            return new AuthorizationTuple(chainId, codeAddress, nonce, sig, signer.Address);
+            Assert.That(authority, Is.EqualTo(signer.Address));
         }
     }
 }

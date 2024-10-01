@@ -63,7 +63,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(100_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -98,7 +98,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, 0))
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, codeSource, 0))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -135,7 +135,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(600_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, _specProvider.ChainId, codeSource, nonce))
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, _specProvider.ChainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -178,7 +178,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(100_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(signer, chainId, codeSource, nonce))
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(signer, chainId, codeSource, nonce))
             .SignedAndResolved(_ethereumEcdsa, sender, true)
             .TestObject;
         Block block = Build.A.Block.WithNumber(long.MaxValue)
@@ -207,7 +207,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTo(signer.Address)
             .WithGasLimit(GasCostOf.Transaction + GasCostOf.NewAccount * count)
             .WithAuthorizationCode(Enumerable.Range(0, count)
-                                             .Select(i => CreateAuthorizationTuple(
+                                             .Select(i => _ethereumEcdsa.Sign(
                                                  signer,
                                                  _specProvider.ChainId,
                                                  TestItem.AddressC,
@@ -256,7 +256,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTo(codeSource)
             .WithGasLimit(gasLimit)
             .WithAuthorizationCode(
-            CreateAuthorizationTuple(
+            _ethereumEcdsa.Sign(
                 sender,
                 _specProvider.ChainId,
                 Address.Zero,
@@ -295,7 +295,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
             .WithAuthorizationCode(
-                CreateAuthorizationTuple(
+                _ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
                     codeSource,
@@ -343,12 +343,12 @@ internal class TransactionProcessorEip7702Tests
         DeployCode(secondCodeSource, secondCode);
 
         AuthorizationTuple[] authList = [
-            CreateAuthorizationTuple(
+            _ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
                     firstCodeSource,
                     0),
-            CreateAuthorizationTuple(
+            _ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
                     secondCodeSource,
@@ -393,7 +393,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(60_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
                     codeSource,
@@ -481,7 +481,7 @@ internal class TransactionProcessorEip7702Tests
             .WithType(TxType.SetCode)
             .WithTo(signer.Address)
             .WithGasLimit(100_000)
-            .WithAuthorizationCode(CreateAuthorizationTuple(
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(
                     signer,
                     _specProvider.ChainId,
                     codeSource,
@@ -502,18 +502,4 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);
         _stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
     }
-
-    private AuthorizationTuple CreateAuthorizationTuple(PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
-    {
-        AuthorizationTupleDecoder decoder = new();
-        using NettyRlpStream rlp = decoder.EncodeWithoutSignature(chainId, codeAddress, nonce);
-        Span<byte> code = stackalloc byte[rlp.Length + 1];
-        code[0] = Eip7702Constants.Magic;
-        rlp.Data.AsSpan().CopyTo(code.Slice(1));
-
-        Signature sig = _ethereumEcdsa.Sign(signer, Keccak.Compute(code));
-
-        return new AuthorizationTuple(chainId, codeAddress, nonce, sig);
-    }
-
 }
