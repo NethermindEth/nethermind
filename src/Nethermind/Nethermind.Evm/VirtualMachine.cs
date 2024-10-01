@@ -591,8 +591,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!UpdateGas(checked(baseGasCost + blobGasCost), ref gasAvailable))
         {
-            Metrics.EvmExceptions++;
-            throw new OutOfGasException();
+            return new(default, false, true, EvmExceptionType.OutOfGas);
         }
 
         state.GasAvailable = gasAvailable;
