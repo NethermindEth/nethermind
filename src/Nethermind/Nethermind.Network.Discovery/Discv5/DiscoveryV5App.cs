@@ -1,52 +1,53 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-using Nethermind.Stats.Model;
-using Lantern.Discv5.WireProtocol;
-using Lantern.Discv5.Enr.Entries;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
+using DotNetty.Transport.Channels;
 using Lantern.Discv5.Enr;
+using Lantern.Discv5.Enr.Entries;
+using Lantern.Discv5.Enr.Identity.V4;
+using Lantern.Discv5.WireProtocol;
 using Lantern.Discv5.WireProtocol.Connection;
 using Lantern.Discv5.WireProtocol.Session;
 using Lantern.Discv5.WireProtocol.Table;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Config;
-using Lantern.Discv5.Enr.Identity.V4;
-using Nethermind.Crypto;
-using Nethermind.Network.Config;
-using Nethermind.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
-using Nethermind.Db;
-using System.Diagnostics.CodeAnalysis;
-using System.Net;
-using Nethermind.Core;
-using Nethermind.Api;
-using Nethermind.Network.Discovery.Discv5;
+using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin.Secp256k1;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Network.Config;
+using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network.Discovery.Discv5;
 
 public class DiscoveryV5App : IDiscoveryApp
 {
     private readonly IDiscv5Protocol _discv5Protocol;
-    private readonly IApiWithNetwork _api;
     private readonly Logging.ILogger _logger;
-    private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly SimpleFilePublicKeyDb _discoveryDb;
+    private readonly IDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
     private readonly DiscoveryReport? _discoveryReport;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly SessionOptions _sessionOptions;
 
-    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
+    public DiscoveryV5App(SameKeyGenerator privateKeyProvider, IIPResolver? ipResolver, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IDb discoveryDb, ILogManager logManager)
     {
+        ArgumentNullException.ThrowIfNull(ipResolver);
+
         _logger = logManager.GetClassLogger();
-        _discoveryConfig = discoveryConfig;
         _discoveryDb = discoveryDb;
-        _api = api;
 
         IdentityVerifierV4 identityVerifier = new();
 
-        SessionOptions sessionOptions = new SessionOptions
+        _sessionOptions = new()
         {
             Signer = new IdentitySignerV4(privateKeyProvider.Generate().KeyBytes),
             Verifier = identityVerifier,
@@ -57,65 +58,60 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IServiceCollection services = new ServiceCollection()
            .AddSingleton<ILoggerFactory, NullLoggerFactory>()
-           .AddSingleton(sessionOptions.Verifier)
-           .AddSingleton(sessionOptions.Signer);
+           .AddSingleton(_sessionOptions.Verifier)
+           .AddSingleton(_sessionOptions.Signer);
 
         EnrFactory enrFactory = new(new EnrEntryRegistry());
 
         Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
             .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
                 .Select(e => new Enode(e))
-                .Select(e => new EnrBuilder()
-                    .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
-                    .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-                    .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(NBitcoin.Secp256k1.Context.Instance.CreatePubKey(e.PublicKey.PrefixedBytes).ToBytes(false)))
-                    .WithEntry(EnrEntryKey.Ip, new EntryIp(e.HostIp))
-                    .WithEntry(EnrEntryKey.Tcp, new EntryTcp(e.Port))
-                    .WithEntry(EnrEntryKey.Udp, new EntryUdp(e.DiscoveryPort))
-                    .Build()),
+                .Select(GetEnr),
             .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
             // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr => enrFactory.CreateFromBytes(enr, identityVerifier))
+            .. _discoveryDb.GetAllValues().Select(enr =>
+                {
+                    try
+                    {
+                        return enrFactory.CreateFromBytes(enr, identityVerifier);
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"unable to decode enr {e}");
+                        return null;
+                    }
+                })
+                .Where(enr => enr != null)!
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
-            .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
+            .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(sessionOptions.Signer.PublicKey))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(_api.IpResolver!.ExternalIp))
+            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(_sessionOptions.Signer.PublicKey))
+            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipResolver.ExternalIp))
             .WithEntry(EnrEntryKey.Tcp, new EntryTcp(networkConfig.P2PPort))
             .WithEntry(EnrEntryKey.Udp, new EntryUdp(networkConfig.DiscoveryPort));
 
-        _discv5Protocol = new Discv5ProtocolBuilder(services)
+        IDiscv5ProtocolBuilder discv5Builder = new Discv5ProtocolBuilder(services)
             .WithConnectionOptions(new ConnectionOptions
             {
-                UdpPort = networkConfig.DiscoveryPort,
+                UdpPort = networkConfig.DiscoveryPort
             })
-            .WithSessionOptions(sessionOptions)
+            .WithSessionOptions(_sessionOptions)
             .WithTableOptions(new TableOptions(bootstrapEnrs.Select(enr => enr.ToString()).ToArray()))
             .WithEnrBuilder(enrBuilder)
             .WithLoggerFactory(new NethermindLoggerFactory(logManager, true))
-            .Build();
+            .WithServices(s =>
+            {
+                s.AddSingleton(logManager);
+                NettyDiscoveryV5Handler.Register(s);
+            });
 
-
-        _discv5Protocol.NodeAdded += (e) => NodeAddedByDiscovery(e.Record);
+        _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
 
+        _serviceProvider = discv5Builder.GetServiceProvider();
         _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
-    }
-
-    private void NodeAddedByDiscovery(IEnr newEntry)
-    {
-        if (!TryGetNodeFromEnr(newEntry, out Node? newNode))
-        {
-            return;
-        }
-
-        NodeAdded?.Invoke(this, new NodeEventArgs(newNode));
-
-        _discoveryReport?.NodeFound();
-
-        if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {newNode}.");
     }
 
     private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
@@ -174,18 +170,47 @@ public class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    public List<Node> LoadInitialList() => [];
+    private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
+        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
+        .Build();
 
-    public event EventHandler<NodeEventArgs>? NodeAdded;
+    private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
+        .WithIdentityScheme(_sessionOptions.Verifier, _sessionOptions.Signer)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
+        .Build();
+
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
     public void Initialize(PublicKey masterPublicKey) { }
 
-    public void Start() => _ = DiscoverViaCustomRandomWalk();
-
-    private async Task DiscoverViaCustomRandomWalk()
+    public void InitializeChannel(IChannel channel)
     {
-        async Task DiscoverAsync(IEnumerable<IEnr> getAllNodes, byte[] nodeId, CancellationToken token)
+        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        handler.InitializeChannel(channel);
+        channel.Pipeline.AddLast(handler);
+    }
+
+    public async Task StartAsync()
+    {
+        await _discv5Protocol.InitAsync();
+
+        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
+    }
+
+    public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
+    {
+        Channel<Node> ch = Channel.CreateBounded<Node>(1);
+
+        async Task DiscoverAsync(IEnumerable<IEnr> startingNode, byte[] nodeId)
         {
             static int[] GetDistances(byte[] srcNodeId, byte[] destNodeId)
             {
@@ -209,7 +234,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 return distances;
             }
 
-            Queue<IEnr> nodesToCheck = new(getAllNodes);
+            Queue<IEnr> nodesToCheck = new(startingNode);
             HashSet<IEnr> checkedNodes = [];
 
             while (!token.IsCancellationRequested)
@@ -219,7 +244,12 @@ public class DiscoveryV5App : IDiscoveryApp
                     return;
                 }
 
-                NodeAddedByDiscovery(newEntry);
+                if (TryGetNodeFromEnr(newEntry, out Node? node2))
+                {
+                    await ch.Writer.WriteAsync(node2!, token);
+                    if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry} = {node2}.");
+                    _discoveryReport?.NodeFound();
+                }
 
                 if (!checkedNodes.Add(newEntry))
                 {
@@ -239,51 +269,52 @@ public class DiscoveryV5App : IDiscoveryApp
         }
 
         IEnumerable<IEnr> GetStartingNodes() => _discv5Protocol.GetAllNodes;
-
         Random random = new();
-        await _discv5Protocol.InitAsync();
-
-        if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
 
         const int RandomNodesToLookupCount = 3;
 
-        byte[] randomNodeId = new byte[32];
-
-        while (!_appShutdownSource.IsCancellationRequested)
+        Task discoverTask = Task.Run(async () =>
         {
-            try
+            byte[] randomNodeId = new byte[32];
+            while (!token.IsCancellationRequested)
             {
-                await DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId, _appShutdownSource.Token);
-
-                for (int i = 0; i < RandomNodesToLookupCount; i++)
+                try
                 {
-                    random.NextBytes(randomNodeId);
-                    await DiscoverAsync(GetStartingNodes(), randomNodeId, _appShutdownSource.Token);
+                    List<Task> discoverTasks = new List<Task>();
+                    discoverTasks.Add(DiscoverAsync(GetStartingNodes(), _discv5Protocol.SelfEnr.NodeId));
+
+                    for (int i = 0; i < RandomNodesToLookupCount; i++)
+                    {
+                        random.NextBytes(randomNodeId);
+                        discoverTasks.Add(DiscoverAsync(GetStartingNodes(), randomNodeId));
+                    }
+
+                    await Task.WhenAll(discoverTasks);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
                 }
             }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Discovery via custom random walk failed.", ex);
-            }
+        });
 
-            if (_api.PeerManager?.ActivePeers.Count != 0)
+        try
+        {
+            await foreach (Node node in ch.Reader.ReadAllAsync(token))
             {
-                await Task.Delay(_discoveryConfig.DiscoveryInterval, _appShutdownSource.Token);
+                yield return node;
             }
+        }
+        finally
+        {
+            await discoverTask;
         }
     }
 
     public async Task StopAsync()
     {
-        if (_api.PeerManager is null)
-        {
-            return;
-        }
-
-        HashSet<EntrySecp256K1> activeNodes = _api.PeerManager.ActivePeers.Select(x => new EntrySecp256K1(Context.Instance.CreatePubKey(x.Node.Id.PrefixedBytes).ToBytes(false)))
-                                                                          .ToHashSet(new EntrySecp256K1EqualityComparer());
-
-        IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes.Where(x => activeNodes.Contains(x.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1)));
+        IEnumerable<IEnr> activeNodeEnrs = _discv5Protocol.GetAllNodes;
+        _discoveryDb.Clear();
 
         IWriteBatch? batch = null;
         try
@@ -302,23 +333,11 @@ public class DiscoveryV5App : IDiscoveryApp
 
         await _discv5Protocol.StopAsync();
         await _appShutdownSource.CancelAsync();
-        _discoveryDb.Clear();
     }
 
-    public void AddNodeToDiscovery(Node node) { }
-
-    class EntrySecp256K1EqualityComparer : IEqualityComparer<EntrySecp256K1>
+    public void AddNodeToDiscovery(Node node)
     {
-        public bool Equals(EntrySecp256K1? x, EntrySecp256K1? y)
-        {
-            return !(x is null ^ y is null) && (x is null || x.Value.SequenceEqual(y!.Value));
-        }
-
-        public int GetHashCode([DisallowNull] EntrySecp256K1 entry)
-        {
-            var hash = new HashCode();
-            hash.AddBytes(entry.Value);
-            return hash.ToHashCode();
-        }
+        var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
+        routingTable.UpdateFromEnr(GetEnr(node));
     }
 }

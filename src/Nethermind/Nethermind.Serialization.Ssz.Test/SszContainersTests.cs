@@ -549,15 +549,15 @@
 
 //            JsonSerializerOptions options = new JsonSerializerOptions { WriteIndented = true };
 //            options.ConfigureNethermindCore2();
-//            TestContext.WriteLine("Original state: {0}", JsonSerializer.Serialize(container, options));
+//            TestContext.Out.WriteLine("Original state: {0}", JsonSerializer.Serialize(container, options));
 
 //            int encodedLength = Ssz.BeaconStateLength(container);
-//            TestContext.WriteLine("Encoded length: {0}", encodedLength);
+//            TestContext.Out.WriteLine("Encoded length: {0}", encodedLength);
 //            Span<byte> encoded = new byte[encodedLength];
 //            Ssz.Encode(encoded, container);
 //            BeaconState decoded = Ssz.DecodeBeaconState(encoded);
 
-//            TestContext.WriteLine("Decoded state: {0}", JsonSerializer.Serialize(decoded, options));
+//            TestContext.Out.WriteLine("Decoded state: {0}", JsonSerializer.Serialize(decoded, options));
 
 //            AssertBeaconStateEqual(container, decoded);
 

@@ -103,7 +103,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
-            if (_logger.IsInfo) _logger.Info($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
+            if (_logger.IsWarn) _logger.Warn($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
@@ -138,9 +138,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
         BlockHeader? safeBlockHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
         BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
-        string requestStr = payloadAttributes is null
-            ? forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)
-            : $"{forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)} {payloadAttributes}";
+        string requestStr = forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number);
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
 

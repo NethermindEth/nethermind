@@ -23,7 +23,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[TestFixture]
 public class TxValidatorTests
 {
     [SetUp]
@@ -31,7 +30,7 @@ public class TxValidatorTests
     {
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()
     {
         BigInteger N =
@@ -45,7 +44,7 @@ public class TxValidatorTests
         (HalfN == halfN).Should().BeTrue();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Zero_r_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -56,12 +55,12 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
     private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Zero_s_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -72,10 +71,10 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Bad_chain_id_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -86,10 +85,10 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeFalse();
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_chain_id_legacy_tx_is_valid()
     {
         byte[] sigData = new byte[65];
@@ -100,10 +99,10 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Is_valid_with_valid_chain_id()
     {
         byte[] sigData = new byte[65];
@@ -114,10 +113,10 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).Should().BeTrue();
+        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true)]
     [TestCase(false)]
     public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
@@ -134,10 +133,10 @@ public class TxValidatorTests
         releaseSpec.ValidateChainId.Returns(validateChainId);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, releaseSpec).Should().Be(!validateChainId);
+        txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(!validateChainId);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, ExpectedResult = true)]
     [TestCase(TxType.Legacy, false, ExpectedResult = true)]
     [TestCase(TxType.AccessList, false, ExpectedResult = false)]
@@ -164,14 +163,13 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, false, ExpectedResult = true)]
     [TestCase(TxType.Legacy, false, false, ExpectedResult = true)]
     [TestCase(TxType.AccessList, false, false, ExpectedResult = false)]
     [TestCase(TxType.AccessList, true, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, false, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, true, true, ExpectedResult = true)]
-    [TestCase((TxType)100, true, false, ExpectedResult = false)]
     public bool Before_eip_1559_has_to_be_legacy_or_access_list_tx(TxType txType, bool eip2930, bool eip1559)
     {
         byte[] sigData = new byte[65];
@@ -184,7 +182,7 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .WithMaxPriorityFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
             .WithMaxFeePerGas(txType == TxType.EIP1559 ? 10.GWei() : 5.GWei())
-            .WithAccessList(txType == TxType.AccessList || txType == TxType.EIP1559
+            .WithAccessList(txType is TxType.AccessList or TxType.EIP1559
                 ? AccessList.Empty
                 : null)
             .WithSignature(signature).TestObject;
@@ -196,7 +194,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, releaseSpec);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, ExpectedResult = true)]
     [TestCase(TxType.AccessList, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, ExpectedResult = false)]
@@ -220,7 +218,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Berlin.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
     [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
@@ -251,7 +249,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, London.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true, 1, false)]
     [TestCase(false, 1, true)]
     [TestCase(true, -1, true)]
@@ -275,7 +273,7 @@ public class TxValidatorTests
             .WithData(initCode).TestObject;
 
         TxValidator txValidator = new(1);
-        txValidator.IsWellFormed(tx, releaseSpec).Should().Be(expectedResult);
+        txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(expectedResult);
     }
 
     //leading zeros in AccessList - expected to pass (real mainnet tx)
@@ -346,11 +344,11 @@ public class TxValidatorTests
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved().TestObject;
 
-        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance), Is.False);
-        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance));
+        Assert.That(txValidator.IsWellFormed(txWithoutTo, Cancun.Instance).AsBool(), Is.False);
+        Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]
@@ -405,9 +403,8 @@ public class TxValidatorTests
 
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     [Test]
@@ -420,9 +417,8 @@ public class TxValidatorTests
 
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     [Test]
@@ -438,9 +434,8 @@ public class TxValidatorTests
 
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
     [Test]
     public void IsWellFormed_BlobTxHasMoreDataGasThanAllowed_ReturnFalse()
@@ -455,9 +450,8 @@ public class TxValidatorTests
 
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     [Test]
@@ -473,9 +467,8 @@ public class TxValidatorTests
 
         Transaction tx = txBuilder.TestObject;
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     [Test]
@@ -491,9 +484,8 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs[0] = new byte[Ckzg.Ckzg.BytesPerBlob + 1];
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     [Test]
@@ -509,9 +501,8 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments[0] = new byte[Ckzg.Ckzg.BytesPerCommitment + 1];
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     [Test]
@@ -527,9 +518,8 @@ public class TxValidatorTests
         Transaction tx = txBuilder.TestObject;
         ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0] = new byte[Ckzg.Ckzg.BytesPerProof + 1];
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        string? error;
 
-        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance, out error), Is.False);
+        Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>

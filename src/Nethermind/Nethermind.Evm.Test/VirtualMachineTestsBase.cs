@@ -66,7 +66,7 @@ public class VirtualMachineTestsBase
         _stateDb = new MemDb();
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
-        _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
+        _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new CodeInfoRepository();
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
@@ -88,6 +88,14 @@ public class VirtualMachineTestsBase
     {
         GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
         (Block block, Transaction transaction) = PrepareTx((blockNumber, Timestamp), gasLimit, code);
+        _processor.Execute(transaction, block.Header, tracer);
+        return tracer.BuildResult();
+    }
+
+    protected GethLikeTxTrace ExecuteAndTrace(long gasLimit, params byte[] code)
+    {
+        GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
         _processor.Execute(transaction, block.Header, tracer);
         return tracer.BuildResult();
     }

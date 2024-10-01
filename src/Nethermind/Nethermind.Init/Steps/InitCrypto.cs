@@ -9,7 +9,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp))]
     public class InitCrypto : IStep
     {
         private readonly IBasicApi _api;
@@ -22,7 +22,7 @@ namespace Nethermind.Init.Steps
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute(CancellationToken _)
         {
-            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider!.ChainId, _api.LogManager);
+            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider!.ChainId);
             return Task.CompletedTask;
         }
     }

@@ -110,8 +110,7 @@ public partial class EngineModuleTests
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
-            withdrawals
-        );
+            withdrawals);
         GetPayloadV2Result expectedPayload = new(block, UInt256.Zero);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
@@ -125,7 +124,7 @@ public partial class EngineModuleTests
         }));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
-            chain.JsonSerializer.Serialize(new ExecutionPayload(block)));
+            chain.JsonSerializer.Serialize(ExecutionPayload.Create(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -342,7 +341,7 @@ public partial class EngineModuleTests
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
         };
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
+            rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
@@ -478,7 +477,7 @@ public partial class EngineModuleTests
                 .WithWithdrawals(withdrawals.ToArray())
                 .TestObject;
 
-            ResultWrapper<PayloadStatusV1> fcuResult = await rpc.engine_newPayloadV2(new ExecutionPayload(newBlock));
+            ResultWrapper<PayloadStatusV1> fcuResult = await rpc.engine_newPayloadV2(ExecutionPayload.Create(newBlock));
 
             fcuResult.Data.Status.Should().Be(PayloadStatus.Valid);
 

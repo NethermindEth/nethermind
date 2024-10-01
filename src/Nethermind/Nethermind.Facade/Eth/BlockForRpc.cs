@@ -12,6 +12,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Facade.Eth;
 
@@ -82,9 +83,12 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
+        Requests = block.Requests;
+        RequestsRoot = block.Header.RequestsRoot;
     }
 
-    public Address Author { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Author { get; set; }
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; }
     public long GasLimit { get; set; }
@@ -139,4 +143,8 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+    public IEnumerable<ConsensusRequest>? Requests { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? RequestsRoot { get; set; }
 }

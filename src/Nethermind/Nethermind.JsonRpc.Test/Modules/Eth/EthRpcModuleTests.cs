@@ -20,14 +20,10 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -41,7 +37,6 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 [Parallelizable(ParallelScope.All)]
-[TestFixture]
 [SetCulture("en-US")]
 public partial class EthRpcModuleTests
 {
@@ -88,6 +83,15 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"type\":\"0x0\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
+
+    [Test]
+    public async Task Eth_get_raw_transaction_by_hash()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getRawTransactionByHash", ctx.Test.BlockTree.FindHeadBlock()!.Transactions.Last().Hash!.ToString());
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"f85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"id\":67}"), serialized.Replace("\"", "\\\""));
+    }
+
 
     [Test]
     public async Task eth_maxPriorityFeePerGas_test()
@@ -314,17 +318,17 @@ public partial class EthRpcModuleTests
         string getFilterLogsSerialized1 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
 
         //expect empty - no changes so far
-        Assert.That(getFilterLogsSerialized1, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+        getFilterLogsSerialized1.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}");
 
         await test.AddBlock(createCodeTx);
 
         //expect new transaction logs
         string getFilterLogsSerialized2 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
-        Assert.That(getFilterLogsSerialized2, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"blockHash\":\"0x2eb166ba88c43f96f980a573aebcee792fda4d34ad4c353dfd3d08cdf80adfae\",\"blockNumber\":\"0x4\",\"data\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[],\"transactionHash\":\"0x8c9c109bff7969c8aed8e51ab4ea35c6f835a0c3266bc5c5721821a38cbf5445\",\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}"));
+        getFilterLogsSerialized2.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0x0ffd3e46594919c04bcfd4e146203c8255670828\",\"blockHash\":\"0xf9fc52a47b7da4e8227cd60e9c368fa7d44df7f3226d5163005eec015588d64b\",\"blockNumber\":\"0x4\",\"data\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"logIndex\":\"0x0\",\"removed\":false,\"topics\":[],\"transactionHash\":\"0x8c9c109bff7969c8aed8e51ab4ea35c6f835a0c3266bc5c5721821a38cbf5445\",\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}");
 
         //expect empty - previous call cleans logs
         string getFilterLogsSerialized3 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
-        Assert.That(getFilterLogsSerialized3, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+        getFilterLogsSerialized3.Should().Be("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}");
     }
 
     [Test]
@@ -510,7 +514,7 @@ public partial class EthRpcModuleTests
 
         using JsonRpcResponse? newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
-        Assert.IsTrue(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse);
+        Assert.That(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse, Is.True);
 
         string getFilterLogsSerialized = await test.TestEthRpc("eth_getFilterLogs", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
 
@@ -755,7 +759,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "", "true");
-        Assert.True(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""));
+        Assert.That(serialized.StartsWith("{\"jsonrpc\":\"2.0\",\"error\""), Is.True);
     }
 
     [Test]
@@ -1035,7 +1039,7 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
-        Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
+        Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);

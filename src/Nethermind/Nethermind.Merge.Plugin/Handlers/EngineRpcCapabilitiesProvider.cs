@@ -45,6 +45,14 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV3)] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getBlobsV1)] = (spec.IsEip4844Enabled, false);
+            #endregion
+
+            #region Prague
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.ConsensusRequestsEnabled, spec.ConsensusRequestsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.ConsensusRequestsEnabled, spec.ConsensusRequestsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2)] = (spec.ConsensusRequestsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2)] = (spec.ConsensusRequestsEnabled, false);
             #endregion
         }
 

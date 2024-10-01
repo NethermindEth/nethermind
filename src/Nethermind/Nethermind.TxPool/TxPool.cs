@@ -59,6 +59,8 @@ namespace Nethermind.TxPool
         private readonly UpdateGroupDelegate _updateBucket;
         private readonly UpdateGroupDelegate _updateBucketAdded;
 
+        public event EventHandler<Block>? TxPoolHeadChanged;
+
         /// <summary>
         /// Indexes transactions
         /// </summary>
@@ -112,6 +114,7 @@ namespace Nethermind.TxPool
             _updateBucketAdded = UpdateBucketWithAddedTransaction;
 
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
+            TxPoolHeadChanged += _broadcaster.OnNewHead;
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
@@ -164,7 +167,7 @@ namespace Nethermind.TxPool
             ProcessNewHeads();
         }
 
-        public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
+        public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
@@ -182,14 +185,15 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+        public bool TryGetBlobAndProof(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof)
+            => _blobTransactions.TryGetBlobAndProof(blobVersionedHash, out blob, out proof);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             try
             {
-                // Clear snapshot
-                _transactionSnapshot = null;
-                _blobTransactionSnapshot = null;
-                _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
             catch (Exception exception)
@@ -206,8 +210,12 @@ namespace Nethermind.TxPool
             {
                 while (await _headBlocksChannel.Reader.WaitToReadAsync())
                 {
+                    _hashCache.ClearCurrentBlockCache();
                     while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                     {
+                        // Clear snapshot
+                        _transactionSnapshot = null;
+                        _blobTransactionSnapshot = null;
                         try
                         {
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
@@ -230,7 +238,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
-                            _broadcaster.OnNewHead();
+                            TxPoolHeadChanged?.Invoke(this, args.Block);
                             Metrics.TransactionCount = _transactions.Count;
                             Metrics.BlobTransactionCount = _blobTransactions.Count;
                         }
@@ -731,6 +739,10 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
+        public Transaction? GetBestTx() => _transactions.GetBest();
+
+        public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
+
         public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
@@ -741,6 +753,7 @@ namespace Nethermind.TxPool
         public void Dispose()
         {
             _timer?.Dispose();
+            TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
@@ -765,7 +778,7 @@ namespace Nethermind.TxPool
 
         internal void ResetAddress(Address address)
         {
-            ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
+            using ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
             arrayPoolList.Add(address);
             _accountCache.RemoveAccounts(arrayPoolList);
         }

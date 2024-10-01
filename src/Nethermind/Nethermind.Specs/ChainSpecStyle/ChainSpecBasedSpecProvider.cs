@@ -7,6 +7,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -246,6 +247,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip4844Enabled = (chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsRip7212Enabled = (chainSpec.Parameters.Rip7212TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsOpGraniteEnabled = (chainSpec.Parameters.OpGraniteTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
             releaseSpec.IsEip5656Enabled = (chainSpec.Parameters.Eip5656TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip6780Enabled = (chainSpec.Parameters.Eip6780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -253,6 +255,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
             releaseSpec.IsEip2935Enabled = (chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip2935ContractAddress = chainSpec.Parameters.Eip2935ContractAddress;
+
+            releaseSpec.IsEip6110Enabled = (chainSpec.Parameters.Eip6110TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.DepositContractAddress = chainSpec.Parameters.DepositContractAddress;
+
+            releaseSpec.IsEip7002Enabled = (chainSpec.Parameters.Eip7002TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip7002ContractAddress = chainSpec.Parameters.Eip7002ContractAddress;
 
             return releaseSpec;
         }
@@ -279,5 +287,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
+        public string SealEngine => _chainSpec.SealEngineType;
     }
 }

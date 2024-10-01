@@ -38,6 +38,8 @@ namespace Nethermind.Core
             }
         }
 
+        public bool HasStarted => UtcStartTime.HasValue;
+
         public bool HasEnded => UtcEndTime.HasValue;
 
         public void MarkEnd()

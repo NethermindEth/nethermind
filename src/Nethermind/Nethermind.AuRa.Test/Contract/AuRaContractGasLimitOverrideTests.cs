@@ -2,22 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -98,12 +97,14 @@ public class AuRaContractGasLimitOverrideTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
+                new BeaconBlockRootHandler(TxProcessor),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null,
-                null,
-                GasLimitCalculator as AuRaContractGasLimitOverride);
+                TxProcessor,
+                auRaValidator: null,
+                gasLimitOverride: GasLimitCalculator as AuRaContractGasLimitOverride,
+                preWarmer: CreateBlockCachePreWarmer());
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
