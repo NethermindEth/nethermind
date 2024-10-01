@@ -367,6 +367,21 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             chainSpec.SealEngineType = customEngineType;
         }
 
+        Dictionary<string, JsonElement> engineParameters = new();
+        foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
+        {
+            if (engine.Value.TryGetProperty("params", out JsonElement value))
+            {
+                engineParameters.Add(engine.Key, value);
+            }
+            else
+            {
+                engineParameters.Add(engine.Key, engine.Value);
+            }
+        }
+
+        chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters);
+
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))
         {
             throw new NotSupportedException("unknown seal engine in chainspec");

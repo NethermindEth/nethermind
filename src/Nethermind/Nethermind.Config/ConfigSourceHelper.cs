@@ -11,7 +11,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Config
 {
-    internal static class ConfigSourceHelper
+    public static class ConfigSourceHelper
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
@@ -86,6 +86,49 @@ namespace Nethermind.Config
             return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
         }
 
+        public static bool TryFromHex(Type type, string itemValue, out object value)
+        {
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Byte:
+                    value = Byte.Parse(itemValue);
+                    return true;
+                case TypeCode.SByte:
+                    value = SByte.Parse(itemValue);
+                    return true;
+                case TypeCode.UInt16:
+                    value = UInt16.Parse(itemValue);
+                    return true;
+                case TypeCode.UInt32:
+                    value = UInt32.Parse(itemValue);
+                    return true;
+                case TypeCode.UInt64:
+                    value = UInt64.Parse(itemValue);
+                    return true;
+                case TypeCode.Int16:
+                    value = Int16.Parse(itemValue);
+                    return true;
+                case TypeCode.Int32:
+                    value = Int32.Parse(itemValue);
+                    return true;
+                case TypeCode.Int64:
+                    value = Int64.Parse(itemValue);
+                    return true;
+                case TypeCode.Decimal:
+                    value = Decimal.Parse(itemValue);
+                    return true;
+                case TypeCode.Double:
+                    value = Double.Parse(itemValue);
+                    return true;
+                case TypeCode.Single:
+                    value = Single.Parse(itemValue);
+                    return true;
+                default:
+                    value = null;
+                    return false;
+            }
+        }
+
         private static object GetValue(Type valueType, string itemValue)
         {
             if (valueType == typeof(UInt256))
@@ -101,6 +144,11 @@ namespace Nethermind.Config
                 }
 
                 throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
+            }
+
+            if (TryFromHex(valueType, itemValue, out object value))
+            {
+                return value;
             }
 
             var nullableType = Nullable.GetUnderlyingType(valueType);

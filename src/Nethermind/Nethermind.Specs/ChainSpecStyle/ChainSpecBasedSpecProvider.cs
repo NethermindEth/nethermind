@@ -41,6 +41,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
+            foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
+            {
+                item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
+            }
+
             AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
             AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
@@ -107,7 +112,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private static (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
+        private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
             SortedSet<long> transitionBlockNumbers,
             SortedSet<ulong> transitionTimestamps)
@@ -153,7 +158,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             return transitionActivations;
         }
 
-        private static ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+        private ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = new();
             releaseSpec.MaximumUncleCount = (int)(releaseStartBlock >= (chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2);
@@ -261,6 +266,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7002Enabled = (chainSpec.Parameters.Eip7002TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7002ContractAddress = chainSpec.Parameters.Eip7002ContractAddress;
+
+            foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
+            {
+                item.AdjustReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+            }
 
             return releaseSpec;
         }

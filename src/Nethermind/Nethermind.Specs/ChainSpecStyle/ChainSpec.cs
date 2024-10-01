@@ -44,6 +44,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ChainParameters Parameters { get; set; }
 
+        public ChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
+
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 
         public long? FixedDifficulty { get; set; }
