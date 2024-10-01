@@ -60,10 +60,7 @@ namespace Nethermind.Db
 
             IColumnsDb<ReceiptsColumns> receiptColumnDb = GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
             sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(receiptColumnDb);
-            if (receiptColumnDb is ITunableDb tunableDb2)
-                sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, tunableDb2);
-            else
-                sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, new NoopTunableDb());
+            sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, receiptColumnDb as ITunableDb ?? new NoopTunableDb());
         }
     }
 }
