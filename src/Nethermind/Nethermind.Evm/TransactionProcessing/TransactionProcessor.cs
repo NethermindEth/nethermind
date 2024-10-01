@@ -490,7 +490,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tx.IsContractCreation)
                 {
                     // if transaction is a contract creation then recipient address is the contract deployment address
-                    PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
+                    if (!PrepareAccountForContractDeployment(env.ExecutingAccount, spec))
+                    {
+                        goto Fail;
+                    }
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
@@ -616,14 +619,16 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
+        protected bool PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
         {
             if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, _codeInfoRepository, WorldState))
             {
                 if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
 
-                ThrowTransactionCollisionException();
+                return false;
             }
+
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -658,10 +663,6 @@ namespace Nethermind.Evm.TransactionProcessing
         [DoesNotReturn]
         [StackTraceHidden]
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        private static void ThrowTransactionCollisionException() => throw new TransactionCollisionException();
     }
 
     public readonly struct TransactionResult(string? error)
