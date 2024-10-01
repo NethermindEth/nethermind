@@ -55,14 +55,7 @@ namespace Nethermind.Db
                 var db = GetDb<IDb>(dbName);
                 sc.AddKeyedSingleton<IDb>(dbName, db);
                 sc.AddKeyedSingleton<IDbMeta>(dbName, db);
-                if (db is ITunableDb tunableDb)
-                {
-                    sc.AddKeyedSingleton<ITunableDb>(dbName, tunableDb);
-                }
-                else
-                {
-                    sc.AddKeyedSingleton<ITunableDb>(dbName, new NoopTunableDb());
-                }
+                sc.AddKeyedSingleton<ITunableDb>(dbName, db as ITunableDb ?? new NoopTunableDb());
             }
 
             IColumnsDb<ReceiptsColumns> receiptColumnDb = GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
