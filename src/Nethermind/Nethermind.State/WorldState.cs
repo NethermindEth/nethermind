@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -24,48 +25,42 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IPreBlockCaches
+    public class WorldState : IWorldState, IPreBlockCaches, IStateOwner
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private readonly ITrieStore _trieStore;
+        private readonly IStateFactory _factory;
+        private IState _state;
         private PreBlockCaches? PreBlockCaches { get; }
 
         public Hash256 StateRoot
         {
-            get => _stateProvider.StateRoot;
+            get => _state.StateRoot;
             set
             {
-                _stateProvider.StateRoot = value;
-                _persistentStorageProvider.StateRoot = value;
+                ResetState(value);
             }
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
-            : this(trieStore, codeDb, logManager, null, null)
+        public WorldState(IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager)
+            : this(factory, codeDb, logManager, null)
         {
         }
 
-        internal WorldState(
-            ITrieStore trieStore,
+        public WorldState(
+            IStateFactory factory,
             IKeyValueStore? codeDb,
             ILogManager? logManager,
-            StateTree? stateTree = null,
-            IStorageTreeFactory? storageTreeFactory = null,
             PreBlockCaches? preBlockCaches = null,
             bool populatePreBlockCache = true)
         {
+            _factory = factory;
             PreBlockCaches = preBlockCaches;
-            _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches?.StateCache, populatePreBlockCache);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches?.StorageCache, populatePreBlockCache);
+            _stateProvider = new StateProvider(this, factory, codeDb, logManager, PreBlockCaches?.StateCache, populatePreBlockCache);
+            _persistentStorageProvider = new PersistentStorageProvider(this, logManager, PreBlockCaches?.StorageCache,
+                populatePreBlockCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
-        }
-
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches, bool populatePreBlockCache = true)
-            : this(trieStore, codeDb, logManager, null, preBlockCaches: preBlockCaches, populatePreBlockCache: populatePreBlockCache)
-        {
         }
 
         public Account GetAccount(Address address)
@@ -126,15 +121,29 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
+
+        public void FullReset()
+        {
+            ResetStateToNull();
+            _stateProvider.Reset();
+            _persistentStorageProvider.Reset();
+            _transientStorageProvider.Reset();
+        }
+
+        public void ResetTo(Hash256 stateRoot)
+        {
+            ResetState(stateRoot);
+            _stateProvider.Reset();
+            _persistentStorageProvider.Reset();
+            _transientStorageProvider.Reset();
+        }
+
         public void ClearStorage(Address address)
         {
             _persistentStorageProvider.ClearStorage(address);
             _transientStorageProvider.ClearStorage(address);
         }
-        public void RecalculateStateRoot()
-        {
-            _stateProvider.RecalculateStateRoot();
-        }
+
         public void DeleteAccount(Address address)
         {
             _stateProvider.DeleteAccount(address);
@@ -174,9 +183,8 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            _persistentStorageProvider.CommitTrees(blockNumber);
-            _stateProvider.CommitTree(blockNumber);
-            _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
+            _state.Commit(blockNumber);
+            ResetState(_state.StateRoot);
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
@@ -217,7 +225,7 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            return _trieStore.HasRoot(stateRoot);
+            return _factory.HasRoot(stateRoot);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
@@ -265,8 +273,19 @@ namespace Nethermind.State
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
 
+        private void ResetState(Hash256 stateRoot)
+        {
+            Interlocked.Exchange(ref _state, _factory.Get(stateRoot))?.Dispose();
+        }
+
+        private void ResetStateToNull()
+        {
+            Interlocked.Exchange(ref _state, null)?.Dispose();
+        }
+
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
+        public IState State => _state;
     }
 }

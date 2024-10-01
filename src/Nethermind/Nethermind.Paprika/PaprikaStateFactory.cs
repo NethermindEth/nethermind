@@ -127,7 +127,8 @@ public class PaprikaStateFactory : IStateFactory
         KeccakHash.ComputeHashBytesToSpan(key, key);
     }
 
-    private static ReadOnlySpan<byte> Materialize(scoped in ReadOnlySpan<byte> source) => source.ToArray();
+    //TODO: optimize by removing materialization and replacing it with value capturing construct like Vector256
+    private static ReadOnlySpan<byte> Materialize(scoped ReadOnlySpan<byte> source) => source.ToArray();
     static PaprikaStateFactory()
     {
         Span<byte> buffer = stackalloc byte[32];
@@ -174,19 +175,19 @@ public class PaprikaStateFactory : IStateFactory
     {
         public bool TryGet(Address address, out AccountStruct account) => ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
 
-        public EvmWord GetStorageAt(in StorageCell cell)
+        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell)
         {
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
             bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return bytes.ToEvmWord();
+            return Materialize(bytes);
         }
 
-        public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
+        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
             bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return bytes.ToEvmWord();
+            return Materialize(bytes);
         }
 
         public Hash256 StateRoot => Convert(wrapped.Hash);

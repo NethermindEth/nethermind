@@ -260,7 +260,6 @@ namespace Nethermind.Synchronization.Test
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
-            stateProvider.RecalculateStateRoot();
 
             InMemoryReceiptStorage receiptStorage = new();
 

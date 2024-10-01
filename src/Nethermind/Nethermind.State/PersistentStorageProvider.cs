@@ -43,7 +43,7 @@ namespace Nethermind.State
         /// Persists data to ITrieStore
         /// </summary>
         public PersistentStorageProvider(IStateOwner owner,
-            ILogManager logManager,
+            ILogManager? logManager,
             ConcurrentDictionary<StorageCell, byte[]>? preBlockCache,
             bool populatePreBlockCache) : base(logManager)
         {
@@ -102,8 +102,6 @@ namespace Nethermind.State
         }
 
         protected override void OnCellUpdatePushed(in StorageCell cell) => _owner.State.StorageMightBeSet(cell);
-
-        private HashSet<AddressAsKey>? _tempToUpdateRoots;
 
         /// <summary>
         /// Called by Commit

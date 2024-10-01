@@ -11,7 +11,7 @@ namespace Nethermind.State;
 
 public interface IState : IReadOnlyState
 {
-    void Set(Address address, in AccountStruct account, bool isNewHint = false);
+    void Set(Address address, in Account account, bool isNewHint = false);
 
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 
@@ -34,12 +34,12 @@ public interface IState : IReadOnlyState
 
 public interface IReadOnlyState : IDisposable
 {
-    bool TryGet(Address address, out AccountStruct account);
+    bool TryGet(Address address, out Account account);
 
     /// <summary>
     /// Gets storage by the cell.
     /// </summary>
-    ReadOnlySpan<byte> GetStorageAt(in StorageCell cell);
+    ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell);
 
     /// <summary>
     /// Gets storage by the index that has already been hashed.
@@ -64,7 +64,7 @@ public interface IStateFactory : IAsyncDisposable
 
     public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
 
-    public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
+    public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, scoped in Address address, in UInt256 index);
 }
 
 public interface IStateOwner
