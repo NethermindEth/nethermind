@@ -51,6 +51,7 @@ namespace Nethermind.Evm.Tracing
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+            long floorGas = IntrinsicGasCalculator.CalculateFloorGas(tx, releaseSpec);
 
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
             long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= intrinsicGas)
@@ -65,7 +66,8 @@ namespace Nethermind.Evm.Tracing
                 return 0;
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
+            return Math.Max(floorGas,
+                BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token));
         }
 
         private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
