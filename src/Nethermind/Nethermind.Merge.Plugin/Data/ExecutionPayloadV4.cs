@@ -26,6 +26,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
         ConsensusRequest[]? blockRequests = block.Requests;
         (executionPayload.DepositRequests, executionPayload.WithdrawalRequests) = blockRequests?.SplitRequests() ?? ([], []);
+
+        executionPayload.TargetBlobCount = block.TargetBlobCount;
+        executionPayload.MaxBlobCount = block.MaxBlobCount;
         return executionPayload;
     }
 
@@ -64,6 +67,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             block.Header.RequestsRoot = Keccak.EmptyTreeHash;
         }
 
+        block.Header.TargetBlobCount = TargetBlobCount;
+        block.Header.MaxBlobCount = MaxBlobCount;
+
         return true;
     }
 
@@ -79,9 +85,16 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     public sealed override Deposit[]? DepositRequests { get; set; }
 
     /// <summary>
-    /// Gets or sets <see cref="Block.WithdrawalRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
+    /// Gets or sets <see cref="Block.TargetBlobCount"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7742">EIP-7742</see>.
     /// </summary>
     [JsonRequired]
-    public sealed override WithdrawalRequest[]? WithdrawalRequests { get; set; }
+    public sealed override ulong? TargetBlobCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.MaxBlobCount"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7742">EIP-7742</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ulong? MaxBlobCount { get; set; }
 }
