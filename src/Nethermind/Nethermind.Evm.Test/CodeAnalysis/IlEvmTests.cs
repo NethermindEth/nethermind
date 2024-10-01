@@ -839,7 +839,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 accumulatedTraces.AddRange(traces);
             }
 
-            Assert.Greater(accumulatedTraces.Count, 0);
+            Assert.That(accumulatedTraces.Count, Is.GreaterThan(0));
         }
 
         [Test]
@@ -1091,8 +1091,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 accumulatedTraces.AddRange(traces);
             }
 
-
-            Assert.Greater(accumulatedTraces.Count, 0);
+            Assert.That(accumulatedTraces.Count, Is.GreaterThan(0));
         }
 
         [Test]
@@ -1170,9 +1169,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
 
-            Assert.IsTrue(iLEvmState.EvmException == testcase.exceptionType);
+            Assert.That(iLEvmState.EvmException == testcase.exceptionType);
         }
-
-
     }
 }
