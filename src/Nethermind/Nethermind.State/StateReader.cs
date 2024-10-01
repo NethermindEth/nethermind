@@ -15,11 +15,10 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    public class StateReader(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
+    public class StateReader(IStateFactory stateFactory, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
     {
+        private readonly IStateFactory _factory = stateFactory ?? throw new ArgumentNullException(nameof(stateFactory));
         private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        private readonly StateTree _state = new StateTree(trieStore.GetTrieStore(null), logManager);
-        private readonly ITrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
         public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
@@ -29,15 +28,14 @@ namespace Nethermind.State
             if (!TryGetAccount(stateRoot, address, out AccountStruct account)) return ReadOnlySpan<byte>.Empty;
 
             ValueHash256 storageRoot = account.StorageRoot;
-            if (storageRoot == Keccak.EmptyTreeHash)
+            if (storageRoot == Keccak.EmptyTreeHash.ValueHash256)
             {
                 return Bytes.ZeroByte.Span;
             }
 
             Metrics.StorageReaderReads++;
 
-            StorageTree storage = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
-            return storage.Get(index, new Hash256(storageRoot));
+            return _factory.GetStorage(stateRoot, address, index);
         }
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
@@ -54,6 +52,10 @@ namespace Nethermind.State
         }
 
         public bool HasStateForRoot(Hash256 stateRoot) => trieStore.HasRoot(stateRoot);
+        public IScopedStateReader ForStateRoot(Hash256? stateRoot = null)
+        {
+            throw new NotImplementedException();
+        }
 
         public byte[]? GetCode(Hash256 stateRoot, Address address) =>
             TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();

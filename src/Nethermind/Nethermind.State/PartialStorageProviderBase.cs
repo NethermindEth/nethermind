@@ -145,10 +145,7 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitStorageRoots = true)
-        {
-            Commit(NullStateTracer.Instance, commitStorageRoots);
-        }
+        public void Commit() => Commit(NullStateTracer.Instance);
 
         protected readonly struct ChangeTrace
         {
@@ -169,10 +166,9 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Commit persistent storage
+        /// Commit persistent storage.
         /// </summary>
-        /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitStorageRoots = true)
+        public void Commit(IStorageTracer tracer)
         {
             if (_changes.Count == 0)
             {
@@ -182,16 +178,6 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
-
-            if (commitStorageRoots)
-            {
-                CommitStorageRoots();
-            }
-        }
-
-        protected virtual void CommitStorageRoots()
-        {
-            // Commit storage roots
         }
 
         /// <summary>
@@ -246,6 +232,10 @@ namespace Nethermind.State
         /// <returns>Value at location</returns>
         protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
 
+        protected virtual void OnCellUpdatePushed(in StorageCell cell)
+        {
+        }
+
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
@@ -256,6 +246,8 @@ namespace Nethermind.State
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
             _changes.Add(new Change(ChangeType.Update, cell, value));
+
+            OnCellUpdatePushed(cell);
         }
 
         /// <summary>

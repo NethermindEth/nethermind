@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie.Pruning;
-using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State;
 
@@ -14,7 +13,7 @@ public interface IState : IReadOnlyState
 {
     void Set(Address address, in AccountStruct account, bool isNewHint = false);
 
-    void SetStorage(in StorageCell cell, EvmWord value);
+    void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 
     /// <summary>
     /// Informs the state about the potential of this sell being set.
@@ -40,12 +39,12 @@ public interface IReadOnlyState : IDisposable
     /// <summary>
     /// Gets storage by the cell.
     /// </summary>
-    EvmWord GetStorageAt(in StorageCell cell);
+    ReadOnlySpan<byte> GetStorageAt(in StorageCell cell);
 
     /// <summary>
     /// Gets storage by the index that has already been hashed.
     /// </summary>
-    EvmWord GetStorageAt(Address address, in ValueHash256 hash);
+    ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash);
 
     Hash256 StateRoot { get; }
 }
@@ -65,7 +64,7 @@ public interface IStateFactory : IAsyncDisposable
 
     public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
 
-    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
+    public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
 }
 
 public interface IStateOwner

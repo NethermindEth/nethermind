@@ -54,9 +54,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void SetTransientState(in StorageCell storageCell, byte[] newValue);
 
     /// <summary>
-    /// Reset all storage
+    /// Resets the world state to the given state root.
     /// </summary>
-    void Reset(bool resizeCollections = false);
+    void ResetTo(Hash256 stateRoot);
+
+    void FullReset();
 
     /// <summary>
     /// Creates a restartable snapshot.
@@ -77,8 +79,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
-
-    void RecalculateStateRoot();
 
     new Hash256 StateRoot { get; set; }
 

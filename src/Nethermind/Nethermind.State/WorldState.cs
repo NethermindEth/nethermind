@@ -222,14 +222,14 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
         {
-            _persistentStorageProvider.Commit(commitStorageRoots);
-            _transientStorageProvider.Commit(commitStorageRoots);
+            _persistentStorageProvider.Commit();
+            _transientStorageProvider.Commit();
             _stateProvider.Commit(releaseSpec, isGenesis);
         }
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
-            _transientStorageProvider.Commit(tracer, commitStorageRoots);
+            _persistentStorageProvider.Commit(tracer);
+            _transientStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, isGenesis);
         }
 

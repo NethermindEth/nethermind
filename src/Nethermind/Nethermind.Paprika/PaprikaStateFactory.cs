@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
 using Paprika.Merkle;
@@ -14,8 +16,6 @@ using Paprika.Store;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
 using PaprikaAccount = Paprika.Account;
-using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
-
 
 namespace Nethermind.Paprika;
 
@@ -87,13 +87,13 @@ public class PaprikaStateFactory : IStateFactory
         return ConvertPaprikaAccount(_accessor.GetAccount(Convert(stateRoot), Convert(address)), out account);
     }
 
-    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index)
+    public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, in Address address, in UInt256 index)
     {
         Span<byte> bytes = stackalloc byte[32];
         GetKey(index, bytes);
 
         bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(bytes), bytes);
-        return bytes.ToEvmWord();
+        return Materialize(bytes);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -127,6 +127,7 @@ public class PaprikaStateFactory : IStateFactory
         KeccakHash.ComputeHashBytesToSpan(key, key);
     }
 
+    private static ReadOnlySpan<byte> Materialize(scoped in ReadOnlySpan<byte> source) => source.ToArray();
     static PaprikaStateFactory()
     {
         Span<byte> buffer = stackalloc byte[32];
@@ -211,36 +212,41 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
+        public void SetStorage(in StorageCell cell, Vector256<byte> value)
+        {
+            throw new NotImplementedException();
+        }
+
         public bool TryGet(Address address, out AccountStruct account)
         {
             return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         }
 
         [SkipLocalsInit]
-        public EvmWord GetStorageAt(in StorageCell cell)
+        public ReadOnlySpan<byte> GetStorageAt(in StorageCell cell)
         {
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
 
             bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return bytes.ToEvmWord();
+            return Materialize(bytes);
         }
 
         [SkipLocalsInit]
-        public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
+        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
             bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return bytes.ToEvmWord();
+            return Materialize(bytes);
         }
 
         [SkipLocalsInit]
-        public void SetStorage(in StorageCell cell, EvmWord value)
+        public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
-            wrapped.SetStorage(converted, new PaprikaKeccak(key), value.AsSpan());
+            wrapped.SetStorage(converted, new PaprikaKeccak(key), value);
         }
 
         public void StorageMightBeSet(in StorageCell cell)
