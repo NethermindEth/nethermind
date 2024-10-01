@@ -16,12 +16,12 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 [JsonConverter(typeof(JsonConverter))]
 public class AccessListForRpc
 {
-    private readonly List<Item> _items;
+    private readonly IEnumerable<Item> _items;
 
     [JsonConstructor]
     public AccessListForRpc() { }
 
-    private AccessListForRpc(List<Item> items)
+    private AccessListForRpc(IEnumerable<Item> items)
     {
         _items = items;
     }
@@ -36,7 +36,7 @@ public class AccessListForRpc
         [JsonConstructor]
         public Item() { }
 
-        public Item(Address address, List<UInt256> storageKeys)
+        public Item(Address address, IEnumerable<UInt256> storageKeys)
         {
             Address = address;
             StorageKeys = storageKeys;
@@ -46,7 +46,7 @@ public class AccessListForRpc
     public static AccessListForRpc FromAccessList(AccessList? accessList) =>
         accessList is null
         ? new AccessListForRpc([])
-        : new AccessListForRpc(accessList.Select(item => new Item(item.Address, [.. item.StorageKeys])).ToList());
+        : new AccessListForRpc(accessList.Select(item => new Item(item.Address, [.. item.StorageKeys])));
 
     public AccessList ToAccessList()
     {
