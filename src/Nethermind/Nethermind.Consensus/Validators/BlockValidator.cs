@@ -371,7 +371,7 @@ public class BlockValidator(
         }
 
         int blobsInBlock = 0;
-        UInt256 blobGasPrice = UInt256.Zero;
+        UInt256 feePerBlobGas = UInt256.Zero;
         Transaction[] transactions = block.Transactions;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
@@ -383,9 +383,9 @@ public class BlockValidator(
                 continue;
             }
 
-            if (blobGasPrice.IsZero)
+            if (feePerBlobGas.IsZero)
             {
-                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out blobGasPrice))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas))
                 {
                     error = BlockErrorMessages.BlobGasPriceOverflow;
                     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
@@ -393,10 +393,10 @@ public class BlockValidator(
                 }
             }
 
-            if (transaction.MaxFeePerBlobGas < blobGasPrice)
+            if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
                 error = BlockErrorMessages.InsufficientMaxFeePerBlobGas;
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}.");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
             }
 
