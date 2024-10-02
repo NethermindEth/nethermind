@@ -35,19 +35,19 @@ public static class RpcTest
         JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule ?
             contextAwareModule.Context :
             new JsonRpcContext(RpcEndpoint.Http);
-        using JsonRpcResponse response = await service.SendRequestAsync(request, context);
+        using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
         EthereumJsonSerializer serializer = new();
 
         Stream stream = new MemoryStream();
-        long size = await serializer.SerializeAsync(stream, response);
+        long size = await serializer.SerializeAsync(stream, response).ConfigureAwait(false);
 
         // for coverage (and to prove that it does not throw
         Stream indentedStream = new MemoryStream();
-        await serializer.SerializeAsync(indentedStream, response, true);
+        await serializer.SerializeAsync(indentedStream, response, true).ConfigureAwait(false);
 
         stream.Seek(0, SeekOrigin.Begin);
-        string serialized = await new StreamReader(stream).ReadToEndAsync();
+        string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
 
         size.Should().Be(serialized.Length);
 
