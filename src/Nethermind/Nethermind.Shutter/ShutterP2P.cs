@@ -10,11 +10,9 @@ using System;
 using System.Threading.Tasks;
 using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using System.Collections.Generic;
 using Multiformats.Address;
 using Nethermind.Shutter.Config;
 using Nethermind.Logging;
-using Nethermind.Core.Extensions;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
@@ -27,6 +25,8 @@ public class ShutterP2P : IShutterP2P
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
     private readonly PubsubRouter _router;
+    private readonly PubSubDiscoveryProtocol _disc;
+    private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
     private readonly ServiceProvider _serviceProvider;
     private CancellationTokenSource? _cts;
@@ -69,7 +69,8 @@ public class ShutterP2P : IShutterP2P
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
         _peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
-        ITopic topic = _router.Subscribe("decryptionKeys");
+        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubSubDiscoverySettings() { Interval = 300 }, _peer);
+        ITopic topic = _router.GetTopic("decryptionKeys");
 
         topic.OnMessage += (byte[] msg) =>
         {
@@ -78,13 +79,12 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public async Task Start(Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
+    public async Task Start(Multiaddress[] bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
     {
-        MyProto proto = new();
         _cts = cts ?? new();
-        _ = _router!.RunAsync(_peer, proto, token: _cts.Token);
-        proto.SetupFinished().GetAwaiter().GetResult();
-        ConnectToPeers(proto, _cfg.BootnodeP2PAddresses!);
+        _ = _router!.RunAsync(_peer, token: _cts.Token);
+        _ = _disc.DiscoverAsync(_peer.Address, _cts.Token);
+        _peerStore.Discover(bootnodeP2PAddresses);
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
 
@@ -128,21 +128,6 @@ public class ShutterP2P : IShutterP2P
         await (_cts?.CancelAsync() ?? Task.CompletedTask);
     }
 
-    private class MyProto : IDiscoveryProtocol
-    {
-        private readonly TaskCompletionSource taskCompletionSource = new();
-        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
-        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
-
-        public Task SetupFinished() => taskCompletionSource.Task;
-
-        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
-        {
-            taskCompletionSource.TrySetResult();
-            return Task.CompletedTask;
-        }
-    }
-
     private void ProcessP2PMessage(byte[] msg, Func<Dto.DecryptionKeys, Task> onKeysReceived)
     {
         if (_logger.IsTrace) _logger.Trace("Processing Shutter P2P message.");
@@ -162,16 +147,6 @@ public class ShutterP2P : IShutterP2P
         catch (InvalidProtocolBufferException e)
         {
             if (_logger.IsDebug) _logger.Warn($"Could not parse Shutter decryption keys: {e}");
-        }
-    }
-
-    private static void ConnectToPeers(MyProto proto, IEnumerable<string> p2pAddresses)
-    {
-        // shuffle peers to connect to random subset of keypers
-        int seed = (int)(DateTimeOffset.Now.ToUnixTimeSeconds() % int.MaxValue);
-        foreach (string addr in p2pAddresses.Shuffle(new Random(seed)))
-        {
-            proto.OnAddPeer?.Invoke([addr]);
         }
     }
 }

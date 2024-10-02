@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Multiformats.Address;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -95,8 +96,8 @@ public class ShutterApi : IShutterApi
         InitP2P(_cfg, logManager);
     }
 
-    public Task StartP2P(CancellationTokenSource? cancellationTokenSource = null)
-        => P2P!.Start(OnKeysReceived, cancellationTokenSource);
+    public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
+        => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationTokenSource);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
     {

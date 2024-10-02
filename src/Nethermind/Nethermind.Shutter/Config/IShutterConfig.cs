@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Multiformats.Address;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -11,14 +12,9 @@ namespace Nethermind.Shutter.Config;
 
 public interface IShutterConfig : IConfig
 {
-    // todo: replace with bootnodes when peer discovery added
     private const string DefaultP2PAddresses =
-@"/ip4/139.59.130.109/tcp/23003/p2p/12D3KooWRZoofMsnpsjkgvfPQUyGXZQnn7EVnb4tw4ghNfwMnnsj,
-/ip4/167.71.169.248/tcp/23003/p2p/12D3KooWGH3VxoSQXZ6wUuCmsv5caGQnhwfGejbkXH6uS2r7sehA,
-/ip4/139.59.130.109/tcp/23003/p2p/12D3KooWNxTiw7CvD1fuyye5P8qPhKTTrRBW6wwZwMdqdTxjYF2H,
-/ip4/178.128.192.239/tcp/23003/p2p/12D3KooWCdpkipTiuzVMfkV7yLLgqbFeAL8WmEP78hCoBGBYLugN,
-/ip4/45.55.192.248/tcp/23003/p2p/12D3KooWMPuubKqksfMxvLwEBDScaopTdvPLr5J5SMmBEo2zkcMz,
-/ip4/178.128.126.237/tcp/23003/p2p/12D3KooWAg1pGUDAfFWSZftpN3JjBfLUCGLQcZApJHv2VntdMS9U";
+@"/ip4/167.99.177.227/tcp/23003/p2p/12D3KooWD35AESYCttDEi3J5WnQdTFuM5JNtmuXEb1x4eQ28gb1s,
+/ip4/159.89.15.119/tcp/23003/p2p/12D3KooWRzAhgPA16DiBQhiuYoasYzJaQSAbtc5i5FvgTi9ZDQtS";
 
     [ConfigItem(Description = "Whether to enable Shutter.", DefaultValue = "false")]
     bool Enabled { get; set; }
@@ -80,7 +76,7 @@ public interface IShutterConfig : IConfig
         DefaultValue = "true", HiddenFromDocs = true)]
     bool Validator { get; set; }
 
-    public void Validate()
+    public void Validate(out Multiaddress[] bootnodeP2PAddresses)
     {
         if (Validator && ValidatorInfoFile is null)
         {
@@ -127,16 +123,13 @@ public interface IShutterConfig : IConfig
             throw new ArgumentNullException(nameof(BootnodeP2PAddresses));
         }
 
-        foreach (string addr in BootnodeP2PAddresses)
+        try
         {
-            try
-            {
-                Multiaddress.Decode(addr);
-            }
-            catch (NotSupportedException)
-            {
-                throw new ArgumentException($"Could not decode Shutter keyper p2p address \"{addr}\".");
-            }
+            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(addr => Multiaddress.Decode(addr)).ToArray();
+        }
+        catch (NotSupportedException)
+        {
+            throw new ArgumentException($"Could not decode Shutter bootnode p2p addresses.");
         }
     }
 }

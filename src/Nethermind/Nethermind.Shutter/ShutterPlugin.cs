@@ -16,6 +16,7 @@ using System.IO;
 using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Config;
+using Multiformats.Address;
 
 namespace Nethermind.Shutter;
 
@@ -73,9 +74,10 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
 
             if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 
+            Multiaddress[] bootnodeP2PAddresses;
             try
             {
-                _shutterConfig!.Validate();
+                _shutterConfig!.Validate(out bootnodeP2PAddresses);
             }
             catch (ArgumentException e)
             {
@@ -110,7 +112,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
             );
 
-            _ = _shutterApi.StartP2P(_cts);
+            _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);
         }
 
         return consensusPlugin.InitBlockProducer(_shutterApi is null ? txSource : _shutterApi.TxSource.Then(txSource));
