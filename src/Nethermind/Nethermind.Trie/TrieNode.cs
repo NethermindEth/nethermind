@@ -933,8 +933,7 @@ namespace Nethermind.Trie
                         ref emptyPath,
                         resolver.GetStorageTrieNodeResolver(storagePathAddr),
                         skipPersisted,
-                        logger,
-                        maxPathLength);
+                        logger);
                 }
             }
 

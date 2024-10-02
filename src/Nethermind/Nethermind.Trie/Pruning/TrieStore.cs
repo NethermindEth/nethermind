@@ -576,15 +576,15 @@ namespace Nethermind.Trie.Pruning
                     // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
                     candidateSets.Count == 1;
 
-                Dictionary<HashAndTinyPath, Hash256?>[]? persistedHashes = null;
+                ConcurrentDictionary<HashAndTinyPath, Hash256?>[]? persistedHashes = null;
                 Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null;
 
                 if (shouldDeletePersistedNode)
                 {
-                    persistedHashes = new Dictionary<HashAndTinyPath, Hash256?>[ShardedDirtyNodeCount];
+                    persistedHashes = new ConcurrentDictionary<HashAndTinyPath, Hash256?>[ShardedDirtyNodeCount];
                     for (int i = 0; i < ShardedDirtyNodeCount; i++)
                     {
-                        persistedHashes[i] = new Dictionary<HashAndTinyPath, Hash256>();
+                        persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
                     }
 
                     persistedNodeRecorder = (TreePath treePath, Hash256? address, TrieNode tn) =>
@@ -594,30 +594,18 @@ namespace Nethermind.Trie.Pruning
                             int shardIdx = GetNodeShardIdx(address, treePath);
 
                             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
-                            ref Hash256? hash =
-                                ref CollectionsMarshal.GetValueRefOrAddDefault(persistedHashes[shardIdx], key,
-                                    out bool exists);
-                            if (exists)
-                            {
-                                // Null mark that there are multiple saved hash for this path. So we don't attempt to remove anything.
-                                // Otherwise this would have to be a list, which is such a rare case that its not worth it to have a list.
-                                hash = null;
-                            }
-                            else
-                            {
-                                hash = tn.Keccak;
-                            }
+
+                            persistedHashes[shardIdx].AddOrUpdate(key, ((path) => tn.Keccak), (((path, hash256) => null)));
                         }
                     };
                 }
 
-                INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
                 for (int index = 0; index < candidateSets.Count; index++)
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
                     // TODO: Parallelize this
-                    PersistBlockCommitSet(null, blockCommitSet, writeBatch, persistedNodeRecorder);
+                    ParallelPersistBlockCommitSet(null, blockCommitSet, persistedNodeRecorder);
                 }
 
                 Task deleteTask = Task.WhenAll(_dirtyNodes.Select((dirtyNode, idx) => Task.Run(() =>
@@ -626,7 +614,6 @@ namespace Nethermind.Trie.Pruning
                     dirtyNode.RemovePastKeys(persistedHashes[idx], _nodeStorage);
                 })));
 
-                writeBatch.Dispose();
                 AnnounceReorgBoundaries();
                 deleteTask.Wait();
 
@@ -807,6 +794,71 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
             LastPersistedBlockNumber = commitSet.BlockNumber;
+        }
+
+        private void ParallelPersistBlockCommitSet(
+            Hash256? address,
+            BlockCommitSet commitSet,
+            Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
+            WriteFlags writeFlags = WriteFlags.None
+        )
+        {
+            INodeStorage.WriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
+            int parallelBoundaryPathLength = 2;
+
+            List<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new();
+
+            void TopLevelPersist(TrieNode tn, Hash256? address2, TreePath path)
+            {
+                if (path.Length < parallelBoundaryPathLength)
+                {
+                    persistedNodeRecorder?.Invoke(path, address2, tn);
+                    this.PersistNode(address2, path, tn, commitSet.BlockNumber, writeFlags, topLevelWriteBatch);
+                }
+                else
+                {
+                    parallelStartNodes.Add((tn, address2, path));
+                }
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            // The first call recursive stop at two level, yielding 256 leaf in parallelStartNodes, which is run concurrently
+            TreePath path = TreePath.Empty;
+            commitSet.Root?.CallRecursively(TopLevelPersist, address, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+
+            Task.WaitAll(parallelStartNodes.Select((entry) => Task.Run(() =>
+            {
+                (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
+                PersistNodeStartingFrom(trieNode, address2, path2, commitSet, persistedNodeRecorder, writeFlags);
+            })).ToArray());
+
+            // Dispose top level last in case something goes wrong, at least the root wont be stored
+            topLevelWriteBatch.Dispose();
+
+            stopwatch.Stop();
+            Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+
+            if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+
+            LastPersistedBlockNumber = commitSet.BlockNumber;
+        }
+
+        private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path, BlockCommitSet commitSet, Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
+            WriteFlags writeFlags)
+        {
+
+            using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+
+            void NewFunction(TrieNode node, Hash256? address3, TreePath path2)
+            {
+                persistedNodeRecorder?.Invoke(path2, address3, node);
+                this.PersistNode(address3, path2, node, commitSet.BlockNumber, writeFlags, writeBatch);
+            }
+
+            tn.CallRecursively(NewFunction, address2, ref path, GetTrieStore(address2), true, _logger);
         }
 
         private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None, INodeStorage.WriteBatch? writeBatch = null)

@@ -282,7 +282,7 @@ internal class TrieStoreDirtyNodesCache
     }
 
 
-    public void RemovePastKeys(Dictionary<HashAndTinyPath, Hash256?>? persistedHashes, INodeStorage nodeStorage)
+    public void RemovePastKeys(ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes, INodeStorage nodeStorage)
     {
         if (persistedHashes is null) return;
 
