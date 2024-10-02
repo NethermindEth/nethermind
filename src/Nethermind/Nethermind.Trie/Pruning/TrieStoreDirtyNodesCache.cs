@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -24,9 +25,17 @@ internal class TrieStoreDirtyNodesCache
     private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache;
     private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache;
 
+    // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
+    // If null, disable removing key.
+    private readonly ClockCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
+
+    // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
+    // recommitted persisted nodes (which will not get re-persisted).
+    private readonly ConcurrentDictionary<HashAndTinyPathAndHash, long>? _persistedLastSeen;
+
     public readonly long KeyMemoryUsage;
 
-    public TrieStoreDirtyNodesCache(TrieStore trieStore, bool storeByHash, ILogger logger)
+    public TrieStoreDirtyNodesCache(TrieStore trieStore, int trackedPastKeyCount, bool storeByHash, ILogger logger)
     {
         _trieStore = trieStore;
         _logger = logger;
@@ -43,6 +52,12 @@ internal class TrieStoreDirtyNodesCache
             _byKeyObjectCache = new(CollectionExtensions.LockPartitions, initialBuckets);
         }
         KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
+
+        _persistedLastSeen = new(CollectionExtensions.LockPartitions, 4 * 4096);
+        if (trackedPastKeyCount > 0 && !storeByHash)
+        {
+            _pastPathHash = new(trackedPastKeyCount);
+        }
     }
 
     public void SaveInCache(in Key key, TrieNode node)
@@ -184,6 +199,8 @@ internal class TrieStoreDirtyNodesCache
     }
 
     public int Count => _count;
+    public ConcurrentDictionary<HashAndTinyPathAndHash, long>? PersistedLastSeen => _persistedLastSeen;
+    public ClockCache<HashAndTinyPath, ValueHash256>? PastPathHash => _pastPathHash;
 
     public void Dump()
     {
