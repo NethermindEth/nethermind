@@ -12,17 +12,35 @@ namespace Nethermind.Evm
 {
     public sealed class AccessTracker
     {        
-        public readonly JournalSet<Address> AccessedAddresses = new();
-        public readonly JournalSet<StorageCell> AccessedStorageCells = new();
-        public readonly JournalCollection<LogEntry> Logs = new();
-        public readonly JournalSet<Address> DestroyList = new();
-        public readonly HashSet<AddressAsKey> CreateList = new();
+        public JournalSet<Address> AccessedAddresses { get; }
+        public JournalSet<StorageCell> AccessedStorageCells { get;  } 
+        public JournalCollection<LogEntry> Logs { get; }
+        public JournalSet<Address> DestroyList { get; }
+        public HashSet<AddressAsKey> CreateList { get; }
 
-        private Queue<int> _addressesSnapshots = new();
-        private Queue<int> _storageKeysSnapshots = new();
-        private Queue<int> _destroyListSnapshots = new();
-        private Queue<int> _logsSnapshots = new();
-
+        private int _addressesSnapshots;
+        private int _storageKeysSnapshots;
+        private int _destroyListSnapshots;
+        private int _logsSnapshots;
+        public AccessTracker(AccessTracker? accessTracker = null)
+        {
+            if (accessTracker is not null)
+            {
+                AccessedAddresses = accessTracker.AccessedAddresses;
+                AccessedStorageCells = accessTracker.AccessedStorageCells;
+                Logs = accessTracker.Logs;
+                DestroyList = accessTracker.DestroyList;
+                CreateList = accessTracker.CreateList;
+            }
+            else
+            {
+                AccessedAddresses = new();
+                AccessedStorageCells = new();
+                Logs = new();
+                DestroyList = new();
+                CreateList = new();
+            }
+        }
         public bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
 
         public bool IsCold(in StorageCell storageCell) => !AccessedStorageCells.Contains(storageCell);
@@ -54,20 +72,18 @@ namespace Nethermind.Evm
 
         public void TakeSnapshot()
         {
-            _addressesSnapshots.Enqueue(AccessedAddresses.TakeSnapshot());
-            _storageKeysSnapshots.Enqueue(AccessedStorageCells.TakeSnapshot());
-            _destroyListSnapshots.Enqueue(DestroyList.TakeSnapshot());
-            _logsSnapshots.Enqueue(Logs.TakeSnapshot());
+            _addressesSnapshots = AccessedAddresses.TakeSnapshot();
+            _storageKeysSnapshots = AccessedStorageCells.TakeSnapshot();
+            _destroyListSnapshots= DestroyList.TakeSnapshot();
+            _logsSnapshots = Logs.TakeSnapshot();
         }
 
         public void Restore()
         {
-            if (_addressesSnapshots.Count == 0)
-                throw new InvalidOperationException("No snapshots available to restore.");
-            Logs.Restore(_logsSnapshots.Dequeue());
-            DestroyList.Restore(_destroyListSnapshots.Dequeue());
-            AccessedAddresses.Restore(_addressesSnapshots.Dequeue());
-            AccessedStorageCells.Restore(_storageKeysSnapshots.Dequeue());
+            Logs.Restore(_logsSnapshots);
+            DestroyList.Restore(_destroyListSnapshots);
+            AccessedAddresses.Restore(_addressesSnapshots);
+            AccessedStorageCells.Restore(_storageKeysSnapshots);
         }
     }
 }

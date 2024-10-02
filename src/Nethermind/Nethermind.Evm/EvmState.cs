@@ -175,7 +175,7 @@ namespace Nethermind.Evm
             if (stateForAccessLists is not null)
             {
                 // if we are sub-call, then we use the existing access list for this transaction
-                _accessTracker = stateForAccessLists;
+                _accessTracker = new(stateForAccessLists);
             }
             else
             {
