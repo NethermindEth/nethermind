@@ -61,6 +61,18 @@ public struct EvmPooledMemory : IEvmMemory
         value.CopyTo(_memory.AsSpan((int)location, value.Length));
     }
 
+    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool outOfGas)
+    {
+        if (location.IsLargerThanULong() || length.IsLargerThanULong())
+        {
+            outOfGas = true;
+            newLength = 0;
+            return;
+        }
+
+        CheckMemoryAccessViolationInner(location.u0, length.u0, out newLength, out outOfGas);
+    }
+
     private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength)
     {
         if (location.IsLargerThanULong() || length.IsLargerThanULong())
@@ -68,7 +80,11 @@ public struct EvmPooledMemory : IEvmMemory
             ThrowOutOfGasException();
         }
 
-        CheckMemoryAccessViolation(location.u0, length.u0, out newLength);
+        CheckMemoryAccessViolationInner(location.u0, length.u0, out newLength, out bool outOfGas);
+        if (outOfGas)
+        {
+            ThrowOutOfGasException();
+        }
     }
 
     private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength)
@@ -78,17 +94,24 @@ public struct EvmPooledMemory : IEvmMemory
             ThrowOutOfGasException();
         }
 
-        CheckMemoryAccessViolation(location.u0, length, out newLength);
+        CheckMemoryAccessViolationInner(location.u0, length, out newLength, out bool outOfGas);
+        if (outOfGas)
+        {
+            ThrowOutOfGasException();
+        }
     }
 
-    private static void CheckMemoryAccessViolation(ulong location, ulong length, out ulong newLength)
+    private static void CheckMemoryAccessViolationInner(ulong location, ulong length, out ulong newLength, out bool outOfGas)
     {
         ulong totalSize = location + length;
         if (totalSize < location || totalSize > long.MaxValue)
         {
-            ThrowOutOfGasException();
+            outOfGas = true;
+            newLength = 0;
+            return;
         }
 
+        outOfGas = false;
         newLength = totalSize;
     }
 
@@ -205,7 +228,8 @@ public struct EvmPooledMemory : IEvmMemory
             return 0L;
         }
 
-        CheckMemoryAccessViolation(in location, in length, out ulong newSize);
+        CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
 
         if (newSize > Size)
         {
