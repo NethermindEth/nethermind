@@ -137,19 +137,15 @@ namespace Ethereum.Test.Base
 
             Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
 
-            bool blockIsValid = IsValidBlock(block, specProvider);
             ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
 
-            if (txIsValid && blockIsValid)
+            if (txIsValid)
             {
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
             }
             else
             {
-                if (!txIsValid)
-                    _logger.Info($"Skipping invalid tx with error: {txIsValid.Error}");
-                else
-                    _logger.Info($"Skipping invalid block: {block.ToString(Block.Format.Short)}");
+                _logger.Info($"Skipping invalid tx with error: {txIsValid.Error}");
             }
 
             stopwatch.Stop();
