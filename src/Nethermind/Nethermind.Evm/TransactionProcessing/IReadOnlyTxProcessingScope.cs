@@ -8,8 +8,6 @@ namespace Nethermind.Evm.TransactionProcessing;
 
 public interface IReadOnlyTxProcessingScope : IDisposable
 {
-    IOverridableCodeInfoRepository CodeInfoRepository { get; }
-    IStateReader StateReader { get; }
     ITransactionProcessor TransactionProcessor { get; }
     IWorldState WorldState { get; }
 }

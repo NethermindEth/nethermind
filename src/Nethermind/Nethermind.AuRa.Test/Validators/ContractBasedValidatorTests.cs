@@ -45,7 +45,6 @@ public class ContractBasedValidatorTests
     private Block _block;
     private BlockHeader _parentHeader;
     private IOverridableCodeInfoRepository _codeInfoRepository;
-    private IStateReader _stateReader;
     private ITransactionProcessor _transactionProcessor;
     private IAuRaBlockFinalizationManager _blockFinalizationManager;
     private static readonly Address _contractAddress = Address.FromNumber(1000);
@@ -78,13 +77,12 @@ public class ContractBasedValidatorTests
         _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
 
         _codeInfoRepository = Substitute.For<IOverridableCodeInfoRepository>();
-        _stateReader = Substitute.For<IStateReader>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_codeInfoRepository, _stateReader, _transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_codeInfoRepository, _transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder

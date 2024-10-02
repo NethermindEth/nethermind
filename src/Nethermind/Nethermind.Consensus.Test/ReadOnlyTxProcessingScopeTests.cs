@@ -18,7 +18,6 @@ public class ReadOnlyTxProcessingScopeTests
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<IOverridableCodeInfoRepository>(),
-            Substitute.For<IStateReader>(),
             Substitute.For<ITransactionProcessor>(),
             Substitute.For<IWorldState>(),
             TestItem.KeccakB

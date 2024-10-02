@@ -10,7 +10,6 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingScope(
     IOverridableCodeInfoRepository codeInfoRepository,
-    IStateReader stateReader,
     ITransactionProcessor transactionProcessor,
     IWorldState worldState,
     Hash256 originalStateRoot
@@ -21,11 +20,9 @@ public class ReadOnlyTxProcessingScope(
         worldState.StateRoot = originalStateRoot;
         worldState.Reset();
         (worldState as OverridableWorldState)?.ResetOverrides();
-        CodeInfoRepository.ResetOverrides();
+        codeInfoRepository.ResetOverrides();
     }
 
-    public IOverridableCodeInfoRepository CodeInfoRepository => codeInfoRepository;
-    public IStateReader StateReader => stateReader;
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
     public IWorldState WorldState => worldState;
 }
