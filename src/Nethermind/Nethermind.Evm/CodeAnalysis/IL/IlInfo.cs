@@ -78,7 +78,7 @@ internal class IlInfo
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
-            if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
+            if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
 
             vmState.DataStackHead = stack.Head;
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
@@ -106,7 +106,7 @@ internal class IlInfo
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
-            if (logger.IsInfo) logger.Info($"Executing segment {chunk.Name} at {programCounter}");
+            if (logger.IsInfo) logger.Info($"Executing segment {chunk.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
 
             chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
 
