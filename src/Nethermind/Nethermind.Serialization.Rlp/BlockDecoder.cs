@@ -304,7 +304,7 @@ namespace Nethermind.Serialization.Rlp
 
                 while (decoderContext.Position < requestsCheck)
                 {
-                    requests.Add(Rlp.Decode<ConsensusRequest>(ref decoderContext));
+                    requests.Add(ConsensusRequestExtensions.Decode(decoderContext.DecodeByteArray()));
                 }
 
                 decoderContext.Check(requestsCheck);
