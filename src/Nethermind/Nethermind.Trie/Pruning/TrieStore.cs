@@ -1053,7 +1053,7 @@ namespace Nethermind.Trie.Pruning
                     TrieStoreDirtyNodesCache.Key key = kv.Key;
                     TreePath path = key.Path;
                     Hash256? address = key.AddressAsHash256;
-                    kv.Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, false);
+                    kv.Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, resolveStorageRoot: false);
                 }
             }
         }
