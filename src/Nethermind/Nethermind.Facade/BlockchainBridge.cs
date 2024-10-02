@@ -150,8 +150,9 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
+            using IReadOnlyTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
             TransactionResult tryCallResult = TryCallAndRestore(header, tx, stateOverride, false,
-                callOutputTracer.WithCancellation(cancellationToken));
+                callOutputTracer.WithCancellation(cancellationToken), scope);
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
