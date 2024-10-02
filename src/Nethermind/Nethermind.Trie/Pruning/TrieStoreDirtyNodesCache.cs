@@ -204,6 +204,98 @@ internal class TrieStoreDirtyNodesCache
     public ConcurrentDictionary<HashAndTinyPathAndHash, long> PersistedLastSeen => _persistedLastSeen;
     public ClockCache<HashAndTinyPath, ValueHash256>? PastPathHash => _pastPathHash;
 
+
+    /// <summary>
+    /// This method is responsible for reviewing the nodes that are directly in the cache and
+    /// removing ones that are either no longer referenced or already persisted.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"></exception>
+    public long PruneCache(bool skipRecalculateMemory = false, KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode>[]? allNodes = null)
+    {
+        // Run in parallel
+        bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
+        ActionBlock<(TrieStoreDirtyNodesCache.Key key, TrieNode node)>? trackNodesAction = shouldTrackPersistedNode
+            ? new ActionBlock<(TrieStoreDirtyNodesCache.Key key, TrieNode node)>(
+                entry =>
+                {
+                    if (entry.key.Path.Length > TinyTreePath.MaxNibbleLength) return;
+                    TinyTreePath treePath = new(entry.key.Path);
+                    // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
+                    // recalculated to the same hash.
+                    if (entry.node.LastSeen >= 0)
+                    {
+                        // Update _persistedLastSeen to later value.
+                        _persistedLastSeen.AddOrUpdate(
+                            new(entry.key.Address, in treePath, entry.key.Keccak),
+                            (_, newValue) => newValue,
+                            (_, newValue, currentLastSeen) => Math.Max(newValue, currentLastSeen),
+                            entry.node.LastSeen);
+                    }
+
+                    // This persisted node is being removed from cache. Keep it in mind in case of an update to the same
+                    // path.
+                    _pastPathHash.Set(new(entry.key.Address, in treePath), entry.key.Keccak);
+                })
+            : null;
+
+        long newMemory = 0;
+        ActionBlock<TrieNode> pruneAndRecalculateAction =
+            new ActionBlock<TrieNode>(node =>
+            {
+                node.PrunePersistedRecursively(1);
+                Interlocked.Add(ref newMemory, node.GetMemorySize(false) + KeyMemoryUsage);
+            });
+
+        foreach ((TrieStoreDirtyNodesCache.Key key, TrieNode node) in (allNodes ?? AllNodes))
+        {
+            if (node.IsPersisted)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+
+                trackNodesAction?.Post((key, node));
+
+                Hash256? keccak = node.Keccak;
+                if (keccak is null)
+                {
+                    TreePath path2 = key.Path;
+                    keccak = node.GenerateKey(_trieStore.GetTrieStore(key.AddressAsHash256), ref path2, isRoot: true);
+                    if (keccak != key.Keccak)
+                    {
+                        throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
+                    }
+
+                    node.Keccak = keccak;
+                }
+                Remove(key);
+
+                Metrics.PrunedPersistedNodesCount++;
+            }
+            else if (_trieStore.IsNoLongerNeeded(node))
+            {
+                if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                if (node.Keccak is null)
+                {
+                    throw new InvalidOperationException($"Removed {node}");
+                }
+                Remove(key);
+
+                Metrics.PrunedTransientNodesCount++;
+            }
+            else if (!skipRecalculateMemory)
+            {
+                pruneAndRecalculateAction.Post(node);
+            }
+        }
+
+        pruneAndRecalculateAction.Complete();
+        trackNodesAction?.Complete();
+        pruneAndRecalculateAction.Completion.Wait();
+        trackNodesAction?.Completion.Wait();
+
+        return newMemory + (_persistedLastSeen?.Count ?? 0) * 48;
+    }
+
+
     public void RemovePastKeys(Dictionary<HashAndTinyPath, Hash256?>? persistedHashes, INodeStorage nodeStorage)
     {
         if (persistedHashes is null) return;
@@ -218,7 +310,7 @@ internal class TrieStoreDirtyNodesCache
 
             // We have it in cache and it is still needed.
             if (TryGetValue(new TrieStoreDirtyNodesCache.Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
-                !_trieStore.IsNoLongerNeeded(node.LastSeen)) return false;
+                !_trieStore.IsNoLongerNeeded(node)) return false;
 
             // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
             if (_persistedLastSeen.TryGetValue(new(address, in path, in keccak), out long commitBlock) &&
