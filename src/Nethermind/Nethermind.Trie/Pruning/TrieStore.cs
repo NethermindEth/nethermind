@@ -6,24 +6,19 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
-    using Nethermind.Core.Cpu;
-    using CollectionExtensions = Core.Collections.CollectionExtensions;
-
     /// <summary>
     /// Trie store helps to manage trie commits block by block.
     /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
@@ -36,7 +31,12 @@ namespace Nethermind.Trie.Pruning
 
         private TrieStoreDirtyNodesCache? _dirtyNodes;
 
+        // This seems to attempt prevent multiple block processing at the same time and along with pruning at the same time.
         private object _dirtyNodesLock = new object();
+
+        // This seems to attempt to prevent the dirty nodes from being mutated by other thread at the same time.
+        private McsLock _dirtyNodesWriteLock = new McsLock();
+
         private TrieStoreDirtyNodesCache DirtyNodes => _dirtyNodes ?? CreateCacheAtomic(ref _dirtyNodes);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -231,6 +231,8 @@ namespace Nethermind.Trie.Pruning
 
         private void DirtyNodesSaveInCache(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
         {
+            using var _ = _dirtyNodesWriteLock.Acquire();
+
             TrieStoreDirtyNodesCache cache = GetDirtyNodes(key.Address);
             cache.SaveInCache(key, node);
         }
@@ -249,6 +251,9 @@ namespace Nethermind.Trie.Pruning
 
         private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key)
         {
+            // It can be unknown, which mutate the map.
+            using var _ = _dirtyNodesWriteLock.Acquire();
+
             TrieStoreDirtyNodesCache cache = GetDirtyNodes(key.Address);
             return cache.FindCachedOrUnknown(key);
         }
@@ -448,8 +453,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         lock (_dirtyNodesLock)
                         {
-                            TrieStoreDirtyNodesCache cache = DirtyNodes;
-                            using (cache.AcquireMapLock())
+                            using (_dirtyNodesWriteLock.Acquire())
                             {
                                 Stopwatch sw = Stopwatch.StartNew();
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
@@ -924,14 +928,14 @@ namespace Nethermind.Trie.Pruning
 
             lock (_dirtyNodesLock)
             {
-                TrieStoreDirtyNodesCache cache = DirtyNodes;
-                using (cache.AcquireMapLock())
+                using (_dirtyNodesWriteLock.Acquire())
                 {
                     // Double check
                     ClearCommitSetQueue();
                     if (cancellationToken.IsCancellationRequested) return;
 
                     // This should clear most nodes. For some reason, not all.
+                    TrieStoreDirtyNodesCache cache = DirtyNodes;
                     PruneCache(skipRecalculateMemory: true);
                     if (cancellationToken.IsCancellationRequested) return;
 

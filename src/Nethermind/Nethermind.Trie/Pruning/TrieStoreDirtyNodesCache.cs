@@ -183,7 +183,7 @@ internal class TrieStoreDirtyNodesCache
         }
     }
 
-    public MapLock AcquireMapLock()
+    private MapLock AcquireMapLock()
     {
         if (_storeByHash)
         {
