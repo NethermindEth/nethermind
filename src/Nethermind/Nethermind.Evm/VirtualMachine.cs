@@ -340,12 +340,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             _returnDataBuffer = Array.Empty<byte>();
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
-                        bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-                        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
-                        {
-                            ReadOnlyMemory<byte> code = callResult.Output;
-                            codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                            bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+                            if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+                            {
+                                ReadOnlyMemory<byte> code = callResult.Output;
+                                codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
 
                                 currentState.GasAvailable -= codeDepositGasCost;
 

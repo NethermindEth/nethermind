@@ -117,7 +117,7 @@ internal class TransactionProcessorEip7702Tests
 
         ReadOnlySpan<byte> signerCode = _stateProvider.GetCode(signer.Address);
 
-        byte[] expectedCode = shouldInsert ? [..Eip7702Constants.DelegationHeader, ..codeSource.Bytes] : authorityCode;
+        byte[] expectedCode = shouldInsert ? [.. Eip7702Constants.DelegationHeader, .. codeSource.Bytes] : authorityCode;
 
         Assert.That(signerCode.ToArray(), Is.EquivalentTo(expectedCode));
     }
@@ -568,9 +568,9 @@ internal class TransactionProcessorEip7702Tests
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
 
-        AccessTxTracer txTracer = new AccessTxTracer(); 
+        AccessTxTracer txTracer = new AccessTxTracer();
         TransactionResult result = _transactionProcessor.Execute(tx, block.Header, txTracer);
-        Assert.That(txTracer.AccessList.Select(a=>a.Address), Is.SupersetOf(shouldCountAsAccessed));
+        Assert.That(txTracer.AccessList.Select(a => a.Address), Is.SupersetOf(shouldCountAsAccessed));
     }
 
     [TestCase(true)]

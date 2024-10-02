@@ -107,15 +107,15 @@ public class CliqueBlockProducerTests
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
 
-                CodeInfoRepository codeInfoRepository = new();
-                TxPool.TxPool txPool = new(_ethereumEcdsa,
-                    new BlobTxStorage(),
-                    new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
-                    new TxPoolConfig(),
-                    new TxValidator(goerliSpecProvider.ChainId),
-                    _logManager,
-                    transactionComparerProvider.GetDefaultComparer());
-                _pools[privateKey] = txPool;
+            CodeInfoRepository codeInfoRepository = new();
+            TxPool.TxPool txPool = new(_ethereumEcdsa,
+                new BlobTxStorage(),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
+                new TxPoolConfig(),
+                new TxValidator(goerliSpecProvider.ChainId),
+                _logManager,
+                transactionComparerProvider.GetDefaultComparer());
+            _pools[privateKey] = txPool;
 
             BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             _blockTrees.Add(privateKey, blockTree);
@@ -128,21 +128,21 @@ public class CliqueBlockProducerTests
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-                TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                    new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
-                    codeInfoRepository,
-                    nodeLogManager);
-                BlockProcessor blockProcessor = new(
-                    goerliSpecProvider,
-                    Always.Valid,
-                    NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                    stateProvider,
-                    NullReceiptStorage.Instance,
-                    transactionProcessor,
-                    new BeaconBlockRootHandler(transactionProcessor),
-                    new BlockhashStore(goerliSpecProvider, stateProvider),
-                    nodeLogManager);
+            TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
+                new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
+                codeInfoRepository,
+                nodeLogManager);
+            BlockProcessor blockProcessor = new(
+                goerliSpecProvider,
+                Always.Valid,
+                NoBlockRewards.Instance,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                stateProvider,
+                NullReceiptStorage.Instance,
+                transactionProcessor,
+                new BeaconBlockRootHandler(transactionProcessor),
+                new BlockhashStore(goerliSpecProvider, stateProvider),
+                nodeLogManager);
 
             BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
             processor.Start();
