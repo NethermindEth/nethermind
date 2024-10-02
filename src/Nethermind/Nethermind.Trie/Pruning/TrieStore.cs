@@ -47,7 +47,6 @@ namespace Nethermind.Trie.Pruning
 
         private bool _livePruningEnabled = false;
 
-        private ConcurrentDictionary<TrieStoreDirtyNodesCache.Key, bool>? _wasPersisted;
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
         private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
@@ -556,12 +555,12 @@ namespace Nethermind.Trie.Pruning
         /// removing ones that are either no longer referenced or already persisted.
         /// </summary>
         /// <exception cref="InvalidOperationException"></exception>
-        private void PruneCache(bool skipRecalculateMemory = false, KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode>[]? allNodes = null)
+        private void PruneCache(bool skipRecalculateMemory = false)
         {
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
 
-            long newMemory = DirtyNodes.PruneCache(skipRecalculateMemory, allNodes);
+            long newMemory = DirtyNodes.PruneCache(skipRecalculateMemory);
 
             if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory;
             Metrics.CachedNodesCount = DirtyNodes.Count;
@@ -881,7 +880,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets.");
 
             stopwatch.Restart();
-            ConcurrentDictionary<TrieStoreDirtyNodesCache.Key, bool> wasPersisted;
+
             TrieStoreDirtyNodesCache cache = DirtyNodes;
             lock (cache)
             {
@@ -889,54 +888,51 @@ namespace Nethermind.Trie.Pruning
                 {
                     // Double check
                     ClearCommitSetQueue();
+                    if (cancellationToken.IsCancellationRequested) return;
 
                     // This should clear most nodes. For some reason, not all.
                     PruneCache(skipRecalculateMemory: true);
-                    KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode>[] nodesCopy = cache.AllNodes.ToArray();
+                    if (cancellationToken.IsCancellationRequested) return;
 
-                    wasPersisted = Interlocked.Exchange(ref _wasPersisted, null) ??
-                        new(CollectionExtensions.LockPartitions, nodesCopy.Length);
+                    PersistAllInCache(cache);
+                    if (cancellationToken.IsCancellationRequested) return;
 
-                    void PersistNode(TrieNode n, Hash256? address, TreePath path)
-                    {
-                        if (n.Keccak is null) return;
-                        TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, n.Keccak);
-                        if (wasPersisted.TryAdd(key, true))
-                        {
-                            _nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
-                            n.IsPersisted = true;
-                        }
-                    }
-                    Parallel.For(0, nodesCopy.Length, RuntimeInformation.ParallelOptionsPhysicalCores, i =>
-                    {
-                        if (cancellationToken.IsCancellationRequested) return;
-                        TrieStoreDirtyNodesCache.Key key = nodesCopy[i].Key;
-                        TreePath path = key.Path;
-                        Hash256? address = key.AddressAsHash256;
-                        nodesCopy[i].Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, false);
-                    });
-                    PruneCache(allNodes: nodesCopy);
+                    PruneCache();
 
                     if (cache.Count != 0)
                     {
                         if (_logger.IsWarn) _logger.Warn($"{cache.Count} cache entry remains.");
                     }
+
+                    cache.ClearLivePruningTracking();
                 }
             }
 
-            DirtyNodes.PersistedLastSeen.NoResizeClear();
-            DirtyNodes.PastPathHash?.Clear();
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
 
-            if (wasPersisted is not null)
+            void PersistAllInCache(TrieStoreDirtyNodesCache cache)
             {
-                // Clear in background outside of lock to not block
-                Task.Run(() =>
+                ConcurrentDictionary<TrieStoreDirtyNodesCache.Key, bool> wasPersisted = new();
+
+                void PersistNode(TrieNode n, Hash256? address, TreePath path)
                 {
-                    wasPersisted.NoResizeClear();
-                    // Set back to be reused
-                    _wasPersisted = wasPersisted;
-                });
+                    if (n.Keccak is null) return;
+                    TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, n.Keccak);
+                    if (wasPersisted.TryAdd(key, true))
+                    {
+                        _nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
+                        n.IsPersisted = true;
+                    }
+                }
+
+                foreach (KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode> kv in cache.AllNodes)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    TrieStoreDirtyNodesCache.Key key = kv.Key;
+                    TreePath path = key.Path;
+                    Hash256? address = key.AddressAsHash256;
+                    kv.Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, false);
+                }
             }
         }
 

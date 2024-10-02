@@ -201,16 +201,13 @@ internal class TrieStoreDirtyNodesCache
     }
 
     public int Count => _count;
-    public ConcurrentDictionary<HashAndTinyPathAndHash, long> PersistedLastSeen => _persistedLastSeen;
-    public ClockCache<HashAndTinyPath, ValueHash256>? PastPathHash => _pastPathHash;
-
 
     /// <summary>
     /// This method is responsible for reviewing the nodes that are directly in the cache and
     /// removing ones that are either no longer referenced or already persisted.
     /// </summary>
     /// <exception cref="InvalidOperationException"></exception>
-    public long PruneCache(bool skipRecalculateMemory = false, KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode>[]? allNodes = null)
+    public long PruneCache(bool skipRecalculateMemory = false)
     {
         // Run in parallel
         bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
@@ -246,7 +243,7 @@ internal class TrieStoreDirtyNodesCache
                 Interlocked.Add(ref newMemory, node.GetMemorySize(false) + KeyMemoryUsage);
             });
 
-        foreach ((TrieStoreDirtyNodesCache.Key key, TrieNode node) in (allNodes ?? AllNodes))
+        foreach ((TrieStoreDirtyNodesCache.Key key, TrieNode node) in AllNodes)
         {
             if (node.IsPersisted)
             {
@@ -365,7 +362,7 @@ internal class TrieStoreDirtyNodesCache
 
     public void CleanObsoletePersistedLastSeen()
     {
-        var persistedLastSeen = PersistedLastSeen;
+        var persistedLastSeen = _persistedLastSeen;
         foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in persistedLastSeen)
         {
             if (_trieStore.IsNoLongerNeeded(keyValuePair.Value))
@@ -385,6 +382,12 @@ internal class TrieStoreDirtyNodesCache
                 _logger.Trace($"  {keyValuePair.Value}");
             }
         }
+    }
+
+    public void ClearLivePruningTracking()
+    {
+        _persistedLastSeen.NoResizeClear();
+        _pastPathHash?.Clear();
     }
 
     public void Clear()
