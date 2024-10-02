@@ -15,8 +15,8 @@ using GT = Bls.PT;
 
 public class BlsSigner
 {
-    internal static readonly byte[] Cryptosuite = Encoding.UTF8.GetBytes("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_");
-    internal static int InputLength = 64;
+    private static readonly byte[] Cryptosuite = Encoding.UTF8.GetBytes("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_");
+    private const int InputLength = 64;
 
     public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
     {

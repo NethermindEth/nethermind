@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -121,7 +120,6 @@ public class PayloadPreparationService : IPayloadPreparationService
             // if after delay we still have time to try producing the block in this slot
             DateTimeOffset whenWeCouldFinishNextProduction = DateTimeOffset.UtcNow + _improvementDelay + _minTimeForProduction;
             DateTimeOffset slotFinished = startDateTime + _timePerSlot;
-
             if (whenWeCouldFinishNextProduction < slotFinished)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");

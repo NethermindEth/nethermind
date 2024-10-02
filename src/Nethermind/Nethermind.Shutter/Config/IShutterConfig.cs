@@ -11,6 +11,7 @@ namespace Nethermind.Shutter.Config;
 
 public interface IShutterConfig : IConfig
 {
+    // todo: replace with bootnodes when peer discovery added
     private const string DefaultP2PAddresses =
 @"/ip4/139.59.130.109/tcp/23003/p2p/12D3KooWRZoofMsnpsjkgvfPQUyGXZQnn7EVnb4tw4ghNfwMnnsj,
 /ip4/167.71.169.248/tcp/23003/p2p/12D3KooWGH3VxoSQXZ6wUuCmsv5caGQnhwfGejbkXH6uS2r7sehA,
@@ -42,9 +43,9 @@ public interface IShutterConfig : IConfig
         DefaultValue = "0x7C2337f9bFce19d8970661DA50dE8DD7d3D34abb")]
     string? KeyperSetManagerContractAddress { get; set; }
 
-    [ConfigItem(Description = "The p2p addresses of the Shutter keypers.",
+    [ConfigItem(Description = "The p2p addresses of the Shutter Keyper network bootnodes.",
         DefaultValue = DefaultP2PAddresses)]
-    string[]? KeyperP2PAddresses { get; set; }
+    string[]? BootnodeP2PAddresses { get; set; }
 
     [ConfigItem(Description = "Instance ID of Shutter keyper set.",
         DefaultValue = "1000")]
@@ -121,12 +122,12 @@ public interface IShutterConfig : IConfig
             throw new ArgumentNullException(nameof(P2PProtocolVersion));
         }
 
-        if (KeyperP2PAddresses is null)
+        if (BootnodeP2PAddresses is null)
         {
-            throw new ArgumentNullException(nameof(KeyperP2PAddresses));
+            throw new ArgumentNullException(nameof(BootnodeP2PAddresses));
         }
 
-        foreach (string addr in KeyperP2PAddresses)
+        foreach (string addr in BootnodeP2PAddresses)
         {
             try
             {

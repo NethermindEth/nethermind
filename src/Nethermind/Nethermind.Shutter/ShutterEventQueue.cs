@@ -11,8 +11,7 @@ namespace Nethermind.Shutter;
 
 public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 {
-    private readonly int _maxQueueSize = 10000;
-    private readonly int _encryptedGasLimit = encryptedGasLimit;
+    private const int MaxQueueSize = 10000;
     private ulong? _eon;
     private ulong? _txIndex;
     private ulong _nextEonTxIndex = 0;
@@ -41,7 +40,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 
             _txIndex = e.TxIndex + 1;
 
-            if (_events.Count < _maxQueueSize)
+            if (_events.Count < MaxQueueSize)
             {
                 _events.Enqueue(e);
             }
@@ -60,7 +59,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
 
             _nextEonTxIndex = e.TxIndex + 1;
 
-            if (_nextEonEvents.Count < _maxQueueSize)
+            if (_nextEonEvents.Count < MaxQueueSize)
             {
                 _nextEonEvents.Enqueue(e);
             }
@@ -100,7 +99,7 @@ public class ShutterEventQueue(int encryptedGasLimit, ILogManager logManager)
                 continue;
             }
 
-            if (totalGas + e.GasLimit > _encryptedGasLimit)
+            if (totalGas + e.GasLimit > encryptedGasLimit)
             {
                 if (_logger.IsDebug) _logger.Debug("Shutter gas limit reached.");
                 yield break;

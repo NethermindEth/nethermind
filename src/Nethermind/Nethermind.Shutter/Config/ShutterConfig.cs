@@ -11,7 +11,7 @@ namespace Nethermind.Shutter.Config
         public string? ValidatorRegistryContractAddress { get; set; }
         public string? KeyBroadcastContractAddress { get; set; }
         public string? KeyperSetManagerContractAddress { get; set; }
-        public string[]? KeyperP2PAddresses { get; set; } = [];
+        public string[]? BootnodeP2PAddresses { get; set; } = [];
         public int P2PPort { get; set; } = 23102;
         public string? ValidatorInfoFile { get; set; }
         public string? P2PProtocolVersion { get; set; } = "/shutter/0.1.0";

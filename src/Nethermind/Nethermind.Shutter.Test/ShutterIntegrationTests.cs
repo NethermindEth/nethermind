@@ -18,23 +18,22 @@ namespace Nethermind.Shutter.Test;
 [TestFixture]
 public class ShutterIntegrationTests : EngineModuleTests
 {
-    private readonly int _buildingSlot = (int)ShutterTestsCommon.InitialSlot;
-    private readonly ulong _buildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
-
+    private const int BuildingSlot = (int)ShutterTestsCommon.InitialSlot;
+    private const ulong BuildingSlotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
 
     [Test]
     public async Task Can_load_when_previous_block_arrives_late()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp - 5, 0);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(BuildingSlotTimestamp - 5, 0);
         PayloadAttributes payloadAttributes = new()
         {
-            Timestamp = _buildingSlotTimestamp
+            Timestamp = BuildingSlotTimestamp
         };
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[^1];
 
         // keys arrive 5 seconds before slot start
@@ -47,7 +46,7 @@ public class ShutterIntegrationTests : EngineModuleTests
 
         // after timeout they should be loaded
         using CancellationTokenSource cts = new();
-        await chain.Api.TxSource.WaitForTransactions((ulong)_buildingSlot, cts.Token);
+        await chain.Api.TxSource.WaitForTransactions((ulong)BuildingSlot, cts.Token);
         txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
         Assert.That(txs, Has.Count.EqualTo(20));
 
@@ -63,15 +62,15 @@ public class ShutterIntegrationTests : EngineModuleTests
     public async Task Can_load_when_block_arrives_before_keys()
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(_buildingSlotTimestamp, 0);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(BuildingSlotTimestamp, 0);
         PayloadAttributes payloadAttributes = new()
         {
-            Timestamp = _buildingSlotTimestamp
+            Timestamp = BuildingSlotTimestamp
         };
 
         using var chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, _buildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, BuildingSlot - 2, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
         ExecutionPayload lastPayload = executionPayloads[executionPayloads.Count - 1];
 
         // no events loaded initially

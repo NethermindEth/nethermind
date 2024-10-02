@@ -24,7 +24,7 @@ namespace Nethermind.Shutter.Test;
 
 public class ShutterEventSimulator
 {
-    private readonly ulong _defaultGasLimit = 21000;
+    private const ulong DefaultGasLimit = 21000;
     private readonly int _defaultMaxKeyCount;
     private readonly Random _rnd;
     private readonly ulong _chainId;
@@ -57,7 +57,7 @@ public class ShutterEventSimulator
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
         _transactionSubmittedAbi = new SequencerContract(sequencerContractAddress).TransactionSubmittedAbi;
-        _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / _defaultGasLimit);
+        _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / DefaultGasLimit);
 
         _eventSource = EmitEvents();
 
@@ -133,7 +133,7 @@ public class ShutterEventSimulator
                 EncryptedTransaction = encryptedTx,
                 IdentityPreimage = identityPreimage,
                 Key = key.Compress(),
-                LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, eon, txIndex, _defaultGasLimit),
+                LogEntry = EncodeShutterLog(encryptedTx, identityPreimage, eon, txIndex, DefaultGasLimit),
                 Transaction = encodedTx,
                 Eon = eon
             };

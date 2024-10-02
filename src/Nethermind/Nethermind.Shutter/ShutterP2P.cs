@@ -84,7 +84,7 @@ public class ShutterP2P : IShutterP2P
         _cts = cts ?? new();
         _ = _router!.RunAsync(_peer, proto, token: _cts.Token);
         proto.SetupFinished().GetAwaiter().GetResult();
-        ConnectToPeers(proto, _cfg.KeyperP2PAddresses!);
+        ConnectToPeers(proto, _cfg.BootnodeP2PAddresses!);
 
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
 

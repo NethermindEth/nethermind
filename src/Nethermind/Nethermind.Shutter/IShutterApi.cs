@@ -4,7 +4,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Core;
 
 namespace Nethermind.Shutter;
 
