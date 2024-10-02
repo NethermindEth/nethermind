@@ -89,11 +89,20 @@ namespace Nethermind.Trie.Pruning
 
             if (pruningStrategy.PruningEnabled)
             {
-                // TODO: Hash cant do this
-                _dirtyNodes = new TrieStoreDirtyNodesCache[ShardedDirtyNodeCount];
-                for (int i = 0; i < ShardedDirtyNodeCount; i++)
+                if (!nodeStorage.RequirePath) {
+                    // Hash layout.
+                    // All address and path is gonna be null patricia trie is not recording it..... I think.
+                    _dirtyNodes = [
+                        new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount, !_nodeStorage.RequirePath, _logger)
+                    ];
+                }
+                else
                 {
-                    _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount, !_nodeStorage.RequirePath, _logger);
+                    _dirtyNodes = new TrieStoreDirtyNodesCache[ShardedDirtyNodeCount];
+                    for (int i = 0; i < ShardedDirtyNodeCount; i++)
+                    {
+                        _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount / ShardedDirtyNodeCount, !_nodeStorage.RequirePath, _logger);
+                    }
                 }
             }
 
@@ -228,7 +237,7 @@ namespace Nethermind.Trie.Pruning
 
         private int GetNodeShardIdx(Hash256? address, in TreePath path)
         {
-            // TODO: Hash
+            if (_dirtyNodes.Length == 1) return 0;
             if (address == null)
             {
                 return path.Path.Bytes[0];
@@ -691,10 +700,14 @@ namespace Nethermind.Trie.Pruning
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             long newMemory = 0;
-            foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
+            Task.WaitAll(_dirtyNodes.Select((dirtyNode) => Task.Run(() =>
             {
-                newMemory += dirtyNode.PruneCache(skipRecalculateMemory);
-            }
+                using (dirtyNode.AcquireMapLock())
+                {
+                    long shardSize = dirtyNode.PruneCache(skipRecalculateMemory);
+                    Interlocked.Add(ref newMemory, shardSize);
+                }
+            })).ToArray());
 
             if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory;
             _ = CachedNodesCount; // Setter also update the count
