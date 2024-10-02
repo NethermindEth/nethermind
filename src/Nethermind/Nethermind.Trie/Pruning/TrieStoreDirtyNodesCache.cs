@@ -209,47 +209,19 @@ internal class TrieStoreDirtyNodesCache
     /// <exception cref="InvalidOperationException"></exception>
     public long PruneCache(bool skipRecalculateMemory = false)
     {
-        // Run in parallel
         bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
-        ActionBlock<(TrieStoreDirtyNodesCache.Key key, TrieNode node)>? trackNodesAction = shouldTrackPersistedNode
-            ? new ActionBlock<(TrieStoreDirtyNodesCache.Key key, TrieNode node)>(
-                entry =>
-                {
-                    if (entry.key.Path.Length > TinyTreePath.MaxNibbleLength) return;
-                    TinyTreePath treePath = new(entry.key.Path);
-                    // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
-                    // recalculated to the same hash.
-                    if (entry.node.LastSeen >= 0)
-                    {
-                        // Update _persistedLastSeen to later value.
-                        _persistedLastSeen.AddOrUpdate(
-                            new(entry.key.Address, in treePath, entry.key.Keccak),
-                            (_, newValue) => newValue,
-                            (_, newValue, currentLastSeen) => Math.Max(newValue, currentLastSeen),
-                            entry.node.LastSeen);
-                    }
-
-                    // This persisted node is being removed from cache. Keep it in mind in case of an update to the same
-                    // path.
-                    _pastPathHash.Set(new(entry.key.Address, in treePath), entry.key.Keccak);
-                })
-            : null;
-
         long newMemory = 0;
-        ActionBlock<TrieNode> pruneAndRecalculateAction =
-            new ActionBlock<TrieNode>(node =>
-            {
-                node.PrunePersistedRecursively(1);
-                Interlocked.Add(ref newMemory, node.GetMemorySize(false) + KeyMemoryUsage);
-            });
 
-        foreach ((TrieStoreDirtyNodesCache.Key key, TrieNode node) in AllNodes)
+        foreach ((Key key, TrieNode node) in AllNodes)
         {
             if (node.IsPersisted)
             {
                 if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 
-                trackNodesAction?.Post((key, node));
+                if (shouldTrackPersistedNode)
+                {
+                    TrackPersistedNode(key, node);
+                }
 
                 Hash256? keccak = node.Keccak;
                 if (keccak is null)
@@ -280,16 +252,33 @@ internal class TrieStoreDirtyNodesCache
             }
             else if (!skipRecalculateMemory)
             {
-                pruneAndRecalculateAction.Post(node);
+                node.PrunePersistedRecursively(1);
+                newMemory += node.GetMemorySize(false) + KeyMemoryUsage;
             }
         }
 
-        pruneAndRecalculateAction.Complete();
-        trackNodesAction?.Complete();
-        pruneAndRecalculateAction.Completion.Wait();
-        trackNodesAction?.Completion.Wait();
-
         return newMemory + (_persistedLastSeen?.Count ?? 0) * 48;
+
+        void TrackPersistedNode(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
+        {
+            if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
+            TinyTreePath treePath = new(key.Path);
+            // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
+            // recalculated to the same hash.
+            if (node.LastSeen >= 0)
+            {
+                // Update _persistedLastSeen to later value.
+                _persistedLastSeen.AddOrUpdate(
+                    new(key.Address, in treePath, key.Keccak),
+                    (_, newValue) => newValue,
+                    (_, newValue, currentLastSeen) => Math.Max(newValue, currentLastSeen),
+                    node.LastSeen);
+            }
+
+            // This persisted node is being removed from cache. Keep it in mind in case of an update to the same
+            // path.
+            _pastPathHash.Set(new(key.Address, in treePath), key.Keccak);
+        }
     }
 
 
@@ -316,9 +305,6 @@ internal class TrieStoreDirtyNodesCache
             return true;
         }
 
-        ActionBlock<INodeStorage.WriteBatch> actionBlock =
-            new ActionBlock<INodeStorage.WriteBatch>(static (batch) => batch.Dispose());
-
         INodeStorage.WriteBatch writeBatch = nodeStorage.StartWriteBatch();
         try
         {
@@ -341,7 +327,7 @@ internal class TrieStoreDirtyNodesCache
                 // Batches of 256
                 if (round > 256)
                 {
-                    actionBlock.Post(writeBatch);
+                    writeBatch.Dispose();
                     writeBatch = nodeStorage.StartWriteBatch();
                     round = 0;
                 }
@@ -354,8 +340,6 @@ internal class TrieStoreDirtyNodesCache
         finally
         {
             writeBatch.Dispose();
-            actionBlock.Complete();
-            actionBlock.Completion.Wait();
             nodeStorage.Compact();
         }
     }

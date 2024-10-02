@@ -60,12 +60,6 @@ namespace Nethermind.Trie.Pruning
             return new ScopedReadOnlyTrieStore(this, address);
         }
 
-
-        public void PersistCache(CancellationToken cancellationToken)
-        {
-            _trieStore.PersistCache(cancellationToken);
-        }
-
         public bool HasRoot(Hash256 stateRoot)
         {
             return _trieStore.HasRoot(stateRoot);
