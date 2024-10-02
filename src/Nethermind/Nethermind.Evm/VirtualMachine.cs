@@ -57,6 +57,7 @@ public class VirtualMachine : IVirtualMachine
     };
 
     internal static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
+    internal static readonly OutOfGasException PrecompileOutOfGasException = new();
 
     private readonly IVirtualMachine _evm;
 
@@ -194,6 +195,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                     if (!callResult.PrecompileSuccess.Value)
                     {
+                        if (callResult.IsException)
+                        {
+                            failure = VirtualMachine.PrecompileOutOfGasException;
+                            goto Failure;
+                        }
                         if (currentState.IsPrecompile && currentState.IsTopLevel)
                         {
                             failure = VirtualMachine.PrecompileExecutionFailureException;
