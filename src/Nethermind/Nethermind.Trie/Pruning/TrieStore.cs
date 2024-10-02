@@ -77,7 +77,8 @@ namespace Nethermind.Trie.Pruning
 
             if (pruningStrategy.PruningEnabled)
             {
-                if (!nodeStorage.RequirePath) {
+                if (!nodeStorage.RequirePath)
+                {
                     // Hash layout.
                     // All address and path is gonna be null patricia trie is not recording it..... I think.
                     _dirtyNodes = [
