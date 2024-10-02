@@ -134,7 +134,7 @@ namespace Ethereum.Trie.Test
             string permutationDescription =
                 string.Join(Environment.NewLine, test.Input.Select(p => $"{p.Key} -> {p.Value}"));
 
-            TestContext.WriteLine(Surrounded(permutationDescription));
+            TestContext.Out.WriteLine(Surrounded(permutationDescription));
 
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             foreach (KeyValuePair<string, string> keyValuePair in test.Input)
@@ -150,8 +150,8 @@ namespace Ethereum.Trie.Test
                     ? Bytes.FromHexString(valueString)
                     : Encoding.ASCII.GetBytes(valueString);
 
-                TestContext.WriteLine();
-                TestContext.WriteLine($"Setting {keyString} -> {valueString}");
+                TestContext.Out.WriteLine();
+                TestContext.Out.WriteLine($"Setting {keyString} -> {valueString}");
                 patriciaTree.Set(key.ToPackedByteArray(), value);
             }
 

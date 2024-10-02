@@ -289,7 +289,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
+    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -298,7 +298,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportMemoryChange(long offset, byte data)
+    public void ReportMemoryChange(UInt256 offset, byte data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)

@@ -12,6 +12,8 @@ public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
 {
     private readonly IEthereumEcdsa _ethereumEcdsa;
 
+    public ulong ChainId => _ethereumEcdsa.ChainId;
+
     public OptimismEthereumEcdsa(IEthereumEcdsa ethereumEcdsa)
     {
         _ethereumEcdsa = ethereumEcdsa;

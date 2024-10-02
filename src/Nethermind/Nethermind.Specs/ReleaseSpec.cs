@@ -70,7 +70,7 @@ namespace Nethermind.Specs
         public long Eip1559TransitionBlock { get; set; }
         public ulong WithdrawalTimestamp { get; set; }
         public ulong Eip4844TransitionTimestamp { get; set; }
-        public Address Eip1559FeeCollector { get; set; }
+        public Address FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
@@ -82,10 +82,12 @@ namespace Nethermind.Specs
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
         public bool IsRip7212Enabled { get; set; }
+        public bool IsOpGraniteEnabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
         public bool IsEip7702Enabled { get; set; }
+        public bool IsEip4844FeeCollectorEnabled { get; set; }
         public bool IsEip7002Enabled { get; set; }
         public bool IsEip7251Enabled { get; set; }
 

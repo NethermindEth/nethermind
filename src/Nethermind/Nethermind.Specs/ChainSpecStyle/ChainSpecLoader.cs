@@ -143,6 +143,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
+            OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip7702TransitionTimestamp = chainSpecJson.Params.Eip7702TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
@@ -163,7 +164,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip7251TransitionTimestamp = chainSpecJson.Params.Eip7251TransitionTimestamp,
             Eip7251ContractAddress = chainSpecJson.Params.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress,
-            Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
+            FeeCollector = chainSpecJson.Params.FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
             Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
@@ -171,6 +172,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip4844MaxBlobGasPerBlock = chainSpecJson.Params.Eip4844MaxBlobGasPerBlock,
             Eip4844MinBlobGasPrice = chainSpecJson.Params.Eip4844MinBlobGasPrice,
             Eip4844TargetBlobGasPerBlock = chainSpecJson.Params.Eip4844TargetBlobGasPerBlock,
+            Eip4844FeeCollectorTransitionTimestamp = chainSpecJson.Params.Eip4844FeeCollectorTransitionTimestamp,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
@@ -348,6 +350,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
                 EcotoneTimestamp = chainSpecJson.Engine.Optimism.EcotoneTimestamp,
                 FjordTimestamp = chainSpecJson.Engine.Optimism.FjordTimestamp,
+                GraniteTimestamp = chainSpecJson.Engine.Optimism.GraniteTimestamp,
 
                 L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
                 L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,

@@ -24,7 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[TestFixture]
 public class TxValidatorTests
 {
     [SetUp]
@@ -32,7 +31,7 @@ public class TxValidatorTests
     {
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()
     {
         BigInteger N =
@@ -46,7 +45,7 @@ public class TxValidatorTests
         (HalfN == halfN).Should().BeTrue();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Zero_r_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -60,9 +59,9 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
+    private static byte CalculateV() => (byte)EthereumEcdsaExtensions.CalculateV(TestBlockchainIds.ChainId);
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Zero_s_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -76,7 +75,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Bad_chain_id_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -90,7 +89,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_chain_id_legacy_tx_is_valid()
     {
         byte[] sigData = new byte[65];
@@ -104,7 +103,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Is_valid_with_valid_chain_id()
     {
         byte[] sigData = new byte[65];
@@ -118,7 +117,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true)]
     [TestCase(false)]
     public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
@@ -138,7 +137,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(!validateChainId);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, ExpectedResult = true)]
     [TestCase(TxType.Legacy, false, ExpectedResult = true)]
     [TestCase(TxType.AccessList, false, ExpectedResult = false)]
@@ -165,7 +164,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, false, ExpectedResult = true)]
     [TestCase(TxType.Legacy, false, false, ExpectedResult = true)]
     [TestCase(TxType.AccessList, false, false, ExpectedResult = false)]
@@ -196,7 +195,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, releaseSpec);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, ExpectedResult = true)]
     [TestCase(TxType.AccessList, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, ExpectedResult = false)]
@@ -220,7 +219,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Berlin.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
     [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
@@ -251,7 +250,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, London.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true, 1, false)]
     [TestCase(false, 1, true)]
     [TestCase(true, -1, true)]
@@ -350,7 +349,7 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]

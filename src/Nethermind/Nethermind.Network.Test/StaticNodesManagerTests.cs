@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test
@@ -37,14 +39,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task add_should_save_a_new_static_node_and_trigger_an_event()
+        public async Task add_should_save_a_new_static_node_and_pass_it_to_output()
         {
-            var eventRaised = false;
-            _staticNodesManager.NodeAdded += (s, e) => { eventRaised = true; };
+            ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
+
             _staticNodesManager.Nodes.Count().Should().Be(0);
             await _staticNodesManager.AddAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(1);
-            eventRaised.Should().BeTrue();
+            (await listTask).Count.Should().Be(1);
         }
 
         [Test]

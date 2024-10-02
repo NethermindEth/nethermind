@@ -309,13 +309,22 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// Transactions that allows code for EOA temporarily
+        /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
 
+        /// <summary>
+        /// Blob base fee collection for Gnosis
+        /// </summary>
+        bool IsEip4844FeeCollectorEnabled { get; }
+
+        /// <summary>
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
+
+        /// OP Granite
+        bool IsOpGraniteEnabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

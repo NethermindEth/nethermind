@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Logging
 {
@@ -23,7 +24,7 @@ namespace Nethermind.Logging
             return new(SimpleConsoleLogger.Instance);
         }
 
-        public ILogger GetClassLogger()
+        public ILogger GetClassLogger([CallerFilePath] string filePath = "")
         {
             return new(SimpleConsoleLogger.Instance);
         }

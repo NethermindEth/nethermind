@@ -436,10 +436,13 @@ public class TestBlockchain : IDisposable
         BlockTree.BlockAddedToMain -= BlockAddedToMain;
         BlockTree.BlockAddedToMain += BlockAddedToMain;
 
-        await WaitAsync(_oneAtATime, "Multiple block produced at once.");
+        await WaitAsync(_oneAtATime, "Multiple block produced at once.").ConfigureAwait(false);
         AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
         Timestamper.Add(TimeSpan.FromSeconds(1));
-        await BlockProductionTrigger.BuildBlock();
+        var headProcessed = new SemaphoreSlim(0);
+        TxPool.TxPoolHeadChanged += (s, a) => headProcessed.Release();
+        await BlockProductionTrigger.BuildBlock().ConfigureAwait(false);
+        await headProcessed.WaitAsync().ConfigureAwait(false);
         return txResults;
     }
 

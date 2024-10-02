@@ -125,7 +125,7 @@ public class JsonRpcSocketsClientTests
                 {
                     using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000, () => disposeCount++), default);
                     await client.SendJsonRpcResult(result);
-                    await Task.Delay(100);
+                    await Task.Delay(10);
                 }
 
                 disposeCount.Should().Be(messageCount);
@@ -220,7 +220,7 @@ public class JsonRpcSocketsClientTests
                     await stream.WriteEndOfMessageAsync();
                     if (i % 10 == 0)
                     {
-                        await Task.Delay(100);
+                        await Task.Delay(10);
                     }
                 }
                 stream.Close();
@@ -234,7 +234,7 @@ public class JsonRpcSocketsClientTests
             int received = receiveMessages.Result;
 
             Assert.That(received, Is.EqualTo(sent));
-            CollectionAssert.AreEqual(sentMessages, receivedMessages);
+            Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
         }
 
         private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)

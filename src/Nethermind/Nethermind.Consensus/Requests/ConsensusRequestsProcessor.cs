@@ -28,8 +28,8 @@ public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcess
         using ArrayPoolList<ConsensusRequest> requestsList = new(receipts.Length * 2);
 
         requestsList.AddRange(_depositsProcessor.ProcessDeposits(block, receipts, spec));
-        requestsList.AddRange(_withdrawalRequestsProcessor.ReadWithdrawalRequests(block, state, spec));
-        requestsList.AddRange(_consolidationRequestsProcessor.ReadConsolidationRequests(block, state, spec));
+        requestsList.AddRange(_withdrawalRequestsProcessor.ReadRequests(block, state, spec));
+        requestsList.AddRange(_consolidationRequestsProcessor.ReadRequests(block, state, spec));
 
         ConsensusRequest[] requests = requestsList.ToArray();
         Hash256 root = new RequestsTrie(requests).RootHash;

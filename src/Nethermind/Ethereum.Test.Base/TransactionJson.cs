@@ -8,8 +8,8 @@ namespace Ethereum.Test.Base
 {
     public class TransactionJson
     {
-        public string Type { get; set; }
-        public string Sender { get; set; }
+        public TxType Type { get; set; }
+        public Address Sender { get; set; }
         public byte[][]? Data { get; set; }
         public long[]? GasLimit { get; set; }
         public UInt256? GasPrice { get; set; }
