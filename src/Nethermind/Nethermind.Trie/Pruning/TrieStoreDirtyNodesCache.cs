@@ -8,6 +8,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks.Dataflow;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -199,8 +201,87 @@ internal class TrieStoreDirtyNodesCache
     }
 
     public int Count => _count;
-    public ConcurrentDictionary<HashAndTinyPathAndHash, long>? PersistedLastSeen => _persistedLastSeen;
+    public ConcurrentDictionary<HashAndTinyPathAndHash, long> PersistedLastSeen => _persistedLastSeen;
     public ClockCache<HashAndTinyPath, ValueHash256>? PastPathHash => _pastPathHash;
+
+    public void RemovePastKeys(Dictionary<HashAndTinyPath, Hash256?>? persistedHashes, INodeStorage nodeStorage)
+    {
+        if (persistedHashes is null) return;
+
+        bool CanRemove(in ValueHash256 address, TinyTreePath path, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+        {
+            // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
+            if (currentlyPersistingKeccak is null) return false;
+
+            // The persisted hash is the same as currently persisting hash. Do nothing.
+            if ((ValueHash256)currentlyPersistingKeccak == keccak) return false;
+
+            // We have it in cache and it is still needed.
+            if (TryGetValue(new TrieStoreDirtyNodesCache.Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
+                !_trieStore.IsNoLongerNeeded(node.LastSeen)) return false;
+
+            // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
+            if (_persistedLastSeen.TryGetValue(new(address, in path, in keccak), out long commitBlock) &&
+                !_trieStore.IsNoLongerNeeded(commitBlock)) return false;
+
+            return true;
+        }
+
+        ActionBlock<INodeStorage.WriteBatch> actionBlock =
+            new ActionBlock<INodeStorage.WriteBatch>(static (batch) => batch.Dispose());
+
+        INodeStorage.WriteBatch writeBatch = nodeStorage.StartWriteBatch();
+        try
+        {
+            int round = 0;
+            foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
+            {
+                HashAndTinyPath key = keyValuePair.Key;
+                if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
+                {
+                    TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
+                    if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                    {
+                        Metrics.RemovedNodeCount++;
+                        Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
+                        writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
+                        round++;
+                    }
+                }
+
+                // Batches of 256
+                if (round > 256)
+                {
+                    actionBlock.Post(writeBatch);
+                    writeBatch = nodeStorage.StartWriteBatch();
+                    round = 0;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to remove past keys. {ex}");
+        }
+        finally
+        {
+            writeBatch.Dispose();
+            actionBlock.Complete();
+            actionBlock.Completion.Wait();
+            nodeStorage.Compact();
+        }
+    }
+
+    public void CleanObsoletePersistedLastSeen()
+    {
+        var persistedLastSeen = PersistedLastSeen;
+        foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in persistedLastSeen)
+        {
+            if (_trieStore.IsNoLongerNeeded(keyValuePair.Value))
+            {
+                persistedLastSeen.Remove(keyValuePair.Key, out _);
+            }
+        }
+    }
 
     public void Dump()
     {
