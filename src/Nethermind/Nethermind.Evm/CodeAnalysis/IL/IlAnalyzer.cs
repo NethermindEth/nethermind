@@ -59,6 +59,8 @@ public static class IlAnalyzer
     /// <param name="codeInfo">The destination output.</param>
     internal static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode, ILogger logger)
     {
+        Metrics.IlvmContractsAnalyzed++;
+
         if(logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.CodeHash}");
         return Task.Run(() => Analysis(codeInfo, mode, logger));
     }

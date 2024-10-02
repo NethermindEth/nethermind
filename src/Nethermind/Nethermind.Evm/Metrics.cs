@@ -85,6 +85,15 @@ public class Metrics
     [Description("Number of Point Evaluation precompile calls.")]
     public static long PointEvaluationPrecompile { get; set; }
 
+    [Description("Number of contracts analyzed by ILVM")] // "ILVM" is an abbreviation for "Intermediate Language Virtual Machine
+    public static long IlvmContractsAnalyzed { get; set; }
+
+    [Description("Number of ILVM predefined pattern executions.")]
+    public static long IlvmPredefinedPatternsExecutions { get; set; }
+
+    [Description("Number of ILVM precompiled segment executions.")]
+    public static long IlvmPrecompiledSegmentsExecutions { get; set; }
+
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _emptyCalls.GetTotalValue();
