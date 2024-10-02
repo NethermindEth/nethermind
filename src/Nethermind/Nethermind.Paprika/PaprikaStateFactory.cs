@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -87,7 +86,7 @@ public class PaprikaStateFactory : IStateFactory
         return ConvertPaprikaAccount(_accessor.GetAccount(Convert(stateRoot), Convert(address)), out account);
     }
 
-    public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, in Address address, in UInt256 index)
+    public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, scoped in Address address, in UInt256 index)
     {
         Span<byte> bytes = stackalloc byte[32];
         GetKey(index, bytes);
@@ -173,7 +172,11 @@ public class PaprikaStateFactory : IStateFactory
     [SkipLocalsInit]
     class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
     {
-        public bool TryGet(Address address, out AccountStruct account) => ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
+        public bool TryGet(Address address, out AccountStruct account)
+        {
+            return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
+        }
+
 
         public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell)
         {
@@ -197,11 +200,11 @@ public class PaprikaStateFactory : IStateFactory
 
     class State(IWorldState wrapped, PaprikaStateFactory factory) : IState
     {
-        public void Set(Address address, in AccountStruct account, bool isNewHint = false)
+        public void Set(Address address, Account? account, bool isNewHint = false)
         {
             PaprikaKeccak key = Convert(address);
 
-            if (account.IsNull)
+            if (account == null)
             {
                 wrapped.DestroyAccount(key);
             }
@@ -213,18 +216,13 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
-        public void SetStorage(in StorageCell cell, Vector256<byte> value)
-        {
-            throw new NotImplementedException();
-        }
-
         public bool TryGet(Address address, out AccountStruct account)
         {
             return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         }
 
         [SkipLocalsInit]
-        public ReadOnlySpan<byte> GetStorageAt(in StorageCell cell)
+        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell)
         {
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);

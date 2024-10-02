@@ -181,7 +181,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 Hash256 stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
-                    WorldState.RecalculateStateRoot();
                     stateRoot = WorldState.StateRoot;
                 }
 

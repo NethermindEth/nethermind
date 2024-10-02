@@ -622,7 +622,10 @@ namespace Nethermind.State
             _getStateFromTrie = address =>
             {
                 Metrics.IncrementStateTreeReads();
-                return _owner.State.TryGet(address, out Account? account) ? account : default;
+
+                return _owner.State.TryGet(address, out AccountStruct account)
+                    ? new Account(account.Nonce, account.Balance, account.StorageRoot, account.CodeHash)
+                    : default;
             };
         }
 

@@ -102,7 +102,7 @@ public class TestBlockchain : IDisposable
     private IBlockFinder _blockFinder = null!;
 
     public static readonly UInt256 InitialValue = 1000.Ether();
-    private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
+    private BoundaryWatcher _watcher = null!;
     public IHeaderValidator HeaderValidator { get; set; } = null!;
 
     private ReceiptCanonicalityMonitor? _canonicalityMonitor;
@@ -187,7 +187,7 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
+        _watcher = new BoundaryWatcher(WorldStateManager, BlockTree, LogManager);
         CodeInfoRepository codeInfoRepository = new();
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
@@ -460,7 +460,7 @@ public class TestBlockchain : IDisposable
             DbProvider.ReceiptsDb?.Dispose();
         }
 
-        _trieStoreWatcher?.Dispose();
+        _watcher?.Dispose();
         DbProvider?.Dispose();
     }
 

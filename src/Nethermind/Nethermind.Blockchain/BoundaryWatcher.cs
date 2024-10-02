@@ -12,18 +12,18 @@ namespace Nethermind.Blockchain
     /// <summary>
     /// Watches state persistence in <see cref="IWorldStateManager"/> with <see cref="IWorldStateManager.ReorgBoundaryReached"/> and saves it in <see cref="IBlockFinder.BestPersistedState"/>.
     /// </summary>
-    public class TrieStoreBoundaryWatcher : IDisposable
+    public class BoundaryWatcher : IDisposable
     {
-        private readonly IWorldStateManager _trieStore;
+        private readonly IWorldStateManager _manager;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public TrieStoreBoundaryWatcher(IWorldStateManager trieStore, IBlockTree blockTree, ILogManager logManager)
+        public BoundaryWatcher(IWorldStateManager manager, IBlockTree blockTree, ILogManager logManager)
         {
-            _trieStore = trieStore;
+            _manager = manager;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
-            _trieStore.ReorgBoundaryReached += OnReorgBoundaryReached;
+            _manager.ReorgBoundaryReached += OnReorgBoundaryReached;
         }
 
         private void OnReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
 
         public void Dispose()
         {
-            _trieStore.ReorgBoundaryReached -= OnReorgBoundaryReached;
+            _manager.ReorgBoundaryReached -= OnReorgBoundaryReached;
         }
     }
 }

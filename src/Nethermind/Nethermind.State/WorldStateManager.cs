@@ -10,16 +10,16 @@ namespace Nethermind.State;
 
 public class WorldStateManager(
     IWorldState worldState,
-    ITrieStore trieStore,
+    IStateFactory stateFactory,
     IDbProvider dbProvider,
     ILogManager logManager)
-    : ReadOnlyWorldStateManager(dbProvider, trieStore.AsReadOnly(), logManager)
+    : ReadOnlyWorldStateManager(dbProvider, stateFactory, logManager)
 {
     public override IWorldState GlobalWorldState => worldState;
 
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
-        add => trieStore.ReorgBoundaryReached += value;
-        remove => trieStore.ReorgBoundaryReached -= value;
+        add => StateFactory.ReorgBoundaryReached += value;
+        remove => StateFactory.ReorgBoundaryReached -= value;
     }
 }

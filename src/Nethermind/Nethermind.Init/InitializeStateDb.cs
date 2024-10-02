@@ -168,8 +168,8 @@ public class InitializeStateDb : IStep
             getApi.LogManager);
 
         // TODO: Don't forget this
-        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
-        getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
+        BoundaryWatcher boundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
+        getApi.DisposeStack.Push(boundaryWatcher);
         getApi.DisposeStack.Push(mainWorldTrieStore);
 
         setApi.WorldState = stateManager.GlobalWorldState;

@@ -11,7 +11,7 @@ namespace Nethermind.State;
 
 public interface IState : IReadOnlyState
 {
-    void Set(Address address, in Account account, bool isNewHint = false);
+    void Set(Address address, Account? account, bool isNewHint = false);
 
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 
@@ -34,7 +34,7 @@ public interface IState : IReadOnlyState
 
 public interface IReadOnlyState : IDisposable
 {
-    bool TryGet(Address address, out Account account);
+    bool TryGet(Address address, out AccountStruct account);
 
     /// <summary>
     /// Gets storage by the cell.

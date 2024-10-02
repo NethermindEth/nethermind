@@ -14,41 +14,38 @@ namespace Nethermind.State;
 /// </summary>
 public class ReadOnlyWorldStateManager : IWorldStateManager
 {
-    private readonly IReadOnlyTrieStore _readOnlyTrieStore;
+    protected readonly IStateFactory StateFactory;
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _codeDb;
 
     public ReadOnlyWorldStateManager(
         IDbProvider dbProvider,
-        IReadOnlyTrieStore readOnlyTrieStore,
+        IStateFactory stateFactory,
         ILogManager logManager
     )
     {
-        _readOnlyTrieStore = readOnlyTrieStore;
+        StateFactory = stateFactory;
         _logManager = logManager;
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
-        GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
+        GlobalStateReader = new StateReader(StateFactory, _codeDb, _logManager);
     }
 
     public virtual IWorldState GlobalWorldState => throw new InvalidOperationException("global world state not supported");
 
     public IStateReader GlobalStateReader { get; }
 
-    public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
-
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
         PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
         return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
+            ? new WorldState(StateFactory,
                 _codeDb,
                 _logManager,
                 preBlockCaches)
             : new WorldState(
-                _readOnlyTrieStore,
+                StateFactory,
                 _codeDb,
                 _logManager);
     }

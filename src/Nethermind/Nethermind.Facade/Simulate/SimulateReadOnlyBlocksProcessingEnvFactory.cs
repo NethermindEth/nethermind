@@ -27,19 +27,19 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     {
         throw new NotImplementedException("No overlay implemented");
 
-        IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
-        OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
-        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
-
-        return new SimulateReadOnlyBlocksProcessingEnv(
-            overlayWorldStateManager,
-            baseBlockTree,
-            editableDbProvider,
-            tempBlockTree,
-            specProvider,
-            logManager,
-            validate);
+        // IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
+        // OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
+        // OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
+        // BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
+        //
+        // return new SimulateReadOnlyBlocksProcessingEnv(
+        //     overlayWorldStateManager,
+        //     baseBlockTree,
+        //     editableDbProvider,
+        //     tempBlockTree,
+        //     specProvider,
+        //     logManager,
+        //     validate);
     }
 
     private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager? logManager, IReadOnlyDbProvider editableDbProvider)
