@@ -19,8 +19,7 @@ public static class StateOverridesExtensions
         OverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        long blockNumber,
-        bool commit)
+        long blockNumber)
     {
         if (overrides is not null)
         {
@@ -41,12 +40,9 @@ public static class StateOverridesExtensions
             }
         }
 
-        if (commit)
-        {
-            state.Commit(spec);
-            state.CommitTree(blockNumber);
-            state.RecalculateStateRoot();
-        }
+        state.Commit(spec);
+        state.CommitTree(blockNumber);
+        state.RecalculateStateRoot();
     }
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)

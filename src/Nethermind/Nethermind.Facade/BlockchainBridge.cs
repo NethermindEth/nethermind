@@ -189,10 +189,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
-
-            scope.WorldState.ApplyStateOverrides(_processingEnv.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number, true);
-            header.StateRoot = scope.WorldState.StateRoot;
+            using IReadOnlyTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -200,11 +197,9 @@ namespace Nethermind.Facade
                 tx,
                 stateOverride,
                 true,
-                estimateGasTracer.WithCancellation(cancellationToken),
-                scope);
+                estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState,
-                _specProvider, _blocksConfig);
+            GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
@@ -331,6 +326,19 @@ namespace Nethermind.Facade
         {
             return _stateReader.GetNonce(stateRoot, address);
         }
+
+        private IReadOnlyTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
+        {
+            IReadOnlyTxProcessingScope? scope = _processingEnv.Build(header.StateRoot!);
+
+            if (stateOverride != null)
+            {
+                scope.WorldState.ApplyStateOverrides(_processingEnv.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
+                header.StateRoot = scope.WorldState.StateRoot;
+            }
+            return scope;
+        }
+
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
