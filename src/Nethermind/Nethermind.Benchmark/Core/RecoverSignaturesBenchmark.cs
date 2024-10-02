@@ -207,6 +207,7 @@ namespace Nethermind.Benchmarks.Core
             public event EventHandler<TxPool.TxEventArgs> NewPending;
             public event EventHandler<TxPool.TxEventArgs> RemovedPending;
             public event EventHandler<TxPool.TxEventArgs> EvictedPending;
+            public event EventHandler<Block> TxPoolHeadChanged;
 #pragma warning restore 67
 
             public void AddPeer(ITxPoolPeer peer)
