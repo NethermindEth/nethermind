@@ -509,10 +509,8 @@ namespace Nethermind.Trie.Pruning
                     {
                         lock (_dirtyNodesLock)
                         {
-                            Console.Error.WriteLine($"Acquired here 1 {Environment.StackTrace}");
                             lock (_dirtyNodesWriteLock)
                             {
-                                Console.Error.WriteLine($"Acquired here 2 {Environment.StackTrace}");
                                 Stopwatch sw = Stopwatch.StartNew();
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
@@ -539,9 +537,7 @@ namespace Nethermind.Trie.Pruning
                                     Metrics.PruningTime = sw.ElapsedMilliseconds;
                                     if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
                                 }
-                                Console.Error.WriteLine($"Exited 2");
                             }
-                            Console.Error.WriteLine($"Exited 1");
                         }
 
                         if (_logger.IsDebug) _logger.Debug($"Pruning finished. Unlocked {nameof(TrieStore)}.");
@@ -1023,7 +1019,6 @@ namespace Nethermind.Trie.Pruning
             {
                 lock (_dirtyNodesWriteLock)
                 {
-                    Console.Error.WriteLine($"Acquired here 1 {Environment.StackTrace}");
                     // Double check
                     ClearCommitSetQueue();
                     if (cancellationToken.IsCancellationRequested) return;
