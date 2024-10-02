@@ -88,9 +88,9 @@ public abstract class TransactionForRpc
 
             // Copy reader so we can double parse to get type
             Utf8JsonReader copyReader = reader;
-            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref copyReader);
+            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref copyReader, options);
 
-            TxType discriminator = type.Type ?? DefaultTxType;
+            TxType discriminator = (TxType)(type.Type ?? (ulong)DefaultTxType);
 
             return _types.TryGetByTxType(discriminator, out Type concreteTxType)
                 ? (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options)
@@ -105,7 +105,8 @@ public abstract class TransactionForRpc
 
     private class TransactionType
     {
-        public TxType? Type { get; set; }
+        // Hex value
+        public ulong? Type { get; set; }
     }
 
     internal class TransactionConverter
