@@ -238,11 +238,7 @@ namespace Nethermind.Trie.Pruning
         private int GetNodeShardIdx(Hash256? address, in TreePath path)
         {
             if (_dirtyNodes.Length == 1) return 0;
-            if (address == null)
-            {
-                return path.Path.Bytes[0];
-            }
-            return address.Bytes[0];
+            return path.Path.Bytes[0];
         }
 
         private int GetNodeShardIdx(in TrieStoreDirtyNodesCache.Key key)
@@ -274,9 +270,7 @@ namespace Nethermind.Trie.Pruning
         private void DirtyNodesSaveInCache(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
         {
             TrieStoreDirtyNodesCache cache = GetDirtyNodeShard(key);
-
-            lock (_dirtyNodesWriteLock)
-                cache.SaveInCache(key, node);
+            cache.SaveInCache(key, node);
         }
 
         private bool DirtyNodesIsNodeCached(TrieStoreDirtyNodesCache.Key key)
@@ -294,18 +288,7 @@ namespace Nethermind.Trie.Pruning
         private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key)
         {
             TrieStoreDirtyNodesCache cache = GetDirtyNodeShard(key);
-
-            // So... this is a problem.
-            // This is previously a FindCachedOrUnknown because we can't have it update with unknown when write lock is acquired
-            // But we can't mutate the map from outside during pruning, and we can't lock it because pruning runs in multithread.
-            // So maybe, we can remove the writelock and in each pruning thread, we lock it.
-            // Alternatively we can always return unknown. TODO: Double check the implication of that.
-            if (cache.TryGetValue(key, out TrieNode n))
-            {
-                return n;
-            }
-
-            return new TrieNode(NodeType.Unknown, key.Keccak);
+            return cache.FindCachedOrUnknown(key);
         }
 
         private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, NodeCommitInfo nodeCommitInfo, TrieNode node)
