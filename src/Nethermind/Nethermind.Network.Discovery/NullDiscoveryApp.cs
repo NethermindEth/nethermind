@@ -38,6 +38,11 @@ public class NullDiscoveryApp : IDiscoveryApp
         remove { }
     }
 
+    public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
+    {
+        return AsyncEnumerable.Empty<Node>();
+    }
+
     public event EventHandler<NodeEventArgs>? NodeRemoved
     {
         add { }

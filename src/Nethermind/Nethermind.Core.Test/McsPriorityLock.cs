@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Threading;
-using NUnit.Framework;
-using NUnit.Framework.Internal;
-
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core.Threading;
+using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-[TestFixture]
 public class McsPriorityLockTests
 {
     private McsPriorityLock mcsLock;
@@ -88,7 +84,7 @@ public class McsPriorityLockTests
         }
 
         var expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
-        CollectionAssert.AreEqual(expectedOrder, executionOrder, "Threads did not acquire lock in the order they were started.");
+        Assert.That(expectedOrder, Is.EqualTo(executionOrder), "Threads did not acquire lock in the order they were started.");
     }
 
 
