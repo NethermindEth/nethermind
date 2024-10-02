@@ -80,21 +80,14 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            using var document = JsonDocument.ParseValue(ref reader);
+            // Copy reader so we can double parse
+            Utf8JsonReader copyReader = reader;
+            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref copyReader, options);
 
-            // TODO: For some reason we might get an object wrapped in a String
-            using JsonDocument jsonObject = document.RootElement.ValueKind == JsonValueKind.String
-                ? JsonDocument.Parse(document.RootElement.GetString()!)
-                : document;
-
-            TxType discriminator = DefaultTxType;
-            if (jsonObject.RootElement.TryGetProperty("type", out JsonElement typeProperty))
-            {
-                discriminator = (TxType?)typeProperty.Deserialize(typeof(TxType), options) ?? DefaultTxType;
-            }
+            TxType discriminator = type.Type ?? DefaultTxType;
 
             return _types.TryGetByTxType(discriminator, out Type concreteTxType)
-                ? (TransactionForRpc?)jsonObject.Deserialize(concreteTxType, options)
+                ? (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options)
                 : throw new JsonException("Unknown transaction type");
         }
 
@@ -102,6 +95,11 @@ public abstract class TransactionForRpc
         {
             JsonSerializer.Serialize(writer, value, value.GetType(), options);
         }
+    }
+
+    private class TransactionType
+    {
+        public TxType? Type { get; }
     }
 
     internal class TransactionConverter
