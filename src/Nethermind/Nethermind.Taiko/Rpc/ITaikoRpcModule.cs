@@ -5,11 +5,12 @@ using System.Threading.Tasks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.Taiko.Rpc;
 
 [RpcModule(ModuleType.Eth)]
-public interface ITaikoRpcModule : IRpcModule
+public interface ITaikoRpcModule: IEthRpcModule
 {
     [JsonRpcMethod(
         Description = "Returns the latest L2 block's corresponding L1 origin.",

@@ -43,7 +43,8 @@
     "eip3651TransitionTimestamp": "0x0",
     "eip3855TransitionTimestamp": "0x0",
     "eip3860TransitionTimestamp": "0x0",
-    "terminalTotalDifficulty": "0"
+    "terminalTotalDifficulty": "0",
+    "ontakeTransition": "0xcd340"
   },
   "genesis": {
     "seal": {

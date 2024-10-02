@@ -34,6 +34,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Merge.Plugin.handlers;
 
 namespace Nethermind.Taiko;
 
@@ -163,8 +164,9 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                     new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
                     scope.WorldState,
                     _api.ReceiptStorage,
-                    new BlockhashStore(_api.SpecProvider, scope.WorldState),
+                    _api.TransactionProcessor,
                     new BeaconBlockRootHandler(_api.TransactionProcessor),
+                    new BlockhashStore(_api.SpecProvider, scope.WorldState),
                     _api.LogManager,
                     new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
 
@@ -192,10 +194,13 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
-        IEngineRpcModule engineRpcModule = new EngineRpcModule(
+        TaikoReadOnlyTxProcessingEnv readonlyTxProcessingEnv = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+
+        ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
@@ -228,6 +233,8 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
+            new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
+            new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),
@@ -236,21 +243,18 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 initConfig.DisableGcOnNewPayload
                     ? NoGCStrategy.Instance
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
-            _api.LogManager);
-
-
-
-        ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(engineRpcModule);
+            _api.LogManager,
+            _api.TxPool,
+            _api.BlockTree.AsReadOnly(),
+            readonlyTxProcessingEnv
+            );
 
         _api.RpcModuleProvider.RegisterSingle(engine);
 
         FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
 
-
-        TaikoReadOnlyTxProcessingEnv readonlyTxProcessingEnv = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
-
-        TaikoRpcModule taikoRpc = new(
+        ITaikoRpcModule taikoRpcModule = new TaikoRpcModule(
         _api.Config<IJsonRpcConfig>(),
             _api.CreateBlockchainBridge(),
             _api.BlockTree.AsReadOnly(),
@@ -266,13 +270,10 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             feeHistoryOracle,
             _api.Config<IBlocksConfig>().SecondsPerSlot,
             _api.Config<ISyncConfig>(),
-            l1OriginStore,
-            readonlyTxProcessingEnv
+            l1OriginStore
             );
 
-        _api.RpcModuleProvider.RegisterSingle((ITaikoRpcModule)taikoRpc);
-        _api.RpcModuleProvider.RegisterSingle((ITaikoAuthRpcModule)taikoRpc);
-
+        _api.RpcModuleProvider.RegisterSingle(taikoRpcModule);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }

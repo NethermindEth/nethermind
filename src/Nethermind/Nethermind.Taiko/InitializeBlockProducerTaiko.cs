@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Taiko;

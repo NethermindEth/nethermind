@@ -86,8 +86,9 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             new BlockInvalidTxExecutor(new ExecuteTransactionProcessorAdapter(_api.TransactionProcessor), _api.WorldState),
             _api.WorldState,
             _api.ReceiptStorage,
-            new BlockhashStore(_api.SpecProvider, _api.WorldState),
+            _api.TransactionProcessor,
             new BeaconBlockRootHandler(_api.TransactionProcessor),
+            new BlockhashStore(_api.SpecProvider, _api.WorldState),
             _api.LogManager,
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),
             preWarmer: preWarmer);

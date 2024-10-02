@@ -124,6 +124,7 @@ public class ChainParameters
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public long? OntakeTransition { get; set; }
 
     #region EIP-4844 parameters
     /// <summary>
