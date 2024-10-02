@@ -118,7 +118,7 @@ internal class ChainSpecParamsJson
 
     public long? Eip1559FeeCollectorTransition { get; set; }
 
-    public Address Eip1559FeeCollector { get; set; }
+    public Address FeeCollector { get; set; }
 
     public long? Eip1559BaseFeeMinValueTransition { get; set; }
 
@@ -147,6 +147,7 @@ internal class ChainSpecParamsJson
     public ulong? Eip4844MaxBlobGasPerBlock { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
     public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
+    public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
