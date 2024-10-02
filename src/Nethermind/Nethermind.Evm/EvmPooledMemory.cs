@@ -197,8 +197,9 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
-    public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
+    public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
+        outOfGas = false;
         if (length.IsZero)
         {
             return 0L;
@@ -208,8 +209,10 @@ public struct EvmPooledMemory : IEvmMemory
 
         if (newSize > Size)
         {
-            long newActiveWords = Div32Ceiling(newSize);
-            long activeWords = Div32Ceiling(Size);
+            long newActiveWords = Div32Ceiling(newSize, out outOfGas);
+            if (outOfGas) return 0;
+            long activeWords = Div32Ceiling(Size, out outOfGas);
+            if (outOfGas) return 0;
 
             // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
             ulong cost = (ulong)
@@ -228,6 +231,17 @@ public struct EvmPooledMemory : IEvmMemory
         }
 
         return 0L;
+    }
+
+    public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
+    {
+        long result = CalculateMemoryCost(in location, in length, out bool outOfGas);
+        if (outOfGas)
+        {
+            throw new OutOfGasException();
+        }
+
+        return result;
     }
 
     public TraceMemory GetTrace()

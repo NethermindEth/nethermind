@@ -2714,7 +2714,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
-        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
+        long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (outOfGas) return false;
         return memoryCost == 0L || UpdateGas(memoryCost, ref gasAvailable);
     }
 
