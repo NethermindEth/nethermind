@@ -220,8 +220,8 @@ public partial class BlockProcessor(
 
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
-            _stateProvider.Reset();
-            _stateProvider.StateRoot = branchStateRoot;
+
+            _stateProvider.ResetTo(branchStateRoot);
         }
     }
 
@@ -242,8 +242,7 @@ public partial class BlockProcessor(
     private void RestoreBranch(Hash256 branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _stateProvider.Reset();
-        _stateProvider.StateRoot = branchingPointStateRoot;
+        _stateProvider.ResetTo(branchingPointStateRoot);
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
     }
 
@@ -321,7 +320,6 @@ public partial class BlockProcessor(
 
         if (ShouldComputeStateRoot(header))
         {
-            _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
 

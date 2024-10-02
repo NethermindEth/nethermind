@@ -99,12 +99,13 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resizeCollections = false)
+        public void Reset(bool resizeCollections)
         {
             _stateProvider.Reset(resizeCollections);
             _persistentStorageProvider.Reset(resizeCollections);
             _transientStorageProvider.Reset(resizeCollections);
         }
+
         public void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)
@@ -122,12 +123,17 @@ namespace Nethermind.State
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
 
-        public void FullReset()
+        public void Reset()
         {
-            ResetStateToNull();
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
+        }
+
+        public void FullReset()
+        {
+            ResetStateToNull();
+            Reset();
         }
 
         public void ResetTo(Hash256 stateRoot)
