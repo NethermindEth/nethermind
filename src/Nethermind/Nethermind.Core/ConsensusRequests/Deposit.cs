@@ -52,7 +52,7 @@ public class Deposit : ConsensusRequest
         }
 
         Type = (ConsensusRequestsType)data[0];
-        Pubkey = data.AsMemory()[1..];
+        Pubkey = data.AsMemory()[1..33];
         WithdrawalCredentials = data.Slice(1 + Pubkey.Value.Length, 32);
         Amount = BitConverter.ToUInt64(data, 1 + Pubkey.Value.Length + 32);
         Signature = data.Slice(1 + Pubkey.Value.Length + 32 + sizeof(ulong));
