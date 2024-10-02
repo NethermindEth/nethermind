@@ -78,7 +78,7 @@ internal class IlInfo
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
-            if(logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
+            if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
 
             vmState.DataStackHead = stack.Head;
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);

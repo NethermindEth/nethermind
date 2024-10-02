@@ -61,7 +61,7 @@ public static class IlAnalyzer
     {
         Metrics.IlvmContractsAnalyzed++;
 
-        if(logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.CodeHash}");
+        if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.CodeHash}");
         return Task.Run(() => Analysis(codeInfo, mode, logger));
     }
 
@@ -164,11 +164,11 @@ public static class IlAnalyzer
         switch (mode)
         {
             case IlInfo.ILMode.PatternMatching:
-                if(logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.CodeHash}");
+                if (logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.CodeHash}");
                 CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
             case IlInfo.ILMode.SubsegmentsCompiling:
-                if(logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.CodeHash}");
+                if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.CodeHash}");
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo);
                 break;
         }
