@@ -86,9 +86,10 @@ public abstract class TransactionForRpc
                 return JsonSerializer.Deserialize<TransactionForRpc>(escapedJson, options);
             }
 
-            // Copy reader so we can double parse to get type
-            Utf8JsonReader copyReader = reader;
-            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref copyReader, options);
+            // Copy the reader so we can do a double parse:
+            // The first parse extract the `Type` while the second parses the entire Transaction
+            Utf8JsonReader txTypeReader = reader;
+            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref txTypeReader, options);
 
             TxType discriminator = (TxType)(type.Type ?? (ulong)DefaultTxType);
 
@@ -103,7 +104,10 @@ public abstract class TransactionForRpc
         }
     }
 
-    private class TransactionType
+    /// <remarks>
+    /// Used only for finding the <see cref="TransactionForRpc.Type"/> field when deserializing a <see cref="TransactionForRpc"/>
+    /// </remarks>
+    private struct TransactionType
     {
         // Hex value
         public ulong? Type { get; set; }
