@@ -11,9 +11,9 @@ using Nethermind.Int256;
 namespace Nethermind.Evm
 {
     public sealed class AccessTracker
-    {        
+    {
         public JournalSet<Address> AccessedAddresses { get; }
-        public JournalSet<StorageCell> AccessedStorageCells { get;  } 
+        public JournalSet<StorageCell> AccessedStorageCells { get; }
         public JournalCollection<LogEntry> Logs { get; }
         public JournalSet<Address> DestroyList { get; }
         public HashSet<AddressAsKey> CreateList { get; }
@@ -74,7 +74,7 @@ namespace Nethermind.Evm
         {
             _addressesSnapshots = AccessedAddresses.TakeSnapshot();
             _storageKeysSnapshots = AccessedStorageCells.TakeSnapshot();
-            _destroyListSnapshots= DestroyList.TakeSnapshot();
+            _destroyListSnapshots = DestroyList.TakeSnapshot();
             _logsSnapshots = Logs.TakeSnapshot();
         }
 

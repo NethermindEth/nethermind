@@ -94,7 +94,7 @@ namespace Nethermind.Evm
         public AccessTracker AccessTracker => _accessTracker;
 
         private readonly AccessTracker _accessTracker;
-        
+
         public int DataStackHead = 0;
 
         public int ReturnStackHead = 0;
@@ -272,6 +272,6 @@ namespace Nethermind.Evm
             {
                 _accessTracker.Restore();
             }
-        }        
+        }
     }
 }
