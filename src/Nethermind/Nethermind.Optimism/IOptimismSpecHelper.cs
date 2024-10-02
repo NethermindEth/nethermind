@@ -7,7 +7,7 @@ namespace Nethermind.Optimism;
 
 public interface IOptimismSpecHelper
 {
-    Address L1FeeReceiver { get; }
+    Address? L1FeeReceiver { get; }
 
     bool IsBedrock(BlockHeader header);
     bool IsRegolith(BlockHeader header);

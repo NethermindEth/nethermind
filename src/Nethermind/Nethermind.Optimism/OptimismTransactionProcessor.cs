@@ -146,7 +146,7 @@ public sealed class OptimismTransactionProcessor(
             if (opSpecHelper.IsBedrock(header))
             {
                 UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver, l1Cost, spec);
+                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
             }
         }
     }

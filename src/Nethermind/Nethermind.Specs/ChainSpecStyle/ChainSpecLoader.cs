@@ -336,25 +336,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 }
             }
         }
-        else if (chainSpecJson.Engine?.Optimism is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Optimism;
-            chainSpec.Optimism = new OptimismParameters
-            {
-                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
-                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
-                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
-                EcotoneTimestamp = chainSpecJson.Engine.Optimism.EcotoneTimestamp,
-                FjordTimestamp = chainSpecJson.Engine.Optimism.FjordTimestamp,
-                GraniteTimestamp = chainSpecJson.Engine.Optimism.GraniteTimestamp,
-
-                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
-                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
-                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
-            };
-        }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
@@ -381,6 +362,10 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
 
         chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters);
+        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        {
+            chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+        }
 
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))
         {
