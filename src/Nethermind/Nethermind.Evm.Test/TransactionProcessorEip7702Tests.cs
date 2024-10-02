@@ -17,9 +17,9 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 using System;
 using System.Linq;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
@@ -78,8 +78,15 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(new Address(cell.ToArray()), Is.EqualTo(sender.Address));
     }
 
-    [Test]
-    public void Execute_TxHasAuthorizationCodeButAuthorityHasCode_NoAuthorizedCodeIsExecuted()
+    public static IEnumerable<object[]> DelegatedAndNotDelegatedCodeCases()
+    {
+        byte[] delegatedCode = new byte[23];
+        Eip7702Constants.DelegationHeader.CopyTo(delegatedCode);
+        yield return new object[] { delegatedCode, true };
+        yield return new object[] { Prepare.EvmCode.Op(Instruction.GAS).Done, false };
+    }
+    [TestCaseSource(nameof(DelegatedAndNotDelegatedCodeCases))]
+    public void Execute_TxHasAuthorizationCodeButAuthorityHasCode_OnlyInsertIfExistingCodeIsDelegated(byte[] authorityCode, bool shouldInsert)
     {
         PrivateKey sender = TestItem.PrivateKeyA;
         PrivateKey signer = TestItem.PrivateKeyB;
@@ -92,7 +99,7 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.SSTORE)
             .Done;
         DeployCode(codeSource, code);
-        DeployCode(signer.Address, Prepare.EvmCode.Op(Instruction.GAS).Done);
+        DeployCode(signer.Address, authorityCode);
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.SetCode)
@@ -108,9 +115,11 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        ReadOnlySpan<byte> signerCode = _stateProvider.GetCode(signer.Address);
 
-        Assert.That(cell.ToArray(), Is.EquivalentTo(new[] { 0x0 }));
+        byte[] expectedCode = shouldInsert ? [..Eip7702Constants.DelegationHeader, ..codeSource.Bytes] : authorityCode;
+
+        Assert.That(signerCode.ToArray(), Is.EquivalentTo(expectedCode));
     }
 
     public static IEnumerable<object[]> SenderSignerCases()
@@ -495,6 +504,105 @@ internal class TransactionProcessorEip7702Tests
 
         TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(expectedValue));
+    }
+
+    public static IEnumerable<object[]> CountsAsAccessedCases()
+    {
+        EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork);
+
+        yield return new object[]
+        {
+             new AuthorizationTuple[]
+             {
+                 ethereumEcdsa.Sign(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+                 ethereumEcdsa.Sign(TestItem.PrivateKeyB, 1, TestItem.AddressF, 0),
+             },
+             new Address[]
+             {
+                 TestItem.AddressA,
+                 TestItem.AddressB
+             }
+        };
+        yield return new object[]
+        {
+             new AuthorizationTuple[]
+             {
+                 ethereumEcdsa.Sign(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+                 ethereumEcdsa.Sign(TestItem.PrivateKeyB, 2, TestItem.AddressF, 0),
+             },
+             new Address[]
+             {
+                 TestItem.AddressA,
+             }
+        };
+        yield return new object[]
+        {
+             new AuthorizationTuple[]
+             {
+                 ethereumEcdsa.Sign(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
+                 //Bad signature
+                 new AuthorizationTuple(1, TestItem.AddressF, 0, new Signature(new byte[65]), TestItem.AddressA)
+             },
+             new Address[]
+             {
+                 TestItem.AddressA,
+             }
+        };
+    }
+
+    [TestCaseSource(nameof(CountsAsAccessedCases))]
+    public void Execute_CombinationOfValidAndInvalidTuples_AddsTheCorrectAddressesToAccessedAddresses(AuthorizationTuple[] tuples, Address[] shouldCountAsAccessed)
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(tuples)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+
+        AccessTxTracer txTracer = new AccessTxTracer(); 
+        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, txTracer);
+        Assert.That(txTracer.AccessList.Select(a=>a.Address), Is.SupersetOf(shouldCountAsAccessed));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Execute_AuthorityAccountExistsOrNot_NonceIsIncrementedByOne(bool accountExists)
+    {
+        PrivateKey authority = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyB;
+
+        if (accountExists)
+            _stateProvider.CreateAccount(authority.Address, 0);
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        AuthorizationTuple[] tuples =
+        {
+            _ethereumEcdsa.Sign(authority, 1, sender.Address, 0),
+        };
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(tuples)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+
+        Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)1));
     }
 
     private void DeployCode(Address codeSource, byte[] code)
