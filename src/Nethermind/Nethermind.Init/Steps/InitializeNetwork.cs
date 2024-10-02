@@ -106,16 +106,6 @@ public class InitializeNetwork : IStep
         _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
         _api.DisposeStack.Push(_api.SyncPeerPool);
 
-        if (_api.TrieStore is HealingTrieStore healingTrieStore)
-        {
-            healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
-        }
-
-        if (_api.WorldState is HealingWorldState healingWorldState)
-        {
-            healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
-        }
-
         IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
         {

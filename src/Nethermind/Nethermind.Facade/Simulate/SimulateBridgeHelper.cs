@@ -51,7 +51,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
         stateProvider.Commit(releaseSpec);
         stateProvider.CommitTree(blockHeader.Number - 1);
-        stateProvider.RecalculateStateRoot();
 
         blockHeader.StateRoot = stateProvider.StateRoot;
     }
@@ -193,7 +192,6 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         }
 
         stateProvider.Restore(shoot);
-        stateProvider.RecalculateStateRoot();
 
         currentBlock = currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
         error = null;

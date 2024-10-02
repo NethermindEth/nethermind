@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
+#pragma warning disable CS9113 // Parameter is unread.
 
 namespace Nethermind.Facade.Simulate;
 

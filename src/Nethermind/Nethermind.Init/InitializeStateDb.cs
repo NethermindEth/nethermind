@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -87,90 +85,30 @@ public class InitializeStateDb : IStep
         }
 
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb;
-        IKeyValueStoreWithBatching stateDb = getApi.DbProvider.StateDb;
-        IPersistenceStrategy persistenceStrategy;
-        IPruningStrategy pruningStrategy;
-        if (pruningConfig.Mode.IsMemory())
-        {
-            persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-            if (pruningConfig.Mode.IsFull())
-            {
-                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
-                getApi.DisposeStack.Push(triggerPersistenceStrategy);
-                persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-            }
 
-            if ((_api.NodeStorageFactory.CurrentKeyScheme != INodeStorage.KeyScheme.Hash || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.HalfPath)
-                && pruningConfig.CacheMb > 2000)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than 2000MB is not recommended as it may cause long memory pruning time which affect attestation.");
-            }
-
-            pruningStrategy = Prune
-                .WhenCacheReaches(pruningConfig.CacheMb.MB())
-                // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
-                // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
-                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
-                .KeepingLastNState(pruningConfig.PruningBoundary);
-        }
-        else
-        {
-            pruningStrategy = No.Pruning;
-            persistenceStrategy = Persist.EveryBlock;
-        }
-
-        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateDb);
-
-        TrieStore trieStore = syncConfig.TrieHealing
-            ? new HealingTrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager)
-            : new TrieStore(
-                mainNodeStorage,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager);
-
-        // TODO: Needed by node serving. Probably should use `StateReader` instead.
-        setApi.TrieStore = trieStore;
-
-        ITrieStore mainWorldTrieStore = trieStore;
         PreBlockCaches? preBlockCaches = null;
         if (blockConfig.PreWarmStateOnBlockProcessing)
         {
             preBlockCaches = new PreBlockCaches();
-            mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
         }
 
-        IWorldState worldState = syncConfig.TrieHealing
-            ? new HealingWorldState(
-                mainWorldTrieStore,
-                codeDb,
-                getApi.LogManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false)
-            : new WorldState(
-                mainWorldTrieStore,
-                codeDb,
-                getApi.LogManager,
-                preBlockCaches,
-                // Main thread should only read from prewarm caches, not spend extra time updating them.
-                populatePreBlockCache: false);
+        IStateFactory stateFactory = setApi.StateFactory!;
+
+        // Main thread should only read from prewarm caches, not spend extra time updating them.
+        IWorldState worldState = new WorldState(stateFactory, codeDb, getApi.LogManager, preBlockCaches,
+            populatePreBlockCache: false);
+        setApi.WorldState = worldState;
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
             worldState,
-            trieStore,
+            stateFactory,
             getApi.DbProvider,
             getApi.LogManager);
 
         // TODO: Don't forget this
         BoundaryWatcher boundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(boundaryWatcher);
-        getApi.DisposeStack.Push(mainWorldTrieStore);
 
         setApi.WorldState = stateManager.GlobalWorldState;
         setApi.StateReader = stateManager.GlobalStateReader;
@@ -202,70 +140,11 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore, _logger);
-
         return Task.CompletedTask;
     }
 
     private static void InitBlockTraceDumper()
     {
         EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
-    }
-
-    private static void InitializeFullPruning(
-        IPruningConfig pruningConfig,
-        IInitConfig initConfig,
-        INethermindApi api,
-        IStateReader stateReader,
-        INodeStorage mainNodeStorage,
-        IPruningTrieStore trieStore,
-        ILogger logger)
-    {
-        IPruningTrigger? CreateAutomaticTrigger(string dbPath)
-        {
-            long threshold = pruningConfig.FullPruningThresholdMb.MB();
-
-            switch (pruningConfig.FullPruningTrigger)
-            {
-                case FullPruningTrigger.StateDbSize:
-                    if (logger.IsInfo) logger.Info($"Full pruning will activate when the database size reaches {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
-                    return new PathSizePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
-                case FullPruningTrigger.VolumeFreeSpace:
-                    if (logger.IsInfo) logger.Info($"Full pruning will activate when disk free space drops below {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
-                    return new DiskFreeSpacePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
-                default:
-                    return null;
-            }
-        }
-
-        if (pruningConfig.Mode.IsFull())
-        {
-            IDb stateDb = api.DbProvider!.StateDb;
-            if (stateDb is IFullPruningDb fullPruningDb)
-            {
-                string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
-                IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(pruningDbPath);
-                if (pruningTrigger is not null)
-                {
-                    api.PruningTrigger.Add(pruningTrigger);
-                }
-
-                IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(
-                    fullPruningDb,
-                    api.NodeStorageFactory,
-                    mainNodeStorage,
-                    api.PruningTrigger,
-                    pruningConfig,
-                    api.BlockTree!,
-                    stateReader,
-                    api.ProcessExit!,
-                    ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive,
-                    trieStore,
-                    api.LogManager);
-                api.DisposeStack.Push(pruner);
-            }
-        }
     }
 }

@@ -6,13 +6,13 @@
 /// </summary>
 public class PaprikaConfig : IPaprikaConfig
 {
-    public ushort CacheStateBeyond { get; set; } = 8;
+    public ushort CacheStateBeyond { get; set; } = ushort.MaxValue;
 
-    public int CacheStatePerBlock { get; set; } = 5000;
+    public int CacheStatePerBlock { get; set; } = 0;
 
-    public ushort CacheMerkleBeyond { get; set; } = 8;
+    public ushort CacheMerkleBeyond { get; set; } = ushort.MaxValue;
 
-    public int CacheMerklePerBlock { get; set; } = 5000;
+    public int CacheMerklePerBlock { get; set; } = 0;
 
     public bool ParallelMerkle { get; set; } = true;
 }
