@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
         {
-            long gasCost = GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Base;
+            long gasCost = GasCostOf.VeryLow * 3;
             return gasCost;
         }
 
