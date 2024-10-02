@@ -309,7 +309,7 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// Transactions that allows code for EOA temporarily
+        /// Transactions that allows code delegation for EOA
         /// </summary>
         bool IsEip7702Enabled { get; }
 
