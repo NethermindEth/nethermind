@@ -35,6 +35,7 @@ using Polly;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
+
     internal class AbortDestinationPattern : InstructionChunk // for testing
     {
         public string Name => nameof(AbortDestinationPattern);
@@ -68,7 +69,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         public long GasCost(EvmState vmState, IReleaseSpec spec)
         {
-            long gasCost = GasCostOf.VeryLow + GasCostOf.VeryLow + GasCostOf.Base;
+            long gasCost = GasCostOf.VeryLow * 3;
             return gasCost;
         }
 
@@ -707,6 +708,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .MUL(23)
                 .JUMP(0)
                 .Done, EvmExceptionType.StackUnderflow);
+
+            yield return (Instruction.INVALID, Prepare.EvmCode
+                .FromCode("0x6060604052361561001f5760e060020a600035046372ea4b8c811461010c575b61011b3460008080670de0b6b3a764000084106101d557600180548101908190556003805433929081101561000257906000526020600020900160006101000a815481600160a060020a0302191690830217905550670de0b6b3a7640000840393508350670de0b6b3a76400006000600082828250540192505081905550600260016000505411151561011d5760038054829081101561000257906000526020600020900160009054906101000a9004600160a060020a0316600160a060020a03166000600060005054604051809050600060405180830381858888f150505080555060016002556101d5565b60018054016060908152602090f35b005b60018054600354910114156101d55760038054600254600101909102900392505b6003546002549003600119018310156101e357600380548490811015610002579082526040517fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b9190910154600160a060020a03169082906706f05b59d3b200009082818181858883f1505090546706f05b59d3b1ffff1901835550506001929092019161013e565b505060028054600101905550505b600080548501905550505050565b506002548154919250600190810190910460001901905b60035460025490036001190183101561029a576003805484908110156100025760009182526040517fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b9190910154600160a060020a03169190838504600019019082818181858883f1505081548486049003600190810190925550600290830183020460001901841415905061028e576001015b600192909201916101fa565b60038054600254810182018083559190829080158290116101c75760008390526101c7907fc2575a0e9e593c00f959f8c92f12db2869c3395a3b0502d05e2516446f71f85b9081019083015b808211156102fa57600081556001016102e6565b509056")
+                .Done, EvmExceptionType.StackUnderflow);
         }
 
         [Test]
@@ -1170,6 +1175,46 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
 
             Assert.That(iLEvmState.EvmException == testcase.exceptionType);
+        }
+
+        [Test]
+        public void Custom_Temporaty_Test()
+        {
+            byte[] testcase = Prepare.EvmCode
+                .PushData(23)
+                .DUPx(1)
+                .STOP()
+                .Done;
+
+            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
+            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()]);
+            var envExCtx = new ExecutionEnvironment(new CodeInfo(testcase), Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
+            var stack = new byte[1024 * 32];
+            var inputBuffer = envExCtx.InputData;
+            var returnBuffer =
+                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
+                .Select(i => (byte)i).ToArray());
+
+            TestState.CreateAccount(Address.FromNumber(1), 1000000);
+            TestState.InsertCode(Address.FromNumber(1), testcase, Prague.Instance);
+
+            var state = new EvmState(
+                1_000_000,
+                new ExecutionEnvironment(new CodeInfo(testcase), Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                ExecutionType.CALL,
+                isTopLevel: false,
+                Snapshot.Empty,
+                isContinuation: false);
+
+            IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
+            ICodeInfoRepository codeInfoRepository = typeof(VirtualMachine<VirtualMachine.IsTracing>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(evm) as ICodeInfoRepository;
+
+            state.InitStacks();
+
+            ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
+            var metadata = IlAnalyzer.StripByteCode(testcase);
+            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
+            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
         }
     }
 }
