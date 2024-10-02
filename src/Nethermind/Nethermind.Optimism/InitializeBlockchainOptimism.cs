@@ -22,10 +22,13 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
+    private readonly OptimismChainSpecEngineParameters _chainSpecParameters = api.ChainSpec
+        .EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
+
     protected override async Task InitBlockchain()
     {
-        api.SpecHelper = new(api.ChainSpec.Optimism);
-        api.L1CostHelper = new(api.SpecHelper, api.ChainSpec.Optimism.L1BlockAddress);
+        api.SpecHelper = new(_chainSpecParameters);
+        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
 
         await base.InitBlockchain();
     }

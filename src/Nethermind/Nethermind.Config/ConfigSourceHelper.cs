@@ -8,6 +8,8 @@ using System.Linq;
 using Nethermind.Int256;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Config
 {
@@ -15,6 +17,15 @@ namespace Nethermind.Config
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
+            if (Nullable.GetUnderlyingType(valueType) is var nullableType && nullableType is not null)
+            {
+                if (string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    return null;
+                }
+
+                return ParseValue(nullableType, valueString, category, name);
+            }
             try
             {
                 object value;
@@ -23,8 +34,17 @@ namespace Nethermind.Config
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
+                    if (itemType == typeof(byte) && !valueString.Trim().StartsWith('['))
+                    {
+                        // hex encoded byte array
+                        string hex = valueString.Trim().RemoveStart('0').RemoveStart('x').TrimEnd();
+                        value = Enumerable.Range(0, hex.Length)
+                            .Where(x => x % 2 == 0)
+                            .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
+                            .ToArray();
+                    }
                     //In case of collection of objects (more complex config models) we parse entire collection
-                    if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
+                    else if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                     {
                         var objCollection = JsonSerializer.Deserialize(valueString, valueType);
                         value = objCollection;
@@ -88,40 +108,36 @@ namespace Nethermind.Config
 
         public static bool TryFromHex(Type type, string itemValue, out object value)
         {
+            if (!itemValue.StartsWith("0x"))
+            {
+                value = null;
+                return false;
+            }
             switch (Type.GetTypeCode(type))
             {
                 case TypeCode.Byte:
-                    value = Byte.Parse(itemValue);
+                    value = Convert.ToByte(itemValue, 16);
                     return true;
                 case TypeCode.SByte:
-                    value = SByte.Parse(itemValue);
+                    value = Convert.ToSByte(itemValue, 16);
                     return true;
                 case TypeCode.UInt16:
-                    value = UInt16.Parse(itemValue);
+                    value = Convert.ToUInt16(itemValue, 16);
                     return true;
                 case TypeCode.UInt32:
-                    value = UInt32.Parse(itemValue);
+                    value = Convert.ToUInt32(itemValue, 16);
                     return true;
                 case TypeCode.UInt64:
-                    value = UInt64.Parse(itemValue);
+                    value = Convert.ToUInt64(itemValue, 16);
                     return true;
                 case TypeCode.Int16:
-                    value = Int16.Parse(itemValue);
+                    value = Convert.ToInt16(itemValue, 16);
                     return true;
                 case TypeCode.Int32:
-                    value = Int32.Parse(itemValue);
+                    value = Convert.ToInt32(itemValue, 16);
                     return true;
                 case TypeCode.Int64:
-                    value = Int64.Parse(itemValue);
-                    return true;
-                case TypeCode.Decimal:
-                    value = Decimal.Parse(itemValue);
-                    return true;
-                case TypeCode.Double:
-                    value = Double.Parse(itemValue);
-                    return true;
-                case TypeCode.Single:
-                    value = Single.Parse(itemValue);
+                    value = Convert.ToInt64(itemValue, 16);
                     return true;
                 default:
                     value = null;
@@ -131,9 +147,33 @@ namespace Nethermind.Config
 
         private static object GetValue(Type valueType, string itemValue)
         {
+            if (Nullable.GetUnderlyingType(valueType) is var nullableType && nullableType is not null)
+            {
+                if (string.IsNullOrEmpty(itemValue) || itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    return null;
+                }
+
+                return GetValue(nullableType, itemValue);
+            }
+
             if (valueType == typeof(UInt256))
             {
                 return UInt256.Parse(itemValue);
+            }
+
+            if (valueType == typeof(Address))
+            {
+                if (Address.TryParse(itemValue, out var address))
+                {
+                    return address;
+                }
+                throw new FormatException($"Could not parse {itemValue} to {typeof(Address)}");
+            }
+
+            if (valueType == typeof(Hash256))
+            {
+                return new Hash256(itemValue);
             }
 
             if (valueType.IsEnum)
@@ -151,13 +191,7 @@ namespace Nethermind.Config
                 return value;
             }
 
-            var nullableType = Nullable.GetUnderlyingType(valueType);
-
-            return nullableType is null
-                ? Convert.ChangeType(itemValue, valueType)
-                : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase)
-                    ? Convert.ChangeType(itemValue, nullableType)
-                    : null;
+            return Convert.ChangeType(itemValue, valueType);
         }
     }
 }

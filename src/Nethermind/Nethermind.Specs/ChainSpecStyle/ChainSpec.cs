@@ -40,11 +40,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public EthashParameters Ethash { get; set; }
 
-        public OptimismParameters Optimism { get; set; }
-
         public ChainParameters Parameters { get; set; }
 
-        public ChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 
