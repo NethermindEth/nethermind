@@ -58,6 +58,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     void ResetTo(Hash256 stateRoot);
 
+    /// <summary>
+    /// Fully resets the state, making it unusable until <see cref="StateRoot"/> is set again that will arm it again.
+    /// </summary>
     void FullReset();
 
     /// <summary>

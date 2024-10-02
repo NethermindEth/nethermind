@@ -17,8 +17,7 @@ public class ReadOnlyTxProcessingScopeTests
     {
         ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
             Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IWorldState>(),
-            TestItem.KeccakB
+            Substitute.For<IWorldState>()
         );
 
         env.Dispose();

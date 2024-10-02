@@ -61,9 +61,8 @@ namespace Nethermind.Consensus.Processing
 
         public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
-            Hash256 originalStateRoot = StateProvider.StateRoot;
             StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider);
         }
     }
 }
