@@ -411,13 +411,13 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_not_pick_blob_txs_with_MaxFeePerBlobGas_lower_than_CurrentPricePerBlobGas([Values(1, 2, 99, 100, 101, 1000)] int threshold)
+    public void should_not_pick_blob_txs_with_MaxFeePerBlobGas_lower_than_CurrentFeePerBlobGas([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        const int currentPricePerBlobGasInGwei = 250;
-        _headInfo.CurrentPricePerBlobGas.Returns(currentPricePerBlobGasInGwei.GWei());
+        const int currentFeePerBlobGas = 250;
+        _headInfo.CurrentFeePerBlobGas.Returns(currentFeePerBlobGas.GWei());
 
         // add 256 transactions with MaxFeePerBlobGas 0-255
         int addedTxsCount = TestItem.PrivateKeys.Length;
@@ -437,7 +437,7 @@ public class TxBroadcasterTests
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         // count number of expected hashes to broadcast
-        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentPricePerBlobGasInGwei);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentFeePerBlobGas);
 
         // prepare list of expected hashes to broadcast
         List<Transaction> expectedTxs = new();
@@ -453,7 +453,7 @@ public class TxBroadcasterTests
         pickedHashes.Count.Should().Be(expectedCount);
 
         // check if number of hashes to broadcast (with MaxFeePerBlobGas >= current) is correct
-        expectedTxs.Count(t => t.MaxFeePerBlobGas >= (UInt256)currentPricePerBlobGasInGwei).Should().Be(expectedCount);
+        expectedTxs.Count(t => t.MaxFeePerBlobGas >= (UInt256)currentFeePerBlobGas).Should().Be(expectedCount);
     }
 
     [Test]

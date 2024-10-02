@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
@@ -18,6 +19,8 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestampConst = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
+    //TODO correct this timestamp!
+    public const ulong PragueTimestamp = ulong.MaxValue - 2;
 
     private GnosisSpecProvider() { }
 
@@ -34,7 +37,8 @@ public class GnosisSpecProvider : ISpecProvider
             {
                 null or < ShanghaiTimestamp => London.Instance,
                 < CancunTimestamp => Shanghai.Instance,
-                _ => Cancun.Instance
+                < PragueTimestamp => Cancun.Instance,
+                _ => PragueGnosis.Instance
             }
         };
     }

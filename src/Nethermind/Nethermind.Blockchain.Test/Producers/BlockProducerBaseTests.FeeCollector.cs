@@ -16,11 +16,11 @@ public partial class BlockProducerBaseTests
     {
         public partial class ScenarioBuilder
         {
-            private Address _eip1559FeeCollector = null!;
+            private Address _feeCollector = null!;
 
-            public ScenarioBuilder WithEip1559FeeCollector(Address address)
+            public ScenarioBuilder WithFeeCollector(Address address)
             {
-                _eip1559FeeCollector = address;
+                _feeCollector = address;
                 return this;
             }
 
@@ -33,9 +33,9 @@ public partial class BlockProducerBaseTests
             private async Task<ScenarioBuilder> AssertNewBlockFeeCollectedAsync(UInt256 expectedFeeCollected, params Transaction[] transactions)
             {
                 await ExecuteAntecedentIfNeeded();
-                UInt256 balanceBefore = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
+                UInt256 balanceBefore = _testRpcBlockchain.State.GetBalance(_feeCollector);
                 await _testRpcBlockchain.AddBlock(transactions);
-                UInt256 balanceAfter = _testRpcBlockchain.State.GetBalance(_eip1559FeeCollector);
+                UInt256 balanceAfter = _testRpcBlockchain.State.GetBalance(_feeCollector);
                 Assert.That(balanceAfter - balanceBefore, Is.EqualTo(expectedFeeCollected));
 
                 return this;
@@ -49,7 +49,7 @@ public partial class BlockProducerBaseTests
         long gasTarget = 3000000;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
-            .WithEip1559FeeCollector(TestItem.AddressE)
+            .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
@@ -65,7 +65,7 @@ public partial class BlockProducerBaseTests
     {
         long gasTarget = 3000000;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
-            .WithEip1559FeeCollector(TestItem.AddressE)
+            .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
@@ -82,7 +82,7 @@ public partial class BlockProducerBaseTests
         long gasTarget = 3000000;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
-            .WithEip1559FeeCollector(TestItem.AddressE)
+            .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
