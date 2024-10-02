@@ -597,7 +597,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     unspentGas,
                     env,
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
-                    true,
                     snapshot,
                     accessedItems))
                 {
