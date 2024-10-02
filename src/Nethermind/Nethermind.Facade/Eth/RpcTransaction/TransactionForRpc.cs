@@ -80,9 +80,15 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            // Copy reader so we can double parse
+            if (reader.ValueIsEscaped)
+            {
+                string escapedJson = JsonSerializer.Deserialize<string>(ref reader);
+                return JsonSerializer.Deserialize<TransactionForRpc>(escapedJson, options);
+            }
+
+            // Copy reader so we can double parse to get type
             Utf8JsonReader copyReader = reader;
-            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref copyReader, options);
+            TransactionType type = JsonSerializer.Deserialize<TransactionType>(ref copyReader);
 
             TxType discriminator = type.Type ?? DefaultTxType;
 
@@ -99,7 +105,7 @@ public abstract class TransactionForRpc
 
     private class TransactionType
     {
-        public TxType? Type { get; }
+        public TxType? Type { get; set; }
     }
 
     internal class TransactionConverter
