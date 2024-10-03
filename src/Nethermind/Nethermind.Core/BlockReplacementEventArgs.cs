@@ -3,8 +3,9 @@
 
 namespace Nethermind.Core
 {
-    public class BlockReplacementEventArgs(Block block, Block? previousBlock = null) : BlockEventArgs(block)
+    public class BlockReplacementEventArgs(Block block, Block? previousBlock = null, bool isSyncing = false) : BlockEventArgs(block)
     {
         public Block? PreviousBlock { get; } = previousBlock;
+        public bool IsSyncing { get; } = isSyncing;
     }
 }
