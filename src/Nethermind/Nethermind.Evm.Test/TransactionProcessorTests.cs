@@ -391,7 +391,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+        long intrinsic = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance, out var floorGas);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -432,8 +432,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-
+        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec, out var floorGas);
         _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
@@ -498,7 +497,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec, out var floorGas);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -540,7 +539,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec, out var floorGas);
 
         GethLikeTxMemoryTracer gethTracer = new(GethTraceOptions.Default);
         _transactionProcessor.CallAndRestore(tx, block.Header, gethTracer);
@@ -580,7 +579,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = Berlin.Instance;
-        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+        long intrinsic = IntrinsicGasCalculator.Calculate(tx, releaseSpec, out var floorGas);
 
         _transactionProcessor.Execute(initTx, block.Header, NullTxTracer.Instance);
 

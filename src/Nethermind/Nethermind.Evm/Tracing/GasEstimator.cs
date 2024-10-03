@@ -50,8 +50,7 @@ namespace Nethermind.Evm.Tracing
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             }
 
-            long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-            long floorGas = IntrinsicGasCalculator.CalculateFloorGas(tx, releaseSpec);
+            long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec, out var floorGas);
 
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
             long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= intrinsicGas)

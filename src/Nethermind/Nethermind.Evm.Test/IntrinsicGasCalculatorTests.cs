@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
-            IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance).Should().Be(testCase.Cost);
+            IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance, out var floorGas).Should().Be(testCase.Cost);
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -70,11 +70,11 @@ namespace Nethermind.Evm.Test
             {
                 if (!supportsAccessLists)
                 {
-                    Assert.Throws<InvalidDataException>(() => IntrinsicGasCalculator.Calculate(tx, spec));
+                    Assert.Throws<InvalidDataException>(() => IntrinsicGasCalculator.Calculate(tx, spec, out var floorGas));
                 }
                 else
                 {
-                    IntrinsicGasCalculator.Calculate(tx, spec).Should().Be(21000 + testCase.Cost, spec.Name);
+                    IntrinsicGasCalculator.Calculate(tx, spec, out var floorGas).Should().Be(21000 + testCase.Cost, spec.Name);
                 }
             }
 
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
 
             void Test(IReleaseSpec spec, bool isAfterRepricing)
             {
-                IntrinsicGasCalculator.Calculate(tx, spec).Should()
+                IntrinsicGasCalculator.Calculate(tx, spec, out var floorGas).Should()
                     .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
                         testCase.Data.ToHexString());
             }
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.Test
                 .WithAuthorizationCode(testCase.AuthorizationList)
                 .TestObject;
 
-            IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
+            IntrinsicGasCalculator.Calculate(tx, Prague.Instance, out var floorGas)
                 .Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
         }
 
@@ -198,7 +198,7 @@ namespace Nethermind.Evm.Test
                 )
                 .TestObject;
 
-            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance, out var floorGas), Throws.InstanceOf<InvalidDataException>());
         }
     }
 }

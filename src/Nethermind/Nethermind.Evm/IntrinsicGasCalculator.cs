@@ -15,9 +15,9 @@ namespace Nethermind.Evm;
 
 public static class IntrinsicGasCalculator
 {
-    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec) =>
+    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec, out long floorGas) =>
         GasCostOf.Transaction
-        + DataCost(transaction, releaseSpec)
+        + DataCost(transaction, releaseSpec, out floorGas)
         + CreateCost(transaction, releaseSpec)
         + AccessListCost(transaction, releaseSpec)
         + AuthorizationListCost(transaction, releaseSpec);
@@ -25,13 +25,7 @@ public static class IntrinsicGasCalculator
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
-    public static long CalculateFloorGas(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        return GasCostOf.Transaction
-               + FloorCallDataCost(transaction, releaseSpec);
-    }
-
-    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
+    private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec, out long floorGas)
     {
         long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
@@ -40,6 +34,11 @@ public static class IntrinsicGasCalculator
 
         long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
             ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
+            : 0;
+
+        var totalTokens = totalZeros + (data.Length - totalZeros) * 4;
+        floorGas = releaseSpec.IsEip7623Enabled
+            ? GasCostOf.Transaction + totalTokens * GasCostOf.TotalCostFloorPerTokenEip7623
             : 0;
 
         return baseDataCost +
