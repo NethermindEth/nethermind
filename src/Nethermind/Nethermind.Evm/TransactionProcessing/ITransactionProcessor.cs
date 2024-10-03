@@ -12,25 +12,21 @@ public interface ITransactionProcessor
     /// <summary>
     /// Execute transaction, commit state
     /// </summary>
-    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
-        Dictionary<Address, AccountOverride>? stateOverride = null);
+    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
-    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
-        Dictionary<Address, AccountOverride>? stateOverride = null);
+    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
-    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
-        Dictionary<Address, AccountOverride>? stateOverride = null);
+    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, no validations, commit state
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
-    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
-        Dictionary<Address, AccountOverride>? stateOverride = null);
+    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 }

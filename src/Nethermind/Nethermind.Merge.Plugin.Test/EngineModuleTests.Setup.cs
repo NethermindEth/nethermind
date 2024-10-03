@@ -308,7 +308,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     }
 
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
-        IBlockTracer blockTracer, Dictionary<Address, AccountOverride>? stateOverride)
+        IBlockTracer blockTracer)
     {
         if (DelayMs > 0)
         {
@@ -320,7 +320,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
             throw ExceptionToThrow;
         }
 
-        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer, stateOverride);
+        return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
     }
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing

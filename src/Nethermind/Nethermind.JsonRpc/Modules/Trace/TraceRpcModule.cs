@@ -321,7 +321,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-            _tracer.Trace(block, tracer.WithCancellation(cancellationToken), stateOverride);
+            _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 

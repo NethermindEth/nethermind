@@ -29,8 +29,7 @@ namespace Nethermind.Consensus.Tracing
             _processingOptions = processingOptions;
         }
 
-        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor,
-            Dictionary<Address, AccountOverride>? stateOverride = null)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
@@ -39,7 +38,7 @@ namespace Nethermind.Consensus.Tracing
 
             try
             {
-                processor.Process(block, _processingOptions, blockTracer, stateOverride);
+                processor.Process(block, _processingOptions, blockTracer);
             }
             catch (Exception)
             {
@@ -50,8 +49,7 @@ namespace Nethermind.Consensus.Tracing
             blockTracer.EndBlockTrace();
         }
 
-        public void Trace(Block block, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride = null) =>
-            Process(block, tracer, _traceProcessor, stateOverride);
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor);
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
 

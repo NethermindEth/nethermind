@@ -26,8 +26,7 @@ public sealed class OptimismTransactionProcessor(
 {
     private UInt256? _currentTxL1Cost;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer,
-        Dictionary<Address, AccountOverride>? stateOverride, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (tx.SupportsBlobs)
         {
@@ -44,7 +43,7 @@ public sealed class OptimismTransactionProcessor(
 
         Snapshot snapshot = WorldState.TakeSnapshot();
 
-        TransactionResult result = base.Execute(tx, blCtx, tracer, stateOverride, opts);
+        TransactionResult result = base.Execute(tx, blCtx, tracer, opts);
 
         if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
         {

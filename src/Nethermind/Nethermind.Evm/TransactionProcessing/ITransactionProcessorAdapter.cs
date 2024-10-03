@@ -9,7 +9,6 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public interface ITransactionProcessorAdapter
     {
-        TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer,
-            Dictionary<Address, AccountOverride>? stateOverride = null);
+        TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer);
     }
 }

@@ -243,8 +243,8 @@ namespace Nethermind.Facade
             try
             {
                 return scope == null
-                    ? CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer)
-                    : CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer, scope);
+                    ? CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer)
+                    : CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
             }
             catch (InsufficientBalanceException ex)
             {
@@ -255,18 +255,16 @@ namespace Nethermind.Facade
         private TransactionResult CallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
-            Dictionary<Address, AccountOverride>? stateOverride,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
             using IReadOnlyTxProcessingScope scope = _processingEnv.Build(blockHeader.StateRoot!);
-            return CallAndRestore(blockHeader, transaction, stateOverride, treatBlockHeaderAsParentBlock, tracer, scope);
+            return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
         }
 
         private TransactionResult CallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
-            Dictionary<Address, AccountOverride>? stateOverride,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
             IReadOnlyTxProcessingScope scope)
@@ -315,7 +313,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer, stateOverride);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()

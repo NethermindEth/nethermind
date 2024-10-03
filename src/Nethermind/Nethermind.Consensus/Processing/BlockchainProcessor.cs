@@ -320,7 +320,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), null, out string? error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
 
                 if (processedBlock is null)
                 {
@@ -365,12 +365,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     int IBlockProcessingQueue.Count => _queueCount;
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
     {
-        return Process(suggestedBlock, options, tracer, stateOverride, out _);
+        return Process(suggestedBlock, options, tracer, out _);
     }
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride, out string? error)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
     {
         error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
@@ -398,7 +398,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, stateOverride, out error);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
         if (processedBlocks is null)
         {
             return null;
@@ -485,7 +485,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride, out string? error)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -509,8 +509,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.Root,
                 processingBranch.BlocksToProcess,
                 options,
-                tracer,
-                stateOverride);
+                tracer);
             error = null;
         }
         catch (InvalidBlockException ex)

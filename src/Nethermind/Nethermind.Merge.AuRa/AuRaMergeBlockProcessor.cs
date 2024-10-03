@@ -62,5 +62,5 @@ public class AuRaMergeBlockProcessor(
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
         block.IsPostMerge
             ? PostMergeProcessBlock(block, blockTracer, options)
-            : base.ProcessBlock(block, blockTracer, options, stateOverride);
+            : base.ProcessBlock(block, blockTracer, options);
 }

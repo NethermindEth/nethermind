@@ -23,8 +23,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionProcessor = transactionProcessor;
         }
 
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer,
-            Dictionary<Address, AccountOverride>? stateOverride = null) =>
-            CurrentAdapter.Execute(transaction, in blkCtx, txTracer, stateOverride);
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            CurrentAdapter.Execute(transaction, in blkCtx, txTracer);
     }
 }

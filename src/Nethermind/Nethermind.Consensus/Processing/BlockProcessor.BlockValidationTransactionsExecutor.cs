@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Processing
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
-                IReleaseSpec spec, Dictionary<Address, AccountOverride>? stateOverride = null)
+                IReleaseSpec spec)
             {
                 Metrics.ResetBlockStats();
                 BlockExecutionContext blkCtx = CreateBlockExecutionContext(block);
@@ -40,8 +40,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     block.TransactionProcessed = i;
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions, stateOverride);
-                    stateOverride = null; // Apply override only before the first transaction
+                    ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }
@@ -49,9 +48,9 @@ namespace Nethermind.Consensus.Processing
             protected virtual BlockExecutionContext CreateBlockExecutionContext(Block block) => new(block.Header);
 
             protected virtual void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer,
-                ProcessingOptions processingOptions, Dictionary<Address, AccountOverride>? stateOverride = null)
+                ProcessingOptions processingOptions)
             {
-                TransactionResult result = transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider, stateOverride);
+                TransactionResult result = transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidBlockException(result, blkCtx.Header, currentTx, index);
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
             }

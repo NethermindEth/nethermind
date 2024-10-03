@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Processing
 
         Task StopAsync(bool processRemainingBlocks = false);
 
-        Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride = null);
+        Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer);
 
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
 

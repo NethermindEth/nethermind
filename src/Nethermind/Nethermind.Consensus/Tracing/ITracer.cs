@@ -20,8 +20,7 @@ namespace Nethermind.Consensus.Tracing
         /// </summary>
         /// <param name="block">Block to trace.</param>
         /// <param name="tracer">Trace to act on block processing events.</param>
-        /// <param name="stateOverride">Optional state overrides by address.</param>
-        void Trace(Block block, IBlockTracer tracer, Dictionary<Address, AccountOverride>? stateOverride = null);
+        void Trace(Block block, IBlockTracer tracer);
 
         /// <summary>
         /// Allows to trace and verify arbitrary constructed block. Subtracts gas from sender account

@@ -23,14 +23,13 @@ public sealed class SimulateTransactionProcessor(
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 
-    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer,
-        Dictionary<Address, AccountOverride>? stateOverride, ExecutionOptions opts)
+    protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         if (!validate)
         {
             opts |= ExecutionOptions.NoValidation;
         }
 
-        return base.Execute(tx, in blCtx, tracer, stateOverride, opts);
+        return base.Execute(tx, in blCtx, tracer, opts);
     }
 }

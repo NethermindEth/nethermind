@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, Dictionary<Address, AccountOverride>? stateOverride = null)
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
@@ -73,9 +73,8 @@ namespace Nethermind.Consensus.Processing
                 BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {
-                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock, stateOverride);
+                    TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
-                    stateOverride = null; // Apply override only before the first transaction
                 }
 
                 stateProvider.Commit(spec, receiptsTracer);
@@ -92,7 +91,6 @@ namespace Nethermind.Consensus.Processing
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
                 LinkedHashSet<Transaction> transactionsInBlock,
-                Dictionary<Address, AccountOverride>? stateOverride = null,
                 bool addToBlock = true)
             {
                 AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);

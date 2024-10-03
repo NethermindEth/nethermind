@@ -98,8 +98,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
 
-        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer,
-            Dictionary<Address, AccountOverride>? stateOverride = null)
+        public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
@@ -124,7 +123,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return Execute(tx, in blCtx, tracer, opts);
         }
 
-        protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, Dictionary<Address, AccountOverride>? stateOverride, ExecutionOptions opts)
+        protected virtual TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = blCtx.Header;
             IReleaseSpec spec = GetSpec(tx, header);
@@ -144,9 +143,6 @@ namespace Nethermind.Evm.TransactionProcessing
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
-
-            if (_codeInfoRepository is OverridableCodeInfoRepository overridableCodeInfoRepository)
-                WorldState.ApplyStateOverrides(overridableCodeInfoRepository, stateOverride, spec, blCtx.Header.Number, false);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;

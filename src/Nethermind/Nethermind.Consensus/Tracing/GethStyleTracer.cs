@@ -198,7 +198,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), options.StateOverrides);
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult().SingleOrDefault();
         }
         catch

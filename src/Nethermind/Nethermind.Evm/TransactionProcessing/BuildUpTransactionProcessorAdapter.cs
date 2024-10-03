@@ -9,8 +9,7 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public class BuildUpTransactionProcessorAdapter(ITransactionProcessor transactionProcessor) : ITransactionProcessorAdapter
     {
-        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer,
-            Dictionary<Address, AccountOverride>? stateOverride = null) =>
-            transactionProcessor.BuildUp(transaction, in blkCtx, txTracer, stateOverride);
+        public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            transactionProcessor.BuildUp(transaction, in blkCtx, txTracer);
     }
 }
