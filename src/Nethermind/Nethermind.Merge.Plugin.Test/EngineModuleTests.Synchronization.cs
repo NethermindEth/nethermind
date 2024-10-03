@@ -87,12 +87,6 @@ public partial class EngineModuleTests
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
-
-        if (pointers.LowestInsertedHeader is not null)
-        {
-            pointers.LowestInsertedHeader.MaybeParent = null;
-        }
-
         AssertBlockTreePointers(chain.BlockTree, pointers);
         AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
@@ -264,16 +258,6 @@ public partial class EngineModuleTests
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
 
-        if (pointers.LowestInsertedHeader is not null)
-        {
-            pointers.LowestInsertedHeader.MaybeParent = null;
-        }
-
-        if (pointers.LowestInsertedBeaconHeader is not null)
-        {
-            pointers.LowestInsertedBeaconHeader.MaybeParent = null;
-        }
-
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(nextUnconnectedBlock));
@@ -290,16 +274,6 @@ public partial class EngineModuleTests
         nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
         pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
-
-        if (pointers.LowestInsertedHeader is not null)
-        {
-            pointers.LowestInsertedHeader.MaybeParent = null;
-        }
-
-        if (pointers.LowestInsertedBeaconHeader is not null)
-        {
-            pointers.LowestInsertedBeaconHeader.MaybeParent = null;
-        }
 
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
