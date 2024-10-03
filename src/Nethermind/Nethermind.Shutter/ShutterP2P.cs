@@ -25,7 +25,7 @@ public class ShutterP2P : IShutterP2P
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
     private readonly PubsubRouter _router;
-    private readonly PubSubDiscoveryProtocol _disc;
+    private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
     private readonly ServiceProvider _serviceProvider;
@@ -72,7 +72,7 @@ public class ShutterP2P : IShutterP2P
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
         _peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
-        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubSubDiscoverySettings() { Interval = 300 }, _peer);
+        _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");
 
         topic.OnMessage += (byte[] msg) =>
