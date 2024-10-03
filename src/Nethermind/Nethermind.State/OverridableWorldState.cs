@@ -7,7 +7,6 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-// TODO improve naming?
 public class OverridableWorldState : WorldState
 {
     private readonly OverlayTrieStore _trieStore;

@@ -17,7 +17,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -369,7 +368,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         return Process(suggestedBlock, options, tracer, out _);
     }
-
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
     {
         error = null;

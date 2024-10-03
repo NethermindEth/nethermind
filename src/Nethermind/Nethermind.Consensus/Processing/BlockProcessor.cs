@@ -284,8 +284,7 @@ public partial class BlockProcessor(
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
-        ProcessingOptions options
-    )
+        ProcessingOptions options)
     {
         BlockHeader header = block.Header;
         IReleaseSpec spec = _specProvider.GetSpec(header);
