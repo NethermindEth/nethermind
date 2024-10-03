@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -114,6 +115,8 @@ namespace Nethermind.State
 
         public void WarmUp(AccessList? accessList, bool isParallelAccess)
         {
+            const int BatchSize = 8;
+
             if (accessList is not null && !accessList.IsEmpty)
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
@@ -129,21 +132,34 @@ namespace Nethermind.State
                             _persistentStorageProvider.GetOrCreateStorage(address);
                     }
 
-                    if (isParallelAccess && storages.Count > 10)
+                    int count = storages.Count;
+                    if (isParallelAccess && count > BatchSize)
                     {
                         // We are already warming in parallel, but fan out if tx with
                         // very many storages in access list so don't form a single
                         // threaded queue with all warming waiting on one tx.
-                        Parallel.ForEach(storages, (storage) =>
+
+                        int index = 0;
+                        int partitions = count / BatchSize + 1;
+                        Parallel.For(0, partitions, _ =>
                         {
-                            _persistentStorageProvider.WarmUp(new StorageCell(address, storage), tree);
+                            for (int batch = 0; batch < BatchSize; batch++)
+                            {
+                                // We have err'd on side of over provisioning, since not
+                                // all storage accesses are the same. Use interlocked to
+                                // get next slot, then exit if consumed all
+                                int i = Interlocked.Increment(ref index) - 1;
+                                if (i >= count) return;
+
+                                _persistentStorageProvider.WarmUp(new StorageCell(address, storages[i]), tree);
+                            }
                         });
                     }
                     else
                     {
-                        foreach (UInt256 storage in storages)
+                        for (int i = 0; i < count; i++)
                         {
-                            _persistentStorageProvider.WarmUp(new StorageCell(address, storage), tree);
+                            _persistentStorageProvider.WarmUp(new StorageCell(address, storages[i]), tree);
                         }
                     }
                 }

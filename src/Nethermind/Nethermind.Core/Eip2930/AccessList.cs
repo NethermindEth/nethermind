@@ -130,6 +130,17 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
             _count = count;
         }
 
+        public UInt256 this[int index]
+        {
+            get
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(index);
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _count);
+
+                return _accessList._keys[_index + index];
+            }
+        }
+
         StorageKeysEnumerator GetEnumerator() => new(_accessList, _index, _count);
         IEnumerator<UInt256> IEnumerable<UInt256>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
