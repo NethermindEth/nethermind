@@ -81,13 +81,13 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
             [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiMulPrecompile.Address] = new(G1MultiMulPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
             [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
             [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiMulPrecompile.Address] = new(G2MultiMulPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
