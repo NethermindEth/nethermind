@@ -35,11 +35,8 @@ public class OverridableWorldStateManager : IWorldStateManager
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        // TODO add if needed?
-        if (forWarmup is not null)
-            throw new NotSupportedException("Overridable world state with warm up is not supported.");
-
-        return new OverridableWorldState(_overlayTrieStore, _codeDb, _logManager);
+        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
+        return new OverridableWorldState(_overlayTrieStore, _codeDb, _logManager, preBlockCaches);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
