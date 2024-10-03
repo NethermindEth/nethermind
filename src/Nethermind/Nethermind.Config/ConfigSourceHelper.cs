@@ -31,7 +31,7 @@ namespace Nethermind.Config
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
-                    if (itemType == typeof(byte) && !valueString.Trim().StartsWith('['))
+                    if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith("["))
                     {
                         // hex encoded byte array
                         string hex = valueString.Trim().RemoveStart('0').RemoveStart('x').TrimEnd();
