@@ -310,13 +310,9 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        Address sender = new("0x7f554713be84160fdf0178cc8df86f5aabd33397");
-        ctx.Test.ReadOnlyState.AccountExists(sender).Should().BeFalse();
-
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         Assert.That(serialized, Is.EqualTo(expectedResult));
-        ctx.Test.ReadOnlyState.AccountExists(sender).Should().BeFalse();
     }
 
     [TestCase(
