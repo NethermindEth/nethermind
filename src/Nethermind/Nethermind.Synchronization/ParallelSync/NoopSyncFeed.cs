@@ -18,24 +18,22 @@ public class NoopSyncFeed<T> : ISyncFeed<T>
 
     public Task<T> PrepareRequest(CancellationToken token = default)
     {
-        throw new InvalidOperationException("null sync feed should not be used");
+        return Task.FromResult<T>(default);
     }
 
     public SyncResponseHandlingResult HandleResponse(T response, PeerInfo? peer = null)
     {
-        throw new InvalidOperationException("null sync feed should not be used");
+        return SyncResponseHandlingResult.NotAssigned;
     }
 
     public bool IsMultiFeed { get; }
     public AllocationContexts Contexts { get; }
     public void Activate()
     {
-        throw new InvalidOperationException("null sync feed should not be used");
     }
 
     public void Finish()
     {
-        throw new InvalidOperationException("null sync feed should not be used");
     }
 
     public Task FeedTask => Task.CompletedTask;
