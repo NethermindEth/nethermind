@@ -21,6 +21,7 @@ namespace Ethereum.Test.Base
             }
             else
             {
+                // testDirs = Directory.EnumerateDirectories(testsDirectoryName);
                 testDirs = new[] { testsDirectoryName };
             }
 
