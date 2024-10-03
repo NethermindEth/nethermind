@@ -67,21 +67,10 @@ public class CensorshipDetector : IDisposable
         _blockProcessor.BlockProcessing += OnBlockProcessing;
     }
 
-    private bool IsSyncing()
-    {
-        long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-        if (bestSuggestedNumber == 0)
-        {
-            return true;
-        }
-        long headNumberOrZero = _blockTree.Head?.Number ?? 0;
-        return bestSuggestedNumber > headNumberOrZero;
-    }
-
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
         // skip censorship detection if node is not synced yet
-        if (IsSyncing()) return;
+        if (_blockTree.IsSyncing()) return;
 
         bool tracksPerAddressCensorship = _bestTxPerObservedAddresses is not null;
         if (tracksPerAddressCensorship)
