@@ -17,14 +17,11 @@ namespace Nethermind.Config
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
-            if (Nullable.GetUnderlyingType(valueType) is var nullableType && nullableType is not null)
+            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
             {
-                if (string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    return null;
-                }
-
-                return ParseValue(nullableType, valueString, category, name);
+                return !string.IsNullOrEmpty(valueString) && !valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase)
+                    ? ParseValue(nullableType, valueString, category, name)
+                    : null;
             }
             try
             {
