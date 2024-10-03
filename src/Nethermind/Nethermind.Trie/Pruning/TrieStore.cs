@@ -375,6 +375,34 @@ namespace Nethermind.Trie.Pruning
                 _persistedLastSeen = newPersistedLastSeen;
             }
 
+            public void PersistAll(INodeStorage nodeStorage, CancellationToken cancellationToken)
+            {
+                ConcurrentDictionary<TrieStoreDirtyNodesCache.Key, bool> wasPersisted = new();
+
+                void PersistNode(TrieNode n, Hash256? address, TreePath path)
+                {
+                    if (n.Keccak is null) return;
+                    TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, n.Keccak);
+                    if (wasPersisted.TryAdd(key, true))
+                    {
+                        nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
+                        n.IsPersisted = true;
+                    }
+                }
+
+                using (AcquireMapLock())
+                {
+                    foreach (KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode> kv in AllNodes)
+                    {
+                        if (cancellationToken.IsCancellationRequested) return;
+                        TrieStoreDirtyNodesCache.Key key = kv.Key;
+                        TreePath path = key.Path;
+                        Hash256? address = key.AddressAsHash256;
+                        kv.Value.CallRecursively(PersistNode, address, ref path, _trieStore.GetTrieStore(address), false, _logger, resolveStorageRoot: false);
+                    }
+                }
+            }
+
             public void Dump()
             {
                 if (_logger.IsTrace)
@@ -1503,10 +1531,11 @@ namespace Nethermind.Trie.Pruning
                 PruneCache(skipRecalculateMemory: true);
                 if (cancellationToken.IsCancellationRequested) return;
 
-                foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
+                Task.WaitAll(_dirtyNodes.Select((dirtyNode => Task.Run(() =>
                 {
-                    PersistAllInCache(dirtyNode);
-                }
+                    dirtyNode.PersistAll(_nodeStorage, cancellationToken);
+                }))).ToArray());
+
                 if (cancellationToken.IsCancellationRequested) return;
 
                 PruneCache();
@@ -1523,31 +1552,6 @@ namespace Nethermind.Trie.Pruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
-
-            void PersistAllInCache(TrieStoreDirtyNodesCache cache)
-            {
-                ConcurrentDictionary<TrieStoreDirtyNodesCache.Key, bool> wasPersisted = new();
-
-                void PersistNode(TrieNode n, Hash256? address, TreePath path)
-                {
-                    if (n.Keccak is null) return;
-                    TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, n.Keccak);
-                    if (wasPersisted.TryAdd(key, true))
-                    {
-                        _nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
-                        n.IsPersisted = true;
-                    }
-                }
-
-                foreach (KeyValuePair<TrieStoreDirtyNodesCache.Key, TrieNode> kv in cache.AllNodes)
-                {
-                    if (cancellationToken.IsCancellationRequested) return;
-                    TrieStoreDirtyNodesCache.Key key = kv.Key;
-                    TreePath path = key.Path;
-                    Hash256? address = key.AddressAsHash256;
-                    kv.Value.CallRecursively(PersistNode, address, ref path, GetTrieStore(address), false, _logger, resolveStorageRoot: false);
-                }
-            }
         }
 
         // Used to serve node by hash
