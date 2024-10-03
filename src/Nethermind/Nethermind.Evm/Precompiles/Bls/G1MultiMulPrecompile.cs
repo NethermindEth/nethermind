@@ -36,6 +36,8 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG1MSMPrecompile++;
+
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
             return IPrecompile.Failure;
