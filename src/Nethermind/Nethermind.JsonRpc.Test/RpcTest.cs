@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -17,21 +16,21 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
-    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
-        JsonRpcRequest request = GetJsonRequest(method, parameters);
+        JsonRpcRequest request = BuildJsonRequest(method, parameters);
         return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
-    public static async Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+    public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
-        JsonRpcRequest request = GetJsonRequest(method, parameters);
+        JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule ?
-            contextAwareModule.Context :
-            new JsonRpcContext(RpcEndpoint.Http);
+        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
+            ? contextAwareModule.Context
+            : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
         EthereumJsonSerializer serializer = new();
@@ -60,34 +59,21 @@ public static class RpcTest
         return service;
     }
 
-    public static JsonRpcRequest GetJsonRequest(string method, params string?[]? parameters)
+    public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {
-        // NOTE: Since parameters are already passed as strings we want to avoid double serialization of JSON objects
-        var sb = new StringBuilder("[");
-        foreach (var param in parameters ?? [])
-        {
-            if (!string.IsNullOrEmpty(param) && param[0] == '{')
-            {
-                sb.Append(param);
-            }
-            else
-            {
-                sb.Append(JsonSerializer.Serialize(param));
-            }
-            sb.Append(',');
-        }
-        sb.Append(']');
-        var doc = JsonDocument.Parse(sb.ToString(), new JsonDocumentOptions { AllowTrailingCommas = true });
+        // TODO: Inject serializer
+        var serializer = new EthereumJsonSerializer();
+        parameters ??= [];
 
-        var request = new JsonRpcRequest
+        var jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));
+
+        return new JsonRpcRequest
         {
             JsonRpc = "2.0",
             Method = method,
-            Params = doc.RootElement,
+            Params = jsonParameters,
             Id = 67
         };
-
-        return request;
     }
 
     private class TestSingletonFactory<T>(T module) : SingletonFactory<T>(module)

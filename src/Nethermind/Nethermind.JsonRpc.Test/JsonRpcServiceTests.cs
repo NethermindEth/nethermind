@@ -60,12 +60,12 @@ public class JsonRpcServiceTests
         return TestRequestWithPool(pool, method, parameters);
     }
 
-    private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params string[]? parameters) where T : IRpcModule
+    private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
         RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
-        JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
