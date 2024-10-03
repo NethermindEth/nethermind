@@ -64,9 +64,9 @@ namespace Nethermind.Trie.Pruning
                 }
                 KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
-                _persistedLastSeen = new(CollectionExtensions.LockPartitions, 4 * 4096);
                 if (trackedPastKeyCount > 0 && !storeByHash)
                 {
+                    _persistedLastSeen = new(CollectionExtensions.LockPartitions, 4 * 4096);
                     _pastPathHash = new(trackedPastKeyCount);
                 }
             }
@@ -192,7 +192,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            public MapLock AcquireMapLock()
+            private MapLock AcquireMapLock()
             {
                 if (_storeByHash)
                 {
@@ -221,48 +221,51 @@ namespace Nethermind.Trie.Pruning
                 bool shouldTrackPersistedNode = _pastPathHash is not null && !_trieStore.IsCurrentlyFullPruning;
                 long newMemory = 0;
 
-                foreach ((Key key, TrieNode node) in AllNodes)
+                using (AcquireMapLock())
                 {
-                    if (node.IsPersisted)
+                    foreach ((Key key, TrieNode node) in AllNodes)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
-
-                        if (shouldTrackPersistedNode)
+                        if (node.IsPersisted)
                         {
-                            TrackPersistedNode(key, node);
-                        }
+                            if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 
-                        Hash256? keccak = node.Keccak;
-                        if (keccak is null)
-                        {
-                            TreePath path2 = key.Path;
-                            keccak = node.GenerateKey(_trieStore.GetTrieStore(key.AddressAsHash256), ref path2, isRoot: true);
-                            if (keccak != key.Keccak)
+                            if (shouldTrackPersistedNode)
                             {
-                                throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
+                                TrackPersistedNode(key, node);
                             }
 
-                            node.Keccak = keccak;
-                        }
-                        Remove(key);
+                            Hash256? keccak = node.Keccak;
+                            if (keccak is null)
+                            {
+                                TreePath path2 = key.Path;
+                                keccak = node.GenerateKey(_trieStore.GetTrieStore(key.AddressAsHash256), ref path2, isRoot: true);
+                                if (keccak != key.Keccak)
+                                {
+                                    throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
+                                }
 
-                        Metrics.PrunedPersistedNodesCount++;
-                    }
-                    else if (_trieStore.IsNoLongerNeeded(node))
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
-                        if (node.Keccak is null)
+                                node.Keccak = keccak;
+                            }
+                            Remove(key);
+
+                            Metrics.PrunedPersistedNodesCount++;
+                        }
+                        else if (_trieStore.IsNoLongerNeeded(node))
                         {
-                            throw new InvalidOperationException($"Removed {node}");
-                        }
-                        Remove(key);
+                            if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                            if (node.Keccak is null)
+                            {
+                                throw new InvalidOperationException($"Removed {node}");
+                            }
+                            Remove(key);
 
-                        Metrics.PrunedTransientNodesCount++;
-                    }
-                    else if (!skipRecalculateMemory)
-                    {
-                        node.PrunePersistedRecursively(1);
-                        newMemory += node.GetMemorySize(false) + KeyMemoryUsage;
+                            Metrics.PrunedTransientNodesCount++;
+                        }
+                        else if (!skipRecalculateMemory)
+                        {
+                            node.PrunePersistedRecursively(1);
+                            newMemory += node.GetMemorySize(false) + KeyMemoryUsage;
+                        }
                     }
                 }
 
@@ -502,21 +505,10 @@ namespace Nethermind.Trie.Pruning
 
             if (pruningStrategy.PruningEnabled)
             {
-                if (!nodeStorage.RequirePath)
+                _dirtyNodes = new TrieStoreDirtyNodesCache[ShardedDirtyNodeCount];
+                for (int i = 0; i < ShardedDirtyNodeCount; i++)
                 {
-                    // Hash layout.
-                    // All address and path is gonna be null patricia trie is not recording it..... I think.
-                    _dirtyNodes = [
-                        new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount, !_nodeStorage.RequirePath, _logger)
-                    ];
-                }
-                else
-                {
-                    _dirtyNodes = new TrieStoreDirtyNodesCache[ShardedDirtyNodeCount];
-                    for (int i = 0; i < ShardedDirtyNodeCount; i++)
-                    {
-                        _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount / ShardedDirtyNodeCount, !_nodeStorage.RequirePath, _logger);
-                    }
+                    _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount / ShardedDirtyNodeCount, !_nodeStorage.RequirePath, _logger);
                 }
             }
 
@@ -649,15 +641,19 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private int GetNodeShardIdx(Hash256? address, in TreePath path)
+        private int GetNodeShardIdx(in TreePath path, Hash256 hash)
         {
-            if (_dirtyNodes.Length == 1) return 0;
-            return path.Path.Bytes[0];
+            if (_livePruningEnabled)
+            {
+                return path.Path.Bytes[0];
+            }
+
+            return hash.Bytes[0];
         }
 
         private int GetNodeShardIdx(in TrieStoreDirtyNodesCache.Key key)
         {
-            return GetNodeShardIdx(key.Address, key.Path);
+            return GetNodeShardIdx(key.Path, key.Keccak);
         }
 
         private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key)
@@ -1008,7 +1004,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (persistedHashes is not null && treePath.Length <= TinyTreePath.MaxNibbleLength)
                         {
-                            int shardIdx = GetNodeShardIdx(address, treePath);
+                            int shardIdx = GetNodeShardIdx(treePath, tn.Keccak);
 
                             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
 
@@ -1084,11 +1080,8 @@ namespace Nethermind.Trie.Pruning
             long newMemory = 0;
             Task.WaitAll(_dirtyNodes.Select((dirtyNode) => Task.Run(() =>
             {
-                using (dirtyNode.AcquireMapLock())
-                {
-                    long shardSize = dirtyNode.PruneCache(skipRecalculateMemory);
-                    Interlocked.Add(ref newMemory, shardSize);
-                }
+                long shardSize = dirtyNode.PruneCache(skipRecalculateMemory);
+                Interlocked.Add(ref newMemory, shardSize);
             })).ToArray());
 
             if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory;
