@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
@@ -13,6 +14,8 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestamp = 0x6343ee4c;
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
     public const ulong CancunTimestamp = 0x65ba8e4c;
+    //TODO correct this timestamp!
+    public const ulong PragueTimestamp = ulong.MaxValue - 2;
 
     private ChiadoSpecProvider() { }
 
@@ -22,7 +25,8 @@ public class ChiadoSpecProvider : ISpecProvider
         {
             null or < ShanghaiTimestamp => GenesisSpec,
             < CancunTimestamp => Shanghai.Instance,
-            _ => Cancun.Instance
+            < PragueTimestamp => Cancun.Instance,
+            _ => PragueGnosis.Instance
         }
     };
 

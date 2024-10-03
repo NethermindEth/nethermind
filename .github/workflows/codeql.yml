@@ -21,19 +21,19 @@ jobs:
         language: ['csharp']
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 #v4.2.0
         with:
           submodules: true
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@5618c9fc1e675841ca52c1c6b1304f5255a905a0 #v2.19.0
         with:
           languages: ${{ matrix.language }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@6bd8b7f7774af54e05809fcc5431931b3eb1ddee #v4.0.1
       - name: Build Nethermind
         working-directory: src/Nethermind
         run: dotnet build Nethermind.sln -c release
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@5618c9fc1e675841ca52c1c6b1304f5255a905a0 #v2.19.0
         with:
           category: '/language:${{ matrix.language }}'

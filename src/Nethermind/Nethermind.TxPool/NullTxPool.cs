@@ -16,6 +16,12 @@ namespace Nethermind.TxPool
 
         public static NullTxPool Instance { get; } = new();
 
+        public event EventHandler<Block>? TxPoolHeadChanged
+        {
+            add { }
+            remove { }
+        }
+
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();

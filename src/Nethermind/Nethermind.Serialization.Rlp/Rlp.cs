@@ -1572,7 +1572,7 @@ namespace Nethermind.Serialization.Rlp
                     }
                 }
                 int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
                 T[] result = new T[count];
                 for (int i = 0; i < result.Length; i++)
                 {

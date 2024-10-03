@@ -63,6 +63,7 @@ public class OptimismReadOnlyChainProcessingEnv(
             transactionsExecutor,
             scope.WorldState,
             receiptStorage,
+            scope.TransactionProcessor,
             new BlockhashStore(specProvider, scope.WorldState),
             new BeaconBlockRootHandler(scope.TransactionProcessor),
             logManager,

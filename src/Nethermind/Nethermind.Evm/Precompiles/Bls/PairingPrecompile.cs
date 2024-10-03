@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
+using G2 = Nethermind.Crypto.Bls.P2;
+using GT = Nethermind.Crypto.Bls.PT;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -15,41 +17,55 @@ namespace Nethermind.Evm.Precompiles.Bls;
 public class PairingPrecompile : IPrecompile<PairingPrecompile>
 {
     private const int PairSize = 384;
+    public static readonly PairingPrecompile Instance = new();
 
     private PairingPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(0x11);
 
-    public static PairingPrecompile Instance = new PairingPrecompile();
-
     public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (inputData.Length % PairSize > 0 || inputData.Length == 0)
         {
             return IPrecompile.Failure;
         }
 
-        for (int i = 0; i < (inputData.Length / PairSize); i++)
+        G1 x = new(stackalloc long[G1.Sz]);
+        G2 y = new(stackalloc long[G2.Sz]);
+
+        var acc = GT.One();
+        for (int i = 0; i < inputData.Length / PairSize; i++)
         {
             int offset = i * PairSize;
-            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
+
+            if (!x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) ||
+                !x.InGroup() ||
+                !y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span) ||
+                !y.InGroup())
             {
                 return IPrecompile.Failure;
             }
 
-            offset += 2 * BlsParams.LenFp;
-
-            if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
+            // x == inf || y == inf -> e(x, y) = 1
+            if (x.IsInf() || y.IsInf())
             {
-                return IPrecompile.Failure;
+                continue;
             }
+
+            acc.Mul(new GT(y, x));
         }
 
-        Span<byte> output = stackalloc byte[32];
-        return Pairings.BlsPairing(inputData.Span, output) ? (output.ToArray(), true) : IPrecompile.Failure;
+        bool verified = acc.FinalExp().IsOne();
+        byte[] res = new byte[32];
+        if (verified)
+        {
+            res[31] = 1;
+        }
+
+        return (res, true);
     }
 }

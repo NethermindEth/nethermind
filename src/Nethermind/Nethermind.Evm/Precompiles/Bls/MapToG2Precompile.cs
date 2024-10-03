@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G2 = Nethermind.Crypto.Bls.P2;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 {
-    public static MapToG2Precompile Instance = new MapToG2Precompile();
+    public static readonly MapToG2Precompile Instance = new();
 
     private MapToG2Precompile()
     {
@@ -24,17 +24,22 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 75000;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 2 * BlsParams.LenFp;
+        const int expectedInputLength = 2 * BlsConst.LenFp;
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        return Pairings.BlsMapToG2(inputData.Span, output) ? (output.ToArray(), true) : IPrecompile.Failure;
+        G2 res = new G2(stackalloc long[G2.Sz]);
+        if (!BlsExtensions.ValidRawFp(inputData.Span[..BlsConst.LenFp]) || !BlsExtensions.ValidRawFp(inputData.Span[BlsConst.LenFp..]))
+        {
+            return IPrecompile.Failure;
+        }
+        res.MapTo(inputData[BlsConst.LenFpPad..BlsConst.LenFp].Span, inputData[(BlsConst.LenFp + BlsConst.LenFpPad)..].Span);
+        return (res.EncodeRaw(), true);
     }
 }
