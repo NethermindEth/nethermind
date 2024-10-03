@@ -1074,7 +1074,7 @@ public partial class EthRpcModuleTests
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
-        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", rpcTx);
         // TODO: actual test missing now
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
@@ -1094,7 +1094,7 @@ public partial class EthRpcModuleTests
         Transaction tx = Build.A.Transaction.TestObject;
         LegacyTransactionForRpc rpcTx = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(tx);
         rpcTx.Nonce = null;
-        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(rpcTx));
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", rpcTx);
 
         await txSender.Received().SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{TestItem.KeccakA.Bytes.ToHexString(true)}\",\"id\":67}}"));
@@ -1107,7 +1107,7 @@ public partial class EthRpcModuleTests
         Transaction tx = Build.A.Transaction.WithValue(10000).SignedAndResolved(new PrivateKey("0x0000000000000000000000000000000000000000000000000000000000000001")).WithNonce(0).TestObject;
         TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(tx);
 
-        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", new EthereumJsonSerializer().Serialize(txForRpc));
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", txForRpc);
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32010,\"message\":\"InsufficientFunds, Balance is zero, cannot pay gas\"},\"id\":67}"));
     }
@@ -1148,7 +1148,7 @@ public partial class EthRpcModuleTests
             transaction.AccessList = GetTestAccessList(2, accessListProvided == AccessListProvided.Full).AccessList;
         }
 
-        string serialized = await test.TestEthRpc("eth_createAccessList", test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
+        string serialized = await test.TestEthRpc("eth_createAccessList", transaction, "0x0", optimize);
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
