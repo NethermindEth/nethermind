@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -48,7 +49,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
 {
     private readonly IBlockValidator _blockValidator;
     private readonly ILogManager? _logManager;
-    private readonly TransactionProcessor _transactionProcessor;
+    private readonly ITransactionProcessor _transactionProcessor;
     public IWorldState WorldState => StateProvider;
 
     public SimulateReadOnlyBlocksProcessingEnv(
@@ -114,6 +115,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
+            _transactionProcessor,
+            new BeaconBlockRootHandler(_transactionProcessor),
             new BlockhashStore(SpecProvider, StateProvider),
             _logManager);
 }

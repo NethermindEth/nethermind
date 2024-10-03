@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -33,6 +34,7 @@ public class SepoliaSpecProvider : ISpecProvider
 
     public ulong NetworkId => Core.BlockchainIds.Sepolia;
     public ulong ChainId => NetworkId;
+    public string SealEngine => SealEngineType.Clique;
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;
     public ulong TimestampFork => ISpecProvider.TimestampForkNever;

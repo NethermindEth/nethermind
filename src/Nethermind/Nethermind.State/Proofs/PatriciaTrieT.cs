@@ -22,13 +22,14 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    public PatriciaTrie(T[]? list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
+    protected PatriciaTrie(T[]? list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
         : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 
         if (list?.Length > 0)
         {
+            // ReSharper disable once VirtualMemberCallInConstructor
             Initialize(list);
             UpdateRootHash();
         }

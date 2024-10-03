@@ -12,14 +12,14 @@ using Nethermind.State;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateTransactionProcessor(
+public sealed class SimulateTransactionProcessor(
     ISpecProvider? specProvider,
     IWorldState? worldState,
     IVirtualMachine? virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
     ILogManager? logManager,
     bool validate)
-    : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
+    : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager), ITransactionProcessor
 {
     protected override bool ShouldValidate(ExecutionOptions opts) => true;
 

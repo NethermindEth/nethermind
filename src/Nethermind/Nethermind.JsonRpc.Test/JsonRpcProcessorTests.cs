@@ -5,16 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.JsonRpc.Modules;
-
 using NSubstitute;
 using NUnit.Framework;
 
@@ -181,7 +178,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[0].BatchedResponses.Should().NotBeNull();
         var resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
-        Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -231,7 +228,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[1].BatchedResponses.Should().NotBeNull();
         List<JsonRpcResult.Entry> resultList = await result[1].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
-        Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -355,7 +352,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        Assert.IsTrue((await result[0].BatchedResponses!.ToListAsync()).All(r => r.Response != _errorResponse));
+        Assert.That((await result[0].BatchedResponses!.ToListAsync()).All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 
@@ -379,7 +376,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result[0].BatchedResponses.Should().NotBeNull();
         IList<JsonRpcResult.Entry> resultList = (await result[0].BatchedResponses!.ToListAsync());
         resultList.Should().HaveCount(3);
-        Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
     }
 

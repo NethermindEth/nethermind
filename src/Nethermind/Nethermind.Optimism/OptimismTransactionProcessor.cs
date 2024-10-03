@@ -14,7 +14,7 @@ using Nethermind.State;
 
 namespace Nethermind.Optimism;
 
-public class OptimismTransactionProcessor(
+public sealed class OptimismTransactionProcessor(
     ISpecProvider specProvider,
     IWorldState worldState,
     IVirtualMachine virtualMachine,
@@ -22,7 +22,7 @@ public class OptimismTransactionProcessor(
     IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper,
     ICodeInfoRepository? codeInfoRepository
-    ) : TransactionProcessor(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+    ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     private UInt256? _currentTxL1Cost;
 
@@ -66,19 +66,12 @@ public class OptimismTransactionProcessor(
         return result;
     }
 
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        out long intrinsicGas)
-    {
-        TransactionResult result = base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
-
-        return result;
-    }
-
     protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
         senderReservedGasPayment = UInt256.Zero;
+        blobBaseFee = UInt256.Zero;
 
         bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
@@ -146,12 +139,12 @@ public class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
+        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, in byte statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, statusCode);
 
             if (opSpecHelper.IsBedrock(header))
             {

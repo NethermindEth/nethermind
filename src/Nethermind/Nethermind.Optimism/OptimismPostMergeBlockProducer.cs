@@ -60,7 +60,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
-        if (_producingBlockLock.Wait(BlockProductionTimeout))
+        if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
         {
             try
             {

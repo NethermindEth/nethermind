@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -9,7 +10,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TransactionValidatorBuilder : BuilderBase<ITxValidator>
     {
-        private bool _alwaysTrue;
+        private ValidationResult _always;
 
         public TransactionValidatorBuilder()
         {
@@ -20,7 +21,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                _alwaysTrue = false;
+                _always = "Invalid";
                 return this;
             }
         }
@@ -29,15 +30,15 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                _alwaysTrue = true;
+                _always = ValidationResult.Success;
                 return this;
             }
         }
 
         protected override void BeforeReturn()
         {
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), out _).Returns(_alwaysTrue);
-            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), out _).Returns(_alwaysTrue);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
+            TestObjectInternal.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_always);
             base.BeforeReturn();
         }
     }

@@ -9,19 +9,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Spec
 {
-    public class ChainHeadSpecProvider : IChainHeadSpecProvider
+    public class ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder) : IChainHeadSpecProvider
     {
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockFinder _blockFinder;
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private long _lastHeader = -1;
-        private IReleaseSpec? _headerSpec = null;
+        private IReleaseSpec? _headerSpec;
         private readonly object _lock = new();
-
-        public ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        }
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
@@ -67,9 +61,9 @@ namespace Nethermind.Blockchain.Spec
             lock (_lock)
             {
                 _lastHeader = headerNumber;
-                if (header is not null)
-                    return _headerSpec = _specProvider.GetSpec(header);
-                return _headerSpec = GetSpec((ForkActivation)headerNumber);
+                return _headerSpec = header is not null
+                    ? _specProvider.GetSpec(header)
+                    : GetSpec((ForkActivation)headerNumber);
             }
         }
     }

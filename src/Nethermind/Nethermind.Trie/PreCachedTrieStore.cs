@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
@@ -41,7 +42,6 @@ public class PreCachedTrieStore : ITrieStore
     public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
         _inner.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
-        _preBlockCache.Clear();
     }
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
@@ -87,7 +87,7 @@ public class PreCachedTrieStore : ITrieStore
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 }
 
-public class NodeKey : IEquatable<NodeKey>
+public readonly struct NodeKey : IEquatable<NodeKey>
 {
     public readonly Hash256? Address;
     public readonly TreePath Path;
@@ -107,8 +107,8 @@ public class NodeKey : IEquatable<NodeKey>
         Hash = hash;
     }
 
-    public bool Equals(NodeKey? other) =>
-        other is not null && Address == other.Address && Path.Equals(in other.Path) && Hash.Equals(other.Hash);
+    public bool Equals(NodeKey other) =>
+        Address == other.Address && Path.Equals(in other.Path) && Hash.Equals(other.Hash);
 
     public override bool Equals(object? obj) => obj is NodeKey key && Equals(key);
 

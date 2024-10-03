@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -19,7 +20,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -154,10 +154,12 @@ public class TxCertifierFilterTests
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
+                new BeaconBlockRootHandler(TxProcessor),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null,
+                TxProcessor,
+                auRaValidator: null,
                 preWarmer: CreateBlockCachePreWarmer());
         }
 

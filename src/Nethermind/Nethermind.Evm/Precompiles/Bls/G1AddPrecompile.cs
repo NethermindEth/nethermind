@@ -4,7 +4,8 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -13,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 {
-    public static G1AddPrecompile Instance = new G1AddPrecompile();
+    public static readonly G1AddPrecompile Instance = new();
 
     private G1AddPrecompile()
     {
@@ -23,18 +24,34 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => 500L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 4 * BlsParams.LenFp;
+        const int expectedInputLength = 2 * BlsConst.LenG1;
         if (inputData.Length != expectedInputLength)
         {
             return IPrecompile.Failure;
         }
 
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = Pairings.BlsG1Add(inputData.Span, output);
-        return success ? (output.ToArray(), true) : IPrecompile.Failure;
+        G1 x = new(stackalloc long[G1.Sz]);
+        G1 y = new(stackalloc long[G1.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG1..].Span))
+        {
+            return IPrecompile.Failure;
+        }
+
+        if (x.IsInf())
+        {
+            return (inputData[BlsConst.LenG1..], true);
+        }
+
+        if (y.IsInf())
+        {
+            return (inputData[..BlsConst.LenG1], true);
+        }
+
+        G1 res = x.Add(y);
+        return (res.EncodeRaw(), true);
     }
 }

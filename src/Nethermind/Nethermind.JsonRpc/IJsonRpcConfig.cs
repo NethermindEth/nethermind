@@ -108,7 +108,7 @@ public interface IJsonRpcConfig : IConfig
 
 
     [ConfigItem(
-        Description = "The max number of logs per response. For method `eth_getLogs`. If 0 then no limit.",
+        Description = "The max number of logs per response for the `eth_getLogs` JSON-RPC method. `0` to lift the limit.",
         DefaultValue = "20000")]
     public int MaxLogsPerResponse { get; set; }
 
@@ -161,9 +161,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
-    [ConfigItem(Description = "The max blocks count limit for eth_simulate JSON-RPC calls.", DefaultValue = "256")]
+    [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }
 
-    [ConfigItem(Description = "The error margin used in eth_estimateGas expressed in basis points.", DefaultValue = "150")]
+    [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 }

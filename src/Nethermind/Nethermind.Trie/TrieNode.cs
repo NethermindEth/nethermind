@@ -89,7 +89,7 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public long? LastSeen { get; set; }
+        public long LastSeen { get; set; } = -1;
 
         public byte[]? Key
         {

@@ -10,11 +10,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Optimism;
 
-public class OptimismHeaderValidator : HeaderValidator
+public class OptimismHeaderValidator(
+    IBlockTree? blockTree,
+    ISealValidator? sealValidator,
+    ISpecProvider? specProvider,
+    ILogManager? logManager)
+    : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    public OptimismHeaderValidator(IBlockTree? blockTree, ISealValidator? sealValidator, ISpecProvider? specProvider, ILogManager? logManager) : base(blockTree, sealValidator, specProvider, logManager)
-    {
-    }
-
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

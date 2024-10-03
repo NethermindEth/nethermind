@@ -28,6 +28,12 @@ namespace Nethermind.Consensus.Processing
             remove { }
         }
 
+        public event EventHandler<BlockEventArgs>? BlockProcessing
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed
         {
             add { }

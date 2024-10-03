@@ -15,8 +15,9 @@ public static class ExitCodes
     public const int TooLongExtraData = 102;
     public const int ConflictingConfigurations = 103;
     public const int LowDiskSpace = 104;
-    public const int DuplicatedArguments = 105;
-    public const int UnrecognizedArgument = 106;
+    public const int DuplicatedOption = 105;
+    public const int UnrecognizedOption = 106;
+    public const int ForbiddenOptionValue = 107;
 
     // Posix exit code
     // https://tldp.org/LDP/abs/html/exitcodes.html

@@ -20,7 +20,7 @@ internal static class TransactionProcessorAdapterExtensions
         IWorldState stateProvider,
         Dictionary<Address, AccountOverride>? stateOverride)
     {
-        if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
+        if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce) && currentTx.SenderAddress != Address.SystemUser)
         {
             currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
         }

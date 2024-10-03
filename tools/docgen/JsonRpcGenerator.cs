@@ -7,16 +7,18 @@ using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Newtonsoft.Json;
+using Spectre.Console;
 
 namespace Nethermind.DocGen;
 
 internal static class JsonRpcGenerator
 {
-    private const string _directory = "json-rpc-ns";
     private const string _objectTypeName = "*object*";
 
-    internal static void Generate()
+    internal static void Generate(string path)
     {
+        path = Path.Join(path, "docs", "interacting", "json-rpc-ns");
+
         var excluded = new[] {
             typeof(IContextAwareRpcModule).FullName,
             typeof(IEvmRpcModule).FullName,
@@ -30,22 +32,29 @@ internal static class JsonRpcGenerator
                 !excluded.Any(x => x is not null && (t.FullName?.Contains(x, StringComparison.Ordinal) ?? false)))
             .OrderBy(t => t.Name);
 
-        if (Directory.Exists(_directory))
-            Directory.Delete(_directory, true);
-
-        Directory.CreateDirectory(_directory);
+        foreach (var file in Directory.EnumerateFiles(path))
+        {
+            if (file.EndsWith(".md", StringComparison.Ordinal) &&
+                // Skip eth_subscribe.md and eth_unsubscribe.md
+                !file.EndsWith("subscribe.md", StringComparison.Ordinal))
+            {
+                File.Delete(file);
+            }
+        }
 
         var i = 0;
 
         foreach (var type in types)
-            WriteMarkdown(type, i++);
+            WriteMarkdown(path, type, i++);
     }
 
-    private static void WriteMarkdown(Type rpcType, int sidebarIndex)
+    private static void WriteMarkdown(string path, Type rpcType, int sidebarIndex)
     {
         var rpcName = rpcType.Name[1..].Replace("RpcModule", null).ToLowerInvariant();
+        var fileName = Path.Join(path, $"{rpcName}.md");
 
-        using var file = new StreamWriter(File.OpenWrite($"{_directory}/{rpcName}.md"));
+        using var stream = File.Open(fileName, FileMode.Create);
+        using var file = new StreamWriter(stream);
         file.NewLine = "\n";
 
         file.WriteLine($"""
@@ -79,7 +88,7 @@ internal static class JsonRpcGenerator
             if (method.Name.Equals("eth_subscribe", StringComparison.Ordinal) ||
                 method.Name.Equals("eth_unsubscribe", StringComparison.Ordinal))
             {
-                WriteFromFile(file, $"{method.Name}.md");
+                WriteFromFile(file, Path.Join(path, $"{method.Name}.md"));
 
                 continue;
             }
@@ -111,7 +120,7 @@ internal static class JsonRpcGenerator
 
         file.Close();
 
-        Console.WriteLine($"Generated {_directory}/{rpcName}.md");
+        AnsiConsole.MarkupLine($"[green]Generated[/] {fileName}");
     }
 
     private static void WriteParameters(StreamWriter file, MethodInfo method)
@@ -254,9 +263,11 @@ internal static class JsonRpcGenerator
     {
         file.Flush();
 
+        using var sourceFile = File.OpenRead(fileName);
+
         try
         {
-            File.OpenRead(fileName).CopyTo(file.BaseStream);
+            sourceFile.CopyTo(file.BaseStream);
         }
         catch (Exception)
         {

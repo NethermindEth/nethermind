@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core.Crypto;
@@ -20,11 +21,6 @@ namespace Nethermind.Core
     [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
-        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
-        // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
-
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
@@ -153,7 +149,15 @@ namespace Nethermind.Core
                 return true;
             }
 
-            return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            // Address must be 20 bytes long Vector128 + uint
+            ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
+            ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
+            // Compare first 16 bytes with Vector128 and last 4 bytes with uint
+            return
+                Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
+                Unsafe.As<byte, Vector128<byte>>(ref bytes1) &&
+                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes0, Vector128<byte>.Count)) ==
+                Unsafe.As<byte, uint>(ref Unsafe.Add(ref bytes1, Vector128<byte>.Count));
         }
 
         public static Address FromNumber(in UInt256 number)
@@ -192,14 +196,7 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode()
-        {
-            uint hash = s_instanceRandom;
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetArrayDataReference(Bytes)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(ulong))));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2)));
-            return (int)hash;
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -234,7 +231,7 @@ namespace Nethermind.Core
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
 
-        public Hash256 ToAccountPath => Keccak.Compute(Bytes);
+        public Hash256 ToAccountPath => KeccakCache.Compute(Bytes);
 
         [SkipLocalsInit]
         public ValueHash256 ToHash()
