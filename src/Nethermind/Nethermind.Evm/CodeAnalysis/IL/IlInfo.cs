@@ -72,55 +72,61 @@ internal class IlInfo
         result = null;
         if (programCounter > ushort.MaxValue || Mode == ILMode.NO_ILVM)
             return false;
-
-        var executionResult = new ILChunkExecutionResult();
-        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
+        try
         {
-            Metrics.IlvmPrecompiledSegmentsExecutions++;
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
-            if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
 
-            vmState.DataStackHead = stack.Head;
-            var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
+            var executionResult = new ILChunkExecutionResult();
+            if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
+            {
+                Metrics.IlvmPrecompiledSegmentsExecutions++;
+                if (typeof(TTracingInstructions) == typeof(IsTracing))
+                    StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
+                if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
 
-            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
+                vmState.DataStackHead = stack.Head;
+                var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-            gasAvailable = ilvmState.GasAvailable;
-            programCounter = ilvmState.ProgramCounter;
+                ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
 
-            executionResult.ShouldReturn = ilvmState.ShouldReturn;
-            executionResult.ShouldRevert = ilvmState.ShouldRevert;
-            executionResult.ShouldStop = ilvmState.ShouldStop;
-            executionResult.ShouldJump = ilvmState.ShouldJump;
-            executionResult.ExceptionType = ilvmState.EvmException;
-            executionResult.ReturnData = ilvmState.ReturnBuffer;
+                gasAvailable = ilvmState.GasAvailable;
+                programCounter = ilvmState.ProgramCounter;
 
-            stack.Head = ilvmState.StackHead;
+                executionResult.ShouldReturn = ilvmState.ShouldReturn;
+                executionResult.ShouldRevert = ilvmState.ShouldRevert;
+                executionResult.ShouldStop = ilvmState.ShouldStop;
+                executionResult.ShouldJump = ilvmState.ShouldJump;
+                executionResult.ExceptionType = ilvmState.EvmException;
+                executionResult.ReturnData = ilvmState.ReturnBuffer;
 
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                tracer.ReportOperationRemainingGas(gasAvailable);
-        }
-        else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+                stack.Head = ilvmState.StackHead;
+
+                if (typeof(TTracingInstructions) == typeof(IsTracing))
+                    tracer.ReportOperationRemainingGas(gasAvailable);
+            }
+            else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+            {
+                Metrics.IlvmPredefinedPatternsExecutions++;
+
+                if (typeof(TTracingInstructions) == typeof(IsTracing))
+                    StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
+                if (logger.IsInfo) logger.Info($"Executing segment {chunk.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
+
+                chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
+
+                if (typeof(TTracingInstructions) == typeof(IsTracing))
+                    tracer.ReportOperationRemainingGas(gasAvailable);
+            }
+            else
+            {
+                return false;
+            }
+            result = executionResult;
+            return true;
+        } catch (Exception e)
         {
-            Metrics.IlvmPredefinedPatternsExecutions++;
-
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
-            if (logger.IsInfo) logger.Info($"Executing segment {chunk.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
-
-            chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
-
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                tracer.ReportOperationRemainingGas(gasAvailable);
-        }
-        else
-        {
+            logger.Error($"Error while executing IL-EVM segment at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}", e);
             return false;
         }
-
-        result = executionResult;
-        return true;
     }
 
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)

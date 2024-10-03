@@ -71,7 +71,7 @@ public static class IlAnalyzer
                 if (logger.IsInfo) logger.Info($"Finished IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode}");
             } catch(Exception exception)
             {
-                if (logger.IsInfo) logger.Info($"Failed IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode} with Exception :{exception.Message}");
+                logger.Error($"Error during IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode}", exception);
             }
         });
     }
