@@ -65,8 +65,14 @@ public static class IlAnalyzer
         return Task.Run(() =>
         {
             if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode}");
-            Analysis(codeInfo, mode, logger);
-            if (logger.IsInfo) logger.Info($"Finished IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode}");
+            try
+            {
+                Analysis(codeInfo, mode, logger);
+                if (logger.IsInfo) logger.Info($"Finished IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode}");
+            } catch(Exception exception)
+            {
+                if (logger.IsInfo) logger.Info($"Failed IL-EVM analysis of code {codeInfo.CodeHash} with mode:{mode} with Exception :{exception.Message}");
+            }
         });
     }
 
