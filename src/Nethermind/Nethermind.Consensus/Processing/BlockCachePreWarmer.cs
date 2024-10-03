@@ -88,25 +88,25 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                int progress = 0;
-                Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                    _ =>
-                    {
-                        IReadOnlyTxProcessorSource env = _envPool.Get();
-                        int i = 0;
-                        try
+                IReadOnlyTxProcessorSource env = _envPool.Get();
+                try
+                {
+                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                    int progress = 0;
+                    Parallel.For(0, block.Withdrawals.Length, parallelOptions,
+                        _ =>
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                            int i = 0;
                             // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
                             // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
                             i = Interlocked.Increment(ref progress) - 1;
                             scope.WorldState.WarmUp(block.Withdrawals[i].Address);
-                        }
-                        finally
-                        {
-                            _envPool.Return(env);
-                        }
-                    });
+                        });
+                }
+                finally
+                {
+                    _envPool.Return(env);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -145,7 +145,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                     if (spec.UseTxAccessLists)
                     {
-                        scope.WorldState.WarmUp(tx.AccessList); // eip-2930
+                        scope.WorldState.WarmUp(tx.AccessList, isParallelAccess: false); // eip-2930
                     }
                     TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
@@ -181,7 +181,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         private readonly Block Block = block;
         private readonly Hash256 StateRoot = stateRoot;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly AccessList? SystemTxAccessList = systemTxAccessList;
+        private readonly AccessList? systemTxAccessList = systemTxAccessList;
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
         public void Wait() => _doneEvent.Wait();
@@ -191,7 +191,14 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
             try
             {
                 if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-                WarmupAddresses(parallelOptions, Block);
+                WarmupAddresses(new ParallelOptions()
+                {
+                    // We aren't really doing any work here other than hitting storage
+                    // so double the parallelism to fan out in the ssd request queues
+                    MaxDegreeOfParallelism = parallelOptions.MaxDegreeOfParallelism * 2,
+                    CancellationToken = parallelOptions.CancellationToken
+                },
+                Block);
             }
             catch (Exception ex)
             {
@@ -207,20 +214,14 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         {
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
+            IReadOnlyTxProcessorSource env = PreWarmer._envPool.Get();
             try
             {
-                if (SystemTxAccessList is not null)
+                // Only need one scope as we are taking a parallel safe path
+                using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+                if (systemTxAccessList is not null && !systemTxAccessList.IsEmpty)
                 {
-                    var env = PreWarmer._envPool.Get();
-                    try
-                    {
-                        using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
-                        scope.WorldState.WarmUp(SystemTxAccessList);
-                    }
-                    finally
-                    {
-                        PreWarmer._envPool.Return(env);
-                    }
+                    scope.WorldState.WarmUp(systemTxAccessList, isParallelAccess: true);
                 }
 
                 int progress = 0;
@@ -234,29 +235,30 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     Transaction tx = block.Transactions[i];
                     Address? sender = tx.SenderAddress;
 
-                    var env = PreWarmer._envPool.Get();
-                    try
+                    if (sender is not null)
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
-                        if (sender is not null)
-                        {
-                            scope.WorldState.WarmUp(sender);
-                        }
-                        Address to = tx.To;
-                        if (to is not null)
-                        {
-                            scope.WorldState.WarmUp(to);
-                        }
+                        scope.WorldState.WarmUp(sender);
                     }
-                    finally
+                    Address to = tx.To;
+                    if (to is not null)
                     {
-                        PreWarmer._envPool.Return(env);
+                        scope.WorldState.WarmUp(to);
+                    }
+
+                    AccessList? accessList = tx.AccessList;
+                    if (accessList is not null && !accessList.IsEmpty)
+                    {
+                        scope.WorldState.WarmUp(accessList, isParallelAccess: true);
                     }
                 });
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
+            }
+            finally
+            {
+                PreWarmer._envPool.Return(env);
             }
         }
     }

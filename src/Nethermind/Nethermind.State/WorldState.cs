@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -110,22 +111,46 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resizeCollections);
             _transientStorageProvider.Reset(resizeCollections);
         }
-        public void WarmUp(AccessList? accessList)
+
+        public void WarmUp(AccessList? accessList, bool isParallelAccess)
         {
-            if (accessList?.IsEmpty == false)
+            if (accessList is not null && !accessList.IsEmpty)
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
-                    bool exists = _stateProvider.WarmUp(address);
-                    foreach (UInt256 storage in storages)
+                    _stateProvider.WarmUp(address, out Account? account);
+                    StorageTree? tree = null;
+                    if (account is not null)
                     {
-                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
+                        // If parallel access we need to create own storage tree and bypass
+                        // the single threaded state and storage caches
+                        tree = isParallelAccess ?
+                            _persistentStorageProvider.CreateStorage(address, account.StorageRoot) :
+                            _persistentStorageProvider.GetOrCreateStorage(address);
+                    }
+
+                    if (isParallelAccess && storages.Count > 10)
+                    {
+                        // We are already warming in parallel, but fan out if tx with
+                        // very many storages in access list so don't form a single
+                        // threaded queue with all warming waiting on one tx.
+                        Parallel.ForEach(storages, (storage) =>
+                        {
+                            _persistentStorageProvider.WarmUp(new StorageCell(address, storage), tree);
+                        });
+                    }
+                    else
+                    {
+                        foreach (UInt256 storage in storages)
+                        {
+                            _persistentStorageProvider.WarmUp(new StorageCell(address, storage), tree);
+                        }
                     }
                 }
             }
         }
 
-        public void WarmUp(Address address) => _stateProvider.WarmUp(address);
+        public void WarmUp(Address address) => _stateProvider.WarmUp(address, out Account? account);
         public void ClearStorage(Address address)
         {
             _persistentStorageProvider.ClearStorage(address);

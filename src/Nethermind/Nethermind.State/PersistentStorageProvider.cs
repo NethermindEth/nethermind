@@ -334,29 +334,36 @@ namespace Nethermind.State
             _storages.Clear();
         }
 
-        private StorageTree GetOrCreateStorage(Address address)
+        public StorageTree GetOrCreateStorage(Address address)
         {
             ref StorageTree? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
             if (!exists)
             {
-                value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+                value = CreateStorage(address, _stateProvider.GetStorageRoot(address));
             }
 
             return value;
         }
 
-        public void WarmUp(in StorageCell storageCell, bool isEmpty)
+        public StorageTree CreateStorage(Address address, Hash256 storageRoot)
         {
-            if (isEmpty)
+            return _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), storageRoot, StateRoot, _logManager);
+        }
+
+        public void WarmUp(in StorageCell storageCell, StorageTree? tree = null)
+        {
+            if (tree is null)
             {
-                if (_preBlockCache is not null)
-                {
-                    _preBlockCache[storageCell] = [];
-                }
+                _preBlockCache[storageCell] = [];
             }
             else
             {
-                LoadFromTree(in storageCell);
+                _preBlockCache.GetOrAdd(
+                    storageCell,
+                    static (c, t) => !c.IsHash ?
+                        t.Get(c.Index) :
+                        t.GetArray(c.Hash.Bytes),
+                    tree);
             }
         }
 
