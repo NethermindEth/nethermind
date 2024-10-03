@@ -16,7 +16,7 @@ public static class StateOverridesExtensions
 {
     public static void ApplyStateOverrides(
         this IWorldState state,
-        OverridableCodeInfoRepository overridableCodeInfoRepository,
+        IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
         long blockNumber)
@@ -68,7 +68,7 @@ public static class StateOverridesExtensions
 
     private static void UpdateCode(
         this IWorldState stateProvider,
-        OverridableCodeInfoRepository overridableCodeInfoRepository,
+        IOverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
         AccountOverride accountOverride,
         Address address)

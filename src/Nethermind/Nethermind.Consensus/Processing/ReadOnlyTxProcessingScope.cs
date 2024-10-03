@@ -23,6 +23,7 @@ public class ReadOnlyTxProcessingScope(
         codeInfoRepository.ResetOverrides();
     }
 
+    public IOverridableCodeInfoRepository CodeInfoRepository => codeInfoRepository;
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
     public IWorldState WorldState => worldState;
 }

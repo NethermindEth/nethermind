@@ -40,7 +40,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly ReadOnlyTxProcessingEnv _processingEnv;
+        private readonly IReadOnlyTxProcessorSource _processingEnv;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
@@ -332,7 +332,7 @@ namespace Nethermind.Facade
 
             if (stateOverride != null)
             {
-                scope.WorldState.ApplyStateOverrides(_processingEnv.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
+                scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
                 header.StateRoot = scope.WorldState.StateRoot;
             }
             return scope;
