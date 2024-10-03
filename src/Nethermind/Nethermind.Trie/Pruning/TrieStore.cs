@@ -353,7 +353,6 @@ namespace Nethermind.Trie.Pruning
                     finally
                     {
                         writeBatch.Dispose();
-                        nodeStorage.Compact();
                     }
                 }
             }
