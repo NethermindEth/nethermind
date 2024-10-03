@@ -33,7 +33,7 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
         if (code.Length == 0)
         {
@@ -138,7 +138,6 @@ internal class ILCompiler
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
             }
-
 
             // check if opcode is activated in current spec
             method.LoadArgument(4);
