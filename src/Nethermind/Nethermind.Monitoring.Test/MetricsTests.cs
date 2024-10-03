@@ -19,7 +19,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test;
 
-[TestFixture]
 public class MetricsTests
 {
     public static class TestMetrics
@@ -79,8 +78,8 @@ public class MetricsTests
         var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
         var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
 
-        Assert.Contains(keyDefault, gauges.Keys);
-        Assert.Contains(keySpecial, gauges.Keys);
+        Assert.That(gauges.Keys, Has.Member(keyDefault));
+        Assert.That(gauges.Keys, Has.Member(keySpecial));
 
         Assert.That(gauges[keyDefault].Name, Is.EqualTo("nethermind_one_two_three"));
         Assert.That(gauges[keySpecial].Name, Is.EqualTo("one_two_three"));

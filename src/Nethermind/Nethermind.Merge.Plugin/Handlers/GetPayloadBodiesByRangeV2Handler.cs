@@ -13,9 +13,8 @@ using Nethermind.Core.ConsensusRequests;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 
-namespace Nethermind.Merge.Plugin.handlers;
+namespace Nethermind.Merge.Plugin.Handlers;
 
 public class GetPayloadBodiesByRangeV2Handler(IBlockTree blockTree, ILogManager logManager) : GetPayloadBodiesByRangeV1Handler(blockTree, logManager), IGetPayloadBodiesByRangeV2Handler
 {

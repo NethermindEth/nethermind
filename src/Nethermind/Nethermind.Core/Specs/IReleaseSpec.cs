@@ -299,9 +299,18 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip6780Enabled { get; }
 
+        /// <summary>
+        /// Blob base fee collection for Gnosis
+        /// </summary>
+        bool IsEip4844FeeCollectorEnabled { get; }
+
+        /// <summary>
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
+
+        /// OP Granite
+        bool IsOpGraniteEnabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

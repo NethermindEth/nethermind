@@ -112,6 +112,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
+        public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
         public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address) => _spec.IsEip158IgnoredAccount(address);
@@ -123,11 +124,11 @@ namespace Nethermind.Specs.Test
             set => _overridenEip1559TransitionBlock = value;
         }
 
-        private Address? _overridenEip1559FeeCollector;
-        public Address? Eip1559FeeCollector
+        private Address? _overridenFeeCollector;
+        public Address? FeeCollector
         {
-            get => _overridenEip1559FeeCollector ?? _spec.Eip1559FeeCollector;
-            set => _overridenEip1559FeeCollector = value;
+            get => _overridenFeeCollector ?? _spec.FeeCollector;
+            set => _overridenFeeCollector = value;
         }
 
         private ulong? _overridenEip4844TransitionTimeStamp;
@@ -152,6 +153,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip5656Enabled => _spec.IsEip5656Enabled;
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
+        public bool IsEip4844FeeCollectorEnabled => _spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress => _spec.Eip4788ContractAddress;
         public bool IsEip7002Enabled => _spec.IsEip7002Enabled;
         public Address Eip7002ContractAddress => _spec.Eip7002ContractAddress;
