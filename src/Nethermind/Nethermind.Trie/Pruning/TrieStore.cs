@@ -294,10 +294,8 @@ namespace Nethermind.Trie.Pruning
             }
 
 
-            public void RemovePastKeys(ConcurrentDictionary<HashAndTinyPath, Hash256?>? persistedHashes, INodeStorage nodeStorage)
+            public void RemovePastKeys(ConcurrentDictionary<HashAndTinyPath, Hash256?> persistedHashes, INodeStorage nodeStorage)
             {
-                if (persistedHashes is null) return;
-
                 bool CanRemove(in ValueHash256 address, TinyTreePath path, in TreePath fullPath, in ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
                 {
                     // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
@@ -317,42 +315,45 @@ namespace Nethermind.Trie.Pruning
                     return true;
                 }
 
-                INodeStorage.WriteBatch writeBatch = nodeStorage.StartWriteBatch();
-                try
+                using (AcquireMapLock())
                 {
-                    int round = 0;
-                    foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
+                    INodeStorage.WriteBatch writeBatch = nodeStorage.StartWriteBatch();
+                    try
                     {
-                        HashAndTinyPath key = keyValuePair.Key;
-                        if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
+                        int round = 0;
+                        foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
                         {
-                            TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
-                            if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                            HashAndTinyPath key = keyValuePair.Key;
+                            if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
                             {
-                                Metrics.RemovedNodeCount++;
-                                Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
-                                writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
-                                round++;
+                                TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
+                                if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                                {
+                                    Metrics.RemovedNodeCount++;
+                                    Hash256? address = key.addr == default ? null : key.addr.ToCommitment();
+                                    writeBatch.Set(address, fullPath, prevHash, default, WriteFlags.DisableWAL);
+                                    round++;
+                                }
+                            }
+
+                            // Batches of 256
+                            if (round > 256)
+                            {
+                                writeBatch.Dispose();
+                                writeBatch = nodeStorage.StartWriteBatch();
+                                round = 0;
                             }
                         }
-
-                        // Batches of 256
-                        if (round > 256)
-                        {
-                            writeBatch.Dispose();
-                            writeBatch = nodeStorage.StartWriteBatch();
-                            round = 0;
-                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Failed to remove past keys. {ex}");
-                }
-                finally
-                {
-                    writeBatch.Dispose();
-                    nodeStorage.Compact();
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Failed to remove past keys. {ex}");
+                    }
+                    finally
+                    {
+                        writeBatch.Dispose();
+                        nodeStorage.Compact();
+                    }
                 }
             }
 
