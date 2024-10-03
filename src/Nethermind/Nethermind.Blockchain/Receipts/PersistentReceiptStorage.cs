@@ -87,6 +87,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 // Don't delay Canonical receipts if at head
                 EnsureCanonical(e.Block);
+                ReceiptsInserted?.Invoke(this, e);
             }
 
             // Don't block main loop
@@ -96,9 +97,8 @@ namespace Nethermind.Blockchain.Receipts
                 {
                     // If syncing canonical receipts can lag
                     EnsureCanonical(e.Block);
+                    ReceiptsInserted?.Invoke(this, e);
                 }
-
-                ReceiptsInserted?.Invoke(this, e);
 
                 Block newMain = e.Block;
 
