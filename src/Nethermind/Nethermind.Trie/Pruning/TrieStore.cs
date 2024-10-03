@@ -645,6 +645,9 @@ namespace Nethermind.Trie.Pruning
         {
             if (_livePruningEnabled)
             {
+                // When enabled, the shard have dictionaries for tracking past path hash also.
+                // So the same path need to be in the same shard for the remove logic to work.
+                // Using the address first byte howvever, causes very uneven distribution. So the path is used.
                 return path.Path.Bytes[0];
             }
 
