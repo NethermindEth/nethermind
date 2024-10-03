@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -42,7 +43,7 @@ namespace Nethermind.Trie.Pruning
 
             // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
             // recommitted persisted nodes (which will not get re-persisted).
-            private readonly ConcurrentDictionary<HashAndTinyPathAndHash, long>? _persistedLastSeen;
+            private Dictionary<HashAndTinyPathAndHash, long>? _persistedLastSeen;
 
             public readonly long KeyMemoryUsage;
 
@@ -66,7 +67,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (trackedPastKeyCount > 0 && !storeByHash)
                 {
-                    _persistedLastSeen = new(CollectionExtensions.LockPartitions, 4 * 4096);
+                    _persistedLastSeen = new();
                     _pastPathHash = new(trackedPastKeyCount);
                 }
             }
@@ -280,11 +281,11 @@ namespace Nethermind.Trie.Pruning
                     if (node.LastSeen >= 0)
                     {
                         // Update _persistedLastSeen to later value.
-                        _persistedLastSeen.AddOrUpdate(
-                            new(key.Address, in treePath, key.Keccak),
-                            (_, newValue) => newValue,
-                            (_, newValue, currentLastSeen) => Math.Max(newValue, currentLastSeen),
-                            node.LastSeen);
+                        HashAndTinyPathAndHash plsKey = new(key.Address, in treePath, key.Keccak);
+                        if (!_persistedLastSeen.TryGetValue(plsKey, out var currentLastSeen) || currentLastSeen <= node.LastSeen)
+                        {
+                            _persistedLastSeen[plsKey] = node.LastSeen;
+                        }
                     }
 
                     // This persisted node is being removed from cache. Keep it in mind in case of an update to the same
@@ -359,14 +360,20 @@ namespace Nethermind.Trie.Pruning
 
             public void CleanObsoletePersistedLastSeen()
             {
-                var persistedLastSeen = _persistedLastSeen;
+                Dictionary<HashAndTinyPathAndHash, long>? persistedLastSeen = _persistedLastSeen;
+
+                // The amount of nodes that is no longer needed is so high that creating a new dictionary is faster.
+                Dictionary<HashAndTinyPathAndHash, long> newPersistedLastSeen = new();
+
                 foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in persistedLastSeen)
                 {
-                    if (_trieStore.IsNoLongerNeeded(keyValuePair.Value))
+                    if (!_trieStore.IsNoLongerNeeded(keyValuePair.Value))
                     {
-                        persistedLastSeen.Remove(keyValuePair.Key, out _);
+                        newPersistedLastSeen.Add(keyValuePair.Key, keyValuePair.Value);
                     }
                 }
+
+                _persistedLastSeen = newPersistedLastSeen;
             }
 
             public void Dump()
@@ -383,7 +390,7 @@ namespace Nethermind.Trie.Pruning
 
             public void ClearLivePruningTracking()
             {
-                _persistedLastSeen.NoResizeClear();
+                _persistedLastSeen.Clear();
                 _pastPathHash?.Clear();
             }
 
