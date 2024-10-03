@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -29,11 +30,11 @@ internal class IlInfo
         public EvmExceptionType ExceptionType;
     }
 
-    public enum ILMode
+    public static class ILMode
     {
-        NoIlvm = 0,
-        PatternMatching = 1,
-        SubsegmentsCompiling = 2
+        public const int NO_ILVM = 0;
+        public const int PAT_MODE = 1;
+        public const int JIT_MODE = 2;
     }
 
     /// <summary>
@@ -44,7 +45,7 @@ internal class IlInfo
     /// <summary>
     /// Represents what mode of IL-EVM is used. 0 is the default. [0 = No ILVM optimizations, 1 = Pattern matching, 2 = subsegments compiling]
     /// </summary>
-    public ILMode Mode = ILMode.NoIlvm;
+    public int Mode = ILMode.NO_ILVM;
     public bool IsEmpty => Chunks.Count == 0 && Segments.Count == 0;
     /// <summary>
     /// No overrides.
@@ -69,11 +70,11 @@ internal class IlInfo
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         result = null;
-        if (programCounter > ushort.MaxValue || Mode == ILMode.NoIlvm)
+        if (programCounter > ushort.MaxValue || Mode == ILMode.NO_ILVM)
             return false;
 
         var executionResult = new ILChunkExecutionResult();
-        if (Mode.HasFlag(ILMode.SubsegmentsCompiling) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
+        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -100,7 +101,7 @@ internal class IlInfo
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
         }
-        else if (Mode.HasFlag(ILMode.PatternMatching) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+        else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
             Metrics.IlvmPredefinedPatternsExecutions++;
 

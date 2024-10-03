@@ -154,7 +154,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
         ICodeInfoRepository codeInfoRepository,
-        IVMConfig _,
+        IVMConfig VMC,
         ILogger? logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -162,13 +162,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        _vmConfig = new VMConfig
+        _vmConfig = VMC;
+        /*new VMConfig
         {
             JittingThreshold = 2,
             PatternMatchingThreshold = 1,
             IsPatternMatchingEnabled = true,
             IsJitEnabled = true,
-        };
+        };*/
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)

@@ -31,14 +31,14 @@ namespace Nethermind.Evm.CodeAnalysis
 
             Interlocked.Increment(ref _callCount);
             // use Interlocked just in case of concurrent execution to run it only once
-            IlInfo.ILMode mode =
+            var mode =
                  vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
-                    ? IlInfo.ILMode.PatternMatching
+                    ? IlInfo.ILMode.PAT_MODE
                     : vmConfig.IsJitEnabled && _callCount == vmConfig.JittingThreshold
-                        ? IlInfo.ILMode.SubsegmentsCompiling
-                        : IlInfo.ILMode.NoIlvm;
+                        ? IlInfo.ILMode.JIT_MODE
+                        : IlInfo.ILMode.NO_ILVM;
 
-            if (mode == IlInfo.ILMode.NoIlvm)
+            if (mode == IlInfo.ILMode.NO_ILVM)
                 return;
 
             await IlAnalyzer.StartAnalysis(this, mode, logger).ConfigureAwait(false);
