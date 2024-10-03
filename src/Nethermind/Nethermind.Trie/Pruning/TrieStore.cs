@@ -1488,41 +1488,41 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
 
-            int commitSetCount = 0;
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
-            // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-            void ClearCommitSetQueue()
-            {
-                while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
-                {
-                    if (!_commitSetQueue.TryDequeue(out commitSet)) break;
-                    if (!commitSet.IsSealed)
-                    {
-                        // Oops
-                        _commitSetQueue.Enqueue(commitSet);
-                        break;
-                    }
-
-                    commitSetCount++;
-                    using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
-                    PersistBlockCommitSet(null, commitSet, writeBatch);
-                }
-                PruneCurrentSet();
-            }
-
-            if (!(_commitSetQueue?.IsEmpty ?? true))
-            {
-                // We persist outside of lock first.
-                ClearCommitSetQueue();
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets.");
-
-            stopwatch.Restart();
-
             lock (_dirtyNodesLock)
             {
+                int commitSetCount = 0;
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
+                // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
+                void ClearCommitSetQueue()
+                {
+                    while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+                    {
+                        if (!_commitSetQueue.TryDequeue(out commitSet)) break;
+                        if (!commitSet.IsSealed)
+                        {
+                            // Oops
+                            _commitSetQueue.Enqueue(commitSet);
+                            break;
+                        }
+
+                        commitSetCount++;
+                        using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+                        PersistBlockCommitSet(null, commitSet, writeBatch);
+                    }
+                    PruneCurrentSet();
+                }
+
+                if (!(_commitSetQueue?.IsEmpty ?? true))
+                {
+                    // We persist outside of lock first.
+                    ClearCommitSetQueue();
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets.");
+
+                stopwatch.Restart();
+
                 // Double check
                 ClearCommitSetQueue();
                 if (cancellationToken.IsCancellationRequested) return;
