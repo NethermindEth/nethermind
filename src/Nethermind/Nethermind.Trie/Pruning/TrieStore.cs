@@ -1549,9 +1549,9 @@ namespace Nethermind.Trie.Pruning
                 {
                     dirtyNode.ClearLivePruningTracking();
                 }
-            }
 
-            if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
+                if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
+            }
         }
 
         // Used to serve node by hash
