@@ -353,8 +353,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionOptions opts,
             out long intrinsicGas)
         {
-            intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
-            var floorGas = IntrinsicGasCalculator.CalculateFloorGas(tx, spec);
+            intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, out long floorGas);
 
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
@@ -765,7 +764,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
-                var floorGas = IntrinsicGasCalculator.CalculateFloorGas(tx, spec);
+                _ = IntrinsicGasCalculator.Calculate(tx, spec, out long floorGas);
                 spentGas = Math.Max(spentGas, floorGas);
 
                 long totalToRefund = codeInsertRefund;
