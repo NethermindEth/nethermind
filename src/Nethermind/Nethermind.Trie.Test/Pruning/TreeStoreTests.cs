@@ -162,7 +162,6 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
-        /*
         [Test]
         public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
         {
@@ -181,7 +180,6 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakD, true);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
         }
-        */
 
         [Test]
         public void Memory_with_two_nodes_is_correct()
@@ -776,7 +774,7 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage;
+        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.TrieStoreDirtyNodesCache.Key.MemoryUsage;
 
         [Test]
         public void After_commit_should_have_has_root()

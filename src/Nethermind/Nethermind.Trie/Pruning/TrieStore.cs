@@ -464,9 +464,6 @@ namespace Nethermind.Trie.Pruning
         // This seems to attempt prevent multiple block processing at the same time and along with pruning at the same time.
         private object _dirtyNodesLock = new object();
 
-        // This seems to attempt to prevent the dirty nodes from being mutated by other thread at the same time.
-        private object _dirtyNodesWriteLock = new object();
-
         private bool _livePruningEnabled = false;
 
         private bool _lastPersistedReachedReorgBoundary;
@@ -915,34 +912,31 @@ namespace Nethermind.Trie.Pruning
                         _nodeStorage.Flush();
                         lock (_dirtyNodesLock)
                         {
-                            lock (_dirtyNodesWriteLock)
+                            Stopwatch sw = Stopwatch.StartNew();
+                            if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
+
+                            long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
+                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
                             {
-                                Stopwatch sw = Stopwatch.StartNew();
-                                if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
+                                // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
+                                // usually faster to just SaveSnapshot causing most of the entry to be persisted.
+                                // Not saving snapshot just save about 5% of memory at most of the time, causing
+                                // an elevated pruning a few blocks after making it not very effective especially
+                                // on constant block processing such as during forward sync where it can take up to
+                                // 30% of the total time on halfpath as the block processing portion got faster.
+                                //
+                                // With halfpath's live pruning, there is a slight complication, the currently loaded
+                                // persisted node have a pretty good hit rate and tend to conflict with the persisted
+                                // nodes (address,path) entry on second PruneCache. So pruning them ahead of time
+                                // really helps increase nodes that can be removed.
+                                PruneCache(skipRecalculateMemory: true);
 
-                                long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
-                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
-                                {
-                                    // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
-                                    // usually faster to just SaveSnapshot causing most of the entry to be persisted.
-                                    // Not saving snapshot just save about 5% of memory at most of the time, causing
-                                    // an elevated pruning a few blocks after making it not very effective especially
-                                    // on constant block processing such as during forward sync where it can take up to
-                                    // 30% of the total time on halfpath as the block processing portion got faster.
-                                    //
-                                    // With halfpath's live pruning, there is a slight complication, the currently loaded
-                                    // persisted node have a pretty good hit rate and tend to conflict with the persisted
-                                    // nodes (address,path) entry on second PruneCache. So pruning them ahead of time
-                                    // really helps increase nodes that can be removed.
-                                    PruneCache(skipRecalculateMemory: true);
+                                SaveSnapshot();
 
-                                    SaveSnapshot();
+                                PruneCache();
 
-                                    PruneCache();
-
-                                    Metrics.PruningTime = sw.ElapsedMilliseconds;
-                                    if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
-                                }
+                                Metrics.PruningTime = sw.ElapsedMilliseconds;
+                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
                             }
                         }
 
@@ -1498,33 +1492,30 @@ namespace Nethermind.Trie.Pruning
 
             lock (_dirtyNodesLock)
             {
-                lock (_dirtyNodesWriteLock)
+                // Double check
+                ClearCommitSetQueue();
+                if (cancellationToken.IsCancellationRequested) return;
+
+                // This should clear most nodes. For some reason, not all.
+                PruneCache(skipRecalculateMemory: true);
+                if (cancellationToken.IsCancellationRequested) return;
+
+                foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
                 {
-                    // Double check
-                    ClearCommitSetQueue();
-                    if (cancellationToken.IsCancellationRequested) return;
+                    PersistAllInCache(dirtyNode);
+                }
+                if (cancellationToken.IsCancellationRequested) return;
 
-                    // This should clear most nodes. For some reason, not all.
-                    PruneCache(skipRecalculateMemory: true);
-                    if (cancellationToken.IsCancellationRequested) return;
+                PruneCache();
 
-                    foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
-                    {
-                        PersistAllInCache(dirtyNode);
-                    }
-                    if (cancellationToken.IsCancellationRequested) return;
+                if (DirtyNodesCount() != 0)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"{DirtyNodesCount()} cache entry remains.");
+                }
 
-                    PruneCache();
-
-                    if (DirtyNodesCount() != 0)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"{DirtyNodesCount()} cache entry remains.");
-                    }
-
-                    foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
-                    {
-                        dirtyNode.ClearLivePruningTracking();
-                    }
+                foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
+                {
+                    dirtyNode.ClearLivePruningTracking();
                 }
             }
 
