@@ -48,8 +48,6 @@ public class McsLock
         return new Disposable(node);
     }
 
-    public bool ProbablyLocked => _tail is not null;
-
     private static void WaitForUnlock(ThreadNode node, ThreadNode predecessor)
     {
         // If there was a previous tail, it means the lock is already held by someone.
@@ -143,7 +141,7 @@ public class McsLock
             {
                 SignalUnlock(next);
             }
-            // Remove the reference to the next node
+            // Remove the reference to the next node 
             node.Next = null;
         }
 
