@@ -91,6 +91,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 IReadOnlyTxProcessorSource env = _envPool.Get();
                 try
                 {
+                    // Only need one scope as we are taking a parallel safe path
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
                     int progress = 0;
                     Parallel.For(0, block.Withdrawals.Length, parallelOptions,
