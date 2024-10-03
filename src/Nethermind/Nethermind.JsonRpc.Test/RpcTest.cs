@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
-using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -13,8 +12,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-
-using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -63,10 +60,26 @@ public static class RpcTest
         return service;
     }
 
-    public static JsonRpcRequest GetJsonRequest(string method, params string[]? parameters)
+    public static JsonRpcRequest GetJsonRequest(string method, params string?[]? parameters)
     {
-        var doc = JsonDocument.Parse(JsonSerializer.Serialize(parameters?.ToArray()));
-        var request = new JsonRpcRequest()
+        // NOTE: Since parameters are already passed as strings we want to avoid double serialization of JSON objects
+        var sb = new StringBuilder("[");
+        foreach (var param in parameters ?? [])
+        {
+            if (!string.IsNullOrEmpty(param) && param[0] == '{')
+            {
+                sb.Append(param);
+            }
+            else
+            {
+                sb.Append(JsonSerializer.Serialize(param));
+            }
+            sb.Append(',');
+        }
+        sb.Append(']');
+        var doc = JsonDocument.Parse(sb.ToString(), new JsonDocumentOptions { AllowTrailingCommas = true });
+
+        var request = new JsonRpcRequest
         {
             JsonRpc = "2.0",
             Method = method,
