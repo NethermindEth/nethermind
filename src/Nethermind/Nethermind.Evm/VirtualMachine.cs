@@ -162,14 +162,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        _vmConfig = VMC;
-        /*new VMConfig
+        _vmConfig = new VMConfig
         {
             JittingThreshold = 2,
             PatternMatchingThreshold = 1,
             IsPatternMatchingEnabled = true,
             IsJitEnabled = true,
-        };*/
+        };
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
