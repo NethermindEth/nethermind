@@ -391,7 +391,9 @@ public partial class BlockProcessor(
             WithdrawalsRoot = bh.WithdrawalsRoot,
             RequestsRoot = bh.RequestsRoot,
             IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
+            TargetBlobCount = bh.TargetBlobCount,
+            MaxBlobCount = bh.MaxBlobCount,
         };
 
         if (!ShouldComputeStateRoot(bh))
