@@ -121,11 +121,24 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         private readonly int _index;
         private readonly int _count;
 
+        public int Count => _count;
+
         public StorageKeysEnumerable(AccessList accessList, int index, int count)
         {
             _accessList = accessList;
             _index = index;
             _count = count;
+        }
+
+        public UInt256 this[int index]
+        {
+            get
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(index);
+                ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _count);
+
+                return _accessList._keys[_index + index];
+            }
         }
 
         StorageKeysEnumerator GetEnumerator() => new(_accessList, _index, _count);
