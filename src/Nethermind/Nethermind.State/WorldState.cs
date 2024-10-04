@@ -3,8 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -112,61 +110,22 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resizeCollections);
             _transientStorageProvider.Reset(resizeCollections);
         }
-
-        public void WarmUp(AccessList? accessList, bool isParallelAccess)
+        public void WarmUp(AccessList? accessList)
         {
-            const int BatchSize = 8;
-
-            if (accessList is not null && !accessList.IsEmpty)
+            if (accessList?.IsEmpty == false)
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
-                    _stateProvider.WarmUp(address, out Account? account);
-                    StorageTree? tree = null;
-                    if (account is not null)
+                    bool exists = _stateProvider.WarmUp(address);
+                    foreach (UInt256 storage in storages)
                     {
-                        // If parallel access we need to create own storage tree and bypass
-                        // the single threaded state and storage caches
-                        tree = isParallelAccess ?
-                            _persistentStorageProvider.CreateStorage(address, account.StorageRoot) :
-                            _persistentStorageProvider.GetOrCreateStorage(address);
-                    }
-
-                    int count = storages.Count;
-                    if (isParallelAccess && count > BatchSize)
-                    {
-                        // We are already warming in parallel, but fan out if tx with
-                        // very many storages in access list so don't form a single
-                        // threaded queue with all warming waiting on one tx.
-
-                        int index = 0;
-                        int partitions = count / BatchSize + 1;
-                        Parallel.For(0, partitions, _ =>
-                        {
-                            for (int batch = 0; batch < BatchSize; batch++)
-                            {
-                                // We have err'd on side of over provisioning, since not
-                                // all storage accesses are the same. Use interlocked to
-                                // get next slot, then exit if consumed all
-                                int i = Interlocked.Increment(ref index) - 1;
-                                if (i >= count) return;
-
-                                _persistentStorageProvider.WarmUp(new StorageCell(address, storages[i]), tree);
-                            }
-                        });
-                    }
-                    else
-                    {
-                        for (int i = 0; i < count; i++)
-                        {
-                            _persistentStorageProvider.WarmUp(new StorageCell(address, storages[i]), tree);
-                        }
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage), isEmpty: !exists);
                     }
                 }
             }
         }
 
-        public void WarmUp(Address address) => _stateProvider.WarmUp(address, out Account? account);
+        public void WarmUp(Address address) => _stateProvider.WarmUp(address);
         public void ClearStorage(Address address)
         {
             _persistentStorageProvider.ClearStorage(address);
