@@ -140,9 +140,9 @@ namespace Nethermind.Consensus.Processing
 
                 if (tx.AuthorizationList.Length > 3)
                 {
-                    Parallel.ForEach(tx.AuthorizationList, (tuple) =>
+                    Parallel.ForEach(tx.AuthorizationList.Where(t => t.Authority is null), (tuple) =>
                     {
-                        tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
+                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
                     });
                 }
                 else
