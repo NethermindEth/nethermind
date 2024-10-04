@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.Processing
                 Address sender = poolTx?.SenderAddress;
                 if (sender is not null)
                 {
-                    tx.SenderAddress = sender;                 
+                    tx.SenderAddress = sender;
 
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
                 }
