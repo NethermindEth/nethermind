@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -658,11 +657,9 @@ namespace Nethermind.State
             };
         }
 
-        public bool WarmUp(Address address, out Account? account)
+        public bool WarmUp(Address address)
         {
-            Debug.Assert(_populatePreBlockCache);
-            account = GetStatePopulatePrewarmCache(address);
-            return account is not null;
+            return GetState(address) is not null;
         }
 
         private Account? GetState(Address address)

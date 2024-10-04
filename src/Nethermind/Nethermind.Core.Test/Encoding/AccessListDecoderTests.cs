@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip2930;
 using NUnit.Framework;
@@ -100,16 +99,6 @@ namespace Nethermind.Core.Test.Encoding
             else
             {
                 decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
-
-                foreach (var list in decoded)
-                {
-                    var i = 0;
-                    foreach (UInt256 key in list.StorageKeys)
-                    {
-                        key.Should().BeEquivalentTo(list.StorageKeys[i], testCase.TestName);
-                        i++;
-                    }
-                }
             }
         }
 
@@ -128,16 +117,6 @@ namespace Nethermind.Core.Test.Encoding
             else
             {
                 decoded.Should().BeEquivalentTo(testCase.AccessList, testCase.TestName);
-
-                foreach (var list in decoded)
-                {
-                    var i = 0;
-                    foreach (UInt256 key in list.StorageKeys)
-                    {
-                        key.Should().BeEquivalentTo(list.StorageKeys[i], testCase.TestName);
-                        i++;
-                    }
-                }
             }
         }
 
