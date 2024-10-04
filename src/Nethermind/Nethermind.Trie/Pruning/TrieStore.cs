@@ -1278,6 +1278,10 @@ namespace Nethermind.Trie.Pruning
 
             // The amount of change in the subtrees are not balanced at all. So their writes ares buffered here
             // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
+            // This unfortunately is not atomic
+            // However, anything that we are trying to persist here should still be in dirty cache.
+            // So parallel read should go there first instead of to the database for these dataset,
+            // so it should be fine for these to be non atomic.
             BlockingCollection<INodeStorage.WriteBatch> disposeQueue = new BlockingCollection<INodeStorage.WriteBatch>(4);
 
             Task disposeTask = Task.WhenAll(Enumerable.Range(0, Environment.ProcessorCount).Select((_) => Task.Run(() =>
