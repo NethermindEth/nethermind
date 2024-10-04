@@ -27,7 +27,9 @@ public static class IntrinsicGasCalculator
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec, out long floorGas)
     {
-        long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+        long txDataNonZeroMultiplier = releaseSpec.IsEip2028Enabled
+            ? GasCostOf.TxDataNonZeroMultiplierEip2028
+            : GasCostOf.TxDataNonZeroMultiplier;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
 
         int totalZeros = data.CountZeros();
@@ -36,14 +38,13 @@ public static class IntrinsicGasCalculator
             ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
             : 0;
 
-        var tokensInCallData = totalZeros + (data.Length - totalZeros) * 4;
+        var tokensInCallData = totalZeros + (data.Length - totalZeros) * txDataNonZeroMultiplier;
+
         floorGas = releaseSpec.IsEip7623Enabled
             ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
             : 0;
 
-        return baseDataCost +
-            totalZeros * GasCostOf.TxDataZero +
-            (data.Length - totalZeros) * txDataNonZeroGasCost;
+        return baseDataCost + tokensInCallData * GasCostOf.TxDataZero;
     }
 
     private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
