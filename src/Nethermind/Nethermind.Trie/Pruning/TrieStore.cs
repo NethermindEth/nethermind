@@ -1004,7 +1004,7 @@ namespace Nethermind.Trie.Pruning
 
                 Task RemovePastKeys()
                 {
-                    for (int index = 0; index < ShardedDirtyNodeCount; index++)
+                    for (int index = 0; index < _dirtyNodes.Length; index++)
                     {
                         int i = index;
                         _dirtyNodesTasks[index] = Task.Run(() =>
@@ -1081,7 +1081,7 @@ namespace Nethermind.Trie.Pruning
 
             long newMemory = 0;
 
-            for (int index = 0; index < ShardedDirtyNodeCount; index++)
+            for (int index = 0; index < _dirtyNodes.Length; index++)
             {
                 TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[index];
                 _dirtyNodesTasks[index] = Task.Run(() =>
@@ -1510,7 +1510,7 @@ namespace Nethermind.Trie.Pruning
                 PruneCache(skipRecalculateMemory: true);
                 if (cancellationToken.IsCancellationRequested) return;
 
-                for (int index = 0; index < ShardedDirtyNodeCount; index++)
+                for (int index = 0; index < _dirtyNodes.Length; index++)
                 {
                     TrieStoreDirtyNodesCache dirtyNode = _dirtyNodes[index];
                     _dirtyNodesTasks[index] = Task.Run(() =>
