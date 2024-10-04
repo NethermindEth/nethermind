@@ -550,6 +550,7 @@ namespace Nethermind.Trie.Pruning
                 for (int i = 0; i < ShardedDirtyNodeCount; i++)
                 {
                     _dirtyNodes[i] = new TrieStoreDirtyNodesCache(this, _pruningStrategy.TrackedPastKeyCount / ShardedDirtyNodeCount, !_nodeStorage.RequirePath, _logger);
+                    _persistedHashes[i] = new ConcurrentDictionary<HashAndTinyPath, Hash256>();
                 }
             }
 
@@ -1265,8 +1266,6 @@ namespace Nethermind.Trie.Pruning
                 });
             }
 
-            Task disposeTask = Task.WhenAll(_disposeTasks);
-
             Task.WaitAll(parallelStartNodes.Select(entry => Task.Run(() =>
             {
                 (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
@@ -1274,7 +1273,7 @@ namespace Nethermind.Trie.Pruning
             })).ToArray());
 
             disposeQueue.CompleteAdding();
-            disposeTask.Wait();
+            Task.WaitAll(_disposeTasks);
 
             // Dispose top level last in case something goes wrong, at least the root wont be stored
             topLevelWriteBatch.Dispose();
