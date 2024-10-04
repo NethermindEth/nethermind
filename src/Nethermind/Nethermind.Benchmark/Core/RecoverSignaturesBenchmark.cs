@@ -41,7 +41,7 @@ namespace Nethermind.Benchmarks.Core
         public void GlobalSetup()
         {
             _ethereumEcdsa = new(_specProvider.ChainId);
-            _sut = new(_ethereumEcdsa, new AlwaysReturnNullTxPool(), _specProvider, NullLogManager.Instance);
+            _sut = new(_ethereumEcdsa, NullTxPool.Instance, _specProvider, NullLogManager.Instance);
 
             var rnd = new Random();
 
@@ -198,108 +198,6 @@ namespace Nethermind.Benchmarks.Core
         public void Recover10TxSignaturesWith0AuthoritySignatures()
         {
             _sut.RecoverData(_block10TxWith0AuthSigs);
-        }
-
-        private class AlwaysReturnNullTxPool : ITxPool
-        {
-#pragma warning disable 67
-            public event EventHandler<TxPool.TxEventArgs> NewDiscovered;
-            public event EventHandler<TxPool.TxEventArgs> NewPending;
-            public event EventHandler<TxPool.TxEventArgs> RemovedPending;
-            public event EventHandler<TxPool.TxEventArgs> EvictedPending;
-            public event EventHandler<Block> TxPoolHeadChanged;
-#pragma warning restore 67
-
-            public void AddPeer(ITxPoolPeer peer)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool ContainsTx(Hash256 hash, TxType txType)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Transaction GetBestTx()
-            {
-                throw new NotImplementedException();
-            }
-
-            public IEnumerable<Transaction> GetBestTxOfEachSender()
-            {
-                throw new NotImplementedException();
-            }
-
-            public UInt256 GetLatestPendingNonce(Address address)
-            {
-                throw new NotImplementedException();
-            }
-
-            public int GetPendingBlobTransactionsCount()
-            {
-                throw new NotImplementedException();
-            }
-
-            public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Transaction[] GetPendingTransactions()
-            {
-                throw new NotImplementedException();
-            }
-
-            public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Transaction[] GetPendingTransactionsBySender(Address address)
-            {
-                throw new NotImplementedException();
-            }
-
-            public int GetPendingTransactionsCount()
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsKnown(Hash256 hash)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void RemovePeer(PublicKey nodeId)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool RemoveTransaction(Hash256 hash)
-            {
-                throw new NotImplementedException();
-            }
-
-            public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool TryGetBlobAndProof(byte[] blobVersionedHash, [NotNullWhen(true)] out byte[] blob, [NotNullWhen(true)] out byte[] proof)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction blobTransaction)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction transaction)
-            {
-                transaction = null;
-                return false;
-            }
         }
     }
 }
