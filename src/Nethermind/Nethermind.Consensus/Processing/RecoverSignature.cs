@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (!ShouldRecoverSignatures(tx)) continue;
 
-                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
