@@ -10,7 +10,7 @@
     },
     "Verkle Test": {
       "commandName": "Project",
-      "commandLineArgs": "-v -i verkle.json"
+      "commandLineArgs": "-v -i /home/eurus/review/blockchain_tests/verkle/eip4762_verkle_gas_witness"
     },
     "Regex State Test": {
       "commandName": "Project",
