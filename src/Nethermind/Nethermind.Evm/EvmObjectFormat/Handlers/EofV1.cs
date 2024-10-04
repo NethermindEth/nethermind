@@ -637,6 +637,7 @@ internal class Eof1 : IEofVersionHandler
 
             ReadOnlySpan<byte> currentTypeSection = eofContainer.TypeSections[sectionId].Span;
             var isCurrentSectionNonReturning = currentTypeSection[OUTPUTS_OFFSET] == 0x80;
+            bool hasRequiredSectionExit = isCurrentSectionNonReturning;
 
             int position;
             Instruction opcode = Instruction.STOP;
@@ -736,6 +737,7 @@ internal class Eof1 : IEofVersionHandler
                 }
                 else if (opcode is Instruction.JUMPF)
                 {
+                    hasRequiredSectionExit = true;
                     if (nextPosition + EofValidator.TWO_BYTE_LENGTH > code.Length)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.JUMPF} Argument underflow");
@@ -759,6 +761,12 @@ internal class Eof1 : IEofVersionHandler
                     if (!isTargetSectionNonReturning && currentSectionOutputCount < targetSectionOutputCount)
                     {
                         if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.JUMPF} to code section with more outputs");
+                        return false;
+                    }
+
+                    if (isCurrentSectionNonReturning && !isTargetSectionNonReturning)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, {Instruction.JUMPF} from non-returning must target non-returning");
                         return false;
                     }
 
@@ -839,10 +847,15 @@ internal class Eof1 : IEofVersionHandler
                     sectionsWorklist.Enqueue(targetSectionId, strategy);
                     BitmapHelper.HandleNumbits(EofValidator.TWO_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
                 }
-                else if (opcode is Instruction.RETF && isCurrentSectionNonReturning)
+                else if (opcode is Instruction.RETF)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, non returning sections are not allowed to use opcode {Instruction.RETF}");
-                    return false;
+                    hasRequiredSectionExit = true;
+                    if (isCurrentSectionNonReturning)
+                    {
+                        if (Logger.IsTrace)
+                            Logger.Trace($"EOF: Eof{VERSION}, non returning sections are not allowed to use opcode {Instruction.RETF}");
+                        return false;
+                    }
                 }
                 else if (opcode is Instruction.DATALOADN)
                 {
@@ -910,6 +923,12 @@ internal class Eof1 : IEofVersionHandler
             if (!opcode.IsTerminating())
             {
                 if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code section {sectionId} ends with a non-terminating opcode");
+                return false;
+            }
+
+            if (!hasRequiredSectionExit)
+            {
+                if (Logger.IsTrace) Logger.Trace($"EOF: Eof{VERSION}, Code section {sectionId} is returning and does not have a RETF or JUMPF");
                 return false;
             }
 
