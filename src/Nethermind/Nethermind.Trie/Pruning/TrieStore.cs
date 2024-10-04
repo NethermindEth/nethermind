@@ -496,9 +496,9 @@ namespace Nethermind.Trie.Pruning
 
         private INodeStorage.WriteBatch? _currentBatch = null;
 
-        private readonly TrieStoreDirtyNodesCache[] _dirtyNodes;
-        private readonly Task[] _dirtyNodesTasks;
-        private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes;
+        private readonly TrieStoreDirtyNodesCache[] _dirtyNodes = [];
+        private readonly Task[] _dirtyNodesTasks = [];
+        private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
         private readonly Action<TreePath, Hash256?, TrieNode> _persistedNodeRecorder;
         private readonly Task[] _disposeTasks = new Task[Environment.ProcessorCount];
 
