@@ -113,6 +113,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip4844Enabled => _spec.IsEip4844Enabled;
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
+        public bool IsOntakeEnabled => _spec.IsOntakeEnabled;
         public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address) => _spec.IsEip158IgnoredAccount(address);

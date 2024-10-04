@@ -34,7 +34,6 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Merge.Plugin.handlers;
 
 namespace Nethermind.Taiko;
 
@@ -182,8 +181,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             OneTimeChainProcessor chainProcessor = new(
                 scope.WorldState,
                 blockchainProcessor);
-
-            // BlockProducerEnv env = ((TaikoBlockProducerEnvFactory)_api.BlockProducerEnvFactory).CreateWithInvalidTxExecutor();
 
             payloadPreparationService = new(
                 chainProcessor,

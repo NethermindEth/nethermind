@@ -33,7 +33,6 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         block.Transactions[0].IsAnchorTx = true;
 
         BlockExecutionContext blkCtx = new(block.Header);
-
         List<Transaction> correctTransactions = [];
 
         for (int i = 0; i < block.Transactions.Length; i++)

@@ -24,4 +24,5 @@ public class BlockMetadata
 
     [JsonConverter(typeof(Base64Converter))]
     public required byte[] ExtraData { get; set; }
+    public byte? BasefeeSharingPctg { get; set; }
 }

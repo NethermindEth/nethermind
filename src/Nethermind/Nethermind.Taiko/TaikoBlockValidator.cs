@@ -22,6 +22,7 @@ public class TaikoBlockValidator(
     ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
     private static readonly byte[] AnchorSelector = Keccak.Compute("anchor(bytes32,bytes32,uint64,uint32)").BytesToArray()[0..4];
+    private static readonly byte[] AnchorV2Selector = Keccak.Compute("anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))").BytesToArray()[0..4];
 
     private static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
@@ -76,7 +77,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.Data is null || !Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorSelector))
+        if (tx.Data is null || (!Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorSelector) && !Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorV2Selector)))
         {
             errorMessage = "Anchor Transaction must have the correct selector.";
             return false;

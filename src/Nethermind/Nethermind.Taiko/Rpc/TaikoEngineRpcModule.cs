@@ -67,6 +67,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
+    private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
+
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
         return base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
@@ -79,7 +81,19 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
+        return VerifyBlockMetadata(payloadAttributes) ?? base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
+    }
+
+    private Task<ResultWrapper<ForkchoiceUpdatedV1Result>>? VerifyBlockMetadata(TaikoPayloadAttributes? payloadAttributes)
+    {
+        if (payloadAttributes?.BlockMetadata?.BasefeeSharingPctg is > 100)
+        {
+
+            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
+            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"invalid basefeeSharingPctg {payloadAttributes.BlockMetadata.BasefeeSharingPctg}", MergeErrorCodes.InvalidPayloadAttributes));
+        }
+
+        return null;
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload)
@@ -89,7 +103,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+        return VerifyBlockMetadata(payloadAttributes) ?? base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
@@ -137,91 +151,55 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     }
 
 
-    private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
 
     private PreBuiltTxList[] ProcessTransactions(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader blockHeader, Transaction[] txSource, int maxBatchCount, ulong maxBytesPerTxList)
     {
-        lock (worldState)
+        if (txSource.Length is 0 || blockHeader.StateRoot is null)
         {
-            if (txSource.Length is 0 || blockHeader.StateRoot is null)
+            return [];
+        }
+
+        List<PreBuiltTxList> Batches = [];
+
+        void CommitAndDisposeBatch(Batch batch)
+        {
+            Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new TransactionForRpc(tx)).ToArray(),
+                                            (ulong)blockHeader.GasUsed,
+                                            batch.GetCompressedTxsLength()));
+            blockHeader.GasUsed = 0;
+            batch.Dispose();
+        }
+
+        BlockExecutionContext blkCtx = new(blockHeader);
+        worldState.StateRoot = blockHeader.StateRoot;
+
+        Batch batch = new(maxBytesPerTxList, _txDecoder);
+
+        for (int i = 0; i < txSource.Length;)
+        {
+            Transaction tx = txSource[i];
+            Snapshot snapshot = worldState.TakeSnapshot(true);
+            long gasUsed = blockHeader.GasUsed;
+
+            void IgnoreCurrentSender()
             {
-                return [];
+                while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
             }
 
-            List<PreBuiltTxList> Batches = [];
-
-            void CommitAndDisposeBatch(Batch batch)
+            void RestoreState()
             {
-                Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new TransactionForRpc(tx)).ToArray(),
-                                               (ulong)blockHeader.GasUsed,
-                                               batch.GetCompressedTxsLength()));
-                blockHeader.GasUsed = 0;
-                batch.Dispose();
+                worldState.Restore(snapshot);
             }
 
-            BlockExecutionContext blkCtx = new(blockHeader);
-            worldState.StateRoot = blockHeader.StateRoot;
-
-            Batch batch = new(maxBytesPerTxList, _txDecoder);
-
-            for (int i = 0; i < txSource.Length;)
+            try
             {
-                Transaction tx = txSource[i];
-                Snapshot snapshot = worldState.TakeSnapshot(true);
-                long gasUsed = blockHeader.GasUsed;
+                TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
 
-                void IgnoreCurrentSender()
-                {
-                    while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
-                }
-
-                void RestoreState()
-                {
-                    worldState.Restore(snapshot);
-                }
-
-                try
-                {
-                    TransactionResult executionResult = txProcessor.Execute(tx, in blkCtx, NullTxTracer.Instance);
-
-                    if (!executionResult)
-                    {
-                        RestoreState();
-
-                        if (executionResult.Error == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
-                        {
-                            CommitAndDisposeBatch(batch);
-                            batch = new(maxBytesPerTxList, _txDecoder);
-
-                            if (maxBatchCount == Batches.Count)
-                            {
-                                return [.. Batches];
-                            }
-
-                            continue;
-                        }
-
-                        IgnoreCurrentSender();
-                        continue;
-                    }
-                }
-                catch
-                {
-                    RestoreState();
-                    IgnoreCurrentSender();
-                    continue;
-                }
-
-                if (!batch.TryAddTx(tx))
+                if (!executionResult)
                 {
                     RestoreState();
 
-                    if (batch.Transactions.Count is 0)
-                    {
-                        IgnoreCurrentSender();
-                        continue;
-                    }
-                    else
+                    if (executionResult.Error == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                     {
                         CommitAndDisposeBatch(batch);
                         batch = new(maxBytesPerTxList, _txDecoder);
@@ -233,18 +211,50 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                         continue;
                     }
+
+                    IgnoreCurrentSender();
+                    continue;
                 }
-
-                i++;
             }
-
-            if (batch.Transactions.Count is not 0)
+            catch
             {
-                CommitAndDisposeBatch(batch);
+                RestoreState();
+                IgnoreCurrentSender();
+                continue;
             }
 
-            return [.. Batches];
+            if (!batch.TryAddTx(tx))
+            {
+                RestoreState();
+
+                if (batch.Transactions.Count is 0)
+                {
+                    IgnoreCurrentSender();
+                    continue;
+                }
+                else
+                {
+                    CommitAndDisposeBatch(batch);
+                    batch = new(maxBytesPerTxList, _txDecoder);
+
+                    if (maxBatchCount == Batches.Count)
+                    {
+                        return [.. Batches];
+                    }
+
+                    continue;
+                }
+            }
+
+            i++;
         }
+
+        if (batch.Transactions.Count is not 0)
+        {
+            CommitAndDisposeBatch(batch);
+        }
+
+        return [.. Batches];
     }
 
     sealed class Batch(ulong maxBytes, TxDecoder txDecoder) : IDisposable

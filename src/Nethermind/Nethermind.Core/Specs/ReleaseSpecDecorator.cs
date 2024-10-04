@@ -77,6 +77,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
     public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
+    public virtual bool IsOntakeEnabled => spec.IsOntakeEnabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
@@ -123,7 +124,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsBlockHashInStateAvailable => spec.IsBlockHashInStateAvailable;
     public virtual bool MCopyIncluded => spec.MCopyIncluded;
     public virtual bool BlobBaseFeeEnabled => spec.BlobBaseFeeEnabled;
-    public virtual Address? Eip1559FeeCollector => spec.Eip1559FeeCollector;
+    public virtual Address? FeeCollector => spec.FeeCollector;
     public virtual UInt256? Eip1559BaseFeeMinValue => spec.Eip1559BaseFeeMinValue;
     public virtual bool ValidateReceipts => spec.ValidateReceipts;
 }
