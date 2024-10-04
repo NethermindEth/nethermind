@@ -13,6 +13,7 @@
     "chainId": "59144",
     "maxCodeSize": "0x6000",
     "maxCodeSizeTransition": "0x0",
+    "maximumExtraDataSize": "0xffff",
     "eip150Transition": "0x0",
     "eip160Transition": "0x0",
     "eip161abcTransition": "0x0",
