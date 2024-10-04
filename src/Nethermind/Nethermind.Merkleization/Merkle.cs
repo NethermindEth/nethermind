@@ -157,13 +157,13 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, Span<bool> value)
+    public static void Ize(out UInt256 root, ReadOnlySpan<bool> value)
     {
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<bool> fullChunks = value[..^partialChunkLength];
+            ReadOnlySpan<bool> fullChunks = value[..^partialChunkLength];
             Span<bool> lastChunk = stackalloc bool[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<bool, UInt256>(fullChunks), MemoryMarshal.Cast<bool, UInt256>(lastChunk));
@@ -174,13 +174,13 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, Span<byte> value)
+    public static void Ize(out UInt256 root, ReadOnlySpan<byte> value)
     {
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<byte> fullChunks = value[..^partialChunkLength];
+            ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
@@ -288,13 +288,13 @@ public static partial class Merkle
         return 8;
     }
 
-    public static void Ize(out UInt256 root, Span<ushort> value)
+    public static void Ize(out UInt256 root, ReadOnlySpan<ushort> value)
     {
         const int typeSize = 2;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<ushort> fullChunks = value[..^partialChunkLength];
+            ReadOnlySpan<ushort> fullChunks = value[..^partialChunkLength];
             Span<ushort> lastChunk = stackalloc ushort[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<ushort, UInt256>(fullChunks), MemoryMarshal.Cast<ushort, UInt256>(lastChunk));
@@ -305,13 +305,13 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, Span<uint> value)
+    public static void Ize(out UInt256 root, ReadOnlySpan<uint> value)
     {
         const int typeSize = 4;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<uint> fullChunks = value[..^partialChunkLength];
+            ReadOnlySpan<uint> fullChunks = value[..^partialChunkLength];
             Span<uint> lastChunk = stackalloc uint[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<uint, UInt256>(fullChunks), MemoryMarshal.Cast<uint, UInt256>(lastChunk));
@@ -322,14 +322,14 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, Span<ulong> value, ulong maxLength = 0U)
+    public static void Ize(out UInt256 root, ReadOnlySpan<ulong> value, ulong maxLength = 0U)
     {
         const int typeSize = sizeof(ulong);
         ulong limit = (maxLength * typeSize + 31) / 32;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<ulong> fullChunks = value[..^partialChunkLength];
+            ReadOnlySpan<ulong> fullChunks = value[..^partialChunkLength];
             Span<ulong> lastChunk = stackalloc ulong[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<ulong, UInt256>(fullChunks), MemoryMarshal.Cast<ulong, UInt256>(lastChunk), limit);
@@ -340,13 +340,13 @@ public static partial class Merkle
         }
     }
 
-    public static void Ize(out UInt256 root, Span<UInt128> value)
+    public static void Ize(out UInt256 root, ReadOnlySpan<UInt128> value)
     {
         const int typeSize = 16;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<UInt128> fullChunks = value[..^partialChunkLength];
+            ReadOnlySpan<UInt128> fullChunks = value[..^partialChunkLength];
             Span<UInt128> lastChunk = stackalloc UInt128[32 / typeSize];
             value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<UInt128, UInt256>(fullChunks), MemoryMarshal.Cast<UInt128, UInt256>(lastChunk));

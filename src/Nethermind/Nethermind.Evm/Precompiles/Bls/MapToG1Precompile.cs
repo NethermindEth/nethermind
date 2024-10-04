@@ -27,6 +27,8 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsMapFpToG1Precompile++;
+
         const int expectedInputLength = BlsConst.LenFp;
         if (inputData.Length != expectedInputLength)
         {

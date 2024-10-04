@@ -40,7 +40,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 [SetCulture("en-US")]
 public partial class EthRpcModuleTests
 {
