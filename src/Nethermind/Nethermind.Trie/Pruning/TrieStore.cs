@@ -1222,7 +1222,7 @@ namespace Nethermind.Trie.Pruning
         )
         {
             INodeStorage.WriteBatch topLevelWriteBatch = _nodeStorage.StartWriteBatch();
-            int parallelBoundaryPathLength = 2;
+            const int parallelBoundaryPathLength = 2;
 
             using ArrayPoolList<(TrieNode trieNode, Hash256? address2, TreePath path)> parallelStartNodes = new(ShardedDirtyNodeCount);
 
