@@ -70,7 +70,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     Snapshot TakeSnapshot(bool newTransactionStart = false);
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
-    void WarmUp(AccessList? accessList);
+    void WarmUp(AccessList? accessList, bool isParallelAccess);
     void WarmUp(Address address);
     /// <summary>
     /// Clear all storage at specified address
