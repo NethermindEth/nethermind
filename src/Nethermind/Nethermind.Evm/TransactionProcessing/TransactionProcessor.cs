@@ -383,12 +383,12 @@ namespace Nethermind.Evm.TransactionProcessing
             return ValidateGas(tx, header, Math.Max(intrinsicGas, floorGas), validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
         {
-            if (tx.GasLimit < intrinsicGas)
+            if (tx.GasLimit < minGasRequired)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {intrinsicGas}");
-                return TransactionResult.GasLimitBelowIntrinsicGas;
+                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
+                return "gas limit below intrinsic gas";
             }
 
             if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
