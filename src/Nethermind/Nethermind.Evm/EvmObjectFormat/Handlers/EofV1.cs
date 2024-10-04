@@ -440,11 +440,7 @@ internal class Eof1 : IEofVersionHandler
 
                     if (validationStrategy.HasFlag(ValidationStrategy.Validate))
                     {
-                        // Clear the Initcode flag for subcontainer
-                        ValidationStrategy subContainerValidation = validationStrategy & ~ValidationStrategy.ValidateInitcodeMode;
-                        // Set the Runtime flag for subcontainer
-                        subContainerValidation |= ValidationStrategy.ValidateRuntimeMode;
-                        containers.Enqueue((new EofContainer(subsection, header.Value), subContainerValidation));
+                        containers.Enqueue((new EofContainer(subsection, header.Value), worklet.Strategy));
                     }
                 }
                 else
@@ -711,7 +707,7 @@ internal class Eof1 : IEofVersionHandler
                         return false;
                     }
 
-                    containersWorklist.Enqueue(runtimeContainerId + 1, ValidationStrategy.ValidateRuntimeMode);
+                    containersWorklist.Enqueue(runtimeContainerId + 1, ValidationStrategy.ValidateRuntimeMode | ValidationStrategy.ValidateFullBody);
 
                     BitmapHelper.HandleNumbits(EofValidator.ONE_BYTE_LENGTH, invalidJumpDestinations, ref nextPosition);
                 }

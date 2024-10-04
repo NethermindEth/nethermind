@@ -8,5 +8,6 @@ namespace Ethereum.Test.Base;
 public class VectorTestJson
 {
     public string Code { get; set; }
+    public string ContainerKind { get; set; }
     public Dictionary<string, TestResultJson> Results { get; set; }
 }

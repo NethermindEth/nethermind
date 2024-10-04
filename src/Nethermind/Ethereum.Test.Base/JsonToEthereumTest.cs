@@ -12,6 +12,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -189,9 +190,15 @@ namespace Ethereum.Test.Base
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new();
-            state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
-            state.Code = accountStateJson.Code is not null ? Bytes.FromHexString(accountStateJson.Code) : Array.Empty<byte>();
-            state.Nonce = accountStateJson.Nonce is not null ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256() : 0;
+            state.Balance = accountStateJson.Balance is not null
+                ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256()
+                : 0;
+            state.Code = accountStateJson.Code is not null
+                ? Bytes.FromHexString(accountStateJson.Code)
+                : Array.Empty<byte>();
+            state.Nonce = accountStateJson.Nonce is not null
+                ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256()
+                : 0;
             state.Storage = accountStateJson.Storage is not null
                 ? accountStateJson.Storage.ToDictionary(
                     p => Bytes.FromHexString(p.Key).ToUInt256(),
@@ -218,7 +225,8 @@ namespace Ethereum.Test.Base
                                 $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_";
                     if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
                     {
-                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
+                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]
+                            ?.Replace(":label ", string.Empty);
                     }
 
                     test.ForkName = postStateBySpec.Key;
@@ -285,7 +293,8 @@ namespace Ethereum.Test.Base
 
         public static IEnumerable<EofTest> ConvertToEofTests(string json)
         {
-            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
+            Dictionary<string, EofTestJson>
+                testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
             List<EofTest> tests = new();
             foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
             {
@@ -309,6 +318,11 @@ namespace Ethereum.Test.Base
                     VectorTestJson vectorJson = pair.Value;
                     VectorTest vector = new();
                     vector.Code = Bytes.FromHexString(vectorJson.Code);
+                    vector.ContainerKind =
+                        ("INITCODE".Equals(vectorJson.ContainerKind)
+                            ? ValidationStrategy.ValidateInitcodeMode
+                            : ValidationStrategy.ValidateRuntimeMode)
+                        | ValidationStrategy.ValidateFullBody;
 
                     foreach (var result in vectorJson.Results)
                     {
