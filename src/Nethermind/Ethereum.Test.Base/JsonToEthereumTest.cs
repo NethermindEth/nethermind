@@ -163,12 +163,12 @@ namespace Ethereum.Test.Base
                 transaction.AuthorizationList =
                     transactionJson.AuthorizationList
                     .Select(i => new AuthorizationTuple(
-                        System.Convert.ToUInt64(i.ChainId, 16),
-                        new Address(i.Address),
-                        System.Convert.ToUInt64(i.Nonce, 16),
-                        System.Convert.ToUInt64(i.V, 16),
-                        Bytes.FromHexString(i.R),
-                        Bytes.FromHexString(i.S))).ToArray();
+                        i.ChainId,
+                        i.Address,
+                        i.Nonce,
+                        i.V,
+                        i.R,
+                        i.S)).ToArray();
                 if (transaction.AuthorizationList.Any())
                 {
                     transaction.Type = TxType.SetCode;
