@@ -36,9 +36,9 @@ public static class IntrinsicGasCalculator
             ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
             : 0;
 
-        var totalTokens = totalZeros + (data.Length - totalZeros) * 4;
+        var tokensInCallData = totalZeros + (data.Length - totalZeros) * 4;
         floorGas = releaseSpec.IsEip7623Enabled
-            ? GasCostOf.Transaction + totalTokens * GasCostOf.TotalCostFloorPerTokenEip7623
+            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
             : 0;
 
         return baseDataCost +
@@ -92,15 +92,5 @@ public static class IntrinsicGasCalculator
         {
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
         }
-    }
-
-    private static long FloorCallDataCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        if (!releaseSpec.IsEip7623Enabled) return 0;
-        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-
-        var totalZeros = data.CountZeros();
-        var totalTokens = totalZeros + (data.Length - totalZeros) * 4;
-        return totalTokens * GasCostOf.TotalCostFloorPerTokenEip7623;
     }
 }
