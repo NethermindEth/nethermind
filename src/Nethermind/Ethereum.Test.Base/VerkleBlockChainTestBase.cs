@@ -4,9 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
@@ -226,11 +229,13 @@ namespace Ethereum.Test.Base
             await blockchainProcessor.StopAsync(true);
             stopwatch?.Stop();
 
+            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), stateProvider);
+
             return new EthereumTestResult
             (
                 test.Name,
                 null,
-                true
+                differences.Count == 0
             );
         }
 
@@ -319,6 +324,139 @@ namespace Ethereum.Test.Base
             stateProvider.CommitTree(0);
 
             stateProvider.Reset();
+        }
+
+        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
+        {
+            if (test.PostStateRoot != null)
+            {
+                return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
+            }
+
+            TestBlockHeaderJson testHeaderJson = (test.Blocks?
+                                                     .Where(b => b.BlockHeader != null)
+                                                     .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
+            BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
+            List<string> differences = new();
+
+            if (test.PostState is not null)
+            {
+                IEnumerable<KeyValuePair<Address, AccountState>> deletedAccounts = test.Pre?
+                .Where(pre => !(test.PostState?.ContainsKey(pre.Key) ?? false)) ?? Array.Empty<KeyValuePair<Address, AccountState>>();
+
+            foreach (KeyValuePair<Address, AccountState> deletedAccount in deletedAccounts)
+            {
+                if (stateProvider.AccountExists(deletedAccount.Key))
+                {
+                    differences.Add($"Pre state account {deletedAccount.Key} was not deleted as expected.");
+                }
+            }
+
+            foreach ((Address acountAddress, AccountState accountState) in test.PostState)
+            {
+                int differencesBefore = differences.Count;
+
+                if (differences.Count > 8)
+                {
+                    Console.WriteLine("More than 8 differences...");
+                    break;
+                }
+
+                bool accountExists = stateProvider.AccountExists(acountAddress);
+                UInt256? balance = accountExists ? stateProvider.GetBalance(acountAddress) : (UInt256?)null;
+                UInt256? nonce = accountExists ? stateProvider.GetNonce(acountAddress) : (UInt256?)null;
+
+                if (accountState.Balance != balance)
+                {
+                    differences.Add($"{acountAddress} balance exp: {accountState.Balance}, actual: {balance}, diff: {(balance > accountState.Balance ? balance - accountState.Balance : accountState.Balance - balance)}");
+                }
+
+                if (accountState.Nonce != nonce)
+                {
+                    differences.Add($"{acountAddress} nonce exp: {accountState.Nonce}, actual: {nonce}");
+                }
+
+                byte[] code = accountExists ? stateProvider.GetCode(acountAddress) : new byte[0];
+                if (!Bytes.AreEqual(accountState.Code, code))
+                {
+                    differences.Add($"{acountAddress} code exp: {accountState.Code?.Length}, actual: {code?.Length}");
+                }
+
+                if (differences.Count != differencesBefore)
+                {
+                    _logger.Info($"ACCOUNT STATE ({acountAddress}) HAS DIFFERENCES");
+                }
+
+                differencesBefore = differences.Count;
+
+                KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0];
+                if (test.Pre.ContainsKey(acountAddress))
+                {
+                    clearedStorages = test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
+                }
+
+                foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
+                {
+                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
+                    if (!value.IsZero())
+                    {
+                        differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    }
+                }
+
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
+                {
+                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key));
+                    if (!Bytes.AreEqual(storageItem.Value, value))
+                    {
+                        differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
+                    }
+                }
+
+                if (differences.Count != differencesBefore)
+                {
+                    _logger.Info($"ACCOUNT STORAGE ({acountAddress}) HAS DIFFERENCES");
+                }
+            }
+            }
+
+            BigInteger gasUsed = headBlock.Header.GasUsed;
+            if ((testHeader?.GasUsed ?? 0) != gasUsed)
+            {
+                differences.Add($"GAS USED exp: {testHeader?.GasUsed ?? 0}, actual: {gasUsed}");
+            }
+
+            if (headBlock.Transactions.Any() && testHeader.Bloom.ToString() != headBlock.Header.Bloom.ToString())
+            {
+                differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Header.Bloom}");
+            }
+
+            if (testHeader.StateRoot != stateProvider.StateRoot)
+            {
+                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {stateProvider.StateRoot}");
+            }
+
+            if (testHeader.TxRoot != headBlock.Header.TxRoot)
+            {
+                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TxRoot}, actual: {headBlock.Header.TxRoot}");
+            }
+
+            if (testHeader.ReceiptsRoot != headBlock.Header.ReceiptsRoot)
+            {
+                differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptsRoot}, actual: {headBlock.Header.ReceiptsRoot}");
+            }
+
+            if (test.LastBlockHash != headBlock.Hash)
+            {
+                differences.Add($"LAST BLOCK HASH exp: {test.LastBlockHash}, actual: {headBlock.Hash}");
+            }
+
+            foreach (string difference in differences)
+            {
+                _logger.Info(difference);
+            }
+
+            return differences;
         }
     }
 }
