@@ -935,7 +935,7 @@ namespace Nethermind.Trie.Pruning
 
                                 TimeSpan sw = Stopwatch.GetElapsedTime(start);
                                 Metrics.PruningTime = (long)sw.TotalMilliseconds;
-                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {(long)sw.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
+                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {(long)sw.TotalMilliseconds:0.##} ms. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
                             }
                         }
 
