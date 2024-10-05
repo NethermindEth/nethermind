@@ -53,6 +53,7 @@ namespace Ethereum.Test.Base
 
             var vector = test.Vector;
             var code = vector.Code;
+            var strategy = vector.ContainerKind;
             var fork = test.Result.Fork switch
             {
                 "Prague" => Nethermind.Specs.Forks.Prague.Instance,
@@ -68,7 +69,7 @@ namespace Ethereum.Test.Base
                 _ => throw new NotSupportedException($"Fork {test.Result.Fork} is not supported")
             };
 
-            bool result = CodeDepositHandler.IsValidWithEofRules(fork, code, 1);
+            bool result = CodeDepositHandler.IsValidWithEofRules(fork, code, 1, strategy);
             return result;
         }
     }

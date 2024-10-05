@@ -12,6 +12,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -309,6 +310,11 @@ namespace Ethereum.Test.Base
                     VectorTestJson vectorJson = pair.Value;
                     VectorTest vector = new();
                     vector.Code = Bytes.FromHexString(vectorJson.Code);
+                    vector.ContainerKind =
+                        ("INITCODE".Equals(vectorJson.ContainerKind)
+                            ? ValidationStrategy.ValidateInitcodeMode
+                            : ValidationStrategy.ValidateRuntimeMode)
+                        | ValidationStrategy.ValidateFullBody;
 
                     foreach (var result in vectorJson.Results)
                     {

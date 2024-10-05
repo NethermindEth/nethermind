@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base.Interfaces;
-using System.Collections.Generic;
-using System.Numerics;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Ethereum.Test.Base;
 public class Result
@@ -16,6 +15,7 @@ public class Result
 public class VectorTest
 {
     public byte[] Code { get; set; }
+    public ValidationStrategy ContainerKind { get; set; }
 }
 
 public class EofTest : IEthereumTest
