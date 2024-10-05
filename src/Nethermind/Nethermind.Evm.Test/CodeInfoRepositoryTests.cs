@@ -62,7 +62,7 @@ public class CodeInfoRepositoryTests
         };
     }
     [TestCaseSource(nameof(NotDelegationCodeCases))]
-    public void IsDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
+    public void TryGetDelegation_CodeIsNotDelegation_ReturnsFalse(byte[] code)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -92,7 +92,7 @@ public class CodeInfoRepositoryTests
         };
     }
     [TestCaseSource(nameof(DelegationCodeCases))]
-    public void IsDelegation_CodeIsDelegation_ReturnsTrue(byte[] code)
+    public void TryGetDelegation_CodeTryGetDelegation_ReturnsTrue(byte[] code)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -106,7 +106,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
-    public void IsDelegation_CodeIsDelegation_CorrectDelegationAddressIsSet(byte[] code)
+    public void TryGetDelegation_CodeTryGetDelegation_CorrectDelegationAddressIsSet(byte[] code)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -123,7 +123,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
-    public void GetCodeHash_CodeIsDelegation_ReturnsHashOfDelegated(byte[] code)
+    public void GetExecutableCodeHash_CodeTryGetDelegation_ReturnsHashOfDelegated(byte[] code)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -142,7 +142,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
-    public void GetCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
+    public void GetExecutableCodeHash_CodeIsNotDelegation_ReturnsCodeHashOfAddress(byte[] code)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -157,7 +157,7 @@ public class CodeInfoRepositoryTests
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
-    public void GetCachedCodeInfo_CodeIsDelegation_ReturnsCodeOfDelegation(byte[] code)
+    public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
     {
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
