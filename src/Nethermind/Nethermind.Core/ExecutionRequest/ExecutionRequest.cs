@@ -58,4 +58,16 @@ public static class ExecutionRequestExtensions
         }
         return new Hash256(Hashes);
     }
+
+    public static bool IsSortedByType(this ExecutionRequest[] requests)
+    {
+        for (int i = 1; i < requests.Length; i++)
+        {
+            if (requests[i - 1].RequestType > requests[i].RequestType)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 }

@@ -40,6 +40,22 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
+        if(spec.RequestsEnabled)
+        {
+            if (ExecutionRequests is null)
+            {
+                error = "Execution requests must be set";
+                return ValidationResult.Fail;
+            }
+
+            // Ensures that the execution requests types are in increasing order
+            if (!ExecutionRequests.IsSortedByType())
+            {
+                error = "Execution requests are not in progressive order by type";
+                return ValidationResult.Fail;
+            }
+            
+        }
         Transaction[]? transactions;
         try
         {

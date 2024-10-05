@@ -220,12 +220,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return ValidationResult.Fail;
         }
 
-        if (spec.RequestsEnabled)
-        {
-            error = "ExecutionPayloadV4 expected";
-            return ValidationResult.Fail;
-        }
-
         int actualVersion = GetExecutionPayloadVersion();
 
         error = actualVersion switch
