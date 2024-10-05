@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -36,6 +37,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
+        block.Header.RequestsHash = ExecutionRequests != null ? ExecutionRequests.CalculateRoot() : Hash256.Zero;
         return true;
     }
 

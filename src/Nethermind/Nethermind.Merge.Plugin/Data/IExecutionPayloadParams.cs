@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -14,6 +15,7 @@ namespace Nethermind.Merge.Plugin.Data;
 public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
+    ExecutionRequest[]? ExecutionRequests { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -22,10 +24,17 @@ public enum ValidationResult : byte { Success, Fail, Invalid };
 public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
-    Hash256? parentBeaconBlockRoot)
+    Hash256? parentBeaconBlockRoot,
+    ExecutionRequest[]? executionRequests)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
+
+    /// <summary>
+    /// Gets or sets <see cref="ExecutionRequets"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
+    /// </summary>
+    public ExecutionRequest[]? ExecutionRequests { get; set; } = executionRequests;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 

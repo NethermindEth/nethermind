@@ -275,6 +275,7 @@ public partial class BlockProcessor(
 
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
+        suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
