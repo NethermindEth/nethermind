@@ -161,7 +161,6 @@ namespace Nethermind.Merge.Plugin
             {
                 if (_finalizedBlockHash == Keccak.Zero)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
                     _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
                 }
 

@@ -300,6 +300,8 @@ public class TxPermissionFilterTest
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                TxProcessor,
+                null,
                 txFilter: PermissionBasedTxFilter,
                 preWarmer: CreateBlockCachePreWarmer());
         }

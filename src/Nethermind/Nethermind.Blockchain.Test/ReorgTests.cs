@@ -26,7 +26,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-[TestFixture]
 public class ReorgTests
 {
     private BlockchainProcessor _blockchainProcessor = null!;
@@ -78,8 +77,9 @@ public class ReorgTests
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
+            transactionProcessor,
             new BeaconBlockRootHandler(transactionProcessor),
+            new BlockhashStore(MainnetSpecProvider.Instance, stateProvider),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
@@ -96,7 +96,7 @@ public class ReorgTests
     [OneTimeTearDown]
     public void TearDown() => _blockchainProcessor?.Dispose();
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     [Retry(3)]
     public void Test()
     {

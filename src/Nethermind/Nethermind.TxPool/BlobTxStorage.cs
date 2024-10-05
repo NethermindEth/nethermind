@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -160,7 +161,7 @@ public class BlobTxStorage : IBlobTxStorage
             _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
         }
 
-        db.Set(blockNumber, byteBuffer.Array);
+        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), byteBuffer.AsSpan());
     }
 
     private int GetLength(IList<Transaction> blockBlobTransactions)
