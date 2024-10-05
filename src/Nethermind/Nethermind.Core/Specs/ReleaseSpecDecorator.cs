@@ -66,13 +66,19 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip4895Enabled => spec.IsEip4895Enabled;
     public virtual bool IsEip4844Enabled => spec.IsEip4844Enabled;
     public virtual bool IsEip4788Enabled => spec.IsEip4788Enabled;
-    public virtual Address Eip4788ContractAddress => spec.Eip4788ContractAddress;
+    public virtual Address? Eip4788ContractAddress => spec.Eip4788ContractAddress;
+    public bool IsEip6110Enabled => spec.IsEip6110Enabled;
+    public Address DepositContractAddress => spec.DepositContractAddress;
+    public bool IsEip7002Enabled => spec.IsEip7002Enabled;
+    public Address Eip7002ContractAddress => spec.Eip7002ContractAddress;
     public virtual bool IsEip2935Enabled => spec.IsEip2935Enabled;
     public virtual bool IsEip7709Enabled => spec.IsEip7709Enabled;
     public virtual Address Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public virtual bool IsOpGraniteEnabled => spec.IsOpGraniteEnabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
+    public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
 }

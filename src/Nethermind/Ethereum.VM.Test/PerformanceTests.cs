@@ -16,7 +16,7 @@ namespace Ethereum.VM.Test
         [Retry(3)]
         public void Test(GeneralStateTest test)
         {
-            Assert.True(RunTest(test).Pass);
+            Assert.That(RunTest(test).Pass, Is.True);
         }
 
         public static IEnumerable<GeneralStateTest> LoadTests()
