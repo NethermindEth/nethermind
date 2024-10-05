@@ -720,6 +720,9 @@ namespace Nethermind.Network
                 // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
             }
+            if (!_networkConfig.DiscoveryEnabled && !session.Node.IsStatic) {
+                return;
+            }
 
             if (_logger.IsTrace) _logger.Trace($"INCOMING {session}");
 
