@@ -85,8 +85,9 @@ public class ParityStyleTracerTests
         _blockTree.SuggestBlock(genesis);
         _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
 
+        IReadOnlyTxProcessorSource readOnlyTxProcessingSource = Substitute.For<IReadOnlyTxProcessorSource>();
         _tracer = new Tracer(stateProvider, _processor, _processor);
-        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader);
+        _traceRpcModule = new(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig, _stateReader, readOnlyTxProcessingSource, specProvider);
     }
 
     [TearDown]

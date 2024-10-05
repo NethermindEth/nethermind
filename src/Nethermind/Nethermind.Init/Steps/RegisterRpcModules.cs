@@ -250,6 +250,7 @@ public class RegisterRpcModules : IStep
     protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
     {
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
@@ -257,6 +258,7 @@ public class RegisterRpcModules : IStep
 
         return new TraceModuleFactory(
             _api.WorldStateManager,
+            _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,

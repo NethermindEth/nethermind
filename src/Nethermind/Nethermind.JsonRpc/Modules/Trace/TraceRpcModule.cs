@@ -8,12 +8,15 @@ using System.Threading;
 using FastEnumUtility;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -39,16 +42,23 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly TimeSpan _cancellationTokenTimeout;
         private readonly IStateReader _stateReader;
+        private readonly IReadOnlyTxProcessorSource _env;
+        private readonly ISpecProvider _specProvider;
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader stateReader)
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, IStateReader? stateReader, IReadOnlyTxProcessorSource? env, ISpecProvider? specProvider)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _env = env ?? throw new ArgumentNullException(nameof(env));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
+
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, ReadOnlyTxProcessingEnv? env, ISpecProvider? specProvider)
+            : this(receiptFinder, tracer, blockFinder, jsonRpcConfig, env?.StateReader, env, specProvider) { }
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
@@ -321,7 +331,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(block.Header, stateOverride) : null;
             _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
+
             return tracer.BuildResult();
         }
 
@@ -335,5 +348,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+
+        private IReadOnlyTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
+        {
+            IReadOnlyTxProcessingScope scope = _env.Build(header.StateRoot!);
+            scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
+            header.StateRoot = scope.WorldState.StateRoot;
+            return scope;
+        }
     }
 }
