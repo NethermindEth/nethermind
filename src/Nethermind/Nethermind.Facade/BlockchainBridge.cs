@@ -152,7 +152,7 @@ namespace Nethermind.Facade
         {
             CallOutputTracer callOutputTracer = new();
             using IReadOnlyTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, stateOverride, false,
+            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken), scope);
             return new CallOutput
             {
@@ -197,7 +197,6 @@ namespace Nethermind.Facade
             TransactionResult tryCallResult = TryCallAndRestore(
                 header,
                 tx,
-                stateOverride,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
@@ -220,7 +219,7 @@ namespace Nethermind.Facade
                     tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, null, false,
+            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
@@ -236,7 +235,6 @@ namespace Nethermind.Facade
         private TransactionResult TryCallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
-            Dictionary<Address, AccountOverride>? stateOverride,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
             IReadOnlyTxProcessingScope? scope = null)
