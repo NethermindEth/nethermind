@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config
 {
@@ -19,10 +20,14 @@ namespace Nethermind.Config
         {
             if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
             {
-                return !string.IsNullOrEmpty(valueString) && !valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase)
-                    ? ParseValue(nullableType, valueString, category, name)
-                    : null;
+                return IsNullString(valueString) ? null : ParseValue(nullableType, valueString, category, name);
             }
+
+            if (!valueType.IsValueType && IsNullString(valueString))
+            {
+                return null;
+            }
+
             try
             {
                 object value;
@@ -34,11 +39,7 @@ namespace Nethermind.Config
                     if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith("["))
                     {
                         // hex encoded byte array
-                        string hex = valueString.Trim().RemoveStart('0').RemoveStart('x').TrimEnd();
-                        value = Enumerable.Range(0, hex.Length)
-                            .Where(x => x % 2 == 0)
-                            .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
-                            .ToArray();
+                        value = Bytes.FromHexString(valueString.Trim());
                     }
                     //In case of collection of objects (more complex config models) we parse entire collection
                     else if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
@@ -98,6 +99,12 @@ namespace Nethermind.Config
             }
         }
 
+        private static bool IsNullString(string valueString)
+        {
+            return string.IsNullOrEmpty(valueString) ||
+                   valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase);
+        }
+
         public static object GetDefault(Type type)
         {
             return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
@@ -144,14 +151,14 @@ namespace Nethermind.Config
 
         private static object GetValue(Type valueType, string itemValue)
         {
-            if (Nullable.GetUnderlyingType(valueType) is var nullableType && nullableType is not null)
+            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
             {
-                if (string.IsNullOrEmpty(itemValue) || itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    return null;
-                }
+                return IsNullString(itemValue) ? null : GetValue(nullableType, itemValue);
+            }
 
-                return GetValue(nullableType, itemValue);
+            if (!valueType.IsValueType && IsNullString(itemValue))
+            {
+                return null;
             }
 
             if (valueType == typeof(UInt256))

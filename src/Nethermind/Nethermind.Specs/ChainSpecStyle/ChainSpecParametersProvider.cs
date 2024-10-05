@@ -69,20 +69,14 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
             string engineName = @class.Name.Remove(@class.Name.Length - EngineParamsSuffix.Length);
             if (!_chainSpecParameters.ContainsKey(engineName)) continue;
 
-            var instance = (IChainSpecEngineParameters)@class.GetConstructor(Type.EmptyTypes)!.Invoke(Array.Empty<object>());
-
+            var instance = (IChainSpecEngineParameters)Activator.CreateInstance(@class);
             foreach (PropertyInfo property in @class.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (property.Name == "SealEngineType") continue;
-                JsonProperty? jsonProperty = _chainSpecParameters[engineName].EnumerateObject().FirstOrDefault(p =>
+                JsonProperty jsonProperty = _chainSpecParameters[engineName].EnumerateObject().FirstOrDefault(p =>
                     string.Compare(p.Name, property.Name, StringComparison.InvariantCultureIgnoreCase) == 0);
 
-                if (jsonProperty is null)
-                {
-                    throw new FormatException($"ChainSpec property {property.Name} is not set");
-                }
-
-                object value = ConfigSourceHelper.ParseValue(property.PropertyType, jsonProperty.Value.Value.ToString(), "chainspec", property.Name);
+                object value = ConfigSourceHelper.ParseValue(property.PropertyType, jsonProperty.Value.ToString(), "chainspec", property.Name);
                 property.SetValue(instance, value);
             }
 
