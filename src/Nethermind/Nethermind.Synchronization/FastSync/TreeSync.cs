@@ -167,7 +167,7 @@ namespace Nethermind.Synchronization.FastSync
                         if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
-                    Stopwatch handleWatch = Stopwatch.StartNew();
+                    long startTime = Stopwatch.GetTimestamp();
 
                     bool isMissingRequestData = batch.RequestedNodes is null;
                     if (isMissingRequestData)
@@ -289,24 +289,23 @@ namespace Nethermind.Synchronization.FastSync
 
                     _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
-                    handleWatch.Stop();
-                    long total = handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+                    long total = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
                     {
                         // calculate averages
                         if (_logger.IsTrace)
                             _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {handleWatch.ElapsedMilliseconds}ms ({(decimal)handleWatch.ElapsedMilliseconds / total:P0})");
+                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms ({(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / total:P0})");
                     }
 
-                    if (handleWatch.ElapsedMilliseconds > 250)
+                    if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Handle watch {handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                                $"Handle watch {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, handleWatch.ElapsedMilliseconds);
+                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
                     _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 

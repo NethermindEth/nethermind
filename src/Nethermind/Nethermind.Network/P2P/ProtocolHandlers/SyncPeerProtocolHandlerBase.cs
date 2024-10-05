@@ -283,7 +283,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeadersMessage, CancellationToken cancellationToken)
         {
             using GetBlockHeadersMessage message = getBlockHeadersMessage;
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Received headers request from {Session.Node:c}:");
@@ -309,8 +309,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // }
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
 
             return resp;
         }
@@ -343,12 +342,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
             }
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
 
             Interlocked.Increment(ref Counter);
             BlockBodiesMessage resp = await FulfillBlockBodiesRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
             return resp;
         }
 
@@ -391,10 +389,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw new EthSyncException("Incoming receipts request for more than 512 blocks");
             }
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
 
             return resp;
         }
