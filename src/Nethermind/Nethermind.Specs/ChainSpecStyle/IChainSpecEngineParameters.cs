@@ -11,5 +11,5 @@ public interface IChainSpecEngineParameters
 
     void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps);
 
-    void AdjustReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp);
+    void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp);
 }

@@ -268,7 +268,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
             {
-                item.AdjustReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+                item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
             }
 
             return releaseSpec;

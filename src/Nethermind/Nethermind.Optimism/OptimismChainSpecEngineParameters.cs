@@ -36,6 +36,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
+    public Address? Test { get; set; }
+
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
         ArgumentNullException.ThrowIfNull(RegolithTimestamp);
@@ -49,9 +51,13 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
         ArgumentNullException.ThrowIfNull(Create2DeployerAddress);
         ArgumentNullException.ThrowIfNull(Create2DeployerCode);
+        if (Test is not null)
+        {
+            throw new InvalidOperationException($"Cannot add transitions to {nameof(Test)}");
+        }
     }
 
-    public void AdjustReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         if (CanyonTimestamp <= startTimestamp)
         {
