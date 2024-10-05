@@ -57,6 +57,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
 {
@@ -215,6 +216,7 @@ namespace Nethermind.Api
         public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
         public IEthSyncingInfo? EthSyncingInfo { get; set; }

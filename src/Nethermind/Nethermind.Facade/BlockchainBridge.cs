@@ -26,6 +26,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
