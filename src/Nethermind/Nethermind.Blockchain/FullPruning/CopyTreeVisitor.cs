@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.FullPruning
         public void VisitTree(in TContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
             _stopwatch.Start();
-            if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
         [DoesNotReturn]
