@@ -143,7 +143,21 @@ public static class IlAnalyzer
                 var lastOp = segment[^1];
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
-                ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter, CompileSegment(segmentName, segment, codeData.Item2));
+                List<ushort> pcKeys = [segment[0].ProgramCounter];
+
+                for (int k = 0; k < segment.Length; k++)
+                {
+                    if (segment[k].Operation == Instruction.JUMPDEST)
+                    {
+                        pcKeys.Add(segment[k].ProgramCounter);
+                    }
+                }
+
+                var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2);
+                foreach (ushort pc in pcKeys)
+                {
+                    ilinfo.Segments[pc] = segmentExecutionCtx;
+                }
             }
 
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);

@@ -92,6 +92,19 @@ internal class ILCompiler
         using Local stack = method.DeclareLocal(typeof(Span<Word>));
         using Local head = method.DeclareLocal(typeof(int));
 
+        Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
+
+        foreach (var exception in Enum.GetValues<EvmExceptionType>())
+        {
+            evmExceptionLabels.Add(exception, method.DefineLabel());
+        }
+
+        Label exit = method.DefineLabel(); // the label just before return
+        Label jumpTable = method.DefineLabel(); // jump table
+        Label isContinuation = method.DefineLabel(); // jump table
+        Label ret = method.DefineLabel();
+
+
         // allocate stack
         method.LoadArgument(0);
         method.Duplicate();
@@ -112,17 +125,11 @@ internal class ILCompiler
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
         method.StoreLocal(programCounter);
 
-        Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
-
-        foreach (var exception in Enum.GetValues<EvmExceptionType>())
-        {
-            evmExceptionLabels.Add(exception, method.DefineLabel());
-        }
-
-        Label exit = method.DefineLabel(); // the label just before return
-        Label jumpTable = method.DefineLabel(); // jump table
-        Label ret = method.DefineLabel();
-
+        // if last ilvmstate was a jump
+        method.LoadLocal(programCounter);
+        method.LoadConstant(code[0].ProgramCounter);
+        method.CompareEqual();
+        method.BranchIfFalse(isContinuation);
 
         Dictionary<int, Label> jumpDestinations = new();
 
@@ -1890,6 +1897,16 @@ internal class ILCompiler
         // go to return
         method.Branch(exit);
 
+        //check if jump crosses segment boundaies
+        Label jumpIsLocal = method.DefineLabel();
+        Label jumpIsNotLocal = method.DefineLabel();
+
+        // isContinuation
+        method.MarkLabel(isContinuation);
+        method.LoadLocal(programCounter);
+        method.StoreLocal(jmpDestination);
+        method.Branch(jumpIsLocal);
+
         // jump table
         method.MarkLabel(jumpTable);
         method.StackLoadPrevious(stack, head, 1);
@@ -1901,10 +1918,6 @@ internal class ILCompiler
         method.StackPop(head, consumeJumpCondition);
         method.LoadConstant(0);
         method.StoreLocal(consumeJumpCondition);
-
-        //check if jump crosses segment boundaies
-        Label jumpIsLocal = method.DefineLabel();
-        Label jumpIsNotLocal = method.DefineLabel();
 
         int maxJump = code[^1].ProgramCounter + code[^1].Metadata.AdditionalBytes;
         int minJump = code[0].ProgramCounter;
