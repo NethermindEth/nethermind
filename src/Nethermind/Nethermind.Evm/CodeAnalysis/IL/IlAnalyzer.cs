@@ -101,7 +101,7 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, Mode mode, ILogger logger)
+    internal static void Analysis(CodeInfo codeInfo, Mode mode, ILogger logger)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 

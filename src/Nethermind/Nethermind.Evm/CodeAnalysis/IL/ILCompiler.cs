@@ -13,6 +13,7 @@ using Sigil;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using static Nethermind.Evm.IL.EmitExtensions;
@@ -192,12 +193,7 @@ internal class ILCompiler
                         method.LoadArgument(0);
                         method.LoadConstant(true);
                         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldStop)));
-                        method.Branch(ret);
-                    }
-                    break;
-                case Instruction.INVALID:
-                    {
-                        method.Branch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+                        method.FakeBranch(ret);
                     }
                     break;
                 case Instruction.CHAINID:
@@ -228,7 +224,7 @@ internal class ILCompiler
                 case Instruction.JUMP:
                     {
                         // we jump into the jump table
-                        method.Branch(jumpTable);
+                        method.FakeBranch(jumpTable);
                     }
                     break;
                 case Instruction.JUMPI:
@@ -1845,7 +1841,10 @@ internal class ILCompiler
                     }
                     break;
                 default:
-                    throw new NotSupportedException();
+                    {
+                        method.FakeBranch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+                    }
+                    break;
             }
         }
 
@@ -2436,7 +2435,9 @@ internal class ILCompiler
 
             for (int pc = 0; pc < code.Length; pc++)
             {
+
                 OpcodeInfo op = code[pc];
+                Debug.WriteLine(op);
                 switch (op.Operation)
                 {
                     case Instruction.JUMPDEST:
