@@ -231,7 +231,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     errorResponse.AddDisposable(() => jsonDocument.Dispose());
 
                     TraceResult(errorResponse);
-                    if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                    if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
                     deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #",(long) Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
                     yield return deserializationFailureResult.Value;
                     break;
@@ -320,7 +320,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 yield return RecordResponse(response);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
         }
         finally
         {
@@ -351,7 +351,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
 
 
-        if (_logger.IsDebug) _logger.Debug($"  {request} handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+        if (_logger.IsDebug) _logger.Debug($"  {request} handled in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
 
         JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
         TraceResult(result);

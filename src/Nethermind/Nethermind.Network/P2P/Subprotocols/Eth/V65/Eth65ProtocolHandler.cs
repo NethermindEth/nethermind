@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                             $"in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
         }
 
         protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
@@ -122,7 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
-                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                             $"in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
         }
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)

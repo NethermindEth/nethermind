@@ -295,14 +295,14 @@ namespace Nethermind.Synchronization.FastSync
                         // calculate averages
                         if (_logger.IsTrace)
                             _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms ({(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / total:P0})");
+                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms ({(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / total:P0})");
                     }
 
                     if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Handle watch {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                                $"Handle watch {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
                     Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
