@@ -182,6 +182,7 @@ public static class IlAnalyzer
                 break;
             case IlInfo.ILMode.JIT_MODE:
                 if (logger.IsInfo) logger.Info($"Starting Precompilation of segments of code {codeInfo.CodeHash}");
+                System.IO.File.WriteAllText($"./{codeInfo.CodeHash}.evm", machineCode.ToArray().ToHexString());
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo);
                 if (logger.IsInfo) logger.Info($"Finished Precompiling of segments of code {codeInfo.CodeHash}");
                 break;
