@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -2425,41 +2426,48 @@ internal class ILCompiler
         il.LoadConstant(0);
         il.BranchIfLess(outOfGasLabel);
     }
-    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
+    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code, ILogger logger)
     {
-        Dictionary<int, long> costs = new();
-        int costStart = code[0].ProgramCounter;
-        long coststack = 0;
-
-        for (int pc = 0; pc < code.Length; pc++)
+        try
         {
-            OpcodeInfo op = code[pc];
-            switch (op.Operation)
+            Dictionary<int, long> costs = new();
+            int costStart = code[0].ProgramCounter;
+            long coststack = 0;
+
+            for (int pc = 0; pc < code.Length; pc++)
             {
-                case Instruction.JUMPDEST:
-                    costs[costStart] = coststack; // remember the stack chain of opcodes
-                    costStart = op.ProgramCounter;
-                    coststack = op.Metadata.GasCost;
-                    break;
-                case Instruction.GAS:
-                case Instruction.JUMPI:
-                case Instruction.JUMP:
-                    coststack += op.Metadata.GasCost;
-                    costs[costStart] = coststack; // remember the stack chain of opcodes
-                    costStart = op.ProgramCounter + 1;             // start with the next again
-                    coststack = 0;
-                    break;
-                default:
-                    coststack += op.Metadata.GasCost;
-                    break;
+                OpcodeInfo op = code[pc];
+                switch (op.Operation)
+                {
+                    case Instruction.JUMPDEST:
+                        costs[costStart] = coststack; // remember the stack chain of opcodes
+                        costStart = op.ProgramCounter;
+                        coststack = op.Metadata.GasCost;
+                        break;
+                    case Instruction.GAS:
+                    case Instruction.JUMPI:
+                    case Instruction.JUMP:
+                        coststack += op.Metadata.GasCost;
+                        costs[costStart] = coststack; // remember the stack chain of opcodes
+                        costStart = op.ProgramCounter + 1;             // start with the next again
+                        coststack = 0;
+                        break;
+                    default:
+                        coststack += op.Metadata.GasCost;
+                        break;
+                }
             }
-        }
 
-        if (coststack > 0)
+            if (coststack > 0)
+            {
+                costs[costStart] = coststack;
+            }
+            return costs;
+        } catch (Exception ex)
         {
-            costs[costStart] = coststack;
+            string codeStr = string.Join(", ", code.ToArray().Select(c => c.Operation.ToString()));
+            logger.LogError(ex, $"Error building cost lookup {codeStr}");
+            throw;
         }
-
-        return costs;
     }
 }
