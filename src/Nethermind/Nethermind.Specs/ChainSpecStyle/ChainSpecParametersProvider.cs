@@ -22,7 +22,7 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
     private readonly Dictionary<string, JsonElement> _chainSpecParameters =
         new(StringComparer.InvariantCultureIgnoreCase);
 
-    private readonly ConcurrentDictionary<Type, IChainSpecEngineParameters> _instances = new();
+    private readonly Dictionary<Type, IChainSpecEngineParameters> _instances = new();
     public string SealEngineType { get; }
 
     public ChainSpecParametersProvider(Dictionary<string, JsonElement> engineParameters)
@@ -81,7 +81,7 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
         }
     }
 
-    public ICollection<IChainSpecEngineParameters> AllChainSpecParameters => _instances.Values;
+    public IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters => _instances.Values;
 
     public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters
     {
