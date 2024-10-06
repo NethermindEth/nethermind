@@ -8,6 +8,6 @@ using System.Collections.Generic;
 public interface IChainSpecParametersProvider
 {
     string SealEngineType { get; }
-    ICollection<IChainSpecEngineParameters> AllChainSpecParameters { get; }
+    IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters { get; }
     T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters;
 }

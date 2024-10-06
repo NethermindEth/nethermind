@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Int256;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -110,7 +109,7 @@ namespace Nethermind.Config
             return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
         }
 
-        public static bool TryFromHex(Type type, string itemValue, out object value)
+        private static bool TryFromHex(Type type, string itemValue, out object value)
         {
             if (!itemValue.StartsWith("0x"))
             {
