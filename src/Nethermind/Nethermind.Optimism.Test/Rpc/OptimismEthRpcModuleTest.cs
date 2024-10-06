@@ -35,7 +35,7 @@ public class OptimismEthRpcModuleTest
 
         EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(chainId: TestBlockchainIds.ChainId);
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
-            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .ForTest(sealEngineType: OptimismConstants.SealEngineType)
             .WithBlockchainBridge(bridge)
             .WithTxSender(txSender)
             .WithOptimismEthRpcModule(

@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -95,7 +96,7 @@ public class StartupTreeFixerTests
     [TestCase(65)]
     public async Task Suggesting_blocks_works_correctly_after_processor_restart(int suggestedBlocksAmount)
     {
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build();
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
         long startingBlockNumber = tree.Head!.Number;
@@ -130,7 +131,7 @@ public class StartupTreeFixerTests
     [TestCase(6)]
     public async Task Fixer_should_not_suggest_block_without_state(int suggestedBlocksAmount)
     {
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build();
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
 
@@ -152,7 +153,7 @@ public class StartupTreeFixerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Fixer_should_not_suggest_block_with_null_block()
     {
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build();
         await testRpc.BlockchainProcessor.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
 

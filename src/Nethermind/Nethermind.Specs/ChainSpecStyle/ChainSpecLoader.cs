@@ -338,10 +338,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 }
             }
         }
-        else if (chainSpecJson.Engine?.NethDev is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.NethDev;
-        }
 
         var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
 

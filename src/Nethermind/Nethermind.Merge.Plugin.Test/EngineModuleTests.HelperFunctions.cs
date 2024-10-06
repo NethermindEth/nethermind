@@ -24,6 +24,7 @@ using Nethermind.Core.ConsensusRequests;
 using Microsoft.CodeAnalysis;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -255,7 +256,7 @@ namespace Nethermind.Merge.Plugin.Test
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
             TestSingleReleaseSpecProvider spec = new(London.Instance);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
                 .WithBlockFinder(chain.BlockFinder)
                 .Build(spec);
             return testRpc;

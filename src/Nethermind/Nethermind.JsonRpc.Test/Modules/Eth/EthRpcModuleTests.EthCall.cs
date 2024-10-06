@@ -12,6 +12,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -182,7 +183,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_with_accessList()
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        var test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList();

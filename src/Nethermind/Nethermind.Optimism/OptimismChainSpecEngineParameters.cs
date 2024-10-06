@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -12,7 +11,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? SealEngineType => "Optimism";
+    public string? SealEngineType => OptimismConstants.SealEngineType;
 
     public ulong? RegolithTimestamp { get; set; }
 
@@ -36,25 +35,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
-    public Address? Test { get; set; }
-
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
-        ArgumentNullException.ThrowIfNull(RegolithTimestamp);
-        ArgumentNullException.ThrowIfNull(BedrockBlockNumber);
-        ArgumentNullException.ThrowIfNull(CanyonTimestamp);
-        ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
-        ArgumentNullException.ThrowIfNull(FjordTimestamp);
-        ArgumentNullException.ThrowIfNull(GraniteTimestamp);
-        ArgumentNullException.ThrowIfNull(L1FeeRecipient);
-        ArgumentNullException.ThrowIfNull(L1BlockAddress);
-        ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
-        ArgumentNullException.ThrowIfNull(Create2DeployerAddress);
-        ArgumentNullException.ThrowIfNull(Create2DeployerCode);
-        if (Test is not null)
-        {
-            throw new InvalidOperationException($"Cannot add transitions to {nameof(Test)}");
-        }
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)

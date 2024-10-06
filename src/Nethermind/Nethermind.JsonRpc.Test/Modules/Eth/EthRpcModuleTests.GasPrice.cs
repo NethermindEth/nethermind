@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
 
@@ -27,7 +28,7 @@ public partial class EthRpcModuleTests
         Block[] blocks = GetThreeTestBlocks();
         BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
         GasPriceOracle gasPriceOracle = new(blockTree, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
+        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
 
         string serialized = await ctx.Test.TestEthRpc("eth_gasPrice");
@@ -43,7 +44,7 @@ public partial class EthRpcModuleTests
             Build.A.Block.WithNumber(0).WithExcessBlobGas(excessBlobGas).TestObject,
         ];
         BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockTree).Build();
 
         return await ctx.Test.TestEthRpc("eth_blobBaseFee");
     }
@@ -56,7 +57,7 @@ public partial class EthRpcModuleTests
         Block[] blocks = GetThreeTestBlocksWith1559Tx();
         BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
         GasPriceOracle gasPriceOracle = new(blockTree, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
+        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
 
         string serialized = await ctx.Test.TestEthRpc("eth_gasPrice");
