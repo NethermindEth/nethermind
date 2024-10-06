@@ -27,10 +27,7 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
 
     public ChainSpecParametersProvider(Dictionary<string, JsonElement> engineParameters)
     {
-        foreach (var parameters in engineParameters)
-        {
-            _chainSpecParameters[parameters.Key] = parameters.Value;
-        }
+        _chainSpecParameters = new Dictionary<string, JsonElement>(engineParameters, StringComparer.InvariantCultureIgnoreCase);
 
         InitializeInstances();
         SealEngineType = CalculateSealEngineType();
