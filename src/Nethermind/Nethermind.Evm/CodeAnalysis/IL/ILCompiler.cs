@@ -2426,7 +2426,7 @@ internal class ILCompiler
         il.LoadConstant(0);
         il.BranchIfLess(outOfGasLabel);
     }
-    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code, ILogger logger)
+    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
         try
         {
@@ -2466,7 +2466,7 @@ internal class ILCompiler
         } catch (Exception ex)
         {
             string codeStr = string.Join(", ", code.ToArray().Select(c => c.Operation.ToString()));
-            logger.LogError(ex, $"Error building cost lookup {codeStr}");
+            System.IO.File.WriteAllText($"./costLookUp.{ex.GetHashCode()}", codeStr);
             throw;
         }
     }
