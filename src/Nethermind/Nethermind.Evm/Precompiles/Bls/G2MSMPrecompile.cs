@@ -81,7 +81,8 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         }
         else
         {
-            Parallel.ForEach(pointDestinations, (dest, state, i) => {
+            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            {
                 if (!TryDecodePoint(inputData, rawPoints.AsSpan(), rawScalars.AsSpan(), dest, (int)i))
                 {
                     fail = true;
