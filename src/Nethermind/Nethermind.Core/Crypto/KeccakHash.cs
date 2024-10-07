@@ -636,6 +636,11 @@ namespace Nethermind.Core.Crypto
 
         public static void KeccakF1600Avx512F(Span<ulong> state)
         {
+            {
+                // Redundant statement that removes all the in loop bounds checks
+                _ = state[24];
+            }
+
             Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
             Vector512<ulong> c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
             Vector512<ulong> c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
@@ -643,7 +648,7 @@ namespace Nethermind.Core.Crypto
             Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
             Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
 
-            var roundConstants = RoundConstants;
+            ulong[] roundConstants = RoundConstants;
             for (int round = 0; round < roundConstants.Length; round++)
             {
                 // Theta step
@@ -682,27 +687,22 @@ namespace Nethermind.Core.Crypto
                 Vector512<ulong> rhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
                 c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
 
-                // Update state
-                Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
-                Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
-                Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
-                Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
-                state[20] = c4.GetElement(0);
-                state[21] = c4.GetElement(1);
-                state[22] = c4.GetElement(2);
-                state[23] = c4.GetElement(3);
-                state[24] = c4.GetElement(4);
-
                 // Pi step
-                c0 = Vector512.Create(state[0], state[6], state[12], state[18], state[24], 0UL, 0UL, 0UL);
-                c1 = Vector512.Create(state[3], state[9], state[10], state[16], state[22], 0UL, 0UL, 0UL);
-                c2 = Vector512.Create(state[1], state[7], state[13], state[19], state[20], 0UL, 0UL, 0UL);
-                c3 = Vector512.Create(state[4], state[5], state[11], state[17], state[23], 0UL, 0UL, 0UL);
-                c4 = Vector512.Create(state[2], state[8], state[14], state[15], state[21], 0UL, 0UL, 0UL);
+                var c0New = Vector512.Create(c0.GetElement(0), c1.GetElement(1), c2.GetElement(2), c3.GetElement(3), c4.GetElement(4), 0UL, 0UL, 0UL);
+                var c1New = Vector512.Create(c0.GetElement(3), c1.GetElement(4), c2.GetElement(0), c3.GetElement(1), c4.GetElement(2), 0UL, 0UL, 0UL);
+                var c2New = Vector512.Create(c0.GetElement(1), c1.GetElement(2), c2.GetElement(3), c3.GetElement(4), c4.GetElement(0), 0UL, 0UL, 0UL);
+                var c3New = Vector512.Create(c0.GetElement(4), c1.GetElement(0), c2.GetElement(1), c3.GetElement(2), c4.GetElement(3), 0UL, 0UL, 0UL);
+                var c4New = Vector512.Create(c0.GetElement(2), c1.GetElement(3), c2.GetElement(4), c3.GetElement(0), c4.GetElement(1), 0UL, 0UL, 0UL);
+
+                c0 = c0New;
+                c1 = c1New;
+                c2 = c2New;
+                c3 = c3New;
+                c4 = c4New;
 
                 // Chi step
-                var permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
-                var permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
+                Vector512<ulong> permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
+                Vector512<ulong> permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
 
                 c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
                 c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
