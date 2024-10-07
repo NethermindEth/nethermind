@@ -120,6 +120,7 @@ namespace Nethermind.Evm.Test
             Test(Cancun.Instance, true, false);
             Test(Prague.Instance, true, true);
         }
+
         public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
         {
             yield return (
