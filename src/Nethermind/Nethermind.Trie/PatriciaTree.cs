@@ -40,7 +40,9 @@ namespace Nethermind.Trie
 
         private Stack<StackedNode>? _nodeStack;
 
+#pragma warning disable CS0169 // Field is never used
         private ConcurrentQueue<Exception>? _commitExceptions;
+#pragma warning restore CS0169 // Field is never used
 
         public IScopedTrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
@@ -170,6 +172,46 @@ namespace Nethermind.Trie
             if (node!.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
+
+                List<Task>? childTasks = null;
+
+                for (int i = 0; i < 16; i++)
+                {
+                    if (node.IsChildDirty(i))
+                    {
+                        if (committer.CanSpawnTask())
+                        {
+                            childTasks ??= new List<Task>();
+                            TreePath childPath = path.Append(i);
+                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref childPath, i);
+                            childTasks.Add(Task.Run(() =>
+                            {
+                                Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, i));
+                                committer.ReturnConcurrencyQuota();
+                            }));
+                        }
+                        else
+                        {
+                            path.AppendMut(i);
+                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
+                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i));
+                            path.TruncateOne();
+                        }
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace)
+                        {
+                            Trace(node, ref path, i);
+                        }
+                    }
+                }
+
+                if (childTasks != null) {
+                    Task.WaitAll(childTasks.ToArray());
+                }
+
+                /*
                 if (!_parallelBranches || !nodeCommitInfo.IsRoot)
                 {
                     for (int i = 0; i < 16; i++)
@@ -239,6 +281,7 @@ namespace Nethermind.Trie
                         }
                     }
                 }
+                */
             }
             else if (node.NodeType == NodeType.Extension)
             {
@@ -275,6 +318,7 @@ namespace Nethermind.Trie
                 if (_logger.IsTrace) TraceSkipInlineNode(node);
             }
 
+            /*
             void ClearExceptions() => _commitExceptions?.Clear();
             bool WereExceptions() => _commitExceptions?.IsEmpty == false;
 
@@ -297,6 +341,7 @@ namespace Nethermind.Trie
             [DoesNotReturn]
             [StackTraceHidden]
             void ThrowAggregateExceptions() => throw new AggregateException(_commitExceptions);
+            */
 
             [DoesNotReturn]
             [StackTraceHidden]

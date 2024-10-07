@@ -25,4 +25,7 @@ public interface IScopedTrieStore : ITrieNodeResolver
 public interface ICommitter: IDisposable
 {
     void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
+
+    bool CanSpawnTask() => false;
+    void ReturnConcurrencyQuota() {}
 }

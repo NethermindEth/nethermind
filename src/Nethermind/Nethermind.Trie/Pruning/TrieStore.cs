@@ -289,12 +289,27 @@ namespace Nethermind.Trie.Pruning
 
         public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
         {
-            return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags);
+            int concurrency = 0;
+            if (_pruningStrategy.PruningEnabled)
+            {
+                concurrency = Environment.ProcessorCount;
+            }
+            return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags, concurrency);
         }
 
-        private class TrieStoreCommitter(TrieStore trieStore, TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) : ICommitter
+        private class TrieStoreCommitter(
+            TrieStore trieStore,
+            TrieType trieType,
+            long blockNumber,
+            Hash256? address,
+            TrieNode? root,
+            WriteFlags writeFlags,
+            int concurrency
+        ) : ICommitter
         {
             private bool _needToResetRoot = root is not null && root.IsDirty;
+            private int _concurrency = concurrency;
+
             public void Dispose()
             {
                 if (_needToResetRoot)
@@ -307,6 +322,24 @@ namespace Nethermind.Trie.Pruning
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
             {
                 trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags);
+            }
+
+            public bool CanSpawnTask()
+            {
+                if (Interlocked.Decrement(ref _concurrency) < 0)
+                {
+                    ReturnConcurrencyQuota();
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            public void ReturnConcurrencyQuota()
+            {
+                Interlocked.Increment(ref _concurrency);
             }
         }
 
