@@ -53,6 +53,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.ConsensusRequestsEnabled, spec.ConsensusRequestsEnabled);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2)] = (spec.ConsensusRequestsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2)] = (spec.ConsensusRequestsEnabled, false);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.ConsensusRequestsEnabled, false);
             #endregion
         }
 

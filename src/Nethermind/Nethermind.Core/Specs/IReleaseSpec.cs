@@ -398,6 +398,6 @@ namespace Nethermind.Core.Specs
 
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
-        public bool ConsensusRequestsEnabled => WithdrawalRequestsEnabled || DepositsEnabled;
+        public bool ConsensusRequestsEnabled => WithdrawalRequestsEnabled || DepositsEnabled; // TODO should add IsEip7742?
     }
 }
