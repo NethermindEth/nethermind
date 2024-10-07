@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core;
 using NUnit.Framework;
-using Nethermind.Core.Crypto;
 using Nethermind.Consensus.Processing;
 using NSubstitute;
 using Nethermind.Crypto;
@@ -13,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using System.Linq;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Test;
 [TestFixture]
@@ -21,32 +20,7 @@ public class RecoverSignaturesTest
     private static readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.GenericNonRealNetwork);
 
     [Test]
-    public void RecoverData_SenderIsNotRecoveredAndNotInPool_SenderIsRecovered()
-    {
-        PrivateKey signer = TestItem.PrivateKeyA;
-        Transaction tx = Build.A.Transaction
-          .SignedAndResolved(signer)
-          .WithSenderAddress(null)
-          .TestObject;
-
-        Block block = Build.A.Block
-            .WithTransactions([tx])
-            .TestObject;
-
-        RecoverSignatures sut = new(
-            _ecdsa,
-            NullTxPool.Instance,
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<ILogManager>());
-
-        sut.RecoverData(block);
-
-        Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address)); 
-    }
-
-
-    [Test]
-    public void RecoverData_SenderIsNotRecovered_SenderIsRecovered()
+    public void RecoverData_SenderIsNotRecoveredAndNotInPool_SenderAndAuthorityIsRecovered()
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey authority = TestItem.PrivateKeyB;
@@ -62,7 +36,9 @@ public class RecoverSignaturesTest
             .TestObject;
         
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()). IsAuthorizationListEnabled.Returns(true);
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.IsAuthorizationListEnabled.Returns(true);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         RecoverSignatures sut = new(
             _ecdsa,
             NullTxPool.Instance,
@@ -73,5 +49,90 @@ public class RecoverSignaturesTest
 
         Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
         Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+    }
+
+    [Test]
+    public void RecoverData_AuthorityIsNotRecoveredAndNotInPool_SenderAndAuthorityIsRecovered()
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode(_ecdsa.Sign(authority, 0, Address.Zero, 0))
+            .SignedAndResolved(signer)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithTransactions([tx])
+            .TestObject;
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.IsAuthorizationListEnabled.Returns(true);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        RecoverSignatures sut = new(
+            _ecdsa,
+            NullTxPool.Instance,
+            specProvider,
+            Substitute.For<ILogManager>());
+
+        sut.RecoverData(block);
+
+        Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
+        Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+    }
+
+
+    [Test]
+    public void RecoverData_TxIsInPool_SenderIsSetToSameAsInPool()
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey poolSender = TestItem.PrivateKeyB;
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode
+            ([
+                _ecdsa.Sign(signer, 0, Address.Zero, 0),
+                _ecdsa.Sign(signer, 0, Address.Zero, 0)
+                ])
+            .SignedAndResolved(signer)
+            .WithSenderAddress(null)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithTransactions([tx])
+            .TestObject;
+
+        Transaction txInPool = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode
+            ([
+                new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), poolSender.Address),
+                new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), poolSender.Address),
+                ])
+            .SignedAndResolved(poolSender)
+            .TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool
+            .TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = txInPool;
+                return true;
+            });
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.IsAuthorizationListEnabled.Returns(true);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        RecoverSignatures sut = new(
+            _ecdsa,
+            txPool,
+            specProvider,
+            Substitute.For<ILogManager>());
+
+        sut.RecoverData(block);
+
+        Assert.That(tx.SenderAddress, Is.EqualTo(poolSender.Address));
+        Assert.That(tx.AuthorizationList.Select(a=>a.Authority), Is.All.EqualTo(poolSender.Address));
     }
 }
