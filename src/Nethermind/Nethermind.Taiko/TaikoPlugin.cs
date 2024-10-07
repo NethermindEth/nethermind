@@ -191,7 +191,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
-        TaikoReadOnlyTxProcessingEnv readonlyTxProcessingEnv = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+        ReadOnlyTxProcessingEnvFactory readonlyTxProcessingEnvFactory = new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         ITaikoEngineRpcModule engine = new TaikoEngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -243,7 +243,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             _api.LogManager,
             _api.TxPool,
             _api.BlockTree.AsReadOnly(),
-            readonlyTxProcessingEnv
+            readonlyTxProcessingEnvFactory
             );
 
         _api.RpcModuleProvider.RegisterSingle(engine);
@@ -306,7 +306,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
+        MergeBlockDownloaderFactory blockDownloaderFactory = new(
             _api.PoSSwitcher,
             _beaconPivot,
             _api.SpecProvider,

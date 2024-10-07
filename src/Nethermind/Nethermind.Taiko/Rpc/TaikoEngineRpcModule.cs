@@ -28,6 +28,7 @@ using Nethermind.State;
 using Nethermind.Facade.Eth;
 using Nethermind.TxPool;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -47,9 +48,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager,
-        ITxPool txPool = null!,
-        IBlockFinder blockFinder = null!,
-        IReadOnlyTxProcessorSource readonlyTxProcessingEnv = null!) :
+        ITxPool txPool,
+        IBlockFinder blockFinder,
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
@@ -88,7 +89,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     {
         if (payloadAttributes?.BlockMetadata?.BasefeeSharingPctg is > 100)
         {
-
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"invalid basefeeSharingPctg {payloadAttributes.BlockMetadata.BasefeeSharingPctg}", MergeErrorCodes.InvalidPayloadAttributes));
         }
@@ -126,12 +126,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         BlockHeader? head = blockFinder.Head?.Header;
 
-        if (txQueue.Length is 0 || head is null)
+        if (txQueue.Length is 0 || head?.StateRoot is null)
         {
             return ResultWrapper<PreBuiltTxList[]?>.Success([]);
         }
 
-        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(Keccak.EmptyTreeHash);
+        ReadOnlyTxProcessingEnv readonlyTxProcessingEnv = readOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessingScope scope = readonlyTxProcessingEnv.Build(head.StateRoot);
 
         return ResultWrapper<PreBuiltTxList[]?>.Success(ProcessTransactions(scope.TransactionProcessor, scope.WorldState, new BlockHeader(
                 head.Hash!,
@@ -257,7 +258,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    sealed class Batch(ulong maxBytes, TxDecoder txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, TxDecoder txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
@@ -277,9 +278,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return false;
         }
 
-        public ulong GetCompressedTxsLength()
+        private readonly int GetTxLength(Transaction tx) => txDecoder.GetLength(tx, RlpBehaviors.None);
+
+        public readonly ulong GetCompressedTxsLength()
         {
-            int contentLength = Transactions.Sum(tx => txDecoder.GetLength(tx, RlpBehaviors.None));
+            int contentLength = Transactions.Sum(GetTxLength);
             byte[] data = ArrayPool<byte>.Shared.Rent(contentLength);
 
             try
@@ -301,7 +304,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             }
         }
 
-        private ulong EstimateTxLength(Transaction tx)
+        private readonly ulong EstimateTxLength(Transaction tx)
         {
             int contentLength = txDecoder.GetLength(tx, RlpBehaviors.None);
             byte[] data = ArrayPool<byte>.Shared.Rent(Rlp.LengthOfSequence(contentLength));
@@ -331,7 +334,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             return (ulong)stream.Position;
         }
 
-        public void Dispose()
+        public readonly void Dispose()
         {
             Transactions.Dispose();
         }

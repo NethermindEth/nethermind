@@ -51,8 +51,8 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             try
             {
                 if (!_txProcessor.Execute(tx, in blkCtx, receiptsTracer))
-                // if the transaction was invalid, we ignore it and continue
                 {
+                    // if the transaction was invalid, we ignore it and continue
                     _worldState.Restore(snap);
                     continue;
                 }

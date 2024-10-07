@@ -11,17 +11,17 @@ using Nethermind.State;
 namespace Nethermind.Taiko;
 
 public class TaikoReadOnlyTxProcessingEnv(
-      IWorldStateManager worldStateManager,
-      IReadOnlyBlockTree readOnlyBlockTree,
-      ISpecProvider specProvider,
-      ILogManager logManager,
-      IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
-      worldStateManager,
-      readOnlyBlockTree,
-      specProvider,
-      logManager,
-      worldStateToWarmUp
-     )
+  IWorldStateManager worldStateManager,
+  IReadOnlyBlockTree readOnlyBlockTree,
+  ISpecProvider specProvider,
+  ILogManager logManager,
+  IWorldState? worldStateToWarmUp = null) : ReadOnlyTxProcessingEnv(
+  worldStateManager,
+  readOnlyBlockTree,
+  specProvider,
+  logManager,
+  worldStateToWarmUp
+ )
 {
     protected override ITransactionProcessor CreateTransactionProcessor() =>
         new TaikoTransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
