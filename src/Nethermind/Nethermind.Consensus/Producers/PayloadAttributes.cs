@@ -86,7 +86,9 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
+        + (TargetBlobCount is null ? 0 : sizeof(ulong)) // target blob count
+        + (MaxBlobCount is null ? 0 : sizeof(ulong)); // max blob count
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
