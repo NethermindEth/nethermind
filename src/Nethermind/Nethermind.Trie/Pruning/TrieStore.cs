@@ -307,7 +307,7 @@ namespace Nethermind.Trie.Pruning
 
             public void CommitNode(NodeCommitInfo nodeCommitInfo)
             {
-                trieStore.CommitNode(blockNumber, address, nodeCommitInfo);
+                trieStore.CommitNode(blockNumber, address, nodeCommitInfo, writeFlags: writeFlags);
             }
         }
 

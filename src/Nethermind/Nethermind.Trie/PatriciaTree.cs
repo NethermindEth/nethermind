@@ -41,7 +41,6 @@ namespace Nethermind.Trie
         private Stack<StackedNode>? _nodeStack;
 
         private ConcurrentQueue<Exception>? _commitExceptions;
-        private ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
         public IScopedTrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
@@ -142,12 +141,7 @@ namespace Nethermind.Trie
             {
                 if (RootRef is not null && RootRef.IsDirty)
                 {
-                    Commit(new NodeCommitInfo(RootRef, TreePath.Empty), skipSelf: skipRoot);
-                    while (TryDequeueCommit(out NodeCommitInfo node))
-                    {
-                        if (_logger.IsTrace) Trace(blockNumber, node);
-                        committer.CommitNode(node);
-                    }
+                    Commit(committer, new NodeCommitInfo(RootRef, TreePath.Empty), skipSelf: skipRoot);
 
                     // reset objects
                     TreePath path = TreePath.Empty;
@@ -158,18 +152,6 @@ namespace Nethermind.Trie
 
             if (_logger.IsDebug) Debug(blockNumber);
 
-            bool TryDequeueCommit(out NodeCommitInfo value)
-            {
-                Unsafe.SkipInit(out value);
-                return _currentCommit?.TryDequeue(out value) ?? false;
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Trace(long blockNumber, in NodeCommitInfo node)
-            {
-                _logger.Trace($"Committing {node} in {blockNumber}");
-            }
-
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Debug(long blockNumber)
             {
@@ -177,7 +159,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
+        private void Commit(ICommitter committer, NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
         {
             if (!_allowCommits)
             {
@@ -196,7 +178,7 @@ namespace Nethermind.Trie
                         if (node.IsChildDirty(i))
                         {
                             TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, i);
-                            Commit(new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, childPath, i));
+                            Commit(committer, new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, childPath, i));
                         }
                         else
                         {
@@ -233,7 +215,7 @@ namespace Nethermind.Trie
                         {
                             try
                             {
-                                Commit(nodesToCommit[i]);
+                                Commit(committer, nodesToCommit[i]);
                             }
                             catch (Exception e)
                             {
@@ -250,7 +232,7 @@ namespace Nethermind.Trie
                     {
                         for (int i = 0; i < nodesToCommit.Count; i++)
                         {
-                            Commit(nodesToCommit[i]);
+                            Commit(committer, nodesToCommit[i]);
                         }
                     }
                 }
@@ -266,7 +248,7 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(new NodeCommitInfo(extensionChild, node, childPath, 0));
+                    Commit(committer, new NodeCommitInfo(extensionChild, node, childPath, 0));
                 }
                 else
                 {
@@ -281,20 +263,12 @@ namespace Nethermind.Trie
             {
                 if (!skipSelf)
                 {
-                    EnqueueCommit(nodeCommitInfo);
+                    committer.CommitNode(nodeCommitInfo);
                 }
             }
             else
             {
                 if (_logger.IsTrace) TraceSkipInlineNode(node);
-            }
-
-            void EnqueueCommit(in NodeCommitInfo value)
-            {
-                ConcurrentQueue<NodeCommitInfo> queue = Volatile.Read(ref _currentCommit);
-                // Allocate queue if first commit made
-                queue ??= CreateQueue(ref _currentCommit);
-                queue.Enqueue(value);
             }
 
             void ClearExceptions() => _commitExceptions?.Clear();
