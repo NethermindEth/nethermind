@@ -639,20 +639,13 @@ namespace Nethermind.Core.Crypto
             for (int round = 0; round < round_consts.Length; round++)
             {
                 // Theta step
-                Vector512<ulong> c0 = Vector512.Create(state[0], state[5], state[10], state[15], state[20], 0UL, 0UL, 0UL);
-                Vector512<ulong> c1 = Vector512.Create(state[1], state[6], state[11], state[16], state[21], 0UL, 0UL, 0UL);
-                Vector512<ulong> c2 = Vector512.Create(state[2], state[7], state[12], state[17], state[22], 0UL, 0UL, 0UL);
-                Vector512<ulong> c3 = Vector512.Create(state[3], state[8], state[13], state[18], state[23], 0UL, 0UL, 0UL);
-                Vector512<ulong> c4 = Vector512.Create(state[4], state[9], state[14], state[19], state[24], 0UL, 0UL, 0UL);
+                Vector512<ulong> c0 = Vector512.Create(state[0], state[1], state[2], state[3], state[4], 0UL, 0UL, 0UL);
+                Vector512<ulong> c1 = Vector512.Create(state[5], state[6], state[7], state[8], state[9], 0UL, 0UL, 0UL);
+                Vector512<ulong> c2 = Vector512.Create(state[10], state[11], state[12], state[13], state[14], 0UL, 0UL, 0UL);
+                Vector512<ulong> c3 = Vector512.Create(state[15], state[16], state[17], state[18], state[19], 0UL, 0UL, 0UL);
+                Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
 
-                // Compute bVec as horizontal XORs
-                ulong b0 = c0.GetElement(0) ^ c0.GetElement(1) ^ c0.GetElement(2) ^ c0.GetElement(3) ^ c0.GetElement(4);
-                ulong b1 = c1.GetElement(0) ^ c1.GetElement(1) ^ c1.GetElement(2) ^ c1.GetElement(3) ^ c1.GetElement(4);
-                ulong b2 = c2.GetElement(0) ^ c2.GetElement(1) ^ c2.GetElement(2) ^ c2.GetElement(3) ^ c2.GetElement(4);
-                ulong b3 = c3.GetElement(0) ^ c3.GetElement(1) ^ c3.GetElement(2) ^ c3.GetElement(3) ^ c3.GetElement(4);
-                ulong b4 = c4.GetElement(0) ^ c4.GetElement(1) ^ c4.GetElement(2) ^ c4.GetElement(3) ^ c4.GetElement(4);
-
-                Vector512<ulong> bVec = Vector512.Create(b0, b1, b2, b3, b4, 0UL, 0UL, 0UL);
+                Vector512<ulong> bVec =  Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
 
                 // Compute tVec
                 Vector512<ulong> bVecRot1 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
