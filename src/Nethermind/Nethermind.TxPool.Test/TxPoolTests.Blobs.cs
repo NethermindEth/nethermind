@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using ConcurrentCollections;
 using FluentAssertions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -533,7 +535,7 @@ namespace Nethermind.TxPool.Test
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
 
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().BeTrue();
-            returnedTxs.Length.Should().Be(txs.Length);
+            returnedTxs!.Length.Should().Be(txs.Length);
             returnedTxs.Should().BeEquivalentTo(txs, options => options
                 .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
                 .Excluding(t => t.PoolIndex)        // ...as well as PoolIndex
@@ -647,7 +649,7 @@ namespace Nethermind.TxPool.Test
                         wrapper.Blobs[0],
                         wrapper.Commitments[0],
                         wrapper.Proofs[0],
-                        blobTxs[i].BlobVersionedHashes[0].AsSpan());
+                        blobTxs[i].BlobVersionedHashes![0].AsSpan());
                 }
 
                 blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _).Should().BeTrue();
@@ -662,18 +664,18 @@ namespace Nethermind.TxPool.Test
                 // if blobs are unique, we expect index to have 10 keys (poolSize, 2x poolSize - 1) with 1 value each
                 if (uniqueBlobs)
                 {
-                    blobPool.BlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> txHashes).Should().Be(i >= poolSize);
+                    blobPool.BlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes![0]!, out ConcurrentHashSet<Hash256> txHashes).Should().Be(i >= poolSize);
                     if (i >= poolSize)
                     {
-                        txHashes.Count.Should().Be(1);
-                        txHashes[0].Should().Be(blobTxs[i].Hash);
+                        txHashes!.Count.Should().Be(1);
+                        txHashes.First().Should().Be(blobTxs[i].Hash);
                     }
                 }
                 // if blobs are not unique, we expect index to have 1 key with 10 values (poolSize, 2x poolSize - 1)
                 else
                 {
-                    blobPool.BlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes[0]!, out List<Hash256> values).Should().BeTrue();
-                    values.Count.Should().Be(poolSize);
+                    blobPool.BlobIndex.TryGetValue(blobTxs[i].BlobVersionedHashes![0]!, out ConcurrentHashSet<Hash256> values).Should().BeTrue();
+                    values!.Count.Should().Be(poolSize);
                     values.Contains(blobTxs[i].Hash).Should().Be(i >= poolSize);
                 }
             }
