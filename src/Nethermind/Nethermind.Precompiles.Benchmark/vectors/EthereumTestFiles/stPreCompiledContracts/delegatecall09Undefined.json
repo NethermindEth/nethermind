@@ -1,0 +1,71 @@
+{
+    "delegatecall09Undefined" : {
+        "_info" : {
+            "comment" : "This test invokes delegatecall to the Blake2b (09) precompile in the revision it has been\ndefined (Istanbul) and in the one before it (ConstantinopleFix). For the defined precompile\nthe call should result in a failure and the single gas unit provided should be consumed.\nIn case the precompile is undefined, the call should succeed and no gas should be consumed.\n",
+            "filling-rpc-server" : "evm version 1.14.4-unstable-3d8028a6-20240513",
+            "filling-tool-version" : "retesteth-0.3.2-cancun+commit.2ab0208e.Linux.g++",
+            "generatedTestHash" : "4b689b8d16fce7102276b95969e38d7bfec4540e2f2878d6ce7c51f52e7d6cfe",
+            "lllcversion" : "Version: 0.5.14-develop.2023.7.11+commit.c58ab2c6.mod.Linux.g++",
+            "solidity" : "Version: 0.8.21+commit.d9974bed.Linux.g++",
+            "source" : "src/GeneralStateTestsFiller/stPreCompiledContracts/delegatecall09UndefinedFiller.yml",
+            "sourceHash" : "25675c8a352d3598aba794fb70249ce976da31e1903a57f5e03f853b1f8db8c8"
+        },
+        "env" : {
+            "currentBaseFee" : "0x0a",
+            "currentCoinbase" : "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            "currentDifficulty" : "0x01",
+            "currentExcessBlobGas" : "0x00",
+            "currentGasLimit" : "0x0f4240",
+            "currentNumber" : "0x01",
+            "currentRandom" : "0x0000000000000000000000000000000000000000000000000000000000000001",
+            "currentTimestamp" : "0x03e8"
+        },
+        "post" : {
+            "Cancun" : [
+                {
+                    "hash" : "0xb222db2ac9351828b823592091cca066966668f88c00077a38bb282cf91422b5",
+                    "indexes" : {
+                        "data" : 0,
+                        "gas" : 0,
+                        "value" : 0
+                    },
+                    "logs" : "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+                    "txbytes" : "0xf860800a83015f9094095e7baea6a6c7c4c2dfeb977efac326af552d8780801ca068457e376cce29e874412dd14e38d8b4049b4b2d6d6a33b349fda5d6d9e76ba3a05f77f62f7141c2e0b656b233d52af342a6227325215772b6d810c3d0ca71ea58"
+                }
+            ]
+        },
+        "pre" : {
+            "0x095e7baea6a6c7c4c2dfeb977efac326af552d87" : {
+                "balance" : "0x00",
+                "code" : "0x600080808060096001f460005500",
+                "nonce" : "0x00",
+                "storage" : {
+                    "0x00" : "0xfe"
+                }
+            },
+            "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
+                "balance" : "0x5af3107a4000",
+                "code" : "0x",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            }
+        },
+        "transaction" : {
+            "data" : [
+                "0x"
+            ],
+            "gasLimit" : [
+                "0x015f90"
+            ],
+            "gasPrice" : "0x0a",
+            "nonce" : "0x00",
+            "secretKey" : "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8",
+            "sender" : "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            "to" : "0x095e7baea6a6c7c4c2dfeb977efac326af552d87",
+            "value" : [
+                "0x00"
+            ]
+        }
+    }
+}

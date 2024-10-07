@@ -1,0 +1,84 @@
+{
+    "subcallReturnMoreThenExpected" : {
+        "_info" : {
+            "comment" : "https://github.com/ethereum/tests/issues/558 (subcall/opcode return more data then expected)",
+            "filling-rpc-server" : "evm version 1.14.4-unstable-3d8028a6-20240513",
+            "filling-tool-version" : "retesteth-0.3.2-cancun+commit.2ab0208e.Linux.g++",
+            "generatedTestHash" : "baea730f19c1fd002bbfece31e388a339ea284b7286a48696ce46be518be7ac4",
+            "lllcversion" : "Version: 0.5.14-develop.2023.7.11+commit.c58ab2c6.mod.Linux.g++",
+            "solidity" : "Version: 0.8.21+commit.d9974bed.Linux.g++",
+            "source" : "src/GeneralStateTestsFiller/stReturnDataTest/subcallReturnMoreThenExpectedFiller.yml",
+            "sourceHash" : "d00746ab3776df3793c20f03b77bb22b6408f6f51ccee992d1a6fe5fdd5cf9c2"
+        },
+        "env" : {
+            "currentBaseFee" : "0x0a",
+            "currentCoinbase" : "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+            "currentDifficulty" : "0x020000",
+            "currentExcessBlobGas" : "0x00",
+            "currentGasLimit" : "0x989680",
+            "currentNumber" : "0x01",
+            "currentRandom" : "0x0000000000000000000000000000000000000000000000000000000000020000",
+            "currentTimestamp" : "0x03e8"
+        },
+        "post" : {
+            "Cancun" : [
+                {
+                    "hash" : "0xb9a94dbbb657f40afb94253a93a84def511acc64a8cb15eca0ca699117d8ff6e",
+                    "indexes" : {
+                        "data" : 0,
+                        "gas" : 0,
+                        "value" : 0
+                    },
+                    "logs" : "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+                    "txbytes" : "0xf860800a83061a8094095e7baea6a6c7c4c2dfeb977efac326af552d8701801ca09d46b87169053cc40670aef750b032c895cde3e35c2c7f5a37c059272e0914c7a04d4a94b67b2776cc3e0fca2ed9503c10fd92ec79f1b2dcbb85df9634c7de3119"
+                }
+            ]
+        },
+        "pre" : {
+            "0x095e7baea6a6c7c4c2dfeb977efac326af552d87" : {
+                "balance" : "0x0de0b6b3a7640000",
+                "code" : "0x600c600060006000600073194f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40f1506000516000556000600052600c60006000600073194f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40f4506000516001556000600052600c60006000600073194f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40fa506000516002556000600052600c600060006000600073194f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40f2506000516003556000600052600c600060006000600073294f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40f1506000516004556000600052600c60006000600073294f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40f4506000516005556000600052600c60006000600073294f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40fa506000516006556000600052600c600060006000600073294f5374fce5edbc8e2a8697c15331677e6ebf0b62030d40f25060005160075500",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            },
+            "0x194f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
+                "balance" : "0x0de0b6b3a7640000",
+                "code" : "0x7f11223344556677889910111213141516171819202122232425262728293031326000527f333435363738394041424344454647484950515253545556575859606162636460205260406000f300",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            },
+            "0x294f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
+                "balance" : "0x0de0b6b3a7640000",
+                "code" : "0x7f11223344556677889910111213141516171819202122232425262728293031326000527f333435363738394041424344454647484950515253545556575859606162636460205260406000fd00",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            },
+            "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
+                "balance" : "0x0de0b6b3a7640000",
+                "code" : "0x",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            }
+        },
+        "transaction" : {
+            "data" : [
+                "0x"
+            ],
+            "gasLimit" : [
+                "0x061a80"
+            ],
+            "gasPrice" : "0x0a",
+            "nonce" : "0x00",
+            "secretKey" : "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8",
+            "sender" : "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            "to" : "0x095e7baea6a6c7c4c2dfeb977efac326af552d87",
+            "value" : [
+                "0x01"
+            ]
+        }
+    }
+}

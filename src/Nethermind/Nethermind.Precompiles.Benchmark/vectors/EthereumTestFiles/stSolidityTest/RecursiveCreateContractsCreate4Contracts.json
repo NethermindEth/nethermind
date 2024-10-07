@@ -1,0 +1,70 @@
+{
+    "RecursiveCreateContractsCreate4Contracts" : {
+        "_info" : {
+            "comment" : "",
+            "filling-rpc-server" : "evm version 1.14.4-unstable-3d8028a6-20240513",
+            "filling-tool-version" : "retesteth-0.3.2-cancun+commit.2ab0208e.Linux.g++",
+            "generatedTestHash" : "470a4014aa67d65fee784b99472da85650da8a8c496c8648e9d3cbca1c44feb2",
+            "lllcversion" : "Version: 0.5.14-develop.2023.7.11+commit.c58ab2c6.mod.Linux.g++",
+            "solidity" : "Version: 0.8.21+commit.d9974bed.Linux.g++",
+            "source" : "src/GeneralStateTestsFiller/stSolidityTest/RecursiveCreateContractsCreate4ContractsFiller.json",
+            "sourceHash" : "010dfeda9d25720676e56b8a5dff8bb4cedfffad061a11a8b338f2040301d653"
+        },
+        "env" : {
+            "currentBaseFee" : "0x0a",
+            "currentCoinbase" : "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+            "currentDifficulty" : "0x020000",
+            "currentExcessBlobGas" : "0x00",
+            "currentGasLimit" : "0x05f5e100",
+            "currentNumber" : "0x01",
+            "currentRandom" : "0x0000000000000000000000000000000000000000000000000000000000020000",
+            "currentTimestamp" : "0x03e8"
+        },
+        "post" : {
+            "Cancun" : [
+                {
+                    "hash" : "0x98a6ec9d8d78300eaa08c80fb71f0bf31e708218139f1e07a8a4d87a16026d48",
+                    "indexes" : {
+                        "data" : 0,
+                        "gas" : 0,
+                        "value" : 0
+                    },
+                    "logs" : "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+                    "txbytes" : "0xf884800a830493e094095e7baea6a6c7c4c2dfeb977efac326af552d8701a4a444f5e900000000000000000000000000000000000000000000000000000000000000041ca0f9d4221fc403e7d1cae4d6c291ae1f7f068598708ec6756967807c79b616c537a01ba21f0ddafe5f426c0558b2d4891707ca0400af0442dc190609610f37b219f3"
+                }
+            ]
+        },
+        "pre" : {
+            "0x095e7baea6a6c7c4c2dfeb977efac326af552d87" : {
+                "balance" : "0x314dc6448d9338c15b0a00000000",
+                "code" : "0x60003560e060020a90048063820b13f614610021578063a444f5e91461003257005b61002c600435610093565b60006000f35b61003d600435610043565b60006000f35b600073095e7baea6a6c7c4c2dfeb977efac326af552d8760008190555081600181905550606b6101ad600039606b600054600160a060020a0316815260200182815260200160006000f090505050565b600060c86100e560003960c8600054600160a060020a0316815260200182815260200160006000f0905080600160a060020a0316600060026000600060006000848787f16100dd57005b50505050505600604060c860043960045160245160006001820391508160008190555060008211602657604c565b606b605d600039606b83600160a060020a0316815260200182815260200160006000f090505b505050600180605c6000396000f300006040606b6004396004516024516001810390508060008190555060008111602457605b565b81600160a060020a031663820b13f6600060008260e060020a026000526004858152602001600060008660325a03f1605857005b50505b5050600180606a6000396000f300006040606b6004396004516024516001810390508060008190555060008111602457605b565b81600160a060020a031663820b13f6600060008260e060020a026000526004858152602001600060008660325a03f1605857005b50505b5050600180606a6000396000f30000",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            },
+            "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
+                "balance" : "0x1dcd6500",
+                "code" : "0x",
+                "nonce" : "0x00",
+                "storage" : {
+                }
+            }
+        },
+        "transaction" : {
+            "data" : [
+                "0xa444f5e90000000000000000000000000000000000000000000000000000000000000004"
+            ],
+            "gasLimit" : [
+                "0x0493e0"
+            ],
+            "gasPrice" : "0x0a",
+            "nonce" : "0x00",
+            "secretKey" : "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8",
+            "sender" : "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+            "to" : "0x095e7baea6a6c7c4c2dfeb977efac326af552d87",
+            "value" : [
+                "0x01"
+            ]
+        }
+    }
+}
