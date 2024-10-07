@@ -58,21 +58,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Dictionary<string, long> DifficultyBombDelays { get; set; }
         }
 
-        internal class CliqueEngineJson
-        {
-            public ulong Period => Params.Period;
-            public ulong Epoch => Params.Epoch;
-            public UInt256? BlockReward => Params.BlockReward;
-            public CliqueEngineParamsJson Params { get; set; }
-        }
-
-        internal class CliqueEngineParamsJson
-        {
-            public ulong Period { get; set; }
-            public ulong Epoch { get; set; }
-            public UInt256? BlockReward { get; set; }
-        }
-
         internal class AuraEngineParamsJson
         {
             public StepDurationJson StepDuration { get; set; }
@@ -168,16 +153,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public AuraEngineParamsJson Params { get; set; }
         }
 
-        internal class NethDevJson
-        {
-        }
-
         internal class EngineJson
         {
             public EthashEngineJson Ethash { get; set; }
-            public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
-            public NethDevJson NethDev { get; set; }
 
             [JsonExtensionData]
             public Dictionary<string, JsonElement> CustomEngineData { get; set; }

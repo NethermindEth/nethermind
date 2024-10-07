@@ -58,11 +58,11 @@ public class MergePluginTests
             _context.LogManager!);
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
-        _context.ChainSpec!.Clique = new CliqueParameters()
-        {
-            Epoch = CliqueConfig.Default.Epoch,
-            Period = CliqueConfig.Default.BlockPeriod
-        };
+        var chainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>();
+        chainSpecParametersProvider.GetChainSpecParameters<CliqueChainSpecEngineParameters>()
+            .Returns(new CliqueChainSpecEngineParameters
+                { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
+        _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
         _plugin = new MergePlugin();
 
         _consensusPlugin = new();

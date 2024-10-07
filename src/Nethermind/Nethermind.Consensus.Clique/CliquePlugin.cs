@@ -44,10 +44,12 @@ namespace Nethermind.Consensus.Clique
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
 
+            var chainSpec = getFromApi!.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<CliqueChainSpecEngineParameters>();
             _cliqueConfig = new CliqueConfig
             {
-                BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
-                Epoch = getFromApi.ChainSpec.Clique.Epoch
+                BlockPeriod = chainSpec.Period,
+                Epoch = chainSpec.Epoch
             };
 
             _snapshotManager = new SnapshotManager(
@@ -57,7 +59,9 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.EthereumEcdsa!,
                 getFromApi.LogManager);
 
-            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
+            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager,
+                getFromApi.ChainSpec.EngineChainSpecParametersProvider
+                    .GetChainSpecParameters<CliqueChainSpecEngineParameters>());
 
             setInApi.SealValidator = new CliqueSealValidator(
                 _cliqueConfig,
