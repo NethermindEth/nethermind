@@ -35,7 +35,7 @@ namespace Nethermind.Specs.Test
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => _overrideAction(_specProvider.GetSpec(forkActivation));
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
-
+        public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
         public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
         public string SealEngine => _specProvider.SealEngine;
