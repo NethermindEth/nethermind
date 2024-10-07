@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ConcurrentHashSet" />
     <PackageReference Include="NonBlocking" />
   </ItemGroup>
 
