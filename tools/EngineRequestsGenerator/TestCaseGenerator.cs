@@ -82,7 +82,7 @@ public class TestCaseGenerator
         ChainSpecLoader chainSpecLoader = new(_serializer);
         _chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(_chainSpecPath, LimboLogs.Instance.GetClassLogger());
         _chainSpecBasedSpecProvider = new(_chainSpec);
-        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, _chainSpecBasedSpecProvider);
+        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain(keepStateEmptyOnStart: true).Build(_chainSpecBasedSpecProvider);
 
         GenesisLoader genesisLoader = new(_chainSpec, _chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
         Block genesisBlock = genesisLoader.Load();
@@ -153,7 +153,7 @@ public class TestCaseGenerator
             Console.WriteLine($"block {block.Number} testcase {blockGasConsumptionTarget / 1_000_000}M gasUsed: {block.GasUsed}");
 
 
-            ExecutionPayloadV3 executionPayload = new(block);
+            ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
             string executionPayloadString = _serializer.Serialize(executionPayload);
             string blobsString = _serializer.Serialize(Array.Empty<byte[]>());
             string parentBeaconBlockRootString = _serializer.Serialize(previousBlock.Hash);

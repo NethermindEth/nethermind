@@ -180,7 +180,7 @@ public partial class EngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null, bool? keepStateEmptyOnStart = false)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
@@ -188,6 +188,7 @@ public partial class EngineModuleTests
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
             LogManager = logManager ?? LogManager;
             ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
+            KeepStateEmptyAtInit = keepStateEmptyOnStart ?? false;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -290,17 +291,8 @@ public partial class EngineModuleTests
             return chain;
         }
 
-        protected override async Task<TestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
-        {
-            TestBlockchain chain = await base.Build(keepStateEmpty, specProvider, initialValues);
-            return chain;
-        }
-
         public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
             (MergeTestBlockchain)await Build(specProvider, null);
-
-        public async Task<MergeTestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null) =>
-            (MergeTestBlockchain)await Build(keepStateEmpty, specProvider, null);
     }
 }
 

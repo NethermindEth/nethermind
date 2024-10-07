@@ -74,6 +74,7 @@ public class TestBlockchain : IDisposable
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IWorldState State { get; set; } = null!;
+    public bool KeepStateEmptyAtInit { get; set; } = false;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public TrieStore TrieStore { get; set; } = null!;
@@ -127,9 +128,6 @@ public class TestBlockchain : IDisposable
     private PreBlockCaches PreBlockCaches { get; } = new();
 
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
-        => await Build(keepStateEmpty: false, specProvider, initialValues, addBlockOnStart);
-
-    protected virtual async Task<TestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
@@ -139,7 +137,7 @@ public class TestBlockchain : IDisposable
         TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
 
-        if (!keepStateEmpty)
+        if (!KeepStateEmptyAtInit)
         {
             // Eip4788 precompile state account
             if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -243,7 +241,7 @@ public class TestBlockchain : IDisposable
             _suggestedBlockResetEvent.Set();
         };
 
-        if (!keepStateEmpty)
+        if (!KeepStateEmptyAtInit)
         {
             Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
