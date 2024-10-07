@@ -141,10 +141,10 @@ namespace Nethermind.Trie
             {
                 if (RootRef is not null && RootRef.IsDirty)
                 {
-                    Commit(committer, new NodeCommitInfo(RootRef, TreePath.Empty), skipSelf: skipRoot);
+                    TreePath path = TreePath.Empty;
+                    Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot);
 
                     // reset objects
-                    TreePath path = TreePath.Empty;
                     RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
                     SetRootHash(RootRef.Keccak!, true);
                 }
@@ -159,7 +159,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void Commit(ICommitter committer, NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
+        private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
         {
             if (!_allowCommits)
             {
@@ -167,7 +167,6 @@ namespace Nethermind.Trie
             }
 
             TrieNode node = nodeCommitInfo.Node;
-            TreePath path = nodeCommitInfo.Path;
             if (node!.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
@@ -177,8 +176,10 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, i);
-                            Commit(committer, new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, childPath, i));
+                            path.AppendMut(i);
+                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
+                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i));
+                            path.TruncateOne();
                         }
                         else
                         {
@@ -191,13 +192,13 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    List<NodeCommitInfo> nodesToCommit = new(16);
+                    List<(TreePath, NodeCommitInfo)> nodesToCommit = new(16);
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.IsChildDirty(i))
                         {
-                            TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, i);
-                            nodesToCommit.Add(new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, childPath, i));
+                            TreePath childPath = node.GetChildPath(path, i);
+                            nodesToCommit.Add((childPath, new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, i)));
                         }
                         else
                         {
@@ -215,7 +216,8 @@ namespace Nethermind.Trie
                         {
                             try
                             {
-                                Commit(committer, nodesToCommit[i]);
+                                (TreePath childPath, NodeCommitInfo commitInfo) = nodesToCommit[i];
+                                Commit(committer, ref childPath, commitInfo);
                             }
                             catch (Exception e)
                             {
@@ -232,15 +234,16 @@ namespace Nethermind.Trie
                     {
                         for (int i = 0; i < nodesToCommit.Count; i++)
                         {
-                            Commit(committer, nodesToCommit[i]);
+                            (TreePath childPath, NodeCommitInfo commitInfo) = nodesToCommit[i];
+                            Commit(committer, ref childPath, commitInfo);
                         }
                     }
                 }
             }
             else if (node.NodeType == NodeType.Extension)
             {
-                TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, 0);
-                TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref childPath, 0);
+                int previousPathLength = node.AppendChildPath(ref path, 0);
+                TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
                 if (extensionChild is null)
                 {
                     ThrowInvalidExtension();
@@ -248,12 +251,13 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(committer, new NodeCommitInfo(extensionChild, node, childPath, 0));
+                    Commit(committer, ref path, new NodeCommitInfo(extensionChild, node, 0));
                 }
                 else
                 {
                     if (_logger.IsTrace) TraceExtensionSkip(extensionChild);
                 }
+                path.TruncateMut(previousPathLength);
             }
 
             node.ResolveKey(TrieStore, ref path, nodeCommitInfo.IsRoot, bufferPool: _bufferPool);
@@ -263,7 +267,7 @@ namespace Nethermind.Trie
             {
                 if (!skipSelf)
                 {
-                    committer.CommitNode(nodeCommitInfo);
+                    committer.CommitNode(ref path, nodeCommitInfo);
                 }
             }
             else

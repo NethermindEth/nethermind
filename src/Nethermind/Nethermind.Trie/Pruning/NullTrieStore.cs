@@ -45,7 +45,7 @@ namespace Nethermind.Trie.Pruning
             {
             }
 
-            public void CommitNode(NodeCommitInfo nodeCommitInfo)
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
             {
             }
         }

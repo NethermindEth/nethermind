@@ -24,7 +24,5 @@ public interface IScopedTrieStore : ITrieNodeResolver
 
 public interface ICommitter: IDisposable
 {
-    // TODO: Commit and FinishBlockCommit is unnecessary. Geth just compile the changes and return it in a batch,
-    // which get committed in a single call.
-    void CommitNode(NodeCommitInfo nodeCommitInfo);
+    void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
 }
