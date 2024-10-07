@@ -94,9 +94,13 @@ namespace Nethermind.Core.Crypto
         private static void KeccakF(Span<ulong> st)
         {
             if (Avx512F.IsSupported)
+            {
                 KeccakF1600Avx512F(st);
+            }
             else
+            {
                 KeccakF1600(st);
+            }
         }
 
         private static void KeccakF1600(Span<ulong> st)
