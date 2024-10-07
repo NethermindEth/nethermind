@@ -641,12 +641,22 @@ namespace Nethermind.Core.Crypto
                 _ = state[24];
             }
 
-            Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
-            Vector512<ulong> c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
-            Vector512<ulong> c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
-            Vector512<ulong> c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)));
-            Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
+            // Can straight load and over-read for start elements
+            Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state));
+            Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5));
+            Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10));
+            Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15));
+            // Can't over-read for the last elements (8 items in vector 5 to be remaining)
+            // so read them directly as ulongs
             Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
+            {
+                // Clear the over-read values from first vectors
+                Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
+                c0 = Vector512.BitwiseAnd(mask, c0);
+                c1 = Vector512.BitwiseAnd(mask, c1);
+                c2 = Vector512.BitwiseAnd(mask, c2);
+                c3 = Vector512.BitwiseAnd(mask, c3);
+            }
 
             ulong[] roundConstants = RoundConstants;
             for (int round = 0; round < roundConstants.Length; round++)
@@ -654,7 +664,7 @@ namespace Nethermind.Core.Crypto
                 // Theta step
                 Vector512<ulong> bVec = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
 
-                // Compute tVec
+                // Compute Theta Vector
                 Vector512<ulong> bVecRot1 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
                 Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
 
@@ -663,13 +673,13 @@ namespace Nethermind.Core.Crypto
                 Vector512<ulong> bVecRot1ShiftedRight = Avx512F.ShiftRightLogical(bVecRot1, 63);
                 Vector512<ulong> bVecRot1Rotated = Avx512F.Or(bVecRot1ShiftedLeft, bVecRot1ShiftedRight);
 
-                Vector512<ulong> tVec = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
+                Vector512<ulong> thetaVec = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
 
-                c0 = Avx512F.Xor(c0, tVec);
-                c1 = Avx512F.Xor(c1, tVec);
-                c2 = Avx512F.Xor(c2, tVec);
-                c3 = Avx512F.Xor(c3, tVec);
-                c4 = Avx512F.Xor(c4, tVec);
+                c0 = Avx512F.Xor(c0, thetaVec);
+                c1 = Avx512F.Xor(c1, thetaVec);
+                c2 = Avx512F.Xor(c2, thetaVec);
+                c3 = Avx512F.Xor(c3, thetaVec);
+                c4 = Avx512F.Xor(c4, thetaVec);
 
                 // Rho step
                 Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
@@ -688,17 +698,36 @@ namespace Nethermind.Core.Crypto
                 c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
 
                 // Pi step
-                var c0New = Vector512.Create(c0.GetElement(0), c1.GetElement(1), c2.GetElement(2), c3.GetElement(3), c4.GetElement(4), 0UL, 0UL, 0UL);
-                var c1New = Vector512.Create(c0.GetElement(3), c1.GetElement(4), c2.GetElement(0), c3.GetElement(1), c4.GetElement(2), 0UL, 0UL, 0UL);
-                var c2New = Vector512.Create(c0.GetElement(1), c1.GetElement(2), c2.GetElement(3), c3.GetElement(4), c4.GetElement(0), 0UL, 0UL, 0UL);
-                var c3New = Vector512.Create(c0.GetElement(4), c1.GetElement(0), c2.GetElement(1), c3.GetElement(2), c4.GetElement(3), 0UL, 0UL, 0UL);
-                var c4New = Vector512.Create(c0.GetElement(2), c1.GetElement(3), c2.GetElement(4), c3.GetElement(0), c4.GetElement(1), 0UL, 0UL, 0UL);
+                Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7), c1);
+                c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 8 + 2, 3, 4, 5, 6, 7), c2);
+                c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 8 + 3, 4, 5, 6, 7), c3);
+                c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 4, 5, 6, 7), c4);
 
-                c0 = c0New;
-                c1 = c1New;
-                c2 = c2New;
-                c3 = c3New;
-                c4 = c4New;
+                Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(3UL, 8 + 4, 2, 3, 4, 5, 6, 7), c1);
+                c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 8 + 0, 3, 4, 5, 6, 7), c2);
+                c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 8 + 1, 4, 5, 6, 7), c3);
+                c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 2, 5, 6, 7), c4);
+
+                Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(1UL, 8 + 2, 2, 3, 4, 5, 6, 7), c1);
+                c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 8 + 3, 3, 4, 5, 6, 7), c2);
+                c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 8 + 4, 4, 5, 6, 7), c3);
+                c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 0, 5, 6, 7), c4);
+
+                Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(4UL, 8 + 0, 2, 3, 4, 5, 6, 7), c1);
+                c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 8 + 1, 3, 4, 5, 6, 7), c2);
+                c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 8 + 2, 4, 5, 6, 7), c3);
+                c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 3, 5, 6, 7), c4);
+
+                Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(2UL, 8 + 3, 2, 3, 4, 5, 6, 7), c1);
+                c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 8 + 4, 3, 4, 5, 6, 7), c2);
+                c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 8 + 0, 4, 5, 6, 7), c3);
+                c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 1, 5, 6, 7), c4);
+
+                c0 = c0Pi;
+                c1 = c1Pi;
+                c2 = c2Pi;
+                c3 = c3Pi;
+                c4 = c4Pi;
 
                 // Chi step
                 Vector512<ulong> permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
@@ -714,10 +743,12 @@ namespace Nethermind.Core.Crypto
                 c0 = Vector512.Xor(c0, Vector512.Create(roundConstants[round], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
             }
 
+            // Can over-write for first elements
             Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
+            // Can't over-write for last elements (8 items in vector 5 to be written)
             state[20] = c4.GetElement(0);
             state[21] = c4.GetElement(1);
             state[22] = c4.GetElement(2);
