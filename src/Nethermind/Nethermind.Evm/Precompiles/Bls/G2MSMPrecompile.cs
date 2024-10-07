@@ -66,27 +66,30 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         }
 
         bool fail = false;
-        Parallel.ForEach(pointDestinations, (dest, state, i) =>
+
+#pragma warning disable CS0162 // Unreachable code detected
+        if (BlsConst.DisableConcurrency)
         {
-            if (dest != -1)
+            for (int i = 0; i < pointDestinations.Count; i++)
             {
-                int offset = (int)i * ItemSize;
-                ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG2)].Span;
-                ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsConst.LenG2)..(offset + ItemSize)].Span;
-
-                G2 p = new(rawPoints.AsSpan()[(dest * 36)..]);
-
-                if (!p.TryDecodeRaw(rawPoint) || !p.InGroup())
+                if (!TryDecodePoint(inputData, rawPoints.AsSpan(), rawScalars.AsSpan(), pointDestinations[i], i))
+                {
+                    fail = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            Parallel.ForEach(pointDestinations, (dest, state, i) => {
+                if (!TryDecodePoint(inputData, rawPoints.AsSpan(), rawScalars.AsSpan(), dest, (int)i))
                 {
                     fail = true;
                     state.Break();
                 }
-
-                int destOffset = dest * 32;
-                rawScalar.CopyTo(rawScalars.AsSpan()[destOffset..]);
-                rawScalars.AsSpan()[destOffset..(destOffset + 32)].Reverse();
-            }
-        });
+            });
+        }
+#pragma warning restore CS0162 // Unreachable code detected
 
         if (fail)
         {
@@ -96,5 +99,29 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         G2 res = new G2().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
 
         return (res.EncodeRaw(), true);
+    }
+
+    private static bool TryDecodePoint(ReadOnlyMemory<byte> inputData, Span<long> rawPoints, Span<byte> rawScalars, int dest, int i)
+    {
+        if (dest == -1)
+        {
+            return true;
+        }
+
+        int offset = i * ItemSize;
+        ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG2)].Span;
+        ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsConst.LenG2)..(offset + ItemSize)].Span;
+
+        G2 p = new(rawPoints[(dest * 36)..]);
+
+        if (!p.TryDecodeRaw(rawPoint) || !(BlsConst.DisableSubgroupChecks || p.InGroup()))
+        {
+            return false;
+        }
+
+        int destOffset = dest * 32;
+        rawScalar.CopyTo(rawScalars[destOffset..]);
+        rawScalars[destOffset..(destOffset + 32)].Reverse();
+        return true;
     }
 }

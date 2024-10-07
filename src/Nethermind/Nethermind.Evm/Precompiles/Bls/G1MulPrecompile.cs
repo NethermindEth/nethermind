@@ -36,7 +36,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
         }
 
         G1 x = new(stackalloc long[G1.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !x.InGroup())
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
         {
             return IPrecompile.Failure;
         }

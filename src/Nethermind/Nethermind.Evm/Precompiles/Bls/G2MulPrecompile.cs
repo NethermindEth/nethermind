@@ -38,7 +38,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         }
 
         G2 x = new(stackalloc long[G2.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !x.InGroup())
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
         {
             return IPrecompile.Failure;
         }
