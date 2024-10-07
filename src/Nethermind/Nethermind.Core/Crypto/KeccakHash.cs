@@ -639,10 +639,12 @@ namespace Nethermind.Core.Crypto
             for (int round = 0; round < round_consts.Length; round++)
             {
                 // Theta step
-                Vector512<ulong> c0 = Vector512.Create(state[0], state[1], state[2], state[3], state[4], 0UL, 0UL, 0UL);
-                Vector512<ulong> c1 = Vector512.Create(state[5], state[6], state[7], state[8], state[9], 0UL, 0UL, 0UL);
-                Vector512<ulong> c2 = Vector512.Create(state[10], state[11], state[12], state[13], state[14], 0UL, 0UL, 0UL);
-                Vector512<ulong> c3 = Vector512.Create(state[15], state[16], state[17], state[18], state[19], 0UL, 0UL, 0UL);
+
+                Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
+                Vector512<ulong> c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
+                Vector512<ulong> c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
+                Vector512<ulong> c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)));
+                Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
                 Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
 
                 Vector512<ulong> bVec = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
@@ -659,26 +661,21 @@ namespace Nethermind.Core.Crypto
                 Vector512<ulong> tVec = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
 
                 // Update state
-                for (int i = 0; i < 5; i++)
-                {
-                    // Broadcast tVec[i] across a vector
-                    ulong tElement = tVec.GetElement(i);
-                    Vector512<ulong> tBroadcastVec = Vector512.Create(tElement, tElement, tElement, tElement, tElement, 0UL, 0UL, 0UL);
+                c0 = Avx512F.Xor(c0, tVec);
+                c1 = Avx512F.Xor(c1, tVec);
+                c2 = Avx512F.Xor(c2, tVec);
+                c3 = Avx512F.Xor(c3, tVec);
+                c4 = Avx512F.Xor(c4, tVec);
 
-                    // Load state lanes into vectors
-                    Vector512<ulong> stateVec = Vector512.Create(state[i], state[i + 5], state[i + 10], state[i + 15], state[i + 20], 0UL, 0UL, 0UL);
-
-                    // XOR tBroadcastVec with stateVec
-                    stateVec = Avx512F.Xor(stateVec, tBroadcastVec);
-
-                    // Store the updated lanes back to the state array
-                    state[i] = stateVec.GetElement(0);
-                    state[i + 5] = stateVec.GetElement(1);
-                    state[i + 10] = stateVec.GetElement(2);
-                    state[i + 15] = stateVec.GetElement(3);
-                    state[i + 20] = stateVec.GetElement(4);
-                }
-
+                Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
+                Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
+                Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
+                Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
+                state[20] = c4.GetElement(0);
+                state[21] = c4.GetElement(1);
+                state[22] = c4.GetElement(2);
+                state[23] = c4.GetElement(3);
+                state[24] = c4.GetElement(4);
                 // Rho and Pi steps (scalar implementation for simplicity)
                 ulong t = state[1];
                 for (int i = 0; i < 24; i++)
