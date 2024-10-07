@@ -643,10 +643,10 @@ namespace Nethermind.Core.Crypto
             Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
             Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
 
-            for (int round = 0; round < round_consts.Length; round++)
+            var roundConstants = RoundConstants;
+            for (int round = 0; round < roundConstants.Length; round++)
             {
                 // Theta step
-
                 Vector512<ulong> bVec = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
 
                 // Compute tVec
@@ -660,13 +660,29 @@ namespace Nethermind.Core.Crypto
 
                 Vector512<ulong> tVec = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
 
-                // Update state
                 c0 = Avx512F.Xor(c0, tVec);
                 c1 = Avx512F.Xor(c1, tVec);
                 c2 = Avx512F.Xor(c2, tVec);
                 c3 = Avx512F.Xor(c3, tVec);
                 c4 = Avx512F.Xor(c4, tVec);
 
+                // Rho step
+                Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
+                c0 = Avx512F.RotateLeftVariable(c0, rhoVec0);
+
+                Vector512<ulong> rhoVec1 = Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL);
+                c1 = Avx512F.RotateLeftVariable(c1, rhoVec1);
+
+                Vector512<ulong> rhoVec2 = Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL);
+                c2 = Avx512F.RotateLeftVariable(c2, rhoVec2);
+
+                Vector512<ulong> rhoVec3 = Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL);
+                c3 = Avx512F.RotateLeftVariable(c3, rhoVec3);
+
+                Vector512<ulong> rhoVec4 = Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL);
+                c4 = Avx512F.RotateLeftVariable(c4, rhoVec4);
+
+                // Update state
                 Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
                 Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
                 Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
@@ -676,38 +692,26 @@ namespace Nethermind.Core.Crypto
                 state[22] = c4.GetElement(2);
                 state[23] = c4.GetElement(3);
                 state[24] = c4.GetElement(4);
-                // Rho and Pi steps (scalar implementation for simplicity)
-                ulong t = state[1];
-                for (int i = 0; i < 24; i++)
-                {
-                    int pi_val = pi_consts[i];
-                    int rho_val = rho_consts[i];
-                    ulong temp = state[pi_val];
-                    state[pi_val] = RotateLeft(t, rho_val);
-                    t = temp;
-                }
+
+                // Pi step
+                c0 = Vector512.Create(state[0], state[6], state[12], state[18], state[24], 0UL, 0UL, 0UL);
+                c1 = Vector512.Create(state[3], state[9], state[10], state[16], state[22], 0UL, 0UL, 0UL);
+                c2 = Vector512.Create(state[1], state[7], state[13], state[19], state[20], 0UL, 0UL, 0UL);
+                c3 = Vector512.Create(state[4], state[5], state[11], state[17], state[23], 0UL, 0UL, 0UL);
+                c4 = Vector512.Create(state[2], state[8], state[14], state[15], state[21], 0UL, 0UL, 0UL);
 
                 // Chi step
                 var permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
                 var permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
 
-                c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
                 c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
-
-                c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
                 c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
-
-                c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)));
                 c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
-
-                c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
                 c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
-
-                c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
                 c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                 // Iota step
-                c0 = Vector512.Xor(c0, Vector512.Create(round_consts[round], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
+                c0 = Vector512.Xor(c0, Vector512.Create(roundConstants[round], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
             }
 
             Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
@@ -720,35 +724,5 @@ namespace Nethermind.Core.Crypto
             state[23] = c4.GetElement(3);
             state[24] = c4.GetElement(4);
         }
-
-        static ulong[] round_consts =
-        {
-            0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808AUL, 0x8000000080008000UL,
-            0x000000000000808BUL, 0x0000000080000001UL, 0x8000000080008081UL, 0x8000000000008009UL,
-            0x000000000000008AUL, 0x0000000000000088UL, 0x0000000080008009UL, 0x000000008000000AUL,
-            0x000000008000808BUL, 0x800000000000008BUL, 0x8000000000008089UL, 0x8000000000008003UL,
-            0x8000000000008002UL, 0x8000000000000080UL, 0x000000000000800AUL, 0x800000008000000AUL,
-            0x8000000080008081UL, 0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
-        };
-
-        static byte[] rho_consts =
-        {
-            1,  3,   6, 10,
-            15, 21, 28, 36,
-            45, 55,  2, 14,
-            27, 41, 56,  8,
-            25, 43, 62, 18,
-            39, 61, 20, 44
-        };
-
-        static byte[] pi_consts =
-        {
-            10,  7, 11, 17,
-            18,  3,  5, 16,
-             8, 21, 24,  4,
-            15, 23, 19, 13,
-            12,  2, 20, 14,
-            22,  9,  6,  1
-        };
     }
 }
