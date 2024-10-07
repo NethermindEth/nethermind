@@ -194,14 +194,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             using var message = msg;
             bool isTrace = Logger.IsTrace;
-            long startTime = isTrace ? Stopwatch.GetTimestamp() : 0;
+            long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
             _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
 
             if (isTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                             $"in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
         }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)

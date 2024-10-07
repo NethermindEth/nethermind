@@ -309,7 +309,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // }
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
 
             return resp;
         }
@@ -346,7 +346,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             Interlocked.Increment(ref Counter);
             BlockBodiesMessage resp = await FulfillBlockBodiesRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
             return resp;
         }
 
@@ -391,7 +391,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
 
             return resp;
         }

@@ -289,20 +289,22 @@ namespace Nethermind.Synchronization.FastSync
 
                     _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
-                    long total = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds + _networkWatch.ElapsedMilliseconds;
+                    
+                    long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                    long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
                     {
                         // calculate averages
                         if (_logger.IsTrace)
                             _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms ({(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / total:P0})");
+                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {String.Format("{{0:N0}}", elapsedTime)}ms ({(decimal)elapsedTime / total:P0})");
                     }
 
                     if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Handle watch {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                                $"Handle watch {String.Format("{{0:N0}}", elapsedTime)}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
                     Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);

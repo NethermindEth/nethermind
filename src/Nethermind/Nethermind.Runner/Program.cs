@@ -415,7 +415,7 @@ public static partial class Program
             long startTime = Stopwatch.GetTimestamp();
             LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
 
-            _logger.Info($"NLog.config loaded in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms.");
+            _logger.Info($"NLog.config loaded in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms.");
         }
 
         // TODO: dynamically switch log levels from CLI!

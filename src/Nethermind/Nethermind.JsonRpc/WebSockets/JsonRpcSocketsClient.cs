@@ -58,7 +58,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public override async Task ProcessAsync(ArraySegment<byte> data)
     {
-        long startTime = Stopwatch.GetTimestamp();
         IncrementBytesReceivedMetric(data.Count);
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data.Array!, data.Offset, data.Count));
         int allResponsesSize = 0;
@@ -67,10 +66,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             using (result)
             {
-                startTime = Stopwatch.GetTimestamp();
-
+                
                 int singleResponseSize = await SendJsonRpcResult(result);
                 allResponsesSize += singleResponseSize;
+
+                long startTime = Stopwatch.GetTimestamp();
 
                 if (result.IsCollection)
                 {
@@ -82,8 +82,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                     long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                     _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                 }
-
-                startTime = Stopwatch.GetTimestamp();
             }
         }
 

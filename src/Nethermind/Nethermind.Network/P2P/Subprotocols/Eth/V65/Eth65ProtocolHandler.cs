@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -104,7 +105,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                             $"in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
         }
 
         protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
@@ -122,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
-                             $"in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                             $"in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
         }
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)

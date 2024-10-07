@@ -33,7 +33,7 @@ namespace Nethermind.Init.Steps
                     long startTime = Stopwatch.GetTimestamp();
                     await plugin.Init(_api);
                     if (logger.IsInfo)
-                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+                        logger.Info($"  {plugin.Name} by {plugin.Author} initialized in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
                 }
                 catch (Exception e)
                 {

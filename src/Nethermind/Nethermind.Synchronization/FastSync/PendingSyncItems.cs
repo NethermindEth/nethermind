@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization.FastSync
 
             reviewMessage += $"  after {Description}" + Environment.NewLine;
 
-            reviewMessage += $"  time spent in review: {(long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms";
+            reviewMessage += $"  time spent in review: {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms";
             return reviewMessage;
         }
     }
