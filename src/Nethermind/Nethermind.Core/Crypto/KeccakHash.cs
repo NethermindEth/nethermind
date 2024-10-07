@@ -636,16 +636,16 @@ namespace Nethermind.Core.Crypto
 
         public static void KeccakF1600Avx512F(Span<ulong> state)
         {
+            Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
+            Vector512<ulong> c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
+            Vector512<ulong> c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
+            Vector512<ulong> c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)));
+            Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
+            Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
+
             for (int round = 0; round < round_consts.Length; round++)
             {
                 // Theta step
-
-                Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
-                Vector512<ulong> c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
-                Vector512<ulong> c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
-                Vector512<ulong> c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)));
-                Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
-                Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
 
                 Vector512<ulong> bVec = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
 
@@ -688,29 +688,37 @@ namespace Nethermind.Core.Crypto
                 }
 
                 // Chi step
-                for (int i = 0; i < 25; i += 5)
-                {
-                    // Load the row into a vector
-                    Vector512<ulong> row = Vector512.Create(state[i], state[i + 1], state[i + 2], state[i + 3], state[i + 4], 0UL, 0UL, 0UL);
+                var permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
+                var permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
 
-                    // Prepare rotated versions for Chi computation
-                    Vector512<ulong> row1 = Avx512F.PermuteVar8x64(row, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
-                    Vector512<ulong> row2 = Avx512F.PermuteVar8x64(row, Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL));
+                c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)));
+                c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, permute1), Avx512F.PermuteVar8x64(c0, permute2), 0xD2);
 
-                    // Compute A = row XOR ((NOT row1) AND row2) using TernaryLogic
-                    Vector512<ulong> updatedRow = Avx512F.TernaryLogic(row, row1, row2, 0xD2);
+                c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)));
+                c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, permute1), Avx512F.PermuteVar8x64(c1, permute2), 0xD2);
 
-                    // Store the updated row back to the state array
-                    state[i] = updatedRow.GetElement(0);
-                    state[i + 1] = updatedRow.GetElement(1);
-                    state[i + 2] = updatedRow.GetElement(2);
-                    state[i + 3] = updatedRow.GetElement(3);
-                    state[i + 4] = updatedRow.GetElement(4);
-                }
+                c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)));
+                c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, permute1), Avx512F.PermuteVar8x64(c2, permute2), 0xD2);
+
+                c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)));
+                c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, permute1), Avx512F.PermuteVar8x64(c3, permute2), 0xD2);
+
+                c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
+                c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                 // Iota step
-                state[0] ^= round_consts[round];
+                c0 = Vector512.Xor(c0, Vector512.Create(round_consts[round], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
             }
+
+            Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state)) = c0;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
+            Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
+            state[20] = c4.GetElement(0);
+            state[21] = c4.GetElement(1);
+            state[22] = c4.GetElement(2);
+            state[23] = c4.GetElement(3);
+            state[24] = c4.GetElement(4);
         }
 
         static ulong[] round_consts =
