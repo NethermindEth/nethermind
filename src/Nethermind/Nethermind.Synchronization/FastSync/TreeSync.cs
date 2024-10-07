@@ -289,7 +289,6 @@ namespace Nethermind.Synchronization.FastSync
 
                     _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
-                    
                     long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
                     long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)

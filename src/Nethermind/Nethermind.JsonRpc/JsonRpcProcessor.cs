@@ -232,7 +232,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
                     TraceResult(errorResponse);
                     if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-                    deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #",(long) Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
+                    deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
                     yield return deserializationFailureResult.Value;
                     break;
                 }

@@ -66,7 +66,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             using (result)
             {
-                
                 int singleResponseSize = await SendJsonRpcResult(result);
                 allResponsesSize += singleResponseSize;
 
