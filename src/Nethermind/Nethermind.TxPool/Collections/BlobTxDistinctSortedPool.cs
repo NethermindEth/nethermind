@@ -4,7 +4,9 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -26,19 +28,25 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out byte[]? proof)
     {
-        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
-            && txHashes[0] is not null
-            && TryGetValue(txHashes[0], out Transaction? blobTx)
-            && blobTx.BlobVersionedHashes?.Length > 0)
+        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
         {
-            for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+            lock (txHashes)
             {
-                if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
-                    && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
                 {
-                    blob = wrapper.Blobs[indexOfBlob];
-                    proof = wrapper.Proofs[indexOfBlob];
-                    return true;
+                    if (TryGetValue(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
+                    {
+                        for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+                        {
+                            if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
+                                && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                            {
+                                blob = wrapper.Blobs[indexOfBlob];
+                                proof = wrapper.Proofs[indexOfBlob];
+                                return true;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -61,19 +69,17 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     protected void AddToBlobIndex(Transaction blobTx)
     {
-        if (blobTx.BlobVersionedHashes?.Length > 0)
+        if (blobTx.Hash is not null && blobTx.BlobVersionedHashes?.Length > 0)
         {
             foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
             {
                 if (blobVersionedHash?.Length == KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
-                    BlobIndex.AddOrUpdate(blobVersionedHash,
-                        k => [blobTx.Hash!],
-                        (k, b) =>
-                        {
-                            b.Add(blobTx.Hash!);
-                            return b;
-                        });
+                    List<Hash256> list = BlobIndex.GetOrAdd(blobVersionedHash, static _ => new List<Hash256>());
+                    lock (list)
+                    {
+                        list.Add(blobTx.Hash);
+                    }
                 }
             }
         }
@@ -95,20 +101,25 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
     private void RemoveFromBlobIndex(Transaction blobTx)
     {
-        if (blobTx.BlobVersionedHashes?.Length > 0)
+        if (blobTx.Hash is not null && blobTx.BlobVersionedHashes?.Length > 0)
         {
-            foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
+            foreach (byte[]? blobVersionedHash in blobTx.BlobVersionedHashes)
             {
-                if (blobVersionedHash is not null
-                    && BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
+                if (blobVersionedHash is not null && BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
                 {
-                    if (txHashes.Count < 2)
+                    lock (txHashes)
                     {
-                        BlobIndex.Remove(blobVersionedHash, out _);
-                    }
-                    else
-                    {
-                        txHashes.Remove(blobTx.Hash!);
+                        txHashes.Remove(blobTx.Hash);
+                        if (txHashes.Count == 0)
+                        {
+                            lock (BlobIndex)
+                            {
+                                if (BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes2) && txHashes == txHashes2)
+                                {
+                                    BlobIndex.TryRemove(blobVersionedHash, out List<Hash256>? _);
+                                }
+                            }
+                        }
                     }
                 }
             }
