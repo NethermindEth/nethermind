@@ -707,11 +707,8 @@ namespace Nethermind.Core.Crypto
                     Vector512<ulong> row1 = Avx512F.PermuteVar8x64(row, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
                     Vector512<ulong> row2 = Avx512F.PermuteVar8x64(row, Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL));
 
-                    // Compute (~row1) & row2
-                    Vector512<ulong> tempVec = Avx512F.AndNot(row1, row2);
-
-                    // Update the row: state[i + j] ^= tempVec[j]
-                    Vector512<ulong> updatedRow = Avx512F.Xor(row, tempVec);
+                    // Compute A = row XOR ((NOT row1) AND row2) using TernaryLogic
+                    Vector512<ulong> updatedRow = Avx512F.TernaryLogic(row, row1, row2, 0xD2);
 
                     // Store the updated row back to the state array
                     state[i] = updatedRow.GetElement(0);
