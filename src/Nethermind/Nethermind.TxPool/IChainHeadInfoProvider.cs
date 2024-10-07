@@ -4,7 +4,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.TxPool
 {
@@ -12,13 +14,15 @@ namespace Nethermind.TxPool
     {
         IChainHeadSpecProvider SpecProvider { get; }
 
-        IAccountStateProvider AccountStateProvider { get; }
+        IReadOnlyStateProvider ReadOnlyStateProvider { get; }
 
-        public long HeadNumber { get; }
+        ICodeInfoRepository CodeInfoRepository { get; }
 
-        public long? BlockGasLimit { get; }
+        long HeadNumber { get; }
 
-        public UInt256 CurrentBaseFee { get; }
+        long? BlockGasLimit { get; }
+
+        UInt256 CurrentBaseFee { get; }
 
         public UInt256 CurrentFeePerBlobGas { get; }
 
