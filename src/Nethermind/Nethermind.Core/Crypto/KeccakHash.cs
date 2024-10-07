@@ -636,9 +636,6 @@ namespace Nethermind.Core.Crypto
 
         public static void KeccakF1600Avx512F(Span<ulong> state)
         {
-            Span<ulong> b = stackalloc ulong[5];
-            ulong t;
-
             for (int round = 0; round < round_consts.Length; round++)
             {
                 // Theta step
@@ -648,25 +645,38 @@ namespace Nethermind.Core.Crypto
                 Vector512<ulong> c3 = Vector512.Create(state[3], state[8], state[13], state[18], state[23], 0UL, 0UL, 0UL);
                 Vector512<ulong> c4 = Vector512.Create(state[4], state[9], state[14], state[19], state[24], 0UL, 0UL, 0UL);
 
-                // Compute b[i] as horizontal XORs
-                b[0] = c0.GetElement(0) ^ c0.GetElement(1) ^ c0.GetElement(2) ^ c0.GetElement(3) ^ c0.GetElement(4);
-                b[1] = c1.GetElement(0) ^ c1.GetElement(1) ^ c1.GetElement(2) ^ c1.GetElement(3) ^ c1.GetElement(4);
-                b[2] = c2.GetElement(0) ^ c2.GetElement(1) ^ c2.GetElement(2) ^ c2.GetElement(3) ^ c2.GetElement(4);
-                b[3] = c3.GetElement(0) ^ c3.GetElement(1) ^ c3.GetElement(2) ^ c3.GetElement(3) ^ c3.GetElement(4);
-                b[4] = c4.GetElement(0) ^ c4.GetElement(1) ^ c4.GetElement(2) ^ c4.GetElement(3) ^ c4.GetElement(4);
+                // Compute bVec as horizontal XORs
+                ulong b0 = c0.GetElement(0) ^ c0.GetElement(1) ^ c0.GetElement(2) ^ c0.GetElement(3) ^ c0.GetElement(4);
+                ulong b1 = c1.GetElement(0) ^ c1.GetElement(1) ^ c1.GetElement(2) ^ c1.GetElement(3) ^ c1.GetElement(4);
+                ulong b2 = c2.GetElement(0) ^ c2.GetElement(1) ^ c2.GetElement(2) ^ c2.GetElement(3) ^ c2.GetElement(4);
+                ulong b3 = c3.GetElement(0) ^ c3.GetElement(1) ^ c3.GetElement(2) ^ c3.GetElement(3) ^ c3.GetElement(4);
+                ulong b4 = c4.GetElement(0) ^ c4.GetElement(1) ^ c4.GetElement(2) ^ c4.GetElement(3) ^ c4.GetElement(4);
 
+                Vector512<ulong> bVec = Vector512.Create(b0, b1, b2, b3, b4, 0UL, 0UL, 0UL);
+
+                // Compute tVec
+                Vector512<ulong> bVecRot1 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
+                Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+
+                // Rotate bVecRot1 left by 1
+                Vector512<ulong> bVecRot1ShiftedLeft = Avx512F.ShiftLeftLogical(bVecRot1, 1);
+                Vector512<ulong> bVecRot1ShiftedRight = Avx512F.ShiftRightLogical(bVecRot1, 63);
+                Vector512<ulong> bVecRot1Rotated = Avx512F.Or(bVecRot1ShiftedLeft, bVecRot1ShiftedRight);
+
+                Vector512<ulong> tVec = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
+
+                // Update state
                 for (int i = 0; i < 5; i++)
                 {
-                    t = b[(i + 4) % 5] ^ RotateLeft(b[(i + 1) % 5], 1);
-
-                    // Create a vector with `t` replicated
-                    Vector512<ulong> tVec = Vector512.Create(t, t, t, t, t, 0UL, 0UL, 0UL);
+                    // Broadcast tVec[i] across a vector
+                    ulong tElement = tVec.GetElement(i);
+                    Vector512<ulong> tBroadcastVec = Vector512.Create(tElement, tElement, tElement, tElement, tElement, 0UL, 0UL, 0UL);
 
                     // Load state lanes into vectors
                     Vector512<ulong> stateVec = Vector512.Create(state[i], state[i + 5], state[i + 10], state[i + 15], state[i + 20], 0UL, 0UL, 0UL);
 
-                    // XOR `t` with state lanes
-                    stateVec = Avx512F.Xor(stateVec, tVec);
+                    // XOR tBroadcastVec with stateVec
+                    stateVec = Avx512F.Xor(stateVec, tBroadcastVec);
 
                     // Store the updated lanes back to the state array
                     state[i] = stateVec.GetElement(0);
@@ -677,7 +687,7 @@ namespace Nethermind.Core.Crypto
                 }
 
                 // Rho and Pi steps (scalar implementation for simplicity)
-                t = state[1];
+                ulong t = state[1];
                 for (int i = 0; i < 24; i++)
                 {
                     int pi_val = pi_consts[i];
