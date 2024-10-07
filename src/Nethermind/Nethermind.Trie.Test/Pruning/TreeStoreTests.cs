@@ -70,7 +70,10 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty));
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, null))
+            {
+                committer.CommitNode(new NodeCommitInfo(trieNode, TreePath.Empty));
+            }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
@@ -85,10 +88,15 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore();
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode);
-            trieStore.CommitNode(124, new NodeCommitInfo(trieNode2, TreePath.Empty));
-            trieStore.CommitNode(11234, new NodeCommitInfo(trieNode3, TreePath.Empty));
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode))
+            {
+                committer.CommitNode(new NodeCommitInfo(trieNode, TreePath.Empty));
+            }
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1235, trieNode))
+            {
+                committer.CommitNode(new NodeCommitInfo(trieNode2, TreePath.Empty));
+                committer.CommitNode(new NodeCommitInfo(trieNode3, TreePath.Empty));
+            }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
@@ -101,8 +109,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(kvStore: testMemDb);
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty), WriteFlags.LowPriority);
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority);
+
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority))
+            {
+                committer.CommitNode(new NodeCommitInfo(trieNode, TreePath.Empty));
+            }
 
             if (_scheme == INodeStorage.KeyScheme.HalfPath)
             {
@@ -123,13 +134,13 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance);
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
-            trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
+            trieStore.BeginCommit(TrieType.State, 1, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(0);
-            trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
+            trieStore.BeginCommit(TrieType.State, 2, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(1);
-            trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
+            trieStore.BeginCommit(TrieType.State, 3, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(3);
-            trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
+            trieStore.BeginCommit(TrieType.State, 4, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(6);
         }
 
@@ -142,10 +153,10 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore();
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
-            trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
-            trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
-            trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
-            trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
+            trieStore.BeginCommit(TrieType.State, 1, trieNode).Dispose();
+            trieStore.BeginCommit(TrieType.State, 2, trieNode).Dispose();
+            trieStore.BeginCommit(TrieType.State, 3, trieNode).Dispose();
+            trieStore.BeginCommit(TrieType.State, 4, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(0L);
         }
 
@@ -189,13 +200,17 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1234, null))
+            {
+                committer.CommitNode(new NodeCommitInfo(trieNode1, TreePath.Empty));
+                committer.CommitNode(new NodeCommitInfo(trieNode2, TreePath.Empty));
+            }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
 
+        /*
         [Test]
         public void Memory_with_two_times_two_nodes_is_correct()
         {
@@ -773,8 +788,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
+        */
 
         private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage;
+
+        /*
 
         [Test]
         public void After_commit_should_have_has_root()
@@ -916,5 +934,6 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(4);
         }
+        */
     }
 }

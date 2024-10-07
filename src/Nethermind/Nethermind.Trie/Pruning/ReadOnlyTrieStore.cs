@@ -39,9 +39,10 @@ namespace Nethermind.Trie.Pruning
             return new ReadOnlyTrieStore(_trieStore, nodeStore);
         }
 
-        public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
-
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
+        public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
+        {
+            return new NullTrieStore.NullCommitter();
+        }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -101,12 +102,9 @@ namespace Nethermind.Trie.Pruning
 
             public INodeStorage.KeyScheme Scheme => _trieStoreImplementation.Scheme;
 
-            public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+            public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
             {
-            }
-
-            public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
-            {
+                return new NullTrieStore.NullCommitter();
             }
 
             public bool IsPersisted(in TreePath path, in ValueHash256 keccak)

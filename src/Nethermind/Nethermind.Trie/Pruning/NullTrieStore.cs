@@ -15,15 +15,16 @@ namespace Nethermind.Trie.Pruning
 
         public static NullTrieStore Instance { get; } = new();
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
-
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
-
         public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
 
         public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+
+        public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        {
+            return new NullCommitter();
+        }
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
@@ -37,5 +38,16 @@ namespace Nethermind.Trie.Pruning
         }
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+        internal class NullCommitter: ICommitter
+        {
+            public void Dispose()
+            {
+            }
+
+            public void CommitNode(NodeCommitInfo nodeCommitInfo)
+            {
+            }
+        }
     }
 }

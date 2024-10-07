@@ -40,14 +40,9 @@ public sealed class ScopedTrieStore : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => _trieStoreImplementation.Scheme;
 
-    public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+    public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
-        _trieStoreImplementation.CommitNode(blockNumber, _address, nodeCommitInfo, writeFlags);
-    }
-
-    public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
-    {
-        _trieStoreImplementation.FinishBlockCommit(trieType, blockNumber, _address, root, writeFlags);
+        return _trieStoreImplementation.BeginCommit(trieType, blockNumber, _address, root, writeFlags);
     }
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)

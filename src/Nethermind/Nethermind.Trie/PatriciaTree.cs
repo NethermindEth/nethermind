@@ -138,22 +138,23 @@ namespace Nethermind.Trie
                 ThrowReadOnlyTrieException();
             }
 
-            if (RootRef is not null && RootRef.IsDirty)
+            using (ICommitter committer = TrieStore.BeginCommit(TrieType, blockNumber, RootRef, writeFlags))
             {
-                Commit(new NodeCommitInfo(RootRef, TreePath.Empty), skipSelf: skipRoot);
-                while (TryDequeueCommit(out NodeCommitInfo node))
+                if (RootRef is not null && RootRef.IsDirty)
                 {
-                    if (_logger.IsTrace) Trace(blockNumber, node);
-                    TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
+                    Commit(new NodeCommitInfo(RootRef, TreePath.Empty), skipSelf: skipRoot);
+                    while (TryDequeueCommit(out NodeCommitInfo node))
+                    {
+                        if (_logger.IsTrace) Trace(blockNumber, node);
+                        committer.CommitNode(node);
+                    }
+
+                    // reset objects
+                    TreePath path = TreePath.Empty;
+                    RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
+                    SetRootHash(RootRef.Keccak!, true);
                 }
-
-                // reset objects
-                TreePath path = TreePath.Empty;
-                RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
-                SetRootHash(RootRef.Keccak!, true);
             }
-
-            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
 
             if (_logger.IsDebug) Debug(blockNumber);
 

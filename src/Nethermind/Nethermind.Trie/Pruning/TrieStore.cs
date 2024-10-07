@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.ComponentModel.Design.Serialization;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -284,6 +286,28 @@ namespace Nethermind.Trie.Pruning
             [StackTraceHidden]
             static void ThrowNodeIsNotSame(TrieNode node, TrieNode cachedNodeCopy) =>
                 throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+        }
+
+        public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
+        {
+            return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags);
+        }
+
+        private class TrieStoreCommitter(TrieStore trieStore, TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) : ICommitter
+        {
+            public void Dispose()
+            {
+                if (root is not null && root.IsDirty)
+                {
+                    root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root.Keccak);
+                }
+                trieStore.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
+            }
+
+            public void CommitNode(NodeCommitInfo nodeCommitInfo)
+            {
+                trieStore.CommitNode(blockNumber, address, nodeCommitInfo);
+            }
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
