@@ -65,10 +65,11 @@ public sealed class OptimismTransactionProcessor(
     }
 
     protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment)
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
         senderReservedGasPayment = UInt256.Zero;
+        blobBaseFee = UInt256.Zero;
 
         bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
@@ -136,12 +137,12 @@ public sealed class OptimismTransactionProcessor(
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
-        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
+        in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobGasFee, in byte statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobGasFee, statusCode);
 
             if (opSpecHelper.IsBedrock(header))
             {
@@ -152,7 +153,7 @@ public sealed class OptimismTransactionProcessor(
     }
 
     protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
+        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int refunds)
     {
         // if deposit: skip refunds, skip tipping coinbase
         // Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
@@ -163,6 +164,6 @@ public sealed class OptimismTransactionProcessor(
             return tx.IsOPSystemTransaction ? 0 : tx.GasLimit;
         }
 
-        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice);
+        return base.Refund(tx, header, spec, opts, substate, unspentGas, gasPrice, refunds);
     }
 }
