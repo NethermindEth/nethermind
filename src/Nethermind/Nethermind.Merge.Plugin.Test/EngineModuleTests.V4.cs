@@ -429,9 +429,11 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = feeRecipient,
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = withdrawals,
+            TargetBlobCount = 0,
+            MaxBlobCount = 0,
         };
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result;
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes).Result;
         string? payloadId = result.Data.PayloadId;
 
         if (waitForBlockImprovement)
