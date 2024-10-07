@@ -5,7 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+
 using static System.Numerics.BitOperations;
 
 // ReSharper disable InconsistentNaming
@@ -88,6 +92,14 @@ namespace Nethermind.Core.Crypto
 
         // update the state with given number of rounds
         private static void KeccakF(Span<ulong> st)
+        {
+            if (Avx512F.IsSupported)
+                KeccakF1600Avx512F(st);
+            else
+                KeccakF1600(st);
+        }
+
+        private static void KeccakF1600(Span<ulong> st)
         {
             Debug.Assert(st.Length == 25);
 
@@ -621,5 +633,117 @@ namespace Nethermind.Core.Crypto
                 state = Array.Empty<ulong>();
             }
         }
+
+        public static void KeccakF1600Avx512F(Span<ulong> state)
+        {
+            Span<ulong> b = stackalloc ulong[5];
+            ulong t;
+
+            for (int round = 0; round < round_consts.Length; round++)
+            {
+                // Theta step
+                Vector512<ulong> c0 = Vector512.Create(state[0], state[5], state[10], state[15], state[20], 0UL, 0UL, 0UL);
+                Vector512<ulong> c1 = Vector512.Create(state[1], state[6], state[11], state[16], state[21], 0UL, 0UL, 0UL);
+                Vector512<ulong> c2 = Vector512.Create(state[2], state[7], state[12], state[17], state[22], 0UL, 0UL, 0UL);
+                Vector512<ulong> c3 = Vector512.Create(state[3], state[8], state[13], state[18], state[23], 0UL, 0UL, 0UL);
+                Vector512<ulong> c4 = Vector512.Create(state[4], state[9], state[14], state[19], state[24], 0UL, 0UL, 0UL);
+
+                // Compute b[i] as horizontal XORs
+                b[0] = c0.GetElement(0) ^ c0.GetElement(1) ^ c0.GetElement(2) ^ c0.GetElement(3) ^ c0.GetElement(4);
+                b[1] = c1.GetElement(0) ^ c1.GetElement(1) ^ c1.GetElement(2) ^ c1.GetElement(3) ^ c1.GetElement(4);
+                b[2] = c2.GetElement(0) ^ c2.GetElement(1) ^ c2.GetElement(2) ^ c2.GetElement(3) ^ c2.GetElement(4);
+                b[3] = c3.GetElement(0) ^ c3.GetElement(1) ^ c3.GetElement(2) ^ c3.GetElement(3) ^ c3.GetElement(4);
+                b[4] = c4.GetElement(0) ^ c4.GetElement(1) ^ c4.GetElement(2) ^ c4.GetElement(3) ^ c4.GetElement(4);
+
+                for (int i = 0; i < 5; i++)
+                {
+                    t = b[(i + 4) % 5] ^ RotateLeft(b[(i + 1) % 5], 1);
+
+                    // Create a vector with `t` replicated
+                    Vector512<ulong> tVec = Vector512.Create(t, t, t, t, t, 0UL, 0UL, 0UL);
+
+                    // Load state lanes into vectors
+                    Vector512<ulong> stateVec = Vector512.Create(state[i], state[i + 5], state[i + 10], state[i + 15], state[i + 20], 0UL, 0UL, 0UL);
+
+                    // XOR `t` with state lanes
+                    stateVec = Avx512F.Xor(stateVec, tVec);
+
+                    // Store the updated lanes back to the state array
+                    state[i] = stateVec.GetElement(0);
+                    state[i + 5] = stateVec.GetElement(1);
+                    state[i + 10] = stateVec.GetElement(2);
+                    state[i + 15] = stateVec.GetElement(3);
+                    state[i + 20] = stateVec.GetElement(4);
+                }
+
+                // Rho and Pi steps (scalar implementation for simplicity)
+                t = state[1];
+                for (int i = 0; i < 24; i++)
+                {
+                    int pi_val = pi_consts[i];
+                    int rho_val = rho_consts[i];
+                    ulong temp = state[pi_val];
+                    state[pi_val] = RotateLeft(t, rho_val);
+                    t = temp;
+                }
+
+                // Chi step
+                for (int i = 0; i < 25; i += 5)
+                {
+                    // Load the row into a vector
+                    Vector512<ulong> row = Vector512.Create(state[i], state[i + 1], state[i + 2], state[i + 3], state[i + 4], 0UL, 0UL, 0UL);
+
+                    // Prepare rotated versions for Chi computation
+                    Vector512<ulong> row1 = Avx512F.PermuteVar8x64(row, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
+                    Vector512<ulong> row2 = Avx512F.PermuteVar8x64(row, Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL));
+
+                    // Compute (~row1) & row2
+                    Vector512<ulong> tempVec = Avx512F.AndNot(row1, row2);
+
+                    // Update the row: state[i + j] ^= tempVec[j]
+                    Vector512<ulong> updatedRow = Avx512F.Xor(row, tempVec);
+
+                    // Store the updated row back to the state array
+                    state[i] = updatedRow.GetElement(0);
+                    state[i + 1] = updatedRow.GetElement(1);
+                    state[i + 2] = updatedRow.GetElement(2);
+                    state[i + 3] = updatedRow.GetElement(3);
+                    state[i + 4] = updatedRow.GetElement(4);
+                }
+
+                // Iota step
+                state[0] ^= round_consts[round];
+            }
+        }
+
+        static ulong[] round_consts =
+        {
+            0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808AUL, 0x8000000080008000UL,
+            0x000000000000808BUL, 0x0000000080000001UL, 0x8000000080008081UL, 0x8000000000008009UL,
+            0x000000000000008AUL, 0x0000000000000088UL, 0x0000000080008009UL, 0x000000008000000AUL,
+            0x000000008000808BUL, 0x800000000000008BUL, 0x8000000000008089UL, 0x8000000000008003UL,
+            0x8000000000008002UL, 0x8000000000000080UL, 0x000000000000800AUL, 0x800000008000000AUL,
+            0x8000000080008081UL, 0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
+        };
+
+        static byte[] rho_consts =
+        {
+            1,  3,   6, 10,
+            15, 21, 28, 36,
+            45, 55,  2, 14,
+            27, 41, 56,  8,
+            25, 43, 62, 18,
+            39, 61, 20, 44
+        };
+
+        static byte[] pi_consts =
+        {
+            10,  7, 11, 17,
+            18,  3,  5, 16,
+             8, 21, 24,  4,
+            15, 23, 19, 13,
+            12,  2, 20, 14,
+            22,  9,  6,  1
+        };
     }
 }
