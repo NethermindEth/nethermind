@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null,
             IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestProcessor? executionRequestProcessor = null)
+            IExecutionRequestsProcessor? executionRequestsProcessor = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 withdrawalProcessor,
                 preWarmer: preWarmer,
-                executionRequestProcessor: executionRequestProcessor)
+                executionRequestsProcessor: executionRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

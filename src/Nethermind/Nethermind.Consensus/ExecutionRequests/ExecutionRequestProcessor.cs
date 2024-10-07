@@ -18,7 +18,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor) : IExecutionRequestProcessor
+public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor) : IExecutionRequestsProcessor
 {
     private readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;

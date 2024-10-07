@@ -9,7 +9,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public interface IExecutionRequestProcessor
+public interface IExecutionRequestsProcessor
 {
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec);
 }

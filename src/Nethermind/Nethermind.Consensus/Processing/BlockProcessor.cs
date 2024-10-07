@@ -47,7 +47,7 @@ public partial class BlockProcessor(
     IWithdrawalProcessor? withdrawalProcessor = null,
     IReceiptsRootCalculator? receiptsRootCalculator = null,
     IBlockCachePreWarmer? preWarmer = null,
-    IExecutionRequestProcessor? executionRequestProcessor = null)
+    IExecutionRequestsProcessor? executionRequestsProcessor = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -61,7 +61,7 @@ public partial class BlockProcessor(
     private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
-    private readonly IExecutionRequestProcessor _executionRequestProcessor = executionRequestProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
+    private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -309,7 +309,7 @@ public partial class BlockProcessor(
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        _executionRequestProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 

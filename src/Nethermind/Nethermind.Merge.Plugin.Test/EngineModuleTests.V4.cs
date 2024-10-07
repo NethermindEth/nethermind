@@ -10,7 +10,6 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -111,7 +110,7 @@ public partial class EngineModuleTests
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
             withdrawals);
-        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block));
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), ExecutionRequests: []);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -124,7 +123,7 @@ public partial class EngineModuleTests
         }));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true));
+            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -171,8 +170,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV4_reject_payload_with_bad_authorization_list_rlp()
     {
-        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
+        ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
@@ -219,8 +218,8 @@ public partial class EngineModuleTests
     [TestCase(30)]
     public async Task can_progress_chain_one_by_one_v4_with_requests(int count)
     {
-        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
+        ConsensusRequestsProcessorMock executionRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
@@ -361,8 +360,8 @@ public partial class EngineModuleTests
         {
             (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
         }
-        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
+        ConsensusRequestsProcessorMock executionRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayloadV4 executionPayload1 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
@@ -391,8 +390,8 @@ public partial class EngineModuleTests
             (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
         }
 
-        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
+        ConsensusRequestsProcessorMock executionRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());
         ExecutionPayloadV4 executionPayload2 = await BuildAndSendNewBlockV4(rpc, chain, true, Array.Empty<Withdrawal>());

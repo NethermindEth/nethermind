@@ -90,7 +90,7 @@ public class ExecutionProcessorTests
     public void ShouldProcessExecutionRequests()
     {
         Block block = Build.A.Block.TestObject;
-        ExecutionRequestsProcessor executionRequestProcessor = new(_transactionProcessor);
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
 
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
@@ -107,7 +107,7 @@ public class ExecutionProcessorTests
         ];
 
 
-        executionRequestProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, spec);
 
         var processedRequests = block.ExecutionRequests.ToList();
 

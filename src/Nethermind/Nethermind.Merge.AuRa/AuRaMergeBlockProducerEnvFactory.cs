@@ -24,7 +24,7 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly AuRaNethermindApi _auraApi;
-    private readonly IExecutionRequestProcessor? _executionRequestProcessor;
+    private readonly IExecutionRequestsProcessor? _executionRequestsProcessor;
     public AuRaMergeBlockProducerEnvFactory(
         AuRaNethermindApi auraApi,
         IWorldStateManager worldStateManager,
@@ -38,7 +38,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        IExecutionRequestProcessor? executionRequestProcessor = null) : base(
+        IExecutionRequestsProcessor? executionRequestsProcessor = null) : base(
             worldStateManager,
             blockTree,
             specProvider,
@@ -50,10 +50,10 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             transactionComparerProvider,
             blocksConfig,
             logManager,
-            executionRequestProcessor)
+            executionRequestsProcessor)
     {
         _auraApi = auraApi;
-        _executionRequestProcessor = executionRequestProcessor;
+        _executionRequestsProcessor = executionRequestsProcessor;
     }
 
     protected override BlockProcessor CreateBlockProcessor(
@@ -85,7 +85,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             ),
             readOnlyTxProcessingEnv.TransactionProcessor,
             null,
-            executionRequestProcessor: _executionRequestProcessor);
+            executionRequestsProcessor: _executionRequestsProcessor);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

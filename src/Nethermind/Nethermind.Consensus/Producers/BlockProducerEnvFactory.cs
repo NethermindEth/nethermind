@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
-        private readonly IExecutionRequestProcessor? _executionRequestProcessor;
+        private readonly IExecutionRequestsProcessor? _executionRequestsProcessor;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Producers
             ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
             ILogManager logManager,
-            IExecutionRequestProcessor? executionRequestProcessor = null)
+            IExecutionRequestsProcessor? executionRequestsProcessor = null)
         {
             _worldStateManager = worldStateManager;
             _blockTree = blockTree;
@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Producers
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _logManager = logManager;
-            _executionRequestProcessor = executionRequestProcessor;
+            _executionRequestsProcessor = executionRequestsProcessor;
 
             TransactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
         }
@@ -159,7 +159,7 @@ namespace Nethermind.Consensus.Producers
                 new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),
-                executionRequestProcessor: _executionRequestProcessor
+                executionRequestsProcessor: _executionRequestsProcessor
             );
     }
 }
