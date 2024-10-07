@@ -16,6 +16,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -24,8 +25,9 @@ namespace Nethermind.Serialization.Rlp
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
-        private static readonly TxDecoder _txDecoder = new();
+        private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
+        private static readonly ConsensusRequestDecoder _requestsDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         private readonly CappedArray<byte> _data;
@@ -70,6 +72,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
+        public void Encode(ConsensusRequest value) => _requestsDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
         {

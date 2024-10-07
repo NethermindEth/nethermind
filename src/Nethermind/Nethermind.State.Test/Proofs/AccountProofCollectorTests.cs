@@ -626,7 +626,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 addressWithStorage.StorageCells[j] = storageCell;
                 byte[] rawKey = new byte[32];
                 addressWithStorage.StorageCells[j].Index.ToBigEndian(rawKey);
-                TestContext.WriteLine($"Set {Keccak.Compute(rawKey).Bytes.ToHexString()}");
+                TestContext.Out.WriteLine($"Set {Keccak.Compute(rawKey).Bytes.ToHexString()}");
                 storageTree.Set(addressWithStorage.StorageCells[j].Index, new byte[] { 1 });
                 storageTree.UpdateRootHash();
                 storageTree.Commit(0);
@@ -640,7 +640,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
 
             TreeDumper treeDumper = new();
             tree.Accept(treeDumper, tree.RootHash);
-            TestContext.WriteLine(treeDumper.ToString());
+            TestContext.Out.WriteLine(treeDumper.ToString());
 
             AccountProofCollector collector = new(address, indexes);
             tree.Accept(collector, tree.RootHash);
@@ -659,7 +659,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 node.ResolveNode(new TrieStore(memDb, NullLogManager.Instance).GetTrieStore(null), TreePath.Empty);
                 if (node.Value.Length != 1)
                 {
-                    TestContext.WriteLine($"{j}");
+                    TestContext.Out.WriteLine($"{j}");
                     // throw new InvalidDataException($"{j}");
                 }
             }
@@ -738,12 +738,12 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                     // TestContext.Write($"|[{i},{j}]");
                     if (node.Value.Length != 1)
                     {
-                        TestContext.WriteLine();
-                        TestContext.WriteLine(addressesWithStorage[i].Address);
-                        TestContext.WriteLine(i);
+                        TestContext.Out.WriteLine();
+                        TestContext.Out.WriteLine(addressesWithStorage[i].Address);
+                        TestContext.Out.WriteLine(i);
                         foreach (StorageCell storageCell in addressesWithStorage[i].StorageCells)
                         {
-                            TestContext.WriteLine("storage: " + storageCell.Index);
+                            TestContext.Out.WriteLine("storage: " + storageCell.Index);
                         }
                     }
 

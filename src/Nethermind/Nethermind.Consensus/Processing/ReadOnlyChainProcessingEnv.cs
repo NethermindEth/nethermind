@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
@@ -67,6 +68,8 @@ namespace Nethermind.Consensus.Processing
                 transactionsExecutor,
                 scope.WorldState,
                 receiptStorage,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor),
                 new BlockhashStore(specProvider, scope.WorldState),
                 logManager);
         }

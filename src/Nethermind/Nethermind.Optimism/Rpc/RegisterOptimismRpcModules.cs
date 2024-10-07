@@ -5,7 +5,6 @@ using System;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;

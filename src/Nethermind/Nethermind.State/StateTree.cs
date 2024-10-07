@@ -42,14 +42,14 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Hash256? rootHash = null)
         {
-            ReadOnlySpan<byte> bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
             return bytes.IsEmpty ? null : _decoder.Decode(bytes);
         }
 
         [DebuggerStepThrough]
         public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
-            ReadOnlySpan<byte> bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
             Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
             if (bytes.IsEmpty)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.State
 
         public void Set(Address address, Account? account)
         {
-            ValueHash256 keccak = ValueKeccak.Compute(address.Bytes);
+            KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 

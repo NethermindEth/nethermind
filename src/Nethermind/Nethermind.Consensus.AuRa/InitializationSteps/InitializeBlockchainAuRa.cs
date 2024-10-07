@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -17,11 +18,11 @@ using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -106,9 +107,11 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
             worldState,
             _api.ReceiptStorage!,
+            new BeaconBlockRootHandler(_api.TransactionProcessor!),
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
+            _api.TransactionProcessor,
             CreateAuRaValidator(),
             txFilter,
             GetGasLimitCalculator(),

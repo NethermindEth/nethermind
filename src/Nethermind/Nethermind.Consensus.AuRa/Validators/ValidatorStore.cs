@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 var validatorInfo = new ValidatorInfo(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber, validators);
                 var rlp = Rlp.Encode(validatorInfo);
                 _db.Set(GetKey(finalizingBlockNumber), rlp.Bytes);
-                _db.Set(LatestFinalizedValidatorsBlockNumberKey, finalizingBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
+                _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
                 _latestFinalizedValidatorsBlockNumber = finalizingBlockNumber;
                 _latestValidatorInfo = validatorInfo;
                 Metrics.ValidatorsCount = validators.Length;

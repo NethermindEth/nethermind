@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Spectre.Console;
 using System.Text.Json;
 
 namespace Nethermind.DocGen;
@@ -8,6 +9,8 @@ namespace Nethermind.DocGen;
 internal static class DBSizeGenerator
 {
     private const string _chainSizesDir = "chainSizes";
+    private const string _startMark = "<!--[start autogen]-->";
+    private const string _endMark = "<!--[end autogen]-->";
 
     private static readonly List<string> _dbList =
     [
@@ -20,7 +23,7 @@ internal static class DBSizeGenerator
         "blobTransactions"
     ];
 
-    internal static void Generate()
+    internal static void Generate(string path)
     {
         IList<string> chainOrder =
         [
@@ -32,11 +35,8 @@ internal static class DBSizeGenerator
             "energyweb",
             "volta"
         ];
-        var startMark = "<!--[start autogen]-->";
-        var endMark = "<!--[end autogen]-->";
-        var fileName = "database.md";
 
-        var chainSizesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _chainSizesDir);
+        var chainSizesPath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, _chainSizesDir);
         var chains = Directory
             .GetFiles(chainSizesPath)
             .Select(Path.GetFileNameWithoutExtension)
@@ -48,10 +48,20 @@ internal static class DBSizeGenerator
             })
             .ToList();
 
-        File.Delete($"~{fileName}");
+        GenerateFile(Path.Join(path, "docs", "fundamentals"), chains!);
+        GenerateFile(Path.Join(path, "versioned_docs", $"version-{GetLatestVersion(path)}", "fundamentals"), chains!);
+    }
+
+    private static void GenerateFile(string path, IList<string> chains)
+    {
+        var fileName = Path.Join(path, "database.md");
+        var tempFileName = Path.Join(path, "~database.md");
+
+        // Delete the temp file if it exists
+        File.Delete(tempFileName);
 
         using var readStream = new StreamReader(File.OpenRead(fileName));
-        using var writeStream = new StreamWriter(File.OpenWrite($"~{fileName}"));
+        using var writeStream = new StreamWriter(File.OpenWrite(tempFileName));
 
         writeStream.NewLine = "\n";
 
@@ -63,7 +73,7 @@ internal static class DBSizeGenerator
 
             writeStream.WriteLine(line);
         }
-        while (!line?.Equals(startMark, StringComparison.Ordinal) ?? false);
+        while (!line?.Equals(_startMark, StringComparison.Ordinal) ?? false);
 
         writeStream.WriteLine();
 
@@ -75,7 +85,7 @@ internal static class DBSizeGenerator
         {
             if (skip)
             {
-                if (line?.Equals(endMark, StringComparison.Ordinal) ?? false)
+                if (line?.Equals(_endMark, StringComparison.Ordinal) ?? false)
                     skip = false;
                 else
                     continue;
@@ -87,12 +97,13 @@ internal static class DBSizeGenerator
         readStream.Close();
         writeStream.Close();
 
-        File.Move($"~{fileName}", fileName, true);
+        File.Move(tempFileName, fileName, true);
+        File.Delete(tempFileName);
 
-        Console.WriteLine($"Updated {fileName}");
+        AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
 
-    private static void WriteMarkdown(StreamWriter file, List<string> chains)
+    private static void WriteMarkdown(StreamWriter file, IList<string> chains)
     {
         file.WriteLine("<Tabs>");
 
@@ -146,4 +157,12 @@ internal static class DBSizeGenerator
         .Replace("G", " GB")
         .Replace("M", " MB")
         .Replace("K", " KB");
+
+    private static string GetLatestVersion(string path)
+    {
+        using var versionsJson = File.OpenRead(Path.Join(path, "versions.json"));
+        var versions = JsonSerializer.Deserialize<string[]>(versionsJson)!;
+
+        return versions[0];
+    }
 }

@@ -93,9 +93,9 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
     bool AvailableSpaceCheckEnabled { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Ratio of memory out of CacheMb to allocate for LRU used to track past keys for live pruning.", DefaultValue = "0.1")]
+    [ConfigItem(Description = "The ratio of memory out of `Pruning.CacheMb` to allocate for the LRU cache, used to track past keys for live pruning.", DefaultValue = "0.1")]
     double TrackedPastKeyCountMemoryRatio { get; set; }
 
-    [ConfigItem(Description = "Past N state before state gets pruned Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
 }

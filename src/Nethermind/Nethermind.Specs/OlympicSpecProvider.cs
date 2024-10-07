@@ -27,6 +27,7 @@ namespace Nethermind.Specs
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => Olympic.Instance;
 
         public long? DaoBlockNumber => 0L;
+        public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => Core.BlockchainIds.Olympic;
         public ulong ChainId => NetworkId;

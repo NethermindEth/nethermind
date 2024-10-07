@@ -32,7 +32,9 @@ public class DiscoveryConnectionsPool : IConnectionsPool
     public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
     {
         if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
-        _byPort.Add(port, task = bootstrap.BindAsync(_ip, port));
+
+        task = NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(_ip, port), port);
+        _byPort.Add(port, task);
 
         return await task.ContinueWith(t =>
         {

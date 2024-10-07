@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.ExternalSigner.Plugin;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using NSubstitute;

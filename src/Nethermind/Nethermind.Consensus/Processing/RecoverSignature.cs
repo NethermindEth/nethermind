@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,44 +36,49 @@ namespace Nethermind.Consensus.Processing
 
         public void RecoverData(Block block)
         {
-            if (block.Transactions.Length == 0)
+            Transaction[] txs = block.Transactions;
+            if (txs.Length == 0)
                 return;
 
-            Transaction firstTx = block.Transactions[0];
+            Transaction firstTx = txs[0];
             if (firstTx.IsSigned && firstTx.SenderAddress is not null)
                 // already recovered a sender for a signed tx in this block,
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            Parallel.ForEach(
-                block.Transactions.Where(tx => !tx.IsHashCalculated),
-                blockTransaction =>
+            Parallel.For(0, txs.Length, i =>
+            {
+                Transaction tx = txs[i];
+                if (!tx.IsHashCalculated)
                 {
-                    blockTransaction.CalculateHashInternal();
-                });
+                    tx.CalculateHashInternal();
+                }
+            });
 
-            var releaseSpec = _specProvider.GetSpec(block.Header);
 
             int recoverFromEcdsa = 0;
             // Don't access txPool in Parallel loop as increases contention
-            foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
+            foreach (Transaction tx in txs)
             {
-                Transaction? transaction = null;
+                if (!ShouldRecoverSender(tx))
+                    continue;
+
+                Transaction? poolTx = null;
                 try
                 {
-                    _txPool.TryGetPendingTransaction(blockTransaction.Hash, out transaction);
+                    _txPool.TryGetPendingTransaction(tx.Hash, out poolTx);
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"An error occurred while getting a pending transaction from TxPool, Transaction: {blockTransaction}", e);
+                    if (_logger.IsError) _logger.Error($"An error occurred while getting a pending transaction from TxPool, Transaction: {tx}", e);
                 }
 
-                Address sender = transaction?.SenderAddress;
+                Address sender = poolTx?.SenderAddress;
                 if (sender is not null)
                 {
-                    blockTransaction.SenderAddress = sender;
+                    tx.SenderAddress = sender;
 
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender})");
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
                 }
                 else
                 {
@@ -81,27 +86,38 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
-            if (recoverFromEcdsa >= 4)
+            if (recoverFromEcdsa == 0)
+                return;
+
+            bool useSignatureChainId = !_specProvider.GetSpec(block.Header).ValidateChainId;
+            if (recoverFromEcdsa > 3)
             {
                 // Recover ecdsa in Parallel
-                Parallel.ForEach(
-                    block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null),
-                    blockTransaction =>
-                    {
-                        blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
-
-                        if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
-                    });
-            }
-            else if (recoverFromEcdsa > 0)
-            {
-                foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
+                Parallel.For(0, txs.Length, i =>
                 {
-                    blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
+                    Transaction tx = txs[i];
+                    if (!ShouldRecoverSender(tx)) return;
 
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
+
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                });
+            }
+            else
+            {
+                foreach (Transaction tx in txs)
+                {
+                    if (!ShouldRecoverSender(tx)) continue;
+
+                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
+
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
             }
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ShouldRecoverSender(Transaction tx)
+            => tx.IsSigned && tx.SenderAddress is null;
     }
 }

@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IReceiptFinder _receiptFinder;
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
-        private readonly TxDecoder _txDecoder = new();
+        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly TimeSpan _cancellationTokenTimeout;
         private readonly IStateReader _stateReader;
