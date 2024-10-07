@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -85,7 +86,7 @@ public partial class EthRpcModuleTests
     [TestCase(true, 17)]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        var test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(loads);
@@ -114,7 +115,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList,
         long gasPriceWithAccessList)
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
+        var test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, senderAccessList);
@@ -135,7 +136,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_estimate_gas_is_lower_with_optimized_access_list()
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        var test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListItemForRpc[] accessList) = GetTestAccessList(2, true);

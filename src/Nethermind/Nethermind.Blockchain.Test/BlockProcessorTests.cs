@@ -29,6 +29,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -115,7 +116,7 @@ public class BlockProcessorTests
     {
         Address address = TestItem.Addresses[0];
         TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether());

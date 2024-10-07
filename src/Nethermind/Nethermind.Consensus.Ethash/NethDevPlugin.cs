@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Ethash
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
+            if (_nethermindApi!.SealEngineType != SealEngineType)
             {
                 return null;
             }
@@ -108,7 +108,8 @@ namespace Nethermind.Consensus.Ethash
             return blockProducer;
         }
 
-        public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
+        public string SealEngineType => "NethDev";
+
         public IBlockProducerRunner CreateBlockProducerRunner()
         {
             IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))

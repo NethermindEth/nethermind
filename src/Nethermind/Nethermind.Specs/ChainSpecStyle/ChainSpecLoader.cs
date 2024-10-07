@@ -298,16 +298,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 WithdrawalContractAddress = chainSpecJson.Engine.AuthorityRound.WithdrawalContractAddress,
             };
         }
-        else if (chainSpecJson.Engine?.Clique is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Clique;
-            chainSpec.Clique = new CliqueParameters
-            {
-                Epoch = chainSpecJson.Engine.Clique.Epoch,
-                Period = chainSpecJson.Engine.Clique.Period,
-                Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero
-            };
-        }
         else if (chainSpecJson.Engine?.Ethash is not null)
         {
             chainSpec.SealEngineType = SealEngineType.Ethash;
@@ -338,35 +328,35 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 }
             }
         }
-        else if (chainSpecJson.Engine?.Optimism is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Optimism;
-            chainSpec.Optimism = new OptimismParameters
-            {
-                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
-                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
-                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
-                EcotoneTimestamp = chainSpecJson.Engine.Optimism.EcotoneTimestamp,
-                FjordTimestamp = chainSpecJson.Engine.Optimism.FjordTimestamp,
-                GraniteTimestamp = chainSpecJson.Engine.Optimism.GraniteTimestamp,
-
-                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
-                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
-                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
-            };
-        }
-        else if (chainSpecJson.Engine?.NethDev is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.NethDev;
-        }
 
         var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
 
         if (!string.IsNullOrEmpty(customEngineType))
         {
             chainSpec.SealEngineType = customEngineType;
+        }
+
+        Dictionary<string, JsonElement> engineParameters = new();
+        // TODO remove null check
+        if (chainSpecJson.Engine.CustomEngineData is not null)
+        {
+            foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
+            {
+                if (engine.Value.TryGetProperty("params", out JsonElement value))
+                {
+                    engineParameters.Add(engine.Key, value);
+                }
+                else
+                {
+                    engineParameters.Add(engine.Key, engine.Value);
+                }
+            }
+
+            chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters);
+            if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+            {
+                chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+            }
         }
 
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))

@@ -7,14 +7,26 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Int256;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config
 {
-    internal static class ConfigSourceHelper
+    public static class ConfigSourceHelper
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
+            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
+            {
+                return IsNullString(valueString) ? null : ParseValue(nullableType, valueString, category, name);
+            }
+
+            if (!valueType.IsValueType && IsNullString(valueString))
+            {
+                return null;
+            }
+
             try
             {
                 object value;
@@ -23,8 +35,13 @@ namespace Nethermind.Config
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
+                    if (itemType == typeof(byte) && !valueString.AsSpan().TrimStart().StartsWith("["))
+                    {
+                        // hex encoded byte array
+                        value = Bytes.FromHexString(valueString.Trim());
+                    }
                     //In case of collection of objects (more complex config models) we parse entire collection
-                    if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
+                    else if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                     {
                         var objCollection = JsonSerializer.Deserialize(valueString, valueType);
                         value = objCollection;
@@ -81,16 +98,85 @@ namespace Nethermind.Config
             }
         }
 
+        private static bool IsNullString(string valueString)
+        {
+            return string.IsNullOrEmpty(valueString) ||
+                   valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase);
+        }
+
         public static object GetDefault(Type type)
         {
             return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
         }
 
+        private static bool TryFromHex(Type type, string itemValue, out object value)
+        {
+            if (!itemValue.StartsWith("0x"))
+            {
+                value = null;
+                return false;
+            }
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Byte:
+                    value = Convert.ToByte(itemValue, 16);
+                    return true;
+                case TypeCode.SByte:
+                    value = Convert.ToSByte(itemValue, 16);
+                    return true;
+                case TypeCode.UInt16:
+                    value = Convert.ToUInt16(itemValue, 16);
+                    return true;
+                case TypeCode.UInt32:
+                    value = Convert.ToUInt32(itemValue, 16);
+                    return true;
+                case TypeCode.UInt64:
+                    value = Convert.ToUInt64(itemValue, 16);
+                    return true;
+                case TypeCode.Int16:
+                    value = Convert.ToInt16(itemValue, 16);
+                    return true;
+                case TypeCode.Int32:
+                    value = Convert.ToInt32(itemValue, 16);
+                    return true;
+                case TypeCode.Int64:
+                    value = Convert.ToInt64(itemValue, 16);
+                    return true;
+                default:
+                    value = null;
+                    return false;
+            }
+        }
+
         private static object GetValue(Type valueType, string itemValue)
         {
+            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
+            {
+                return IsNullString(itemValue) ? null : GetValue(nullableType, itemValue);
+            }
+
+            if (!valueType.IsValueType && IsNullString(itemValue))
+            {
+                return null;
+            }
+
             if (valueType == typeof(UInt256))
             {
                 return UInt256.Parse(itemValue);
+            }
+
+            if (valueType == typeof(Address))
+            {
+                if (Address.TryParse(itemValue, out var address))
+                {
+                    return address;
+                }
+                throw new FormatException($"Could not parse {itemValue} to {typeof(Address)}");
+            }
+
+            if (valueType == typeof(Hash256))
+            {
+                return new Hash256(itemValue);
             }
 
             if (valueType.IsEnum)
@@ -103,13 +189,12 @@ namespace Nethermind.Config
                 throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
 
-            var nullableType = Nullable.GetUnderlyingType(valueType);
+            if (TryFromHex(valueType, itemValue, out object value))
+            {
+                return value;
+            }
 
-            return nullableType is null
-                ? Convert.ChangeType(itemValue, valueType)
-                : !string.IsNullOrEmpty(itemValue) && !itemValue.Equals("null", StringComparison.InvariantCultureIgnoreCase)
-                    ? Convert.ChangeType(itemValue, nullableType)
-                    : null;
+            return Convert.ChangeType(itemValue, valueType);
         }
     }
 }

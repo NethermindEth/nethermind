@@ -199,7 +199,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo("NethDev"), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(0L);
         chainSpec.DaoForkBlockNumber.Should().Be(null);

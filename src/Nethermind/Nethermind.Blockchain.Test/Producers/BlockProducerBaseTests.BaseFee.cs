@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -58,7 +59,7 @@ public partial class BlockProducerBaseTests
                         IsEip155Enabled = true
                     });
                 BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
-                _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                _testRpcBlockchain = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
                     .WithGenesisBlockBuilder(blockBuilder)
                     .Build(spec);
                 _testRpcBlockchain.TestWallet.UnlockAccount(_address, new SecureString());
