@@ -9,6 +9,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -19,6 +20,7 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismTraceModuleFactory(
     IWorldStateManager worldStateManager,
+    IDbProvider dbProvider,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
     IBlockPreprocessorStep recoveryStep,
@@ -32,6 +34,7 @@ public class OptimismTraceModuleFactory(
     Create2DeployerContractRewriter contractRewriter,
     IWithdrawalProcessor withdrawalProcessor) : TraceModuleFactory(
         worldStateManager,
+        dbProvider,
         blockTree,
         jsonRpcConfig,
         recoveryStep,

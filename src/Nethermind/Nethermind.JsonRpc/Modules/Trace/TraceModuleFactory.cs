@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -16,12 +15,12 @@ using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(
     IWorldStateManager worldStateManager,
+    IDbProvider dbProvider,
     IBlockTree blockTree,
     IJsonRpcConfig jsonRpcConfig,
     IBlockPreprocessorStep recoveryStep,
@@ -31,7 +30,7 @@ public class TraceModuleFactory(
     IPoSSwitcher poSSwitcher,
     ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected readonly IWorldStateManager _worldStateManager = worldStateManager;
+    protected readonly IWorldStateManager _worldStateManager = new OverridableWorldStateManager(dbProvider, worldStateManager.TrieStore, logManager);
     protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
     protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
     protected readonly IReceiptStorage _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -72,7 +71,6 @@ public class TraceModuleFactory(
 
         Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv, specProvider);
     }
-
 }

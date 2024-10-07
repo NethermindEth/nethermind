@@ -3,7 +3,9 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Data;
 
@@ -13,7 +15,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public interface ITraceRpcModule : IRpcModule
     {
         [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
-        ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes, BlockParameter? blockParameter = null);
+        ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call,
+            [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes,
+            BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null);
 
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null);

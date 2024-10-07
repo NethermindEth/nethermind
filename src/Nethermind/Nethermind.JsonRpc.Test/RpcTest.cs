@@ -6,28 +6,24 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-
 using FluentAssertions;
-
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
-using NUnit.Framework;
-
 namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
-    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[] parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = GetJsonRequest(method, parameters);
         return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
-    public static async Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
+    public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[] parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = GetJsonRequest(method, parameters);
@@ -63,9 +59,19 @@ public static class RpcTest
         return service;
     }
 
-    public static JsonRpcRequest GetJsonRequest(string method, params string[]? parameters)
+    // Parameters from tests are provided as either already serialized object, raw string, or raw object.
+    // We need to handle all these cases, while preventing double serialization.
+    private static string GetSerializedParameter(object? parameter)
     {
-        var doc = JsonDocument.Parse(JsonSerializer.Serialize(parameters?.ToArray()));
+        if (parameter is string serialized and (['[', ..] or ['{', ..] or ['"', ..]))
+            return serialized; // Already serialized
+
+        return JsonSerializer.Serialize(parameter, EthereumJsonSerializer.JsonOptions);
+    }
+
+    public static JsonRpcRequest GetJsonRequest(string method, params object?[]? parameters)
+    {
+        var doc = JsonDocument.Parse($"[{string.Join(",", parameters?.Select(GetSerializedParameter) ?? [])}]");
         var request = new JsonRpcRequest()
         {
             JsonRpc = "2.0",

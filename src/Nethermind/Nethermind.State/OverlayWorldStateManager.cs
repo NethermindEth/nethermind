@@ -29,17 +29,11 @@ public class OverlayWorldStateManager(
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache),
-                _codeDb,
-                logManager,
-                preBlockCaches)
-            : new WorldState(
-                overlayTrieStore,
-                _codeDb,
-                logManager);
+        ITrieStore trieStore = overlayTrieStore;
+        if ((forWarmup as IPreBlockCaches)?.Caches is { } preBlockCaches)
+            trieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+
+        return new WorldState(trieStore, _codeDb, logManager);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
