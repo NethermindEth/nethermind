@@ -444,7 +444,7 @@ namespace Nethermind.Evm.TransactionProcessing
             codeInfo.AnalyseInBackgroundIfRequired();
 
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
-            Logger.Info($"Executing transaction {tx.Hash} with recipient {recipient} and code hash {codeInfo.CodeHash}")
+            Logger.Info($"Executing transaction {tx.Hash} with recipient {recipient} and code hash {codeInfo.CodeHash}");
             return new ExecutionEnvironment
             (
                 txExecutionContext: in executionContext,
