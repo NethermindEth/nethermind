@@ -88,13 +88,7 @@ internal static class ConfigGenerator
         var moduleName = configType.Name[1..].Replace("Config", null);
 
         file.WriteLine($"""
-            <details>
-            <summary className="nd-details-heading">
-
-            #### {moduleName}
-
-            </summary>
-            <p>
+            ### {moduleName}
 
             """);
 
@@ -107,10 +101,32 @@ internal static class ConfigGenerator
 
             var description = itemAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
 
-            file.Write($"""
-                - **`--{moduleName}.{prop.Name} <value>`** `NETHERMIND_{moduleName.ToUpperInvariant()}CONFIG_{prop.Name.ToUpperInvariant()}`
+            file.Write($$"""
+                - #### `{{moduleName}}.{{prop.Name}}` \{#{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}}\}
 
-                  {description}
+                  <Tabs groupId="usage">
+                  <TabItem value="cli" label="CLI">
+                  ```
+                  --{{moduleName}}.{{prop.Name}} <value>
+                  ```
+                  </TabItem>
+                  <TabItem value="env" label="Environment variable">
+                  ```
+                  NETHERMIND_{{moduleName.ToUpperInvariant()}}CONFIG_{{prop.Name.ToUpperInvariant()}}=<value>
+                  ```
+                  </TabItem>
+                  <TabItem value="config" label="Configuration file">
+                  ```json
+                  {
+                    "{{moduleName}}": {
+                      "{{prop.Name}}": <value>
+                    }
+                  }
+                  ```
+                  </TabItem>
+                  </Tabs>
+
+                  {{description}}
                 """);
 
             var startsFromNewLine = WriteAllowedValues(file, prop.PropertyType) || description.EndsWith('\n');
@@ -121,11 +137,7 @@ internal static class ConfigGenerator
             file.WriteLine();
         }
 
-        file.WriteLine("""
-            </p>
-            </details>
-
-            """);
+        file.WriteLine();
     }
 
     private static bool WriteAllowedValues(StreamWriter file, Type type)
