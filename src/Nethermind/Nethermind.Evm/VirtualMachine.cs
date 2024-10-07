@@ -164,9 +164,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
         _vmConfig = new VMConfig
         {
-            JittingThreshold = 2,
+            JittingThreshold = 1,
             PatternMatchingThreshold = 1,
-            IsPatternMatchingEnabled = true,
+            IsPatternMatchingEnabled = false,
             IsJitEnabled = true,
         };
     }

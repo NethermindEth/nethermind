@@ -94,6 +94,9 @@ public class Metrics
     [Description("Number of ILVM precompiled segment executions.")]
     public static long IlvmPrecompiledSegmentsExecutions { get; set; }
 
+    [Description("Avg size of ILVM precompiled segment executions.")]
+    public static long IlvmPrecompiledSegmentsAvgSise { get; set; }
+
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _emptyCalls.GetTotalValue();

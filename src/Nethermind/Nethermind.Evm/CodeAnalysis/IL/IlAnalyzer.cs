@@ -125,6 +125,7 @@ public static class IlAnalyzer
                 }
             }
 
+            long segmentAvgSize = 0;
             for (int i = -1; i <= j; i++)
             {
                 int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
@@ -143,8 +144,11 @@ public static class IlAnalyzer
                 var lastOp = segment[^1];
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
+                segmentAvgSize += segment.Length;
                 ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter, CompileSegment(segmentName, segment, codeData.Item2));
             }
+
+            Metrics.IlvmPrecompiledSegmentsAvgSise = (int)(segmentAvgSize / (j + 1));
 
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
         }
