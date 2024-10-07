@@ -80,18 +80,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     tx.SenderAddress = sender;
 
-                    if (tx.HasAuthorizationList)
-                    {
-                        for (int i = 0; i < tx.AuthorizationList.Length; i++)
-                        {
-                            AuthorizationTuple tuple = tx.AuthorizationList[i];
-                            if (tuple.Authority is null)
-                            {
-                                tuple.Authority = poolTx.AuthorizationList[i].Authority;
-                            }
-                        }
-                    }
-
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash} (tx pool cached value: {sender})");
                 }
                 else
@@ -138,6 +126,7 @@ namespace Nethermind.Consensus.Processing
                 foreach (Transaction tx in txs)
                 {
                     if (!ShouldRecoverSignatures(tx)) continue;
+
                     tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
