@@ -59,6 +59,7 @@ jobs:
           tags: "core, self-hosted, dynamic"
           organization: "NethermindEth"
           repo_name: "nethermind"
+          blocked_ports: "8545,8551"
   
   sync-chain:
     needs: [setup-matrix, create_a_runner]
