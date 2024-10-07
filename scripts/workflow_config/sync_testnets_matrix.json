@@ -38,5 +38,21 @@
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
     "timeout": 180,
     "agent": "g6-standard-16"
+  },
+  {
+    "network": "op-sepolia",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-8"
+  },
+  {
+    "network": "base-sepolia",
+    "cl": "lodestar",
+    "cl_image": "chainsafe/lodestar:latest",
+    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "timeout": 180,
+    "agent": "g6-standard-8"
   }
 ]
