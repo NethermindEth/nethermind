@@ -638,6 +638,7 @@ namespace Nethermind.Core.Crypto
             }
         }
 
+        [SkipLocalsInit]
         public static void KeccakF1600Avx512F(Span<ulong> state)
         {
             {
@@ -646,21 +647,22 @@ namespace Nethermind.Core.Crypto
             }
 
             // Can straight load and over-read for start elements
+            Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
             Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref MemoryMarshal.GetReference(state));
+            // Clear the over-read values from first vectors
+            c0 = Vector512.BitwiseAnd(mask, c0);
             Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5));
+            c1 = Vector512.BitwiseAnd(mask, c1);
             Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10));
+            c2 = Vector512.BitwiseAnd(mask, c2);
             Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15));
+            c3 = Vector512.BitwiseAnd(mask, c3);
+
             // Can't over-read for the last elements (8 items in vector 5 to be remaining)
-            // so read them directly as ulongs
-            Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
-            {
-                // Clear the over-read values from first vectors
-                Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
-                c0 = Vector512.BitwiseAnd(mask, c0);
-                c1 = Vector512.BitwiseAnd(mask, c1);
-                c2 = Vector512.BitwiseAnd(mask, c2);
-                c3 = Vector512.BitwiseAnd(mask, c3);
-            }
+            // so read a Vector256 and ulong then combine
+            Vector256<ulong> c4a = Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20));
+            Vector256<ulong> c4b = Vector256.Create(state[24], 0UL, 0UL, 0UL);
+            Vector512<ulong> c4 = Vector512.Create(c4a, c4b);
 
             ulong[] roundConstants = RoundConstants;
             for (int round = 0; round < roundConstants.Length; round++)
@@ -752,11 +754,8 @@ namespace Nethermind.Core.Crypto
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 5)) = c1;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
-            // Can't over-write for last elements (8 items in vector 5 to be written)
-            state[20] = c4.GetElement(0);
-            state[21] = c4.GetElement(1);
-            state[22] = c4.GetElement(2);
-            state[23] = c4.GetElement(3);
+            // Can't over-write for last elements so write the upper Vector256 and then ulong
+            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20)) = c3.GetUpper();
             state[24] = c4.GetElement(4);
         }
     }
