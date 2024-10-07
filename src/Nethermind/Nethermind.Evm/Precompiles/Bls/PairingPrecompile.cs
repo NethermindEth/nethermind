@@ -29,6 +29,8 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsPairingCheckPrecompile++;
+
         if (inputData.Length % PairSize > 0 || inputData.Length == 0)
         {
             return IPrecompile.Failure;

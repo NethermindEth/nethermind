@@ -17,6 +17,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -305,18 +306,19 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             }
             Thread.Sleep(5000);
 
-            IBlockImprovementContextFactory improvementContextFactory;
-            if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
+            IBlockImprovementContextFactory CreateBlockImprovementContextFactory()
             {
-                improvementContextFactory = new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
-            }
-            else
-            {
+                if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
+                {
+                    return new BlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
+                }
+
                 DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                 IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
-                BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
-                improvementContextFactory = boostBlockImprovementContextFactory;
+                return new BoostBlockImprovementContextFactory(_api.BlockProducer!, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
             }
+
+            IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
 
             PayloadPreparationService payloadPreparationService = new(
                 _postMergeBlockProducer,

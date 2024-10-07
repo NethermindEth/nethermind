@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Find;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Wallet;

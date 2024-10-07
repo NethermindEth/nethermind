@@ -48,6 +48,7 @@ using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
