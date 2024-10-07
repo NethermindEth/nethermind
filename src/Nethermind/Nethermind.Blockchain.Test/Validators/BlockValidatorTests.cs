@@ -209,7 +209,7 @@ public class BlockValidatorTests
                 Build.A.WithdrawalRequest.TestObject
             })
             .TestObject;
-        block.Header.RequestsRoot = Keccak.OfAnEmptyString;
+        block.Header.RequestsHash = Keccak.OfAnEmptyString;
 
         Assert.That(
             BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),

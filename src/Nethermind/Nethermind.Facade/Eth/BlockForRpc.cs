@@ -83,7 +83,7 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
-        RequestsRoot = block.Header.RequestsHash;
+        RequestsHash = block.Header.RequestsHash;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -144,5 +144,5 @@ public class BlockForRpc
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Hash256? RequestsRoot { get; set; }
+    public Hash256? RequestsHash { get; set; }
 }
