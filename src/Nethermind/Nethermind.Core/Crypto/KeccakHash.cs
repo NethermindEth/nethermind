@@ -645,7 +645,7 @@ namespace Nethermind.Core.Crypto
                 Vector512<ulong> c3 = Vector512.Create(state[15], state[16], state[17], state[18], state[19], 0UL, 0UL, 0UL);
                 Vector512<ulong> c4 = Vector512.Create(state[20], state[21], state[22], state[23], state[24], 0UL, 0UL, 0UL);
 
-                Vector512<ulong> bVec =  Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
+                Vector512<ulong> bVec = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
 
                 // Compute tVec
                 Vector512<ulong> bVecRot1 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
