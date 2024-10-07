@@ -41,20 +41,6 @@ public static class BlsExtensions
         return true;
     }
 
-    public static ReadOnlyMemory<byte> EncodeRaw(this G1 p)
-    {
-        if (p.IsInf())
-        {
-            return BlsConst.G1Inf;
-        }
-
-        byte[] raw = new byte[BlsConst.LenG1];
-        ReadOnlySpan<byte> trimmed = p.Serialize();
-        trimmed[..BlsConst.LenFpTrimmed].CopyTo(raw.AsSpan()[BlsConst.LenFpPad..BlsConst.LenFp]);
-        trimmed[BlsConst.LenFpTrimmed..].CopyTo(raw.AsSpan()[(BlsConst.LenFp + BlsConst.LenFpPad)..]);
-        return raw;
-    }
-
     public static bool TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != BlsConst.LenG2)
@@ -96,6 +82,20 @@ public static class BlsExtensions
         return true;
     }
 
+    public static ReadOnlyMemory<byte> EncodeRaw(this G1 p)
+    {
+        if (p.IsInf())
+        {
+            return BlsConst.G1Inf;
+        }
+
+        byte[] raw = new byte[BlsConst.LenG1];
+        ReadOnlySpan<byte> trimmed = p.Serialize();
+        trimmed[..BlsConst.LenFpTrimmed].CopyTo(raw.AsSpan()[BlsConst.LenFpPad..BlsConst.LenFp]);
+        trimmed[BlsConst.LenFpTrimmed..].CopyTo(raw.AsSpan()[(BlsConst.LenFp + BlsConst.LenFpPad)..]);
+        return raw;
+    }
+
     public static ReadOnlyMemory<byte> EncodeRaw(this G2 p)
     {
         if (p.IsInf())
@@ -127,5 +127,53 @@ public static class BlsExtensions
 
         // check that fp < base field order
         return fp[BlsConst.LenFpPad..].SequenceCompareTo(BlsConst.BaseFieldOrder.AsSpan()) < 0;
+    }
+
+    public static bool TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> rawPoints, Memory<byte> rawScalars, int dest, int index)
+        => TryDecodePointToBuffer(inputData, rawPoints, rawScalars, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckG1);
+
+    public static bool TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> rawPoints, Memory<byte> rawScalars, int dest, int index)
+        => TryDecodePointToBuffer(inputData, rawPoints, rawScalars, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckG2);
+
+    private static bool DecodeAndCheckG1(ReadOnlyMemory<byte> rawPoint, Memory<long> rawPoints, int dest)
+    {
+        G1 p = new(rawPoints.Span[(dest * G1.Sz)..]);
+        return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
+    }
+
+    private static bool DecodeAndCheckG2(ReadOnlyMemory<byte> rawPoint, Memory<long> rawPoints, int dest)
+    {
+        G2 p = new(rawPoints.Span[(dest * G2.Sz)..]);
+        return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
+    }
+
+    private static bool TryDecodePointToBuffer(
+        ReadOnlyMemory<byte> inputData,
+        Memory<long> rawPoints,
+        Memory<byte> rawScalars,
+        int dest,
+        int index,
+        int pointLen,
+        int itemSize,
+        Func<ReadOnlyMemory<byte>, Memory<long>, int, bool> decodeAndCheckPoint)
+    {
+        if (dest == -1)
+        {
+            return true;
+        }
+
+        int offset = index * itemSize;
+        ReadOnlyMemory<byte> rawPoint = inputData[offset..(offset + pointLen)];
+        ReadOnlyMemory<byte> rawScalar = inputData[(offset + pointLen)..(offset + itemSize)];
+
+        if (!decodeAndCheckPoint(rawPoint, rawPoints, dest))
+        {
+            return false;
+        }
+
+        int destOffset = dest * 32;
+        rawScalar.CopyTo(rawScalars[destOffset..]);
+        rawScalars[destOffset..(destOffset + 32)].Span.Reverse();
+        return true;
     }
 }

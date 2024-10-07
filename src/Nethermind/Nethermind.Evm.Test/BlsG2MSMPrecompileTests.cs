@@ -8,7 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using NUnit.Framework;
-using static Nethermind.Specs.Forks.MuirGlacier;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test;
 
@@ -20,7 +20,7 @@ public class BlsG2MSMPrecompileTests
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
             IPrecompile precompile = G2MSMPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Instance);
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }

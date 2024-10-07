@@ -32,7 +32,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         return 12000L * k * Discount.For(k) / 1000;
     }
 
-    private const int ItemSize = 160;
+    public const int ItemSize = 160;
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
@@ -45,7 +45,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 
         int nItems = inputData.Length / ItemSize;
 
-        using ArrayPoolList<long> rawPoints = new(nItems * 18, nItems * 18);
+        using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
@@ -72,7 +72,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         {
             for (int i = 0; i < pointDestinations.Count; i++)
             {
-                if (!TryDecodePoint(inputData, rawPoints.AsSpan(), rawScalars.AsSpan(), pointDestinations[i], i))
+                if (!BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i))
                 {
                     fail = true;
                     break;
@@ -83,7 +83,8 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
         {
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
-                if (!TryDecodePoint(inputData, rawPoints.AsSpan(), rawScalars.AsSpan(), dest, (int)i))
+                int index = (int)i;
+                if (!BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index))
                 {
                     fail = true;
                     state.Break();
@@ -99,29 +100,5 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 
         G1 res = new G1().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
         return (res.EncodeRaw(), true);
-    }
-
-    private static bool TryDecodePoint(ReadOnlyMemory<byte> inputData, Span<long> rawPoints, Span<byte> rawScalars, int dest, int i)
-    {
-        if (dest == -1)
-        {
-            return true;
-        }
-
-        int offset = i * ItemSize;
-        ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG1)].Span;
-        ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsConst.LenG1)..(offset + ItemSize)].Span;
-
-        G1 p = new(rawPoints[(dest * 18)..]);
-
-        if (!p.TryDecodeRaw(rawPoint) || !(BlsConst.DisableSubgroupChecks || p.InGroup()))
-        {
-            return false;
-        }
-
-        int destOffset = dest * 32;
-        rawScalar.CopyTo(rawScalars[destOffset..]);
-        rawScalars[destOffset..(destOffset + 32)].Reverse();
-        return true;
     }
 }
