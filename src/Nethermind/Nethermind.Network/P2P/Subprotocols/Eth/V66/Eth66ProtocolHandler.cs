@@ -201,7 +201,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
             if (isTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {String.Format("{{0:N0}}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)}ms");
+                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)

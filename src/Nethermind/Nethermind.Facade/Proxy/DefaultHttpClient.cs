@@ -94,7 +94,7 @@ namespace Nethermind.Facade.Proxy
                     if (_logger.IsError) _logger.Error($"Unsupported HTTP method: {methodType}.");
                     return default;
             }
-            if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {String.Format("{0:N0}", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds)} ms]: {response}");
+            if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
             if (!response.IsSuccessStatusCode)
             {
                 return default;
