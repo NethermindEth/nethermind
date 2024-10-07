@@ -10,7 +10,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-
+using Nethermind.Core.Extensions;
 namespace Nethermind.Evm;
 
 public static class IntrinsicGasCalculator

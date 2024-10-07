@@ -98,6 +98,21 @@ namespace Nethermind.Consensus.Processing
                 {
                     recoverFromEcdsa++;
                 }
+
+                if (tx.HasAuthorizationList)
+                {
+                    for (int i = 0; i < tx.AuthorizationList.Length; i++)
+                    {
+                        if (poolTx.AuthorizationList[i].Authority is not null)
+                        {
+                            tx.AuthorizationList[i].Authority = poolTx.AuthorizationList[i].Authority;
+                        }
+                        else
+                        {
+                            recoverFromEcdsa++;
+                        }
+                    }
+                }
             }
 
             if (recoverFromEcdsa == 0)
@@ -113,7 +128,7 @@ namespace Nethermind.Consensus.Processing
                     Transaction tx = txs[i];
                     if (!ShouldRecoverSignatures(tx)) return;
 
-                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 });
@@ -123,8 +138,7 @@ namespace Nethermind.Consensus.Processing
                 foreach (Transaction tx in txs)
                 {
                     if (!ShouldRecoverSignatures(tx)) continue;
-
-                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
                     RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 }
@@ -140,9 +154,9 @@ namespace Nethermind.Consensus.Processing
 
                 if (tx.AuthorizationList.Length > 3)
                 {
-                    Parallel.ForEach(tx.AuthorizationList, (tuple) =>
+                    Parallel.ForEach(tx.AuthorizationList.Where(t => t.Authority is null), (tuple) =>
                     {
-                        tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
+                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
                     });
                 }
                 else
