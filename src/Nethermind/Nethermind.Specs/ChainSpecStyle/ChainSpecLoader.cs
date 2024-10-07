@@ -337,22 +337,26 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
 
         Dictionary<string, JsonElement> engineParameters = new();
-        foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
+        // TODO remove null check
+        if (chainSpecJson.Engine.CustomEngineData is not null)
         {
-            if (engine.Value.TryGetProperty("params", out JsonElement value))
+            foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
             {
-                engineParameters.Add(engine.Key, value);
+                if (engine.Value.TryGetProperty("params", out JsonElement value))
+                {
+                    engineParameters.Add(engine.Key, value);
+                }
+                else
+                {
+                    engineParameters.Add(engine.Key, engine.Value);
+                }
             }
-            else
-            {
-                engineParameters.Add(engine.Key, engine.Value);
-            }
-        }
 
-        chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters);
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
-        {
-            chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+            chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters);
+            if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+            {
+                chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+            }
         }
 
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))

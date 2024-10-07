@@ -41,9 +41,14 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
-            foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
+            // TODO remove null check
+            if (_chainSpec.EngineChainSpecParametersProvider is not null)
             {
-                item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
+                foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
+                             .AllChainSpecParameters)
+                {
+                    item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
+                }
             }
 
             AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
@@ -266,9 +271,14 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip7002Enabled = (chainSpec.Parameters.Eip7002TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7002ContractAddress = chainSpec.Parameters.Eip7002ContractAddress;
 
-            foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
+            // TODO remove null check
+            if (_chainSpec.EngineChainSpecParametersProvider is not null)
             {
-                item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+                foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
+                             .AllChainSpecParameters)
+                {
+                    item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+                }
             }
 
             return releaseSpec;

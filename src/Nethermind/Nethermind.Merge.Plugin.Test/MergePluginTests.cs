@@ -60,8 +60,8 @@ public class MergePluginTests
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
         var chainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>();
         chainSpecParametersProvider.GetChainSpecParameters<CliqueChainSpecEngineParameters>()
-            .Returns(new CliqueChainSpecEngineParameters
-                { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
+            .Returns(
+                new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
         _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
         _plugin = new MergePlugin();
 

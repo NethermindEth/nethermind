@@ -20,11 +20,9 @@ public class CliqueChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
-        throw new System.NotImplementedException();
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
-        throw new System.NotImplementedException();
     }
 }
