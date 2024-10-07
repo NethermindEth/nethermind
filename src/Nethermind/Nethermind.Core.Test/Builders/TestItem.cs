@@ -97,16 +97,16 @@ namespace Nethermind.Core.Test.Builders
         public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGwei = 4_000_000_000 };
         public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
         public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
- 
+
         public static ExecutionRequest.ExecutionRequest ExecutionRequestA = new() { RequestType = 0, RequestData = (byte[])PublicKeyA.Bytes.Concat(AddressA.Bytes).Concat(BitConverter.GetBytes((ulong)1_000_000_000)).Concat(KeccakA.Bytes.ToArray()).Concat(BitConverter.GetBytes((ulong)1)) };
         public static ExecutionRequest.ExecutionRequest ExecutionRequestB = new() { RequestType = 0, RequestData = (byte[])PublicKeyB.Bytes.Concat(AddressB.Bytes).Concat(BitConverter.GetBytes((ulong)2_000_000_000)).Concat(KeccakB.Bytes.ToArray()).Concat(BitConverter.GetBytes((ulong)2)) };
         public static ExecutionRequest.ExecutionRequest ExecutionRequestC = new() { RequestType = 0, RequestData = (byte[])PublicKeyC.Bytes.Concat(AddressC.Bytes).Concat(BitConverter.GetBytes((ulong)3_000_000_000)).Concat(KeccakC.Bytes.ToArray()).Concat(BitConverter.GetBytes((ulong)3)) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestData = (byte[])AddressA.Bytes.Concat(PublicKeyA.Bytes).Concat(BitConverter.GetBytes((ulong)1_000_000_000))};
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestData = (byte[])AddressB.Bytes.Concat(PublicKeyB.Bytes).Concat(BitConverter.GetBytes((ulong)2_000_000_000))};
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestData = (byte[])AddressC.Bytes.Concat(PublicKeyC.Bytes).Concat(BitConverter.GetBytes((ulong)3_000_000_000))};
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestData = (byte[])AddressA.Bytes.Concat(PublicKeyA.Bytes).Concat(PublicKeyB.Bytes)};
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestData = (byte[])AddressB.Bytes.Concat(PublicKeyB.Bytes).Concat(PublicKeyC.Bytes)};
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestData = (byte[])AddressC.Bytes.Concat(PublicKeyC.Bytes).Concat(PublicKeyD.Bytes)};
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestData = (byte[])AddressA.Bytes.Concat(PublicKeyA.Bytes).Concat(BitConverter.GetBytes((ulong)1_000_000_000)) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestData = (byte[])AddressB.Bytes.Concat(PublicKeyB.Bytes).Concat(BitConverter.GetBytes((ulong)2_000_000_000)) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestData = (byte[])AddressC.Bytes.Concat(PublicKeyC.Bytes).Concat(BitConverter.GetBytes((ulong)3_000_000_000)) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestData = (byte[])AddressA.Bytes.Concat(PublicKeyA.Bytes).Concat(PublicKeyB.Bytes) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestData = (byte[])AddressB.Bytes.Concat(PublicKeyB.Bytes).Concat(PublicKeyC.Bytes) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestData = (byte[])AddressC.Bytes.Concat(PublicKeyC.Bytes).Concat(PublicKeyD.Bytes) };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

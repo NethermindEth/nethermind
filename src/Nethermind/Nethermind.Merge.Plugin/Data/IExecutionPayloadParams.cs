@@ -40,7 +40,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        if(spec.RequestsEnabled)
+        if (spec.RequestsEnabled)
         {
             if (ExecutionRequests is null)
             {
@@ -54,7 +54,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 error = "Execution requests are not in progressive order by type";
                 return ValidationResult.Fail;
             }
-            
+
         }
         Transaction[]? transactions;
         try

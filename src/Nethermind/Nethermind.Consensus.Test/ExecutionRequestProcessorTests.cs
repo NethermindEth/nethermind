@@ -44,7 +44,7 @@ public class ExecutionProcessorTests
     [SetUp]
     public void Setup()
     {
-        
+
 
         _specProvider = MainnetSpecProvider.Instance;
         MemDb stateDb = new();
@@ -74,12 +74,16 @@ public class ExecutionProcessorTests
             {
                 Transaction transaction = ci.Arg<Transaction>();
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
-                if(transaction.To == eip7002Account)
+                if (transaction.To == eip7002Account)
                 {
                     tracer.ReturnValue = executionWithdrawalRequests.FlatEncode();
-                } else if(transaction.To == eip7251Account){
+                }
+                else if (transaction.To == eip7251Account)
+                {
                     tracer.ReturnValue = excutionConsolidationRequests.FlatEncode();
-                } else {
+                }
+                else
+                {
                     tracer.ReturnValue = Array.Empty<byte>();
                 }
                 return new TransactionResult();
@@ -95,13 +99,13 @@ public class ExecutionProcessorTests
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [ TestItem.PublicKeyA.Bytes, TestItem.AddressA.Bytes, BitConverter.GetBytes((ulong)1_000_000_000), TestItem.KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyA.Bytes, TestItem.AddressA.Bytes, BitConverter.GetBytes((ulong)1_000_000_000), TestItem.KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1)])
                 ).WithAddress(DepositContractAddress).TestObject,
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [ TestItem.PublicKeyB.Bytes, TestItem.AddressB.Bytes, BitConverter.GetBytes((ulong)2_000_000_000), TestItem.KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyB.Bytes, TestItem.AddressB.Bytes, BitConverter.GetBytes((ulong)2_000_000_000), TestItem.KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2)])
                 ).WithAddress(DepositContractAddress).TestObject,
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [ TestItem.PublicKeyC.Bytes, TestItem.AddressC.Bytes, BitConverter.GetBytes((ulong)3_000_000_000), TestItem.KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyC.Bytes, TestItem.AddressC.Bytes, BitConverter.GetBytes((ulong)3_000_000_000), TestItem.KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3)])
                 ).WithAddress(DepositContractAddress).TestObject
             ).TestObject
         ];
