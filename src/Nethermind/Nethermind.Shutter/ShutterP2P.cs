@@ -18,6 +18,8 @@ using System.Threading.Channels;
 using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
+using Microsoft.Extensions.Logging;
+using Nethermind.Network.Discovery;
 
 namespace Nethermind.Shutter;
 
@@ -60,15 +62,15 @@ public class ShutterP2P : IShutterP2P
             .AddSingleton<PubsubRouter>()
             .AddSingleton<PeerStore>()
             .AddSingleton(sp => sp.GetService<IPeerFactoryBuilder>()!.Build())
-            //.AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
-            // .AddLogging(builder =>
-            //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
-            //     .AddSimpleConsole(l =>
-            //     {
-            //         l.SingleLine = true;
-            //         l.TimestampFormat = "[HH:mm:ss.FFF]";
-            //     })
-            // )
+            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
+            .AddLogging(builder =>
+                builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
+                .AddSimpleConsole(l =>
+                {
+                    l.SingleLine = true;
+                    l.TimestampFormat = "[HH:mm:ss.FFF]";
+                })
+            )
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
