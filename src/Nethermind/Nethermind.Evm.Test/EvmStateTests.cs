@@ -245,7 +245,7 @@ namespace Nethermind.Evm.Test
                     0,
                     0,
                     false,
-                    parentEvmState,
+                    parentEvmState.AccessTracker,
                     isContinuation,
                     false);
 

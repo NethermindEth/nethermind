@@ -2239,7 +2239,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             outputOffset.ToLong(),
             outputLength.ToLong(),
             instruction == Instruction.STATICCALL || vmState.IsStatic,
-            vmState,
+            vmState.AccessTracker,
             isContinuation: false,
             isCreateOnPreExistingAccount: false);
 
@@ -2487,7 +2487,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             0L,
             0L,
             vmState.IsStatic,
-            vmState,
+            vmState.AccessTracker,
             false,
             accountExists);
 

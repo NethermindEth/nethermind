@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -41,7 +42,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
-        private readonly HashSet<Address> _accessedAddresses = [];
 
         [Flags]
         protected enum ExecutionOptions
@@ -150,13 +150,13 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            _accessedAddresses.Clear();
-            int delegationRefunds = ProcessDelegations(tx, spec, _accessedAddresses);
+            AccessTracker accessTracker = new();
+            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker.AccessedAddresses);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _accessedAddresses);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, _accessedAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, accessTracker, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
 
             // Finalize
@@ -205,7 +205,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, HashSet<Address> accessedAddresses)
+        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, ICollection<Address> accessedAddresses)
         {
             int refunds = 0;
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
@@ -240,7 +240,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool IsValidForExecution(
                 AuthorizationTuple authorizationTuple,
-                ISet<Address> accessedAddresses,
+                ICollection<Address> accessedAddresses,
                 [NotNullWhen(false)] out string? error)
             {
                 if (authorizationTuple.Authority is null)
@@ -507,24 +507,37 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
-            HashSet<Address> accessedAddresses)
+            AccessTracker accessedAddresses)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
-
-            accessedAddresses.Add(recipient);
-            accessedAddresses.Add(tx.SenderAddress!);
 
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
             Address? delegationAddress = null;
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
                 : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
-
-            if (delegationAddress is not null)
-                accessedAddresses.Add(delegationAddress);
-
             codeInfo.AnalyseInBackgroundIfRequired();
+
+            if (spec.UseHotAndColdStorage)
+            {
+                accessedAddresses.Add(recipient);
+                accessedAddresses.Add(tx.SenderAddress!);
+
+                if (spec.UseTxAccessLists)
+                {
+                    accessedAddresses.Add(tx.AccessList); // eip-2930
+                }
+
+                if (spec.AddCoinbaseToTxAccessList)
+                {
+                    accessedAddresses.Add(blCtx.Header.GasBeneficiary!);
+                }
+
+                //We assume eip-7702 must be active if it is a delegation 
+                if (delegationAddress is not null)
+                    accessedAddresses.Add(delegationAddress);
+            }
 
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
 
@@ -550,7 +563,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            IEnumerable<Address> accessedAddresses,
+            AccessTracker accessedItems,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
@@ -580,11 +593,13 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
 
-                ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
-
-                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
+                using (EvmState state = new(
+                    unspentGas,
+                    env,
+                    tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
+                    snapshot,
+                    accessedItems))
                 {
-                    WarmUp(tx, header, spec, state, accessedAddresses);
 
                     substate = !tracer.IsTracingActions
                         ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
@@ -663,27 +678,6 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
-        }
-
-        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state, IEnumerable<Address> accessedAddresses)
-        {
-            if (spec.UseTxAccessLists)
-            {
-                state.WarmUp(tx.AccessList); // eip-2930
-            }
-
-            if (spec.UseHotAndColdStorage) // eip-2929
-            {
-                foreach (Address accessed in accessedAddresses)
-                {
-                    state.WarmUp(accessed);
-                }
-            }
-
-            if (spec.AddCoinbaseToTxAccessList)
-            {
-                state.WarmUp(header.GasBeneficiary!);
-            }
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
