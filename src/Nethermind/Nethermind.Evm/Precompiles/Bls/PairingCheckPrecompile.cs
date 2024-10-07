@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 
 using G1 = Nethermind.Crypto.Bls.P1;
@@ -39,15 +40,18 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
         G1 x = new(stackalloc long[G1.Sz]);
         G2 y = new(stackalloc long[G2.Sz]);
 
-        var acc = GT.One();
+        using ArrayPoolList<long> buf = new(GT.Sz * 2, GT.Sz * 2);
+        var acc = GT.One(buf.AsSpan());
+        GT p = new(buf.AsSpan()[GT.Sz..]);
+
         for (int i = 0; i < inputData.Length / PairSize; i++)
         {
             int offset = i * PairSize;
 
             if (!x.TryDecodeRaw(inputData[offset..(offset + BlsConst.LenG1)].Span) ||
-                !x.InGroup() ||
+                !(BlsConst.DisableSubgroupChecks || x.InGroup()) ||
                 !y.TryDecodeRaw(inputData[(offset + BlsConst.LenG1)..(offset + PairSize)].Span) ||
-                !y.InGroup())
+                !(BlsConst.DisableSubgroupChecks || y.InGroup()))
             {
                 return IPrecompile.Failure;
             }
@@ -58,7 +62,8 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
                 continue;
             }
 
-            acc.Mul(new GT(y, x));
+            p.MillerLoop(y, x);
+            acc.Mul(p);
         }
 
         bool verified = acc.FinalExp().IsOne();
