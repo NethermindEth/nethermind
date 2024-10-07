@@ -153,9 +153,6 @@ namespace Nethermind.Trie.Pruning
 
         private void CommitNode(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
-            EnsureCommitSetExistsForBlock(blockNumber);
-
             if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
@@ -176,13 +173,15 @@ namespace Nethermind.Trie.Pruning
                     ThrowNodeHasBeenSeen(blockNumber, node);
                 }
 
-                node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
-                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
-
-                if (!_pruningStrategy.PruningEnabled)
+                if (_pruningStrategy.PruningEnabled)
+                {
+                    node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
+                }
+                else
                 {
                     PersistNode(address, path, node, blockNumber, writeFlags);
                 }
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
 
                 CommittedNodesCount++;
             }
@@ -243,34 +242,31 @@ namespace Nethermind.Trie.Pruning
 
         private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, NodeCommitInfo nodeCommitInfo, TrieNode node)
         {
-            if (_pruningStrategy.PruningEnabled)
+            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, node.Keccak);
+            if (DirtyNodesTryGetValue(in key, out TrieNode cachedNodeCopy))
             {
-                TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, node.Keccak);
-                if (DirtyNodesTryGetValue(in key, out TrieNode cachedNodeCopy))
+                Metrics.LoadedFromCacheNodesCount++;
+                if (!ReferenceEquals(cachedNodeCopy, node))
                 {
-                    Metrics.LoadedFromCacheNodesCount++;
-                    if (!ReferenceEquals(cachedNodeCopy, node))
+                    if (_logger.IsTrace) Trace(node, cachedNodeCopy);
+                    cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
+                    if (node.Keccak != cachedNodeCopy.Keccak)
                     {
-                        if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-                        cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-                        if (node.Keccak != cachedNodeCopy.Keccak)
-                        {
-                            ThrowNodeIsNotSame(node, cachedNodeCopy);
-                        }
-
-                        if (!nodeCommitInfo.IsRoot)
-                        {
-                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-                        }
-
-                        node = cachedNodeCopy;
-                        Metrics.ReplacedNodesCount++;
+                        ThrowNodeIsNotSame(node, cachedNodeCopy);
                     }
+
+                    if (!nodeCommitInfo.IsRoot)
+                    {
+                        nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+                    }
+
+                    node = cachedNodeCopy;
+                    Metrics.ReplacedNodesCount++;
                 }
-                else
-                {
-                    DirtyNodesSaveInCache(key, node);
-                }
+            }
+            else
+            {
+                DirtyNodesSaveInCache(key, node);
             }
 
             return node;
@@ -292,8 +288,12 @@ namespace Nethermind.Trie.Pruning
             int concurrency = 0;
             if (_pruningStrategy.PruningEnabled)
             {
+                // The write batch when pruning is not enabled is not concurrent safe
                 concurrency = Environment.ProcessorCount;
             }
+            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
+            EnsureCommitSetExistsForBlock(blockNumber);
+
             return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags, concurrency);
         }
 

@@ -14,7 +14,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -56,6 +55,9 @@ namespace Nethermind.Trie
         private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
         public TrieNode? RootRef { get; set; }
+
+        // Used to estimate if parallelization is needed during commit
+        private long _writeBeforeCommit = 0;
 
         /// <summary>
         /// Only used in EthereumTests
@@ -139,12 +141,24 @@ namespace Nethermind.Trie
                 ThrowReadOnlyTrieException();
             }
 
+            int maxLevelForConcurrentCommit = -1;
+            _writeBeforeCommit /= 64;
+            if (_writeBeforeCommit > 0)
+            {
+                maxLevelForConcurrentCommit++; // Ok, we separate at top level
+                if (_writeBeforeCommit/16 > 0)
+                {
+                    maxLevelForConcurrentCommit++; // Another level
+                }
+            }
+            _writeBeforeCommit = 0;
+
             using (ICommitter committer = TrieStore.BeginCommit(TrieType, blockNumber, RootRef, writeFlags))
             {
                 if (RootRef is not null && RootRef.IsDirty)
                 {
                     TreePath path = TreePath.Empty;
-                    Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot);
+                    Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
 
                     // reset objects
                     RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
@@ -161,7 +175,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
+        private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, bool skipSelf = false, int maxLevelForConcurrentCommit = -1)
         {
             if (!_allowCommits)
             {
@@ -171,48 +185,7 @@ namespace Nethermind.Trie
             TrieNode node = nodeCommitInfo.Node;
             if (node!.IsBranch)
             {
-                // idea from EthereumJ - testing parallel branches
-
-                List<Task>? childTasks = null;
-
-                for (int i = 0; i < 16; i++)
-                {
-                    if (node.IsChildDirty(i))
-                    {
-                        if (committer.CanSpawnTask())
-                        {
-                            childTasks ??= new List<Task>();
-                            TreePath childPath = path.Append(i);
-                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref childPath, i);
-                            childTasks.Add(Task.Run(() =>
-                            {
-                                Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, i));
-                                committer.ReturnConcurrencyQuota();
-                            }));
-                        }
-                        else
-                        {
-                            path.AppendMut(i);
-                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i));
-                            path.TruncateOne();
-                        }
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace)
-                        {
-                            Trace(node, ref path, i);
-                        }
-                    }
-                }
-
-                if (childTasks != null) {
-                    Task.WaitAll(childTasks.ToArray());
-                }
-
-                /*
-                if (!_parallelBranches || !nodeCommitInfo.IsRoot)
+                if (path.Length > maxLevelForConcurrentCommit)
                 {
                     for (int i = 0; i < 16; i++)
                     {
@@ -234,13 +207,35 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    List<(TreePath, NodeCommitInfo)> nodesToCommit = new(16);
+                    Task CreateTaskForPath(TreePath childPath, TrieNode childNode, int idx)
+                    {
+                        return Task.Run(() =>
+                        {
+                            Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx));
+                            committer.ReturnConcurrencyQuota();
+                        });
+                    }
+
+                    List<Task>? childTasks = null;
+
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.IsChildDirty(i))
                         {
-                            TreePath childPath = node.GetChildPath(path, i);
-                            nodesToCommit.Add((childPath, new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, i)));
+                            if (i < 15 && committer.CanSpawnTask())
+                            {
+                                childTasks ??= new List<Task>();
+                                TreePath childPath = path.Append(i);
+                                TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref childPath, i);
+                                childTasks.Add(CreateTaskForPath(childPath, childNode, i));
+                            }
+                            else
+                            {
+                                path.AppendMut(i);
+                                TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
+                                Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i));
+                                path.TruncateOne();
+                            }
                         }
                         else
                         {
@@ -251,37 +246,11 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    if (nodesToCommit.Count >= 4)
+                    if (childTasks != null)
                     {
-                        ClearExceptions();
-                        Parallel.For(0, nodesToCommit.Count, RuntimeInformation.ParallelOptionsLogicalCores, i =>
-                        {
-                            try
-                            {
-                                (TreePath childPath, NodeCommitInfo commitInfo) = nodesToCommit[i];
-                                Commit(committer, ref childPath, commitInfo);
-                            }
-                            catch (Exception e)
-                            {
-                                AddException(e);
-                            }
-                        });
-
-                        if (WereExceptions())
-                        {
-                            ThrowAggregateExceptions();
-                        }
-                    }
-                    else
-                    {
-                        for (int i = 0; i < nodesToCommit.Count; i++)
-                        {
-                            (TreePath childPath, NodeCommitInfo commitInfo) = nodesToCommit[i];
-                            Commit(committer, ref childPath, commitInfo);
-                        }
+                        Task.WaitAll(childTasks.ToArray());
                     }
                 }
-                */
             }
             else if (node.NodeType == NodeType.Extension)
             {
@@ -317,31 +286,6 @@ namespace Nethermind.Trie
             {
                 if (_logger.IsTrace) TraceSkipInlineNode(node);
             }
-
-            /*
-            void ClearExceptions() => _commitExceptions?.Clear();
-            bool WereExceptions() => _commitExceptions?.IsEmpty == false;
-
-            void AddException(Exception value)
-            {
-                ConcurrentQueue<Exception> queue = Volatile.Read(ref _commitExceptions);
-                // Allocate queue if first exception thrown
-                queue ??= CreateQueue(ref _commitExceptions);
-                queue.Enqueue(value);
-            }
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            ConcurrentQueue<T> CreateQueue<T>(ref ConcurrentQueue<T> queueRef)
-            {
-                ConcurrentQueue<T> queue = new();
-                ConcurrentQueue<T> current = Interlocked.CompareExchange(ref queueRef, queue, null);
-                return (current is null) ? queue : current;
-            }
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            void ThrowAggregateExceptions() => throw new AggregateException(_commitExceptions);
-            */
 
             [DoesNotReturn]
             [StackTraceHidden]
@@ -516,6 +460,8 @@ namespace Nethermind.Trie
             {
                 ThrowNonConcurrentWrites();
             }
+
+            _writeBeforeCommit++;
 
             try
             {
