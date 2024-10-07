@@ -295,9 +295,10 @@ namespace Nethermind.Trie.Pruning
 
         private class TrieStoreCommitter(TrieStore trieStore, TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) : ICommitter
         {
+            private bool _needToResetRoot = root is not null && root.IsDirty;
             public void Dispose()
             {
-                if (root is not null && root.IsDirty)
+                if (_needToResetRoot)
                 {
                     root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root.Keccak);
                 }
