@@ -1,10 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Net;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto
@@ -72,6 +77,24 @@ namespace Nethermind.Core.Test.Crypto
             ecdsa.Sign(key, tx, true);
             Address? address = ecdsa.RecoverAddress(tx);
             Assert.That(address, Is.EqualTo(key.Address));
+        }
+
+        [Test]
+        [Repeat(3)]
+        public void RecoverAddress_AuthorizationTupleOfDifferentSize_RecoversAddressCorrectly()
+        {
+            PrivateKey signer = Build.A.PrivateKey.TestObject;
+            AuthorizationTuple authorizationTuple = new EthereumEcdsa(BlockchainIds.GenericNonRealNetwork)
+                .Sign(signer,
+                TestContext.CurrentContext.Random.NextULong(),
+                Build.A.Address.TestObjectInternal,
+                TestContext.CurrentContext.Random.NextULong());
+
+            EthereumEcdsa ecdsa = new(BlockchainIds.GenericNonRealNetwork);
+
+            Address? authority = ecdsa.RecoverAddress(authorizationTuple);
+
+            Assert.That(authority, Is.EqualTo(signer.Address));
         }
     }
 }
