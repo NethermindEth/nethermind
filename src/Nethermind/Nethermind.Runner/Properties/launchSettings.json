@@ -112,6 +112,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Mainnet (Paprika)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mainnet -dd E:\\ --Sync.NonValidatorNode true --Sync.DownloadBodiesInFastSync false --Sync.DownloadReceiptsInFastSync false --Sync.FastSync false --Sync.SnapSync false --Metrics.EnableDbSizeMetrics false --jwt-secret-path ",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Mainnet (archive)": {
       "commandName": "Project",
       "commandLineArgs": "-c mainnet_archive -dd .data",
