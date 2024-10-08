@@ -184,7 +184,7 @@ namespace Nethermind.Evm.Test
                 .WithAuthorizationCode(testCase.AuthorizationList)
                 .TestObject;
 
-            IntrinsicGasCalculator.Calculate(tx, Prague.Instance, out var floorGas)
+            IntrinsicGasCalculator.Calculate(tx, Prague.Instance, out _)
                 .Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
         }
 
@@ -203,7 +203,7 @@ namespace Nethermind.Evm.Test
                 )
                 .TestObject;
 
-            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance, out var floorGas), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance, out _), Throws.InstanceOf<InvalidDataException>());
         }
     }
 }
