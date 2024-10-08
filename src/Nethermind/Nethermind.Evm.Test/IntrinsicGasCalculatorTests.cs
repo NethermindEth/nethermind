@@ -44,8 +44,9 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
-            IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance, out var floorGas).Should().Be(testCase.Cost);
-            floorGas.Should().Be(0);
+            var gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
+            gas.IntrinsicGas.Should().Be(testCase.Cost);
+            gas.FloorGas.Should().Be(0);
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -71,12 +72,13 @@ namespace Nethermind.Evm.Test
             {
                 if (!supportsAccessLists)
                 {
-                    Assert.Throws<InvalidDataException>(() => IntrinsicGasCalculator.Calculate(tx, spec, out var floorGas));
+                    Assert.Throws<InvalidDataException>(() => IntrinsicGasCalculator.Calculate(tx, spec));
                 }
                 else
                 {
-                    IntrinsicGasCalculator.Calculate(tx, spec, out var floorGas).Should().Be(21000 + testCase.Cost, spec.Name);
-                    floorGas.Should().Be(0);
+                    var gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                    gas.IntrinsicGas.Should().Be(21000 + testCase.Cost, spec.Name);
+                    gas.FloorGas.Should().Be(0);
                 }
             }
 
@@ -99,10 +101,11 @@ namespace Nethermind.Evm.Test
 
             void Test(IReleaseSpec spec, bool isAfterRepricing, bool floorCostEnabled)
             {
-                IntrinsicGasCalculator.Calculate(tx, spec, out var floorGas).Should()
+                var gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                gas.IntrinsicGas.Should()
                     .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
                         testCase.Data.ToHexString());
-                floorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
+                gas.FloorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
             }
 
             Test(Homestead.Instance, false, false);
@@ -184,8 +187,8 @@ namespace Nethermind.Evm.Test
                 .WithAuthorizationCode(testCase.AuthorizationList)
                 .TestObject;
 
-            IntrinsicGasCalculator.Calculate(tx, Prague.Instance, out _)
-                .Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
+            var gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+            gas.IntrinsicGas.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
         }
 
         [Test]
@@ -203,7 +206,7 @@ namespace Nethermind.Evm.Test
                 )
                 .TestObject;
 
-            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance, out _), Throws.InstanceOf<InvalidDataException>());
+            Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
     }
 }

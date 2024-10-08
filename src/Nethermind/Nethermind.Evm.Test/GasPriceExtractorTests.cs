@@ -33,9 +33,9 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec, out var floorGas);
-            floorGas.Should().Be(0);
-            gasCost.Should().BeLessThan(21000 + 9600);
+            var gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            gasCost.FloorGas.Should().Be(0);
+            gasCost.IntrinsicGas.Should().BeLessThan(21000 + 9600);
         }
 
         [Test]
@@ -44,9 +44,9 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec, out var floorGas);
-            floorGas.Should().Be(0);
-            gasCost.Should().BeLessThan(21000 + 9600);
+            var gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            gasCost.FloorGas.Should().Be(0);
+            gasCost.IntrinsicGas.Should().BeLessThan(21000 + 9600);
 
             byte[] bytecode =
                 Prepare.EvmCode
