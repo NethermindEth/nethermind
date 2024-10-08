@@ -138,7 +138,7 @@ jobs:
             fi
             
             ./build/sedge generate \
-            --logging none \ 
+            --logging none \
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
@@ -149,9 +149,9 @@ jobs:
             --execution-api-url $EXECUTION_URL
           else
             ./build/sedge generate \
-            --logging none \ 
+            --logging none \
             -p $GITHUB_WORKSPACE/sedge \
-            full-node \ 
+            full-node \
             -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
             -e nethermind:$docker_image \
             --map-all \
