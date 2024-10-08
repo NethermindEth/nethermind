@@ -699,11 +699,14 @@ namespace Nethermind.TxPool.Test
 
             byte[] expectedBlobVersionedHash = null;
 
+            foreach (PrivateKey privateKey in TestItem.PrivateKeys)
+            {
+                EnsureSenderBalance(privateKey.Address, UInt256.MaxValue);
+            }
+
             // adding txs in parallel
             Parallel.ForEach(TestItem.PrivateKeys, privateKey =>
             {
-                EnsureSenderBalance(privateKey.Address, UInt256.MaxValue);
-
                 for (int i = 0; i < txsPerSender; i++)
                 {
                     Transaction tx = Build.A.Transaction
