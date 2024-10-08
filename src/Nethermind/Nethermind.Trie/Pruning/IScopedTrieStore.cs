@@ -22,10 +22,10 @@ public interface IScopedTrieStore : ITrieNodeResolver
     void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp);
 }
 
-public interface ICommitter: IDisposable
+public interface ICommitter : IDisposable
 {
     void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
 
     bool CanSpawnTask() => false;
-    void ReturnConcurrencyQuota() {}
+    void ReturnConcurrencyQuota() { }
 }

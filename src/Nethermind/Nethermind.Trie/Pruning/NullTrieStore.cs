@@ -39,7 +39,7 @@ namespace Nethermind.Trie.Pruning
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
-        internal class NullCommitter: ICommitter
+        internal class NullCommitter : ICommitter
         {
             public void Dispose()
             {

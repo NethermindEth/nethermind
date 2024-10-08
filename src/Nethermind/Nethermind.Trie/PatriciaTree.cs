@@ -143,7 +143,7 @@ namespace Nethermind.Trie
             if (_writeBeforeCommit > 0)
             {
                 maxLevelForConcurrentCommit++; // Ok, we separate at top level
-                if (_writeBeforeCommit/16 > 0)
+                if (_writeBeforeCommit / 16 > 0)
                 {
                     maxLevelForConcurrentCommit++; // Another level
                 }
