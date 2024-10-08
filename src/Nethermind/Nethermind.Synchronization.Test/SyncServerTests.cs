@@ -704,7 +704,8 @@ public class SyncServerTests
         IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
         using (ICommitter committer = scopedTrieStore.BeginCommit(TrieType.State, 1, node))
         {
-            committer.CommitNode(new NodeCommitInfo(node, TreePath.Empty));
+            TreePath path = TreePath.Empty;
+            committer.CommitNode(ref path, new NodeCommitInfo(node));
         }
 
         stateDb.KeyExists(nodeKey).Should().BeFalse();
