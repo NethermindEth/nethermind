@@ -45,8 +45,8 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
 
         int nItems = inputData.Length / ItemSize;
 
-        using ArrayPoolList<long> rawPoints = new(nItems * G2.Sz, nItems * G2.Sz);
-        using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
+        using ArrayPoolList<long> pointBuffer = new(nItems * G2.Sz, nItems * G2.Sz);
+        using ArrayPoolList<byte> scalarBuffer = new(nItems * 32, nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
         int npoints = 0;
@@ -72,7 +72,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
         {
             for (int i = 0; i < pointDestinations.Count; i++)
             {
-                if (!BlsExtensions.TryDecodeG2ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i))
+                if (!BlsExtensions.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), pointDestinations[i], i))
                 {
                     fail = true;
                     break;
@@ -84,7 +84,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
             Parallel.ForEach(pointDestinations, (dest, state, i) =>
             {
                 int index = (int)i;
-                if (!BlsExtensions.TryDecodeG2ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index))
+                if (!BlsExtensions.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), dest, index))
                 {
                     fail = true;
                     state.Break();
@@ -98,7 +98,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
             return IPrecompile.Failure;
         }
 
-        G2 res = new G2().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+        G2 res = new G2().MultiMult(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
 
         return (res.EncodeRaw(), true);
     }

@@ -129,28 +129,28 @@ public static class BlsExtensions
         return fp[BlsConst.LenFpPad..].SequenceCompareTo(BlsConst.BaseFieldOrder.AsSpan()) < 0;
     }
 
-    public static bool TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> rawPoints, Memory<byte> rawScalars, int dest, int index)
-        => TryDecodePointToBuffer(inputData, rawPoints, rawScalars, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckG1);
+    public static bool TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
+        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckG1);
 
-    public static bool TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> rawPoints, Memory<byte> rawScalars, int dest, int index)
-        => TryDecodePointToBuffer(inputData, rawPoints, rawScalars, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckG2);
+    public static bool TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
+        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckG2);
 
-    private static bool DecodeAndCheckG1(ReadOnlyMemory<byte> rawPoint, Memory<long> rawPoints, int dest)
+    private static bool DecodeAndCheckG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
-        G1 p = new(rawPoints.Span[(dest * G1.Sz)..]);
+        G1 p = new(pointBuffer.Span[(dest * G1.Sz)..]);
         return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
     }
 
-    private static bool DecodeAndCheckG2(ReadOnlyMemory<byte> rawPoint, Memory<long> rawPoints, int dest)
+    private static bool DecodeAndCheckG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
     {
-        G2 p = new(rawPoints.Span[(dest * G2.Sz)..]);
+        G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
         return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
     }
 
     private static bool TryDecodePointToBuffer(
         ReadOnlyMemory<byte> inputData,
-        Memory<long> rawPoints,
-        Memory<byte> rawScalars,
+        Memory<long> pointBuffer,
+        Memory<byte> scalarBuffer,
         int dest,
         int index,
         int pointLen,
@@ -164,16 +164,16 @@ public static class BlsExtensions
 
         int offset = index * itemSize;
         ReadOnlyMemory<byte> rawPoint = inputData[offset..(offset + pointLen)];
-        ReadOnlyMemory<byte> rawScalar = inputData[(offset + pointLen)..(offset + itemSize)];
+        ReadOnlyMemory<byte> reversedScalar = inputData[(offset + pointLen)..(offset + itemSize)];
 
-        if (!decodeAndCheckPoint(rawPoint, rawPoints, dest))
+        if (!decodeAndCheckPoint(rawPoint, pointBuffer, dest))
         {
             return false;
         }
 
         int destOffset = dest * 32;
-        rawScalar.CopyTo(rawScalars[destOffset..]);
-        rawScalars[destOffset..(destOffset + 32)].Span.Reverse();
+        reversedScalar.CopyTo(scalarBuffer[destOffset..]);
+        scalarBuffer[destOffset..(destOffset + 32)].Span.Reverse();
         return true;
     }
 }
