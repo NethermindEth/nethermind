@@ -414,6 +414,6 @@ namespace Nethermind.Core.Specs
 
         bool IsAuthorizationListEnabled => IsEip7702Enabled;
 
-        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled; // TODO should add IsEip7742?
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }
