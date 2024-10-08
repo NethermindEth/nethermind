@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Extensions;
@@ -15,12 +14,6 @@ public static class DisposableExtensions
         if (item is IDisposable d)
         {
             d.Dispose();
-        }
-
-        if (item is ITuple tuple)
-        {
-            for (var i = 0; i < tuple.Length; i++)
-                tuple[i]?.TryDispose();
         }
     }
 
