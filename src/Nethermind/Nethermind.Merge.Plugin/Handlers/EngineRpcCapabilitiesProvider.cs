@@ -53,7 +53,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.RequestsEnabled, spec.RequestsEnabled);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2)] = (spec.RequestsEnabled, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2)] = (spec.RequestsEnabled, false);
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.RequestsEnabled, spec.IsEip7742Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip7742Enabled, spec.IsEip7742Enabled);
             #endregion
         }
 
