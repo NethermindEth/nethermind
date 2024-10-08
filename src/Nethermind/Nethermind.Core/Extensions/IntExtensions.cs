@@ -9,6 +9,11 @@ namespace Nethermind.Core.Extensions;
 
 public static class IntExtensions
 {
+    public static bool HasFlag(this int @this, int flag)
+    {
+        return (@this & flag) == flag;
+    }
+
     public static string ToHexString(this int @this)
     {
         return $"0x{@this:x}";

@@ -370,7 +370,7 @@ namespace Nethermind.Evm
     }
     public struct OpcodeInfo(ushort pc, Instruction instruction, int? argumentIndex)
     {
-        public OpcodeMetadata Metadata => OpcodeMetadata.Operations[instruction];
+        public OpcodeMetadata Metadata => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
         public Instruction Operation => instruction;
         public ushort ProgramCounter => pc;
         public int? Arguments { get; set; } = argumentIndex;

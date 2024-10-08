@@ -10,8 +10,11 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
+using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
+using ILMode = int;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -57,7 +60,7 @@ public static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    internal static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode, ILogger logger)
+    internal static Task StartAnalysis(CodeInfo codeInfo, ILMode mode, ILogger logger)
     {
         Metrics.IlvmContractsAnalyzed++;
 
@@ -78,7 +81,7 @@ public static class IlAnalyzer
             if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
             {
                 ushort immediatesCount = opcode - Instruction.PUSH0;
-                data.Add(machineCode.SliceWithZeroPadding((UInt256)i + 1, immediatesCount, PadDirection.Left).ToArray());
+                data.Add(machineCode.SliceWithZeroPadding((UInt256)i + 1, immediatesCount).ToArray());
                 argsIndex = data.Count - 1;
                 i += immediatesCount;
             }
@@ -90,7 +93,7 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode, ILogger logger)
+    private static void Analysis(CodeInfo codeInfo, ILMode mode, ILogger logger)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
@@ -114,6 +117,7 @@ public static class IlAnalyzer
                 }
             }
 
+            long segmentAvgSize = 0;
             for (int i = -1; i <= j; i++)
             {
                 int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
@@ -132,10 +136,11 @@ public static class IlAnalyzer
                 var lastOp = segment[^1];
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
+                segmentAvgSize += segment.Length;
                 ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter, CompileSegment(segmentName, segment, codeData.Item2));
             }
 
-            ilinfo.Mode |= IlInfo.ILMode.SubsegmentsCompiling;
+            Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
         }
 
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
@@ -158,16 +163,17 @@ public static class IlAnalyzer
                     }
                 }
             }
-            ilinfo.Mode |= IlInfo.ILMode.PatternMatching;
+
+            Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.PAT_MODE);
         }
 
         switch (mode)
         {
-            case IlInfo.ILMode.PatternMatching:
+            case IlInfo.ILMode.PAT_MODE:
                 if (logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.CodeHash}");
                 CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
-            case IlInfo.ILMode.SubsegmentsCompiling:
+            case IlInfo.ILMode.JIT_MODE:
                 if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.CodeHash}");
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo);
                 break;

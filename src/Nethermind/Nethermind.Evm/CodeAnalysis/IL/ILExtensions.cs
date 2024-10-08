@@ -233,4 +233,9 @@ static class EmitExtensions
         il.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
 
     }
+    public static void FakeBranch<T>(this Emit<T> il, Sigil.Label label)
+    {
+        il.LoadConstant(true);
+        il.BranchIfTrue(label);
+    }
 }
