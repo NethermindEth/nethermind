@@ -720,15 +720,10 @@ namespace Nethermind.TxPool.Test
                 }
             });
 
+            // we expect index to have 1 key with poolSize values
             blobPool.BlobIndex.Count.Should().Be(1);
-
-            //all txs should be added and indexed
-            for (int i = 0; i < poolSize; i++)
-            {
-                // we expect index to have 1 key with poolSize values
-                blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
-                values.Count.Should().Be(poolSize);
-            }
+            blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
+            values.Count.Should().Be(poolSize);
         }
 
         private Transaction GetTx(PrivateKey sender)
