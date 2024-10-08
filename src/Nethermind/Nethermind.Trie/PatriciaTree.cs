@@ -8,12 +8,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -216,7 +218,7 @@ namespace Nethermind.Trie
                         });
                     }
 
-                    List<Task>? childTasks = null;
+                    ArrayPoolList<Task>? childTasks = null;
 
                     for (int i = 0; i < 16; i++)
                     {
@@ -224,7 +226,7 @@ namespace Nethermind.Trie
                         {
                             if (i < 15 && committer.CanSpawnTask())
                             {
-                                childTasks ??= new List<Task>();
+                                childTasks ??= new ArrayPoolList<Task>(15);
                                 TreePath childPath = path.Append(i);
                                 TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref childPath, i);
                                 childTasks.Add(CreateTaskForPath(childPath, childNode, i));
@@ -249,6 +251,7 @@ namespace Nethermind.Trie
                     if (childTasks != null)
                     {
                         Task.WaitAll(childTasks.ToArray());
+                        childTasks.Dispose();
                     }
                 }
             }

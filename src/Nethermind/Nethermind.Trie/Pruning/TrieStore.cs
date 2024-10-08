@@ -177,11 +177,13 @@ namespace Nethermind.Trie.Pruning
                 {
                     node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
                 }
-                else
+
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
+
+                if (!_pruningStrategy.PruningEnabled)
                 {
                     PersistNode(address, path, node, blockNumber, writeFlags);
                 }
-                node.LastSeen = Math.Max(blockNumber, node.LastSeen);
 
                 CommittedNodesCount++;
             }
