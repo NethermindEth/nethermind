@@ -13,9 +13,9 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,8 +46,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null,
-        IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, logManager, mockedConsensusRequestsProcessor);
+        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -103,10 +103,10 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         private AuRaNethermindApi? _api;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
-            : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedConsensusRequestsProcessor)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+            : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedExecutionRequestsProcessor)
         {
-            ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
+            ExecutionRequestsProcessor = mockedExecutionRequestsProcessor;
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
@@ -155,7 +155,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
                 WithdrawalProcessor,
-                consensusRequestsProcessor: ConsensusRequestsProcessor,
+                executionRequestsProcessor: ExecutionRequestsProcessor,
                 preWarmer: CreateBlockCachePreWarmer());
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
@@ -191,7 +191,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 transactionComparerProvider,
                 blocksConfig,
                 LogManager,
-                ConsensusRequestsProcessor);
+                ExecutionRequestsProcessor);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
