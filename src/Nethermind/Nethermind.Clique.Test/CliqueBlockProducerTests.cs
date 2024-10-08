@@ -107,9 +107,10 @@ public class CliqueBlockProducerTests
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, blockTree);
 
+            CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(_ethereumEcdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider),
+                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(goerliSpecProvider.ChainId),
                 _logManager,
@@ -127,7 +128,6 @@ public class CliqueBlockProducerTests
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-            CodeInfoRepository codeInfoRepository = new();
             TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
                 new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                 codeInfoRepository,
@@ -424,9 +424,8 @@ public class CliqueBlockProducerTests
         {
             if (_logger.IsInfo) _logger.Info($"WAITING ON {nodeKey.Address} FOR BLOCK {number}");
             SpinWait spinWait = new();
-            Stopwatch stopwatch = new();
-            stopwatch.Start();
-            while (stopwatch.ElapsedMilliseconds < _timeout)
+            long startTime = Stopwatch.GetTimestamp();
+            while (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < _timeout)
             {
                 spinWait.SpinOnce();
                 if (_blockTrees[nodeKey].Head.Number >= number)
