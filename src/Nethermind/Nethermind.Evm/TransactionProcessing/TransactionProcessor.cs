@@ -308,6 +308,7 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <param name="spec">The release spec with which the transaction will be executed</param>
         /// <param name="opts">Options (Flags) to use for execution</param>
         /// <param name="intrinsicGas">Calculated intrinsic gas</param>
+        /// <param name="floorGas"></param>
         /// <returns></returns>
         protected TransactionResult ValidateStatic(
             Transaction tx,
@@ -316,7 +317,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionOptions opts,
             out long intrinsicGas)
         {
-            intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
+            intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, out long floorGas);
 
             bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 
@@ -343,14 +344,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 return "EIP-3860 - transaction size over max init code size";
             }
 
-            return ValidateGas(tx, header, intrinsicGas, validate);
+            return ValidateGas(tx, header, Math.Max(intrinsicGas, floorGas), validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
         {
-            if (tx.GasLimit < intrinsicGas)
+            if (tx.GasLimit < minGasRequired)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {intrinsicGas}");
+                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
                 return "gas limit below intrinsic gas";
             }
 
@@ -737,6 +738,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
+                _ = IntrinsicGasCalculator.Calculate(tx, spec, out long floorGas);
+                spentGas = Math.Max(spentGas, floorGas);
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
@@ -32,7 +33,8 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec, out var floorGas);
+            floorGas.Should().Be(0);
             gasCost.Should().BeLessThan(21000 + 9600);
         }
 
@@ -42,7 +44,8 @@ namespace Nethermind.Evm.Test
             Rlp rlp = BuildHeader();
 
             Transaction tx = Build.A.Transaction.WithData(rlp.Bytes).TestObject;
-            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec);
+            long gasCost = IntrinsicGasCalculator.Calculate(tx, Spec, out var floorGas);
+            floorGas.Should().Be(0);
             gasCost.Should().BeLessThan(21000 + 9600);
 
             byte[] bytecode =
