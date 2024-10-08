@@ -136,6 +136,8 @@ jobs:
               echo "Unknown network"
               exit 1
             fi
+
+            stripped_network="${network#base-}"; stripped_network="${stripped_network#op-}"
             
             ./build/sedge generate \
             --logging none \
@@ -144,7 +146,7 @@ jobs:
             --op-execution opnethermind:$docker_image \
             --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
-            --network ${{ matrix.config.network }} \
+            --network "$stripped_network" \
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL
           else
