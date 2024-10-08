@@ -34,7 +34,7 @@ public class RecoverSignaturesTest
         Block block = Build.A.Block
             .WithTransactions([tx])
             .TestObject;
-        
+
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsAuthorizationListEnabled.Returns(true);
@@ -94,7 +94,7 @@ public class RecoverSignaturesTest
             ([
                 new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), null),
                 new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), null),
-                ])
+            ])
             .SignedAndResolved(signer)
             .WithSenderAddress(null)
             .TestObject;
@@ -109,7 +109,7 @@ public class RecoverSignaturesTest
             ([
                 new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), poolSender.Address),
                 new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), poolSender.Address),
-                ])
+            ])
             .SignedAndResolved(poolSender)
             .TestObject;
         ITxPool txPool = Substitute.For<ITxPool>();
@@ -133,6 +133,6 @@ public class RecoverSignaturesTest
         sut.RecoverData(block);
 
         Assert.That(tx.SenderAddress, Is.EqualTo(poolSender.Address));
-        Assert.That(tx.AuthorizationList.Select(a=>a.Authority), Is.All.EqualTo(poolSender.Address));
+        Assert.That(tx.AuthorizationList.Select(a => a.Authority), Is.All.EqualTo(poolSender.Address));
     }
 }
