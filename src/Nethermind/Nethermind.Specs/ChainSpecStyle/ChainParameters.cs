@@ -122,9 +122,12 @@ public class ChainParameters
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
+    public ulong? Eip7251TransitionTimestamp { get; set; }
+    public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
 
     #region EIP-4844 parameters

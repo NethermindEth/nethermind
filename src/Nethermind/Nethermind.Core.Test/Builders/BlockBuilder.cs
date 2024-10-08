@@ -281,7 +281,7 @@ namespace Nethermind.Core.Test.Builders
             var consensusRequests = new ConsensusRequest[count];
 
             for (var i = 0; i < count; i++)
-                consensusRequests[i] = new();
+                consensusRequests[i] = new Deposit();
 
             return WithConsensusRequests(consensusRequests);
         }

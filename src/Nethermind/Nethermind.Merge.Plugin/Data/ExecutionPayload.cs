@@ -89,6 +89,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     public virtual WithdrawalRequest[]? WithdrawalRequests { get; set; }
 
+    /// <summary>
+    /// Gets or sets a collection of <see cref="ConsolidationRequests"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
+    /// </summary>
+    public virtual ConsolidationRequest[]? ConsolidationRequests { get; set; }
+
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
@@ -238,7 +244,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return ValidationResult.Fail;
         }
 
-        if (spec.ConsensusRequestsEnabled)
+        if (spec.RequestsEnabled)
         {
             error = "ExecutionPayloadV4 expected";
             return ValidationResult.Fail;
@@ -258,7 +264,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     private int GetExecutionPayloadVersion() => this switch
     {
-        { DepositRequests: not null, WithdrawalRequests: not null } => 4,
+        { DepositRequests: not null, WithdrawalRequests: not null, ConsolidationRequests: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1

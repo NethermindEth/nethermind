@@ -9,6 +9,7 @@ namespace Nethermind.Serialization.Rlp;
 
 public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpValueDecoder<WithdrawalRequest>, IRlpObjectDecoder<WithdrawalRequest>
 {
+    public static WithdrawalRequestDecoder Instance { get; } = new();
     public int GetLength(WithdrawalRequest item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 

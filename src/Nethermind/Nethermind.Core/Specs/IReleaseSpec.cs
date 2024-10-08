@@ -283,6 +283,15 @@ namespace Nethermind.Core.Specs
         bool WithdrawalRequestsEnabled => IsEip7002Enabled;
         Address Eip7002ContractAddress { get; }
 
+
+        /// <summary>
+        /// EIP-7251: triggered consolidations
+        /// </summary>
+        bool IsEip7251Enabled { get; }
+        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+        Address Eip7251ContractAddress { get; }
+
+
         /// <summary>
         /// Save historical block hashes in state
         /// </summary>
@@ -298,6 +307,11 @@ namespace Nethermind.Core.Specs
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
+
+        /// <summary>
+        /// Transactions that allows code delegation for EOA
+        /// </summary>
+        bool IsEip7702Enabled { get; }
 
         /// <summary>
         /// Blob base fee collection for Gnosis
@@ -398,6 +412,8 @@ namespace Nethermind.Core.Specs
 
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
 
-        public bool ConsensusRequestsEnabled => WithdrawalRequestsEnabled || DepositsEnabled; // TODO should add IsEip7742?
+        bool IsAuthorizationListEnabled => IsEip7702Enabled;
+
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled; // TODO should add IsEip7742?
     }
 }
