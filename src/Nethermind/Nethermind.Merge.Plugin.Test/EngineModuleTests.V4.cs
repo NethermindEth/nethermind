@@ -28,9 +28,9 @@ public partial class EngineModuleTests
 {
     [TestCase(
         "0x948f67f47376af5d09cc39ec25a84c84774f14b2e80289064c2de73db33cc573",
-        "0xb8e06e1a99d81358edd0a581fef980aff00cc9c316da8119bec7a13a6e6fa167",
+        "0x93b5a7c9023dacbec5db5034194dc759e2cff692f0e9d9a5899c190383bf42dc",
         "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x96b752d22831ad92")]
+        "0x3b94afaabd539312")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -57,7 +57,9 @@ public partial class EngineModuleTests
             prevRandao = prevRandao.ToString(),
             suggestedFeeRecipient = feeRecipient.ToString(),
             withdrawals,
-            parentBeaconBLockRoot = Keccak.Zero
+            parentBeaconBLockRoot = Keccak.Zero,
+            targetBlobCount = 0,
+            maxBlobCount = 0,
         };
         string?[] @params = new string?[]
         {
@@ -65,7 +67,7 @@ public partial class EngineModuleTests
         };
         string expectedPayloadId = payloadId;
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV4", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -107,6 +109,8 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
+                MaxBlobCount = 0,
+                TargetBlobCount = 0,
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
