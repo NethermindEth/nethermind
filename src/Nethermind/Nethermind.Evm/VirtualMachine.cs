@@ -924,6 +924,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
 
             var instruction = (Instruction)code[programCounter];
+            // Console.WriteLine($"Instruction - {instruction}");
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1625,23 +1626,27 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.BLOCKHASH:
-                    {
+                                      {
                         Metrics.BlockhashOpcode++;
 
-                        Hash256? GetBlockHashFromState(long blockNumber, long currentBlockNumber)
+                        Hash256? GetBlockHashFromState(long blockNumber, long currentBlockNumber, out bool outOfGas)
                         {
+                            outOfGas = false;
                             byte[] emptyBytes = [0];
                             if (blockNumber >= currentBlockNumber ||
-                                blockNumber + Eip2935Constants.RingBufferSize < currentBlockNumber)
+                                blockNumber + Eip2935Constants.OpCodeServeWindow < currentBlockNumber)
                             {
                                 return null;
                             }
                             var blockIndex = new UInt256((ulong)(blockNumber % Eip2935Constants.RingBufferSize));
                             Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
                             StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-                            vmState.Env.Witness.AccessForBlockHashOpCode(blockHashStoreCell.Address,
-                                blockHashStoreCell.Index,
-                                ref gasAvailable);
+                            if (!vmState.Env.Witness.AccessForBlockHashOpCode(blockHashStoreCell.Address,
+                                    blockHashStoreCell.Index,
+                                    ref gasAvailable))
+                            {
+                                outOfGas = true;
+                            }
                             ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
                             return data.SequenceEqual(emptyBytes) ? null : new Hash256(data);
                         }
@@ -1651,9 +1656,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
+                        bool outForGas = false;
                         Hash256 blockHash = spec.IsEip2935Enabled
-                            ? GetBlockHashFromState(number, blkCtx.Header.Number)
+                            ? GetBlockHashFromState(number, blkCtx.Header.Number, out outForGas)
                             : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+
+                        if(outForGas) goto OutOfGas;
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
