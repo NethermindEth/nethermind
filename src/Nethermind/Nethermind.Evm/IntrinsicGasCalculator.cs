@@ -2,52 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using System.Runtime.Intrinsics;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
 public static class IntrinsicGasCalculator
 {
-    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long result = GasCostOf.Transaction;
-        result += DataCost(transaction, releaseSpec);
-        result += CreateCost(transaction, releaseSpec);
-        result += AccessListCost(transaction, releaseSpec);
-        return result;
-    }
+    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec) =>
+        GasCostOf.Transaction
+        + DataCost(transaction, releaseSpec)
+        + CreateCost(transaction, releaseSpec)
+        + AccessListCost(transaction, releaseSpec)
+        + AuthorizationListCost(transaction, releaseSpec);
 
-    private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        long createCost = 0;
-        if (transaction.IsContractCreation && releaseSpec.IsEip2Enabled)
-        {
-            createCost += GasCostOf.TxCreate;
-        }
-
-        return createCost;
-    }
+    private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long txDataNonZeroGasCost =
-            releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+        long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
 
         int totalZeros = data.CountZeros();
 
-        var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
+        long baseDataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
             ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
-            : 0);
+            : 0;
 
         return baseDataCost +
             totalZeros * GasCostOf.TxDataZero +
@@ -57,27 +44,48 @@ public static class IntrinsicGasCalculator
     private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         AccessList? accessList = transaction.AccessList;
-        long accessListCost = 0;
         if (accessList is not null)
         {
             if (!releaseSpec.UseTxAccessLists)
             {
-                throw new InvalidDataException(
-                    $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
+                ThrowInvalidDataException(releaseSpec);
             }
 
-            if (accessList.IsEmpty) return accessListCost;
-
-            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
-            {
-                accessListCost += GasCostOf.AccessAccountListEntry;
-                foreach (UInt256 _ in entry.storageKeys)
-                {
-                    accessListCost += GasCostOf.AccessStorageListEntry;
-                }
-            }
+            (int addressesCount, int storageKeysCount) = accessList.Count;
+            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
         }
 
-        return accessListCost;
+        return 0;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
+        {
+            throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
+        }
+    }
+
+    private static long AuthorizationListCost(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        AuthorizationTuple[]? transactionAuthorizationList = transaction.AuthorizationList;
+
+        if (transactionAuthorizationList is not null)
+        {
+            if (!releaseSpec.IsAuthorizationListEnabled)
+            {
+                ThrowInvalidDataException(releaseSpec);
+            }
+
+            return transactionAuthorizationList.Length * GasCostOf.NewAccount;
+        }
+
+        return 0;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowInvalidDataException(IReleaseSpec releaseSpec)
+        {
+            throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. Eip-7702 is not enabled.");
+        }
     }
 }
