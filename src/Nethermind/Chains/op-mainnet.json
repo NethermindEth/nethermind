@@ -73,7 +73,7 @@
     "rip7212TransitionTimestamp": "0x668eb001",
     "opGraniteTransitionTimestamp": "0x66e1be81",
 
-    "terminalTotalDifficulty": "0"
+    "terminalTotalDifficulty": "210470125"
   },
   "genesis": {
     "seal": {
