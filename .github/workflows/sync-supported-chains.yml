@@ -247,8 +247,11 @@ jobs:
       - name: Get Consensus Logs
         if: always()
         run: |
-          docker ps
-          docker logs sedge-consensus-client      
+          if [[ "$network" == base-* || "$network" == op-* ]]; then
+            docker logs sedge-execution-op-l2-client
+          else
+            docker logs sedge-consensus-client      
+          fi
 
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
