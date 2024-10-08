@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 [TestFixture]
-public class Eip7623Tests: VirtualMachineTestsBase
+public class Eip7623Tests : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.PragueBlockTimestamp;
