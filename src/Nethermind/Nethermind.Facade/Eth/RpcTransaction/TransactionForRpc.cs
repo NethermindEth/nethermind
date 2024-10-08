@@ -73,6 +73,7 @@ public abstract class TransactionForRpc
             RegisterTransactionType<AccessListTransactionForRpc>();
             RegisterTransactionType<EIP1559TransactionForRpc>();
             RegisterTransactionType<BlobTransactionForRpc>();
+            RegisterTransactionType<SetCodeTransactionForRpc>();
         }
 
         internal static void RegisterTransactionType<T>() where T : TransactionForRpc, ITxTyped
@@ -119,6 +120,7 @@ public abstract class TransactionForRpc
             RegisterTransactionType<AccessListTransactionForRpc>();
             RegisterTransactionType<EIP1559TransactionForRpc>();
             RegisterTransactionType<BlobTransactionForRpc>();
+            RegisterTransactionType<SetCodeTransactionForRpc>();
         }
 
         internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>

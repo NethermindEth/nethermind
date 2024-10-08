@@ -26,6 +26,7 @@ public class TransactionForRpcTests
         .. AccessListTransactionForRpcTests.Transactions,
         .. EIP1559TransactionForRpcTests.Transactions,
         .. BlobTransactionForRpcTests.Transactions,
+        .. SetCodeTransactionForRpcTests.Transactions,
     ];
 
     [Test]
@@ -75,6 +76,9 @@ public class TransactionForRpcTests
                 break;
             case TxType.Blob:
                 BlobTransactionForRpcTests.ValidateSchema(json);
+                break;
+            case TxType.SetCode:
+                SetCodeTransactionForRpcTests.ValidateSchema(json);
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
