@@ -109,8 +109,6 @@ namespace Nethermind.Init.Steps
                     _api.DisposeStack.Push(paprika);
                     _api.StateFactory = paprika;
 
-
-
                     break;
             }
 

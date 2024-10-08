@@ -22,4 +22,10 @@ public interface IPaprikaConfig : IConfig
 
     [ConfigItem(Description = "Whether Merkle should use parallelism", DefaultValue = "true")]
     public bool ParallelMerkle { get; set; }
+
+    [ConfigItem(Description = "Paprika history depth", DefaultValue = "32")]
+    public int HistoryDepth { get; set; }
+
+    [ConfigItem(Description = "Size in GB", DefaultValue = "512")]
+    public int SizeInGb { get; set; }
 }

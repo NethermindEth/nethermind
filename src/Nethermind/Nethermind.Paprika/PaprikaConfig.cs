@@ -15,4 +15,8 @@ public class PaprikaConfig : IPaprikaConfig
     public int CacheMerklePerBlock { get; set; } = 0;
 
     public bool ParallelMerkle { get; set; } = true;
+
+    public int HistoryDepth { get; set; } = 32;
+
+    public int SizeInGb { get; set; } = 512;
 }

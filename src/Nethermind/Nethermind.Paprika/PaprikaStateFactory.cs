@@ -22,8 +22,6 @@ namespace Nethermind.Paprika;
 public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
-    private static readonly long _sepolia = 32.GiB();
-    private static readonly long _mainnet = 256.GiB();
 
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
 
@@ -52,7 +50,7 @@ public class PaprikaStateFactory : IStateFactory
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
-        _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, flushToDisk: true);
+        _db = PagedDb.MemoryMappedDb(config.SizeInGb.GB(), (byte)config.HistoryDepth, directory, flushToDisk: true);
 
         var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
