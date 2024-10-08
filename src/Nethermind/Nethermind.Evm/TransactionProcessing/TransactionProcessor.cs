@@ -136,7 +136,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
 
             TransactionResult result;
-            if (!(result = ValidateStatic(tx, header, spec, opts, out long intrinsicGas))) return result;
+            if (!(result = ValidateStatic(tx, header, spec, opts, out StaticGas staticGas))) return result;
 
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
@@ -151,12 +151,12 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             _accessedAddresses.Clear();
-            int delegationRefunds = ProcessDelegations(tx, spec, _accessedAddresses);
+            staticGas.DelegationRefunds = ProcessDelegations(tx, spec, _accessedAddresses);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, _accessedAddresses);
 
-            long gasAvailable = tx.GasLimit - intrinsicGas;
-            ExecuteEvmCall(tx, header, spec, tracer, opts, delegationRefunds, _accessedAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            long gasAvailable = tx.GasLimit - staticGas.IntrinsicGas;
+            ExecuteEvmCall(tx, header, spec, tracer, opts, staticGas, _accessedAddresses, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
 
             // Finalize
@@ -308,13 +308,14 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <param name="spec">The release spec with which the transaction will be executed</param>
         /// <param name="opts">Options (Flags) to use for execution</param>
         /// <param name="intrinsicGas">Calculated intrinsic gas</param>
+        /// <param name="floorGas"></param>
         /// <returns></returns>
         protected TransactionResult ValidateStatic(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
             ExecutionOptions opts,
-            out long intrinsicGas)
+            out StaticGas intrinsicGas)
         {
             intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
 
@@ -343,14 +344,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 return "EIP-3860 - transaction size over max init code size";
             }
 
-            return ValidateGas(tx, header, intrinsicGas, validate);
+            return ValidateGas(tx, header, Math.Max(intrinsicGas.IntrinsicGas, intrinsicGas.FloorGas), validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long intrinsicGas, bool validate)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
         {
-            if (tx.GasLimit < intrinsicGas)
+            if (tx.GasLimit < minGasRequired)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {intrinsicGas}");
+                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
                 return "gas limit below intrinsic gas";
             }
 
@@ -549,7 +550,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             ITxTracer tracer,
             ExecutionOptions opts,
-            int delegationRefunds,
+            in StaticGas staticGas,
             IEnumerable<Address> accessedAddresses,
             in long gasAvailable,
             in ExecutionEnvironment env,
@@ -644,7 +645,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     statusCode = StatusCode.Success;
                 }
 
-                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, delegationRefunds);
+                spentGas = Refund(tx, header, spec, opts, substate, unspentGas, env.TxExecutionContext.GasPrice, staticGas);
                 goto Complete;
             }
             catch (Exception ex) when (ex is EvmException or OverflowException) // TODO: OverflowException? still needed? hope not
@@ -729,14 +730,15 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds)
+            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, in StaticGas staticGas)
         {
             long spentGas = tx.GasLimit;
-            var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+            var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * staticGas.DelegationRefunds;
 
             if (!substate.IsError)
             {
                 spentGas -= unspentGas;
+                spentGas = Math.Max(spentGas, staticGas.FloorGas);
 
                 long totalToRefund = codeInsertRefund;
                 if (!substate.ShouldRevert)
