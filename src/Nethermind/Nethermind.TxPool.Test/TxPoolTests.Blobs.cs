@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
@@ -682,7 +683,7 @@ namespace Nethermind.TxPool.Test
         [Test][Repeat(10)]
         public void should_handle_indexing_blobs_when_adding_txs_in_parallel([Values(true, false)] bool isPersistentStorage)
         {
-            const int txsPerSender = 20;
+            const int txsPerSender = 10;
             int poolSize = TestItem.PrivateKeys.Length * txsPerSender;
             TxPoolConfig txPoolConfig = new()
             {
@@ -720,13 +721,20 @@ namespace Nethermind.TxPool.Test
                     expectedBlobVersionedHash ??= tx.BlobVersionedHashes[0]!;
 
                     blobPool.TryInsert(tx.Hash, tx, out _).Should().BeTrue();
+
+                    for (int j = 0; j < 100; j++)
+                    {
+                        blobPool.TryGetBlobAndProof(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
+                    }
+
+                    if (i % 2 == 0) blobPool.Remove(tx.Hash, out _).Should().BeTrue();
                 }
             });
 
             // we expect index to have 1 key with poolSize values
             blobPool.BlobIndex.Count.Should().Be(1);
             blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
-            values.Count.Should().Be(poolSize);
+            values.Count.Should().Be(poolSize / 2);
         }
 
         private Transaction GetTx(PrivateKey sender)

@@ -79,7 +79,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         }
     }
 
-    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
+    internal override bool Remove(ValueHash256 hash, out Transaction? tx)
     {
         if (base.Remove(hash, out tx))
         {
