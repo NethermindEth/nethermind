@@ -163,11 +163,6 @@ namespace Nethermind.Trie.Pruning
                     ThrowUnknownHash(node);
                 }
 
-                if (CurrentPackage is null)
-                {
-                    ThrowUnknownPackage(blockNumber, node);
-                }
-
                 if (node!.LastSeen >= 0)
                 {
                     ThrowNodeHasBeenSeen(blockNumber, node);
@@ -197,10 +192,6 @@ namespace Nethermind.Trie.Pruning
             [DoesNotReturn]
             [StackTraceHidden]
             static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowUnknownPackage(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
 
             [DoesNotReturn]
             [StackTraceHidden]
@@ -299,57 +290,8 @@ namespace Nethermind.Trie.Pruning
             return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags, concurrency);
         }
 
-        private class TrieStoreCommitter(
-            TrieStore trieStore,
-            TrieType trieType,
-            long blockNumber,
-            Hash256? address,
-            TrieNode? root,
-            WriteFlags writeFlags,
-            int concurrency
-        ) : ICommitter
+        private void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
         {
-            private bool _needToResetRoot = root is not null && root.IsDirty;
-            private int _concurrency = concurrency;
-
-            public void Dispose()
-            {
-                if (_needToResetRoot)
-                {
-                    root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root.Keccak);
-                }
-                trieStore.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
-            }
-
-            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
-            {
-                trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags);
-            }
-
-            public bool CanSpawnTask()
-            {
-                if (Interlocked.Decrement(ref _concurrency) < 0)
-                {
-                    ReturnConcurrencyQuota();
-                    return false;
-                }
-                else
-                {
-                    return true;
-                }
-            }
-
-            public void ReturnConcurrencyQuota()
-            {
-                Interlocked.Increment(ref _concurrency);
-            }
-        }
-
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
-        {
-            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
-            EnsureCommitSetExistsForBlock(blockNumber);
-
             try
             {
                 if (trieType == TrieType.State) // storage tries happen before state commits
@@ -1176,6 +1118,55 @@ namespace Nethermind.Trie.Pruning
 
             return true;
         }
+
+        private class TrieStoreCommitter(
+            TrieStore trieStore,
+            TrieType trieType,
+            long blockNumber,
+            Hash256? address,
+            TrieNode? root,
+            WriteFlags writeFlags,
+            int concurrency
+        ) : ICommitter
+        {
+            private bool _needToResetRoot = root is not null && root.IsDirty;
+            private int _concurrency = concurrency;
+
+            public void Dispose()
+            {
+                if (_needToResetRoot)
+                {
+                    // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
+                    // This ensure that the root that we use here is the same.
+                    root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root.Keccak);
+                }
+                trieStore.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
+            }
+
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
+            {
+                trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags);
+            }
+
+            public bool CanSpawnTask()
+            {
+                if (Interlocked.Decrement(ref _concurrency) < 0)
+                {
+                    ReturnConcurrencyQuota();
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            public void ReturnConcurrencyQuota()
+            {
+                Interlocked.Increment(ref _concurrency);
+            }
+        }
+
 
         internal static class HashHelpers
         {
