@@ -31,7 +31,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
         if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
         {
-            foreach (Hash256 hash in txHashes)
+            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
                 if (TryGetValueNonLocked(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
                 {
