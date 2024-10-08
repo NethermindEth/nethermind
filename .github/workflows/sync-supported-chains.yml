@@ -101,11 +101,6 @@ jobs:
           make compile
 
       - name: Run Sedge
-        env:
-          MAINNET_CONSENSUS_URL: ${{ secrets.MAINNET_CONSENSUS_URL }}
-          MAINNET_EXECUTION_URL: ${{ secrets.MAINNET_EXECUTION_URL }}
-          SEPOLIA_CONSENSUS_URL: ${{ secrets.SEPOLIA_CONSENSUS_URL }}
-          SEPOLIA_EXECUTION_URL: ${{ secrets.SEPOLIA_EXECUTION_URL }}
         working-directory: sedge
         run: |
           docker_image=""
@@ -128,11 +123,11 @@ jobs:
 
           if [[ "$network" == base-* || "$network" == op-* ]]; then
             if [[ "$network" == *mainnet* ]]; then
-              CONSENSUS_URL="$MAINNET_CONSENSUS_URL"
-              EXECUTION_URL="$MAINNET_EXECUTION_URL"
+              CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
+              EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
             elif [[ "$network" == *sepolia* ]]; then
-              CONSENSUS_URL="$SEPOLIA_CONSENSUS_URL"
-              EXECUTION_URL="$SEPOLIA_EXECUTION_URL"
+              CONSENSUS_URL="${{ secrets.SEPOLIA_CONSENSUS_URL }}"
+              EXECUTION_URL="${{ secrets.SEPOLIA_EXECUTION_URL }}"
             else
               echo "Unknown network"
               exit 1
