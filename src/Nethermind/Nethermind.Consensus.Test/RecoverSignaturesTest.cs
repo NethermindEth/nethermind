@@ -84,7 +84,7 @@ public class RecoverSignaturesTest
 
 
     [Test]
-    public void RecoverData_TxIsInPool_SenderIsSetToSameAsInPool()
+    public void RecoverData_TxIsInPool_SenderAndAuthoritiesIsSetToSameAsInPool()
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey poolSender = TestItem.PrivateKeyB;
@@ -92,8 +92,8 @@ public class RecoverSignaturesTest
             .WithType(TxType.SetCode)
             .WithAuthorizationCode
             ([
-                _ecdsa.Sign(signer, 0, Address.Zero, 0),
-                _ecdsa.Sign(signer, 0, Address.Zero, 0)
+                new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), null),
+                new AuthorizationTuple(0, Address.Zero, 0, new Signature(new byte[65]), null),
                 ])
             .SignedAndResolved(signer)
             .WithSenderAddress(null)
