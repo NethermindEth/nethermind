@@ -7,15 +7,13 @@ namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
 public interface ICensorshipDetectorConfig : IConfig
 {
-    [ConfigItem(DefaultValue = "true",
-        Description = "Enabling censorship detection feature")]
+    [ConfigItem(DefaultValue = "true", Description = "Whether to enable censorship detection.")]
     bool Enabled { get; set; }
 
     [ConfigItem(DefaultValue = "2",
-        Description = "Number of consecutive blocks with detected potential censorship to report censorship attempt")]
+        Description = "The number of the consecutive blocks with detected potential censorship to report.")]
     uint BlockCensorshipThreshold { get; set; }
 
-    [ConfigItem(DefaultValue = "null",
-        Description = "The addresses for which censorship is being detected.")]
+    [ConfigItem(DefaultValue = "null", Description = "The addresses to detect censorship for.")]
     string[]? AddressesForCensorshipDetection { get; set; }
 }
