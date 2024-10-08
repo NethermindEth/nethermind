@@ -18,17 +18,17 @@ public class Eip7623Tests: VirtualMachineTestsBase
     public void non_zero_data_transaction_floor_cost_should_be_40()
     {
         var transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
-        long cost = IntrinsicGasCalculator.Calculate(transaction, Spec, out var floorGas);
-        floorGas.Should().Be(GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623 * 4);
-        cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
+        var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        cost.FloorGas.Should().Be(GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623 * 4);
+        cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
     }
 
     [Test]
     public void zero_data_transaction_floor_cost_should_be_10()
     {
         var transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
-        long cost = IntrinsicGasCalculator.Calculate(transaction, Spec, out var floorGas);
-        cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
-        floorGas.Should().Be(GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623);
+        var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+        cost.FloorGas.Should().Be(GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623);
     }
 }

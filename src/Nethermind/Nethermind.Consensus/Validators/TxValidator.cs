@@ -113,8 +113,8 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         // This is unnecessarily calculated twice - at validation and execution times.
-        var intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec, out var floorGas);
-        return transaction.GasLimit < Math.Max(intrinsicGas, floorGas)
+        var staticGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        return transaction.GasLimit < Math.Max(staticGas.IntrinsicGas, staticGas.FloorGas)
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
     }

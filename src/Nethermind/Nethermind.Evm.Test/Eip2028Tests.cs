@@ -23,18 +23,18 @@ namespace Nethermind.Evm.Test
             public void non_zero_transaction_data_cost_should_be_16()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
-                long cost = IntrinsicGasCalculator.Calculate(transaction, Spec, out var floorGas);
-                floorGas.Should().Be(0);
-                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.FloorGas.Should().Be(0);
+                cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
             }
 
             [Test]
             public void zero_transaction_data_cost_should_be_4()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
-                long cost = IntrinsicGasCalculator.Calculate(transaction, Spec, out var floorGas);
-                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
-                floorGas.Should().Be(0);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+                cost.FloorGas.Should().Be(0);
             }
         }
 
@@ -47,18 +47,18 @@ namespace Nethermind.Evm.Test
             public void non_zero_transaction_data_cost_should_be_68()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
-                long cost = IntrinsicGasCalculator.Calculate(transaction, Spec, out var floorGas);
-                floorGas.Should().Be(0);
-                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZero);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.FloorGas.Should().Be(0);
+                cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZero);
             }
 
             [Test]
             public void zero_transaction_data_cost_should_be_4()
             {
                 Transaction transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
-                long cost = IntrinsicGasCalculator.Calculate(transaction, Spec, out var floorGas);
-                floorGas.Should().Be(0);
-                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+                var cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+                cost.FloorGas.Should().Be(0);
+                cost.IntrinsicGas.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
             }
         }
     }

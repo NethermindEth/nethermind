@@ -12,14 +12,29 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 namespace Nethermind.Evm;
 
+
+public struct StaticGas
+{
+    public long IntrinsicGas { get; set; }
+    public long FloorGas { get; set; }
+    public long DelegationRefunds { get; set; }
+}
+
 public static class IntrinsicGasCalculator
 {
-    public static long Calculate(Transaction transaction, IReleaseSpec releaseSpec, out long floorGas) =>
-        GasCostOf.Transaction
-        + DataCost(transaction, releaseSpec, out floorGas)
-        + CreateCost(transaction, releaseSpec)
-        + AccessListCost(transaction, releaseSpec)
-        + AuthorizationListCost(transaction, releaseSpec);
+    public static StaticGas Calculate(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        var intrinsicGas = GasCostOf.Transaction
+               + DataCost(transaction, releaseSpec, out var floorGas)
+               + CreateCost(transaction, releaseSpec)
+               + AccessListCost(transaction, releaseSpec)
+               + AuthorizationListCost(transaction, releaseSpec);
+        return new StaticGas()
+        {
+            IntrinsicGas = intrinsicGas,
+            FloorGas = floorGas
+        };
+    }
 
     private static long CreateCost(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsContractCreation && releaseSpec.IsEip2Enabled ? GasCostOf.TxCreate : 0;
