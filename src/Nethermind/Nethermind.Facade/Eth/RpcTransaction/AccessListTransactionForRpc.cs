@@ -18,7 +18,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     public AccessListForRpc? AccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public UInt256? YParity { get; set; }
+    public virtual UInt256? YParity { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public sealed override ulong? ChainId { get; set; }

@@ -16,12 +16,21 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
 
     public AuthorizationListForRpc AuthorizationList { get; set; }
 
-    #region Deprecated fields from `EIP1559TransactionForRpc`
+    #region Deprecated fields
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
     public override UInt256? GasPrice { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public override UInt256? YParity { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
     public override UInt256? V { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public override UInt256? R { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public override UInt256? S { get; set; }
     #endregion
 
     [JsonConstructor]

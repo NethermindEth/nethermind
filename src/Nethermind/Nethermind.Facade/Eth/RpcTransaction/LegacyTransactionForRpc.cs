@@ -53,10 +53,10 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     public virtual UInt256? V { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public UInt256? R { get; set; }
+    public virtual UInt256? R { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public UInt256? S { get; set; }
+    public virtual UInt256? S { get; set; }
 
     [JsonConstructor]
     public LegacyTransactionForRpc() { }

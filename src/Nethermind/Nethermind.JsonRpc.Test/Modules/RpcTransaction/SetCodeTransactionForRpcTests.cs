@@ -126,5 +126,12 @@ public static class SetCodeTransactionForRpcTests
             tuple.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
             tuple.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         });
+
+        // Assert deprecated fields are no longer serialized
+        json.TryGetProperty("gasPrice", out _).Should().BeFalse();
+        json.TryGetProperty("yParity", out _).Should().BeFalse();
+        json.TryGetProperty("v", out _).Should().BeFalse();
+        json.TryGetProperty("r", out _).Should().BeFalse();
+        json.TryGetProperty("s", out _).Should().BeFalse();
     }
 }
