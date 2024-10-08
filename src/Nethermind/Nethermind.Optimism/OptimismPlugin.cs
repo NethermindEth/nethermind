@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -25,6 +26,8 @@ using Nethermind.Core;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Steps;
+using Nethermind.Optimism.CL;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
@@ -49,6 +52,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
+
+    private OptimismCL? _cl;
 
     public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
@@ -286,6 +291,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule);
 
         _api.RpcModuleProvider.RegisterSingle(opEngine);
+
+        StepDependencyException.ThrowIfNull(_api.EthereumEcdsa);
+
+        ICLConfig clConfig = _api.Config<ICLConfig>();
+        _cl = new OptimismCL(_api.SpecProvider, clConfig, _api.EthereumJsonSerializer, _api.EthereumEcdsa, new CancellationToken(), _api.Timestamper, _api!.LogManager, opEngine);
+        // _cl.Start();
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
     }
