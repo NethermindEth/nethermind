@@ -40,11 +40,6 @@ namespace Nethermind.Trie
         public TrieType TrieType { get; init; }
 
         private Stack<StackedNode>? _nodeStack;
-
-#pragma warning disable CS0169 // Field is never used
-        private ConcurrentQueue<Exception>? _commitExceptions;
-#pragma warning restore CS0169 // Field is never used
-
         public IScopedTrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
 
@@ -177,7 +172,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, bool skipSelf = false, int maxLevelForConcurrentCommit = -1)
+        private void Commit(ICommitter committer, ref TreePath path, NodeCommitInfo nodeCommitInfo, int maxLevelForConcurrentCommit, bool skipSelf = false)
         {
             if (!_allowCommits)
             {
@@ -195,7 +190,7 @@ namespace Nethermind.Trie
                         {
                             path.AppendMut(i);
                             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i));
+                            Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i), maxLevelForConcurrentCommit);
                             path.TruncateOne();
                         }
                         else
@@ -213,7 +208,7 @@ namespace Nethermind.Trie
                     {
                         return Task.Run(() =>
                         {
-                            Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx));
+                            Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx), maxLevelForConcurrentCommit);
                             committer.ReturnConcurrencyQuota();
                         });
                     }
@@ -235,7 +230,7 @@ namespace Nethermind.Trie
                             {
                                 path.AppendMut(i);
                                 TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, i);
-                                Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i));
+                                Commit(committer, ref path, new NodeCommitInfo(childNode!, node, i), maxLevelForConcurrentCommit);
                                 path.TruncateOne();
                             }
                         }
@@ -266,7 +261,7 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(committer, ref path, new NodeCommitInfo(extensionChild, node, 0));
+                    Commit(committer, ref path, new NodeCommitInfo(extensionChild, node, 0), maxLevelForConcurrentCommit);
                 }
                 else
                 {
