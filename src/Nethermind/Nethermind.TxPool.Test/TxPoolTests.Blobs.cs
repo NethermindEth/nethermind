@@ -679,6 +679,58 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test][Repeat(10)]
+        public void should_handle_indexing_blobs_when_adding_txs_in_parallel([Values(true, false)] bool isPersistentStorage)
+        {
+            const int txsPerSender = 20;
+            int poolSize = TestItem.PrivateKeys.Length * txsPerSender;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                PersistentBlobStorageSize = isPersistentStorage ? poolSize : 0,
+                InMemoryBlobPoolSize = isPersistentStorage ? 0 : poolSize
+            };
+
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+
+            BlobTxDistinctSortedPool blobPool = isPersistentStorage
+                ? new PersistentBlobTxDistinctSortedPool(new BlobTxStorage(), txPoolConfig, comparer, LimboLogs.Instance)
+                : new BlobTxDistinctSortedPool(txPoolConfig.InMemoryBlobPoolSize, comparer, LimboLogs.Instance);
+
+            byte[] expectedBlobVersionedHash = null;
+
+            // adding txs in parallel
+            Parallel.ForEach(TestItem.PrivateKeys, privateKey =>
+            {
+                EnsureSenderBalance(privateKey.Address, UInt256.MaxValue);
+
+                for (int i = 0; i < txsPerSender; i++)
+                {
+                    Transaction tx = Build.A.Transaction
+                        .WithNonce((UInt256)i)
+                        .WithShardBlobTxTypeAndFields()
+                        .WithMaxFeePerGas(1.GWei())
+                        .WithMaxPriorityFeePerGas(1.GWei())
+                        .WithMaxFeePerBlobGas(1000.Wei())
+                        .SignedAndResolved(_ethereumEcdsa, privateKey).TestObject;
+
+                    expectedBlobVersionedHash ??= tx.BlobVersionedHashes[0]!;
+
+                    blobPool.TryInsert(tx.Hash, tx, out _).Should().BeTrue();
+                }
+            });
+
+            blobPool.BlobIndex.Count.Should().Be(1);
+
+            //all txs should be added and indexed
+            for (int i = 0; i < poolSize; i++)
+            {
+                // we expect index to have 1 key with poolSize values
+                blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
+                values.Count.Should().Be(poolSize);
+            }
+        }
+
         private Transaction GetTx(PrivateKey sender)
         {
             return Build.A.Transaction
