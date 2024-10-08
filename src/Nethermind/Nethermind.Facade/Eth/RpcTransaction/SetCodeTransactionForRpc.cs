@@ -46,7 +46,6 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     {
         var tx = base.ToTransaction();
 
-        // TODO: `AuthorizationList` cannot be empty
         tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
 
         return tx;
