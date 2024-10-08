@@ -70,7 +70,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
         
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+    runs-on: ${{ matrix.config.network }}-${{ github.run_id }}
     timeout-minutes: ${{ matrix.config.timeout }}
     
     steps:
@@ -109,7 +109,7 @@ jobs:
             REF_NAME=${{ github.ref }}
             if [[ $REF_NAME == refs/heads/release/* ]]; then
               CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-              docker_image="nethermindeth/nethermind:$CLEAN_REF"
+              docker_image="nethermindeth/nethermind:$CLEAN_REF"run
             else
               docker_image="nethermindeth/nethermind:master"
             fi
@@ -224,8 +224,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy"
-          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
-          search_phrase: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          runner_label: ${{ matrix.config.network }}-${{ github.run_id }}
+          search_phrase: ${{ matrix.config.network }}-${{ github.run_id }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
