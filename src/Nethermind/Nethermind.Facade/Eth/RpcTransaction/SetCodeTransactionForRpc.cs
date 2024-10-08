@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,10 +14,9 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
 
     public override TxType? Type => TxType;
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IEnumerable<AuthorizationTupleForRpc>? AuthorizationList { get; set; }
+    public AuthorizationListForRpc AuthorizationList { get; set; }
 
-    #region Deprecated fields from EIP1559TransactionForRpc
+    #region Deprecated fields from `EIP1559TransactionForRpc`
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
     public override UInt256? GasPrice { get; set; }
 
@@ -32,14 +30,15 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     public SetCodeTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null, ulong? chainId = null)
         : base(transaction, txIndex, blockHash, blockNumber, baseFee, chainId)
     {
-        AuthorizationList = transaction.AuthorizationList is null
-            ? []
-            : AuthorizationTupleForRpc.FromAuthorizationList(transaction.AuthorizationList);
+        AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
     }
 
     public override Transaction ToTransaction()
     {
         var tx = base.ToTransaction();
+
+        // TODO: `AuthorizationList` cannot be empty
+        tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
 
         return tx;
     }
