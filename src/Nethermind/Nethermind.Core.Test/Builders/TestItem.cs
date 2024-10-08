@@ -4,8 +4,10 @@
 using System;
 using System.Linq;
 using System.Net;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -98,15 +100,17 @@ namespace Nethermind.Core.Test.Builders
         public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
         public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
 
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestA = new() { RequestType = 0, RequestData = ([.. PublicKeyA.Bytes, .. AddressA.Bytes, .. (BitConverter.GetBytes((ulong)1_000_000_000)), .. KeccakA.Bytes.ToArray(), .. BitConverter.GetBytes((ulong)1)]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestB = new() { RequestType = 0, RequestData = ([.. PublicKeyB.Bytes, .. AddressB.Bytes, .. (BitConverter.GetBytes((ulong)2_000_000_000)), .. KeccakB.Bytes.ToArray(), .. BitConverter.GetBytes((ulong)2)]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestC = new() { RequestType = 0, RequestData = ([.. PublicKeyC.Bytes, .. AddressC.Bytes, .. (BitConverter.GetBytes((ulong)3_000_000_000)), .. KeccakC.Bytes.ToArray(), .. BitConverter.GetBytes((ulong)3)]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestData = ([.. AddressA.Bytes, .. PublicKeyA.Bytes, .. (BitConverter.GetBytes((ulong)1_000_000_000))]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestData = ([.. AddressB.Bytes, .. PublicKeyB.Bytes, .. (BitConverter.GetBytes((ulong)2_000_000_000))]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestData = ([.. AddressC.Bytes, .. PublicKeyC.Bytes, .. (BitConverter.GetBytes((ulong)3_000_000_000))]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestData = ([.. AddressA.Bytes, .. PublicKeyA.Bytes, .. PublicKeyB.Bytes]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestData = ([.. AddressB.Bytes, .. PublicKeyB.Bytes, .. PublicKeyC.Bytes]) };
-        public static ExecutionRequest.ExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestData = ([.. AddressC.Bytes, .. PublicKeyC.Bytes, .. PublicKeyA.Bytes]) };
+        public static byte[] SignatureBytes = [.. new Signature().Bytes, .. KeccakA.Bytes];
+
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestA = new() { RequestType = 0, RequestData = ([.. PublicKeyA.Bytes.Slice(0, 48), .. KeccakA.Bytes, .. (BitConverter.GetBytes((ulong)1_000_000_000)), .. SignatureBytes, .. BitConverter.GetBytes((ulong)1)]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestB = new() { RequestType = 0, RequestData = ([.. PublicKeyB.Bytes.Slice(0, 48), .. KeccakB.Bytes, .. (BitConverter.GetBytes((ulong)2_000_000_000)), .. SignatureBytes, .. BitConverter.GetBytes((ulong)2)]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestC = new() { RequestType = 0, RequestData = ([.. PublicKeyC.Bytes.Slice(0, 48), .. KeccakC.Bytes, .. (BitConverter.GetBytes((ulong)3_000_000_000)), .. SignatureBytes, .. BitConverter.GetBytes((ulong)3)]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestD = new() { RequestType = 1, RequestData = ([.. AddressA.Bytes, .. PublicKeyA.Bytes.Slice(0, 48), .. (BitConverter.GetBytes((ulong)1_000_000_000))]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestE = new() { RequestType = 1, RequestData = ([.. AddressB.Bytes, .. PublicKeyB.Bytes.Slice(0, 48), .. (BitConverter.GetBytes((ulong)2_000_000_000))]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestF = new() { RequestType = 1, RequestData = ([.. AddressC.Bytes, .. PublicKeyC.Bytes.Slice(0, 48), .. (BitConverter.GetBytes((ulong)3_000_000_000))]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestG = new() { RequestType = 2, RequestData = ([.. AddressA.Bytes, .. PublicKeyA.Bytes.Slice(0, 48), .. PublicKeyB.Bytes.Slice(0, 48)]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestH = new() { RequestType = 2, RequestData = ([.. AddressB.Bytes, .. PublicKeyB.Bytes.Slice(0, 48), .. PublicKeyC.Bytes.Slice(0, 48)]) };
+        public static ExecutionRequest.ExecutionRequest ExecutionRequestI = new() { RequestType = 2, RequestData = ([.. AddressC.Bytes, .. PublicKeyC.Bytes.Slice(0, 48), .. PublicKeyA.Bytes.Slice(0, 48)]) };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

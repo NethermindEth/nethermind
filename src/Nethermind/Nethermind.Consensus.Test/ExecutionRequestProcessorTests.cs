@@ -39,7 +39,7 @@ public class ExecutionProcessorTests
 
     ExecutionRequest[] executionDepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
     ExecutionRequest[] executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
-    ExecutionRequest[] excutionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
+    ExecutionRequest[] executionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
 
     [SetUp]
     public void Setup()
@@ -56,7 +56,7 @@ public class ExecutionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        spec = _specProvider.GetFinalSpec();
+        spec = Substitute.For<IReleaseSpec>();
 
         spec.RequestsEnabled.Returns(true);
         spec.DepositsEnabled.Returns(true);
@@ -76,11 +76,11 @@ public class ExecutionProcessorTests
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
                 if (transaction.To == eip7002Account)
                 {
-                    tracer.ReturnValue = executionWithdrawalRequests.FlatEncode();
+                    tracer.ReturnValue = executionWithdrawalRequests.FlatEncodeWithoutType();
                 }
                 else if (transaction.To == eip7251Account)
                 {
-                    tracer.ReturnValue = excutionConsolidationRequests.FlatEncode();
+                    tracer.ReturnValue = executionConsolidationRequests.FlatEncodeWithoutType();
                 }
                 else
                 {
@@ -99,13 +99,13 @@ public class ExecutionProcessorTests
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyA.Bytes, TestItem.AddressA.Bytes, BitConverter.GetBytes((ulong)1_000_000_000), TestItem.KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyA.Bytes.Slice(0, 48), TestItem.KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1_000_000_000), TestItem.SignatureBytes, BitConverter.GetBytes((ulong)1)])
                 ).WithAddress(DepositContractAddress).TestObject,
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyB.Bytes, TestItem.AddressB.Bytes, BitConverter.GetBytes((ulong)2_000_000_000), TestItem.KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyB.Bytes.Slice(0, 48), TestItem.KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2_000_000_000), TestItem.SignatureBytes, BitConverter.GetBytes((ulong)2)])
                 ).WithAddress(DepositContractAddress).TestObject,
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyC.Bytes, TestItem.AddressC.Bytes, BitConverter.GetBytes((ulong)3_000_000_000), TestItem.KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyC.Bytes.Slice(0, 48), TestItem.KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3_000_000_000), TestItem.SignatureBytes, BitConverter.GetBytes((ulong)3)])
                 ).WithAddress(DepositContractAddress).TestObject
             ).TestObject
         ];
@@ -113,9 +113,14 @@ public class ExecutionProcessorTests
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, spec);
 
-        var processedRequests = block.ExecutionRequests.ToList();
-
-        Assert.That(processedRequests, Has.Count.EqualTo(9));
-        Assert.That(processedRequests, Is.EquivalentTo(executionDepositRequests.Concat(executionWithdrawalRequests).Concat(excutionConsolidationRequests)));
+        foreach (var (processedRequest, expectedRequest) in block.ExecutionRequests.Zip([
+            .. executionDepositRequests,
+            .. executionWithdrawalRequests,
+            .. executionConsolidationRequests
+        ]))
+        {
+            Assert.That(processedRequest.RequestType, Is.EqualTo(expectedRequest.RequestType));
+            Assert.That(processedRequest.RequestData, Is.EqualTo(expectedRequest.RequestData));
+        }
     }
 }

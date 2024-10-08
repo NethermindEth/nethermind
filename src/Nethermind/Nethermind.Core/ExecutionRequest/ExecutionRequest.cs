@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -48,15 +49,25 @@ public static class ExecutionRequestExtensions
         return encoded.ToArray();
     }
 
+    public static byte[] FlatEncodeWithoutType(this ExecutionRequest[] requests)
+    {
+        List<byte> encoded = new();
+        foreach (ExecutionRequest request in requests)
+        {
+            encoded.AddRange(request.RequestData!);
+        }
+        return encoded.ToArray();
+    }
+
     public static Hash256 CalculateRoot(this ExecutionRequest[] requests)
     {
         byte[] Hashes = new byte[requests.Length * 32];
         for (int i = 0; i < requests.Length; i++)
         {
-            Hash256 hash = new Hash256(requests[i].FlatEncode());
-            hash.Bytes.CopyTo(Hashes.AsSpan(i * 32));
+            byte[] hash = SHA256.HashData(requests[i].FlatEncode());
+            hash.CopyTo(Hashes.AsSpan(i * 32));
         }
-        return new Hash256(Hashes);
+        return new Hash256(SHA256.HashData(Hashes));
     }
 
     public static bool IsSortedByType(this ExecutionRequest[] requests)
