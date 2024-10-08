@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using System.Threading.Tasks;
 
 using G2 = Nethermind.Crypto.Bls.P2;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -34,6 +35,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
 
     public const int ItemSize = 288;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG2MSMPrecompile++;
@@ -98,7 +100,7 @@ public class G2MSMPrecompile : IPrecompile<G2MSMPrecompile>
             return IPrecompile.Failure;
         }
 
-        G2 res = new G2().MultiMult(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
+        G2 res = new G2(stackalloc long[G2.Sz]).MultiMult(pointBuffer.AsSpan(), scalarBuffer.AsSpan(), npoints);
 
         return (res.EncodeRaw(), true);
     }

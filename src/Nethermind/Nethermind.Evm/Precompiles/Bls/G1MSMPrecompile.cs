@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
 using G1 = Nethermind.Crypto.Bls.P1;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -34,6 +35,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 
     public const int ItemSize = 160;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1MSMPrecompile++;
@@ -98,7 +100,7 @@ public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
             return IPrecompile.Failure;
         }
 
-        G1 res = new G1().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
         return (res.EncodeRaw(), true);
     }
 }

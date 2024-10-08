@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -28,6 +29,7 @@ public class PairingCheckPrecompile : IPrecompile<PairingCheckPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 43000L * (inputData.Length / PairSize);
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsPairingCheckPrecompile++;

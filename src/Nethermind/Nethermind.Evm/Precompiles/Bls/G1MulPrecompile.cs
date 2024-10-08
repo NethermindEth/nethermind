@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
@@ -25,6 +26,7 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1MulPrecompile++;
