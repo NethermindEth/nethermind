@@ -137,7 +137,7 @@ jobs:
               exit 1
             fi
             
-            ./build/sedge generate 
+            ./build/sedge generate \
             --logging none \ 
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
@@ -148,7 +148,7 @@ jobs:
             --consensus-url $CONSENSUS_URL \
             --execution-api-url $EXECUTION_URL
           else
-            ./build/sedge generate 
+            ./build/sedge generate \
             --logging none \ 
             -p $GITHUB_WORKSPACE/sedge \
             full-node \ 
