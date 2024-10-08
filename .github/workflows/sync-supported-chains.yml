@@ -101,6 +101,11 @@ jobs:
           make compile
 
       - name: Run Sedge
+        env:
+          MAINNET_CONSENSUS_URL: ${{ secrets.MAINNET_CONSENSUS_URL }}
+          MAINNET_EXECUTION_URL: ${{ secrets.MAINNET_EXECUTION_URL }}
+          SEPOLIA_CONSENSUS_URL: ${{ secrets.SEPOLIA_CONSENSUS_URL }}
+          SEPOLIA_EXECUTION_URL: ${{ secrets.SEPOLIA_EXECUTION_URL }}
         working-directory: sedge
         run: |
           docker_image=""
@@ -119,14 +124,48 @@ jobs:
           
           echo 'Generating sedge docker...'
           ./build/sedge deps install
-          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
-          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.config.network }} \
-          -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} -e nethermind:$docker_image \
-          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
-          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-          --el-extra-flag Sync.SnapSync=true \
-          --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+
+          if [[ "$network" == base-* || "$network" == op-* ]]; then
+            if [[ "$network" == *mainnet* ]]; then
+              CONSENSUS_URL="$MAINNET_CONSENSUS_URL"
+              EXECUTION_URL="$MAINNET_EXECUTION_URL"
+            elif [[ "$network" == *sepolia* ]]; then
+              CONSENSUS_URL="$SEPOLIA_CONSENSUS_URL"
+              EXECUTION_URL="$SEPOLIA_EXECUTION_URL"
+            else
+              echo "Unknown network"
+              exit 1
+            fi
+            
+            ./build/sedge generate 
+            --logging none \ 
+            -p $GITHUB_WORKSPACE/sedge \
+            op-full-node \
+            --op-execution opnethermind:$docker_image
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest
+            --map-all \
+            --network ${{ matrix.config.network }} \
+            --consensus-url $CONSENSUS_URL \
+            --execution-api-url $EXECUTION_URL
+          else
+            ./build/sedge generate 
+            --logging none \ 
+            -p $GITHUB_WORKSPACE/sedge \
+            full-node \ 
+            -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} 
+            -e nethermind:$docker_image \
+            --map-all \
+            --no-mev-boost \
+            --no-validator \
+            --network ${{ matrix.config.network }} \
+            --el-extra-flag Sync.NonValidatorNode=true \
+            --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+            --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+            --el-extra-flag Sync.SnapSync=true \
+            --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+          fi          
+          
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
