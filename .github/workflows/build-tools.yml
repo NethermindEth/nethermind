@@ -1,7 +1,8 @@
 name: Build tools
 
 on:
-  merge_group:  
+  merge_group:
+    types: [checks_requested]
   pull_request:
     branches: [master]
   push:
