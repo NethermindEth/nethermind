@@ -31,8 +31,8 @@ public class GetPayloadBodiesByHashV2Handler(IBlockTree blockTree, ILogManager l
         for (int i = 0; i < blockHashes.Count; i++)
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
-            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests) = block?.Requests?.SplitRequests() ?? (null, null);
-            yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests);
+            (Deposit[]? deposits, WithdrawalRequest[]? withdrawalRequests, ConsolidationRequest[]? consolidationRequests) = block?.Requests?.SplitRequests() ?? (null, null, null);
+            yield return block is null ? null : new ExecutionPayloadBodyV2Result(block.Transactions, block.Withdrawals, deposits, withdrawalRequests, consolidationRequests);
         }
     }
 }
