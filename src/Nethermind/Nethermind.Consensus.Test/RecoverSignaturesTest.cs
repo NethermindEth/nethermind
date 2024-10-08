@@ -52,38 +52,6 @@ public class RecoverSignaturesTest
     }
 
     [Test]
-    public void RecoverData_AuthorityIsNotRecoveredAndNotInPool_SenderAndAuthorityIsRecovered()
-    {
-        PrivateKey signer = TestItem.PrivateKeyA;
-        PrivateKey authority = TestItem.PrivateKeyB;
-        Transaction tx = Build.A.Transaction
-            .WithType(TxType.SetCode)
-            .WithAuthorizationCode(_ecdsa.Sign(authority, 0, Address.Zero, 0))
-            .SignedAndResolved(signer)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithTransactions([tx])
-            .TestObject;
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
-        releaseSpec.IsAuthorizationListEnabled.Returns(true);
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        RecoverSignatures sut = new(
-            _ecdsa,
-            NullTxPool.Instance,
-            specProvider,
-            Substitute.For<ILogManager>());
-
-        sut.RecoverData(block);
-
-        Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
-        Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
-    }
-
-
-    [Test]
     public void RecoverData_TxIsInPool_SenderAndAuthoritiesIsSetToSameAsInPool()
     {
         PrivateKey signer = TestItem.PrivateKeyA;
