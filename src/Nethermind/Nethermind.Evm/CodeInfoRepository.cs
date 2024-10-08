@@ -102,7 +102,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo = new CodeInfo(code, codeHash);
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
