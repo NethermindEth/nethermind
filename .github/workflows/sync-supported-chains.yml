@@ -53,7 +53,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "create"
-          runner_label: ${{ matrix.config.network }}-${{ github.run_id }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -70,7 +70,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
         
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: ${{ matrix.config.network }}-${{ github.run_id }}
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
     timeout-minutes: ${{ matrix.config.timeout }}
     
     steps:
@@ -264,8 +264,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy"
-          runner_label: ${{ matrix.config.network }}-${{ github.run_id }}
-          search_phrase: ${{ matrix.config.network }}-${{ github.run_id }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
