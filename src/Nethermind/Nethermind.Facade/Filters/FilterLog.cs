@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Facade.Filters
 {
-    public class FilterLog
+    public class FilterLog : ILogEntry
     {
         public Address Address { get; }
         public Hash256 BlockHash { get; }
@@ -27,7 +27,7 @@ namespace Nethermind.Facade.Filters
                 txReceipt.BlockHash,
                 txReceipt.Index,
                 txReceipt.TxHash,
-                logEntry.LoggersAddress,
+                logEntry.Address,
                 logEntry.Data,
                 logEntry.Topics,
                 removed)

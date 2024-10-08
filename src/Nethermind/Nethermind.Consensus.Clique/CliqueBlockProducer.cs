@@ -100,6 +100,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
 
+    public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
+
     private void TimerOnElapsed(object sender, ElapsedEventArgs e)
     {
         try
@@ -499,7 +501,7 @@ public class CliqueBlockProducer : IBlockProducer
             selectedTxs,
             Array.Empty<BlockHeader>(),
             spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null,
-            spec.ConsensusRequestsEnabled ? Enumerable.Empty<ConsensusRequest>() : null
+            spec.RequestsEnabled ? Enumerable.Empty<ConsensusRequest>() : null
         );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;
