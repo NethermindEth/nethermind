@@ -280,8 +280,16 @@ public partial class EngineModuleTests
         ulong timestamp, Hash256 random, Address feeRecipient)
     {
         PayloadAttributes payloadAttributes =
-            new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient,
-                ParentBeaconBlockRoot = Keccak.Zero, Withdrawals = [], TargetBlobCount = 0, MaxBlobCount = 0 };
+            new()
+            {
+                Timestamp = timestamp,
+                PrevRandao = random,
+                SuggestedFeeRecipient = feeRecipient,
+                ParentBeaconBlockRoot = Keccak.Zero,
+                Withdrawals = [],
+                TargetBlobCount = 0,
+                MaxBlobCount = 0
+            };
 
         // we're using payloadService directly, because we can't use fcU for branch
         string payloadId = chain.PayloadPreparationService!.StartPreparingPayload(parentHeader, payloadAttributes)!;
