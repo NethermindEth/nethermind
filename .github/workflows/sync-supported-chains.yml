@@ -141,8 +141,8 @@ jobs:
             --logging none \ 
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
-            --op-execution opnethermind:$docker_image
-            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest
+            --op-execution opnethermind:$docker_image \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
             --network ${{ matrix.config.network }} \
             --consensus-url $CONSENSUS_URL \
@@ -152,7 +152,7 @@ jobs:
             --logging none \ 
             -p $GITHUB_WORKSPACE/sedge \
             full-node \ 
-            -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} 
+            -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
             -e nethermind:$docker_image \
             --map-all \
             --no-mev-boost \
@@ -245,6 +245,7 @@ jobs:
       - name: Get Consensus Logs
         if: always()
         run: |
+          docker ps
           docker logs sedge-consensus-client      
 
   destroy_runner:
