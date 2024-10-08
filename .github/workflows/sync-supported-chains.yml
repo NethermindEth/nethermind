@@ -255,6 +255,10 @@ jobs:
           else
             docker logs sedge-consensus-client      
           fi
+          
+      - name: Check size of DB 
+        run: |
+          du -h $GITHUB_WORKSPACE/sedge
 
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
