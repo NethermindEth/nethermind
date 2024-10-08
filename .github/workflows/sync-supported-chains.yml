@@ -114,7 +114,7 @@ jobs:
             REF_NAME=${{ github.ref }}
             if [[ $REF_NAME == refs/heads/release/* ]]; then
               CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-              docker_image="nethermindeth/nethermind:$CLEAN_REF"run
+              docker_image="nethermindeth/nethermind:$CLEAN_REF"
             else
               docker_image="nethermindeth/nethermind:master"
             fi
