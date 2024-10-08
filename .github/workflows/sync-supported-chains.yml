@@ -138,10 +138,12 @@ jobs:
               exit 1
             fi
 
+            if [[ "$network" == base-* ]]; then
+              extra_param="--base"
+            fi
+
             stripped_network="${network#base-}"
             stripped_network="${stripped_network#op-}"
-
-            echo $stripped_network
             
             ./build/sedge generate \
             --logging none \
@@ -152,7 +154,8 @@ jobs:
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
-            --execution-api-url $EXECUTION_URL
+            --execution-api-url $EXECUTION_URL \
+            $extra_param
           else
             ./build/sedge generate \
             --logging none \
