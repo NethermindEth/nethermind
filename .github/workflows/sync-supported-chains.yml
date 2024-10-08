@@ -109,6 +109,7 @@ jobs:
         working-directory: sedge
         run: |
           docker_image=""
+          network="${{ matrix.config.network }}"
           
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME=${{ github.ref }}
@@ -250,6 +251,7 @@ jobs:
       - name: Get Consensus Logs
         if: always()
         run: |
+          network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
             docker logs sedge-execution-op-l2-client
           else
