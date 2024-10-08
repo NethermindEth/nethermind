@@ -41,18 +41,34 @@
   },
   {
     "network": "op-sepolia",
-    "cl": "lodestar",
-    "cl_image": "chainsafe/lodestar:latest",
-    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
     "timeout": 180,
     "agent": "g6-standard-8"
   },
   {
     "network": "base-sepolia",
-    "cl": "lodestar",
-    "cl_image": "chainsafe/lodestar:latest",
-    "checkpoint-sync-url": "https://checkpoint-sync.sepolia.ethpandaops.io/",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
     "timeout": 180,
     "agent": "g6-standard-8"
+  },
+  {
+    "network": "op-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-16"
+  },
+  {
+    "network": "base-mainnet",
+    "cl": "",
+    "cl_image": "",
+    "checkpoint-sync-url": "",
+    "timeout": 600,
+    "agent": "g6-standard-16"
   }
 ]
