@@ -76,9 +76,7 @@ public class EraImporter : IEraImporter
         bool processBlock,
         CancellationToken cancellation)
     {
-        var eraFiles = EraReader.GetAllEraFiles(src, _networkName, _fileSystem).ToArray();
-
-        EraStore eraStore = new(eraFiles, _fileSystem);
+        EraStore eraStore = new(src, _networkName, _fileSystem);
 
         long startEpoch = startNumber / _epochSize;
 
@@ -183,51 +181,12 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"Directory does not exist '{eraDirectory}'");
         if (!_fileSystem.File.Exists(accumulatorFile))
             throw new EraImportException($"Accumulator file does not exist '{accumulatorFile}'");
-        string[] eraFiles = EraReader.GetAllEraFiles(eraDirectory, _networkName, _fileSystem).ToArray();
+
+        var eraStore = new EraStore(eraDirectory, _networkName, _fileSystem);
+
         string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
-
-        byte[][] accumulators = lines.Select(s => Bytes.FromHexString(s)).ToArray();
-
-        await VerifyEraFiles(eraFiles, accumulators);
-    }
-    /// <summary>
-    /// Verifies all era1 files, with an expected accumulator list.
-    /// </summary>
-    /// <param name="eraFiles"></param>
-    /// <param name="expectedAccumulators"></param>
-    /// <param name="cancellation"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentNullException"></exception>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="EraVerificationException">If the verification fails.</exception>
-    public async Task VerifyEraFiles(string[] eraFiles, byte[][] expectedAccumulators, CancellationToken cancellation = default)
-    {
-        if (expectedAccumulators is null) throw new ArgumentNullException(nameof(expectedAccumulators));
-        if (eraFiles is null) throw new ArgumentNullException(nameof(eraFiles));
-        if (eraFiles.Length == 0)
-            throw new ArgumentException("Must have at least one file.", nameof(eraFiles));
-        if (eraFiles.Length != expectedAccumulators.Length)
-            throw new ArgumentException("Must have an equal amount of files and accumulators.", nameof(eraFiles));
-        if (expectedAccumulators.Any(a => a.Length != 32))
-            throw new ArgumentException("All accumulators must have a length of 32 bytes.", nameof(eraFiles));
-
-        DateTime startTime = DateTime.Now;
-        DateTime lastProgress = DateTime.Now;
-        for (int i = 0; i < eraFiles.Length; i++)
-        {
-            using EraReader reader = await EraReader.Create(_fileSystem.File.OpenRead(eraFiles[i]), cancellation);
-            if (!await reader.VerifyAccumulator(expectedAccumulators[i], _specProvider, cancellation))
-            {
-                throw new EraVerificationException($"The accumulator for the archive '{eraFiles[i]}' does not match the expected accumulator '{expectedAccumulators[i].ToHexString()}'.");
-            }
-
-            TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-            if (elapsed.TotalSeconds > ProgressInterval.TotalSeconds)
-            {
-                VerificationProgress?.Invoke(this, new VerificationProgressArgs(i, eraFiles.Length, DateTime.Now.Subtract(startTime)));
-                lastProgress = DateTime.Now;
-            }
-        }
+        var accumulators = lines.Select(s => new ValueHash256(s)).ToHashSet();
+        await eraStore.VerifyAll(_specProvider, cancellation, accumulators, arg => VerificationProgress?.Invoke(this, arg));
     }
 
     private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)

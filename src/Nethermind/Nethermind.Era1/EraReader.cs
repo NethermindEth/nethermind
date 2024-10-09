@@ -29,8 +29,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     public long CurrentBlockNumber => _currentBlockNumber;
     public EraMetadata EraMetadata { get; }
 
-    private static readonly char[] separator = new char[] { '-' };
-
     private EraReader(E2StoreStream e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
     {
         _storeStream = e2;
@@ -58,10 +56,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         return Create(stream, false, null, token);
     }
-    public static Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator, CancellationToken token = default)
-    {
-        return Create(stream, false, allocator, token);
-    }
+
     public static async Task<EraReader> Create(Stream stream, bool descendingOrder, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
@@ -130,39 +125,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
-    {
-        return GetAllEraFiles(directoryPath, network, new FileSystem());
-    }
-    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
-    {
-        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
-        if (network is null) throw new ArgumentNullException(nameof(network));
-        if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
-
-        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories = false, MatchCasing = MatchCasing.PlatformDefault });
-        if (!entries.Any())
-            yield break;
-
-        uint next = 0;
-        foreach (string file in entries)
-        {
-            // Format: <network>-<epoch>-<hexroot>.era1
-            string[] parts = Path.GetFileName(file).Split(separator);
-            if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            uint epoch;
-            if (!uint.TryParse(parts[1], out epoch))
-                throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
-            //else if (epoch != next)
-            //    throw new EraException($"Epoch {epoch} is missing.");
-
-            next++;
-            yield return file;
-        }
-    }
     public Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
     {
         _storeStream.Seek(EraMetadata.AccumulatorOffset, SeekOrigin.Begin);

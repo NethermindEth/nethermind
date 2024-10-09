@@ -133,27 +133,9 @@ public class EraExporter : IEraExporter
         }
 
         if (createAccumulator)
-            await CreateAccumulatorFile(destinationPath, _networkName, _fileSystem, cancellation);
-    }
-
-    private async Task CreateAccumulatorFile(string destination, string network, IFileSystem fileSystem, CancellationToken cancellationToken)
-    {
-        IEnumerable<string> files = EraReader.GetAllEraFiles(destination, network, fileSystem);
-        string accumulatorPath = Path.Combine(destination, AccumulatorFileName);
-        _fileSystem.File.Delete(accumulatorPath);
-        using StreamWriter stream = new StreamWriter(fileSystem.File.Create(accumulatorPath), System.Text.Encoding.UTF8);
-        bool first = true;
-        foreach (string file in files)
         {
-            using (EraReader reader = await EraReader.Create(file, fileSystem, cancellationToken))
-            {
-                string root = (await reader.ReadAccumulator(cancellationToken)).ToHexString(true);
-                if (!first)
-                    root = Environment.NewLine + root;
-                else
-                    first = false;
-                await stream.WriteAsync(root);
-            }
+            string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+            await new EraStore(destinationPath, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
         }
     }
 

@@ -10,7 +10,12 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.ClearScript.Util.Web;
+using Nethermind.Blockchain.Era1;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Era1;
 
 namespace Nethermind.Blockchain;
@@ -23,10 +28,11 @@ public class EraStore : IEraStore
     public int EpochCount => _epochs.Count;
     public int BiggestEpoch { get; private set; }
     public int SmallestEpoch { get; private set; }
+    public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(10);
 
-    public EraStore(string[] eraFiles) : this(eraFiles, new FileSystem()) { }
-    public EraStore(string[] eraFiles, IFileSystem fileSystem)
+    public EraStore(string directory, string networkName, IFileSystem fileSystem)
     {
+        var eraFiles = EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem).ToArray();
         _epochs = new();
         foreach (var file in eraFiles)
         {
@@ -42,6 +48,7 @@ public class EraStore : IEraStore
         }
         _fileSystem = fileSystem;
     }
+
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
     public Task<EraReader> GetReader(long epoch, CancellationToken cancellation = default)
@@ -80,6 +87,65 @@ public class EraStore : IEraStore
         {
             (Block b, TxReceipt[] r, _) = await reader.GetBlockByNumber(number, cancellation);
             return (b, r);
+        }
+    }
+
+    public async Task VerifyAll(ISpecProvider specProvider, CancellationToken cancellationToken, HashSet<ValueHash256>? trustedAccumulators = null, Action<VerificationProgressArgs>? onProgress = null)
+    {
+        if (trustedAccumulators != null)
+        {
+            // Must it? Like, what if there is less in the directory?
+            if (_epochs.Count != trustedAccumulators.Count) throw new ArgumentException("Must have an equal amount of files and accumulators.", nameof(trustedAccumulators));
+        }
+
+        DateTime startTime = DateTime.Now;
+        DateTime lastProgress = DateTime.Now;
+        int fileCount = 0;
+        foreach (KeyValuePair<long, string> kv in _epochs)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            string era = kv.Value;
+            using MemoryStream destination = new();
+            using EraReader eraReader = await EraReader.Create(era, _fileSystem, cancellationToken);
+            var eraAccumulator = await eraReader.ReadAccumulator();
+            if (trustedAccumulators == null || !trustedAccumulators.Contains(new ValueHash256(eraAccumulator)))
+            {
+                throw new EraVerificationException($"Accumulator {eraAccumulator} not trusted from era file {era}");
+            }
+
+            if (!await eraReader.VerifyAccumulator(eraAccumulator, specProvider))
+            {
+                throw new EraVerificationException($"Failed to verify accumulator {eraAccumulator} from era file {era}");
+            }
+
+            fileCount++;
+            TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
+            if (elapsed.TotalSeconds > ProgressInterval.TotalSeconds)
+            {
+                onProgress?.Invoke(new VerificationProgressArgs(fileCount, _epochs.Count, DateTime.Now.Subtract(startTime)));
+                lastProgress = DateTime.Now;
+            }
+        }
+    }
+
+    public async Task CreateAccumulatorFile(string accumulatorPath, CancellationToken cancellationToken)
+    {
+        _fileSystem.File.Delete(accumulatorPath);
+        using StreamWriter stream = new StreamWriter(_fileSystem.File.Create(accumulatorPath), System.Text.Encoding.UTF8);
+        bool first = true;
+
+        foreach (var kv in _epochs)
+        {
+            using (EraReader reader = await EraReader.Create(kv.Value, _fileSystem, cancellationToken))
+            {
+                string root = (await reader.ReadAccumulator(cancellationToken)).ToHexString(true);
+                if (!first)
+                    root = Environment.NewLine + root;
+                else
+                    first = false;
+                await stream.WriteAsync(root);
+            }
         }
     }
 

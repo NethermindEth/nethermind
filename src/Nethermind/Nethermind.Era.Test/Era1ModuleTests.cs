@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Era1;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -77,7 +79,7 @@ public class Era1ModuleTests
     [Test]
     public async Task ImportAndExportGethFiles()
     {
-        var eraFiles = EraReader.GetAllEraFiles("testdata/holesky", "holesky");
+        var eraFiles = EraPathUtils.GetAllEraFiles("testdata/holesky", "holesky");
 
         Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 
@@ -117,7 +119,7 @@ public class Era1ModuleTests
     [TestCase("geth")]
     public async Task VerifyAccumulatorsOnFiles(string dir)
     {
-        var eraFiles = EraReader.GetAllEraFiles(dir, "mainnet");
+        var eraStore = new EraStore(dir, "mainnet", new FileSystem());
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IReceiptSpec receiptSpec = Substitute.For<IReleaseSpec>();
@@ -125,14 +127,7 @@ public class Era1ModuleTests
         receiptSpec.IsEip658Enabled.Returns(true);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(receiptSpec);
 
-        foreach (var era in eraFiles)
-        {
-            using MemoryStream destination = new();
-            using EraReader eraReader = await EraReader.Create(era);
-            var eraAccumulator = await eraReader.ReadAccumulator();
-
-            Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, MainnetSpecProvider.Instance), Is.True);
-        }
+        await eraStore.VerifyAll(specProvider, default);
     }
 
     [Test]

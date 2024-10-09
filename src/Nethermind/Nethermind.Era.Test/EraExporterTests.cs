@@ -12,6 +12,7 @@ using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
+using Nethermind.Blockchain.Era1;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -103,7 +104,7 @@ public class EraExporterTests
         }
         */
 
-        var eraFiles = EraReader.GetAllEraFiles("geth", "mainnet");
+        var eraFiles = EraPathUtils.GetAllEraFiles("geth", "mainnet");
 
         Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 
