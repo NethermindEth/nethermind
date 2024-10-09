@@ -108,13 +108,13 @@ public class PaprikaStateFactory : IStateFactory
 
     // shamelessly stolen from storage trees
     private const int CacheSize = 1024;
-    private static readonly byte[][] _cache = new byte[CacheSize][];
+    private static readonly byte[][] Cache = new byte[CacheSize][];
 
     private static void GetKey(in UInt256 index, Span<byte> key)
     {
         if (index < CacheSize)
         {
-            _cache[(int)index].CopyTo(key);
+            Cache[(int)index].CopyTo(key);
             return;
         }
 
@@ -133,7 +133,7 @@ public class PaprikaStateFactory : IStateFactory
         {
             UInt256 index = (UInt256)i;
             index.ToBigEndian(buffer);
-            _cache[i] = Keccak.Compute(buffer).BytesToArray();
+            Cache[i] = Keccak.Compute(buffer).BytesToArray();
         }
     }
 
