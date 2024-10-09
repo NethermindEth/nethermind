@@ -114,7 +114,7 @@
     },
     "Mainnet (Paprika)": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet -dd E:\\ --Sync.NonValidatorNode true --Sync.DownloadBodiesInFastSync false --Sync.DownloadReceiptsInFastSync false --Sync.FastSync false --Sync.SnapSync false --Metrics.EnableDbSizeMetrics false --jwt-secret-path ",
+      "commandLineArgs": "-c mainnet -dd E:\\ --Sync.NonValidatorNode true --Sync.DownloadBodiesInFastSync false --Sync.DownloadReceiptsInFastSync false --Sync.FastSync false --Sync.SnapSync false --Sync.SnapServingEnabled false --Metrics.EnableDbSizeMetrics false --JsonRpc.JwtSecretFile C:\\Users\\Szymon\\ethereum\\consensus\\prysm\\jwt.hex",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
