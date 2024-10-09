@@ -7,18 +7,18 @@ using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Discovery;
 
-public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false) : ILoggerFactory
+public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false, MsLogLevel overrideAllWith = MsLogLevel.None) : ILoggerFactory
 {
     public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName)
     {
-        return new NethermindLogger(logManager.GetLogger(categoryName), lowerLogLevel);
+        return new NethermindLogger(logManager.GetLogger(categoryName), lowerLogLevel, overrideAllWith);
     }
 
     public void Dispose() { }
 
     public void AddProvider(ILoggerProvider provider) { }
 
-    class NethermindLogger(Logging.ILogger logger, bool lowerLogLevel = false) : Microsoft.Extensions.Logging.ILogger
+    class NethermindLogger(Logging.ILogger logger, bool lowerLogLevel = false, MsLogLevel overrideAllWith = MsLogLevel.None) : Microsoft.Extensions.Logging.ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -27,6 +27,11 @@ public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel 
             if (lowerLogLevel && logLevel > MsLogLevel.Debug)
             {
                 logLevel = MsLogLevel.Debug;
+            }
+
+            if (overrideAllWith != MsLogLevel.None)
+            {
+                logLevel = overrideAllWith;
             }
 
             return logLevel switch
@@ -46,6 +51,11 @@ public class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel 
             if (lowerLogLevel && logLevel > MsLogLevel.Debug)
             {
                 logLevel = MsLogLevel.Debug;
+            }
+
+            if (overrideAllWith != MsLogLevel.None)
+            {
+                logLevel = overrideAllWith;
             }
 
             switch (logLevel)

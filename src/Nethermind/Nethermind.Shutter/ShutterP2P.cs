@@ -60,7 +60,7 @@ public class ShutterP2P : IShutterP2P
             .AddSingleton<PubsubRouter>()
             .AddSingleton<PeerStore>()
             .AddSingleton(sp => sp.GetService<IPeerFactoryBuilder>()!.Build())
-            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
+            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, overrideAllWith: Microsoft.Extensions.Logging.LogLevel.Information))
             .AddLogging(builder =>
                 builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
                 .AddSimpleConsole(l =>
