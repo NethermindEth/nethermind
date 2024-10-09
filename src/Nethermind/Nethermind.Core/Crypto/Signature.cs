@@ -65,10 +65,6 @@ namespace Nethermind.Core.Crypto
         {
         }
 
-        public Signature()
-        {
-        }
-
         public byte[] Bytes { get; } = new byte[64];
         public ulong V { get; set; }
 

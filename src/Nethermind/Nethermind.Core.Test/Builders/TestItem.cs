@@ -100,7 +100,7 @@ namespace Nethermind.Core.Test.Builders
         public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
         public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
 
-        public static byte[] SignatureBytes = [.. new Signature().Bytes, .. KeccakA.Bytes];
+        public static byte[] SignatureBytes = [.. new Signature("0x9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac80388256084f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada1c").Bytes, .. KeccakA.Bytes];
 
         public static ExecutionRequest.ExecutionRequest ExecutionRequestA = new() { RequestType = 0, RequestData = ([.. PublicKeyA.Bytes.Slice(0, 48), .. KeccakA.Bytes, .. (BitConverter.GetBytes((ulong)1_000_000_000)), .. SignatureBytes, .. BitConverter.GetBytes((ulong)1)]) };
         public static ExecutionRequest.ExecutionRequest ExecutionRequestB = new() { RequestType = 0, RequestData = ([.. PublicKeyB.Bytes.Slice(0, 48), .. KeccakB.Bytes, .. (BitConverter.GetBytes((ulong)2_000_000_000)), .. SignatureBytes, .. BitConverter.GetBytes((ulong)2)]) };
