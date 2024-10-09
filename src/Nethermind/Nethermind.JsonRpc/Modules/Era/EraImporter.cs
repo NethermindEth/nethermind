@@ -58,10 +58,6 @@ public class EraImporter : IEraImporter
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
     {
-        string[] eraFiles = EraReader.GetAllEraFiles(src, _networkName, _fileSystem).ToArray();
-
-        EraStore eraStore = new(eraFiles, _fileSystem);
-
         if (!string.IsNullOrEmpty(accumulatorFile))
         {
             await VerifyEraFiles(src, accumulatorFile, cancellation);
@@ -148,6 +144,11 @@ public class EraImporter : IEraImporter
 
     private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock)
     {
+        if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
+        {
+            throw new EraImportException($"Invalid block in Era1 archive. {error}");
+        }
+
         var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         var addResult = await _blockTree.SuggestBlockAsync(block, options);
         switch (addResult)

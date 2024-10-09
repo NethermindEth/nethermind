@@ -12,6 +12,7 @@ using Nethermind.Synchronization;
 using NSubstitute;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
+using Nethermind.Core;
 
 namespace Nethermind.Era1.Test;
 public class EraImporterTest
@@ -21,7 +22,7 @@ public class EraImporterTest
     {
         IBlockTree blockTree = Build.A.BlockTree().TestObject;
         IFileSystem fileSystem = new MockFileSystem();
-        fileSystem.Directory.CreateDirectory("C:/test");
+        IDirectoryInfo tempDirectory = fileSystem.Directory.CreateTempSubdirectory();
         EraImporter sut = new(fileSystem,
                               blockTree,
                               Substitute.For<IBlockValidator>(),
@@ -29,7 +30,8 @@ public class EraImporterTest
                               Substitute.For<ISpecProvider>(),
                               "abc");
 
-        Assert.That(() => sut.ImportAsArchiveSync("test", CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.FullName, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        tempDirectory.Delete();
     }
 
     [Test]
@@ -37,8 +39,8 @@ public class EraImporterTest
     {
         IBlockTree blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         IFileSystem fileSystem = new MockFileSystem();
-        fileSystem.Directory.CreateDirectory("C:/test");
-        fileSystem.File.Create("C:/test/abc-00000-00000000.era1");
+        IDirectoryInfo tempDirectory = fileSystem.Directory.CreateTempSubdirectory();
+        fileSystem.File.Create(Path.Join(tempDirectory.FullName, "abc-00000-00000000.era1"));
         EraImporter sut = new(fileSystem,
                               blockTree,
                               Substitute.For<IBlockValidator>(),
@@ -47,17 +49,22 @@ public class EraImporterTest
                               "abc",
                               1);
 
-        Assert.That(() => sut.ImportAsArchiveSync("test", CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.FullName, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        tempDirectory.Delete(recursive: true);
     }
 
     [Test]
     public async Task ImportAsArchiveSync_BlockCannotBeValidated_ThrowEraImportException()
     {
         IBlockTree blockTree = Build.A.BlockTree().TestObject;
-        IFileSystem fileSystem = await CreateEraFileSystem();
+        (IFileSystem fileSystem, IBlockTree sourceBlocktree) = await CreateEraFileSystem();
+        blockTree.SuggestBlock(sourceBlocktree.FindBlock(0)!, BlockTreeSuggestOptions.None);
+
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(false);
         EraImporter sut = new(fileSystem,
                               blockTree,
-                              Substitute.For<IBlockValidator>(),
+                              blockValidator,
                               Substitute.For<IReceiptStorage>(),
                               Substitute.For<ISpecProvider>(),
                               "abc");
@@ -143,14 +150,14 @@ public class EraImporterTest
             Throws.TypeOf<EraVerificationException>());
     }
 
-    private async Task<IFileSystem> CreateEraFileSystem()
+    private async Task<(IFileSystem, IBlockTree)> CreateEraFileSystem()
     {
         IFileSystem fileSystem = new MockFileSystem();
         IBlockTree blockTree = Build.A.BlockTree().OfChainLength(512).TestObject;
 
         var exporter = new EraExporter(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), "abc");
         await exporter.Export("test", 0, 511, 16);
-        return fileSystem;
+        return (fileSystem, blockTree);
     }
 
 }
