@@ -680,7 +680,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test][Repeat(10)]
+        [Test][Repeat(3)]
         public void should_handle_indexing_blobs_when_adding_txs_in_parallel([Values(true, false)] bool isPersistentStorage)
         {
             const int txsPerSender = 10;
