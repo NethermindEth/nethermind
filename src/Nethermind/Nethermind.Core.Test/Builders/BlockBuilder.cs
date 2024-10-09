@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -244,6 +245,13 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithReceiptsRoot(Hash256 keccak)
         {
             TestObjectInternal.Header.ReceiptsRoot = keccak;
+            return this;
+        }
+
+        public BlockBuilder WithEmptyRequestsHash()
+        {
+            TestObjectInternal.Header.RequestsHash = Array.Empty<ExecutionRequest.ExecutionRequest>().CalculateHash();
+            TestObjectInternal.ExecutionRequests = Array.Empty<ExecutionRequest.ExecutionRequest>();
             return this;
         }
 

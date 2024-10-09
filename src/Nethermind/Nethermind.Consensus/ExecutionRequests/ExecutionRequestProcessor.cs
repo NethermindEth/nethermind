@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
 using System.Linq;
+using System.Security.Cryptography;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -127,16 +129,49 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
     }
 
+    public Hash256 CalculateRequestsHash(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, out ExecutionRequest[] requests)
+    {
+        requests = Array.Empty<ExecutionRequest>();
+        using (SHA256 sha256 = SHA256.Create())
+        {
+            using (SHA256 sha256Inner = SHA256.Create())
+            {
+                foreach (ExecutionRequest request in ProcessDeposits(receipts, spec))
+                {
+                    requests.AddRange(request);
+                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
+
+                    // Update the outer hash with the result of each inner hash
+                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+                }
+                foreach (ExecutionRequest request in ReadRequests(block, state, spec, spec.Eip7002ContractAddress))
+                {
+                    requests.AddRange(request);
+                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
+
+                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+                }
+
+                foreach (ExecutionRequest request in ReadRequests(block, state, spec, spec.Eip7251ContractAddress))
+                {
+                    requests.AddRange(request);
+                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
+
+                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+                }
+
+                // Complete the final hash computation
+                sha256.TransformFinalBlock(new byte[0], 0, 0);
+                return new Hash256(sha256.Hash!);
+            }
+        }
+    }
+
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (!spec.RequestsEnabled)
             return;
-
-        IEnumerable<ExecutionRequest> requests;
-        requests = ProcessDeposits(receipts, spec);
-        requests = requests.Concat(ReadRequests(block, state, spec, spec.Eip7002ContractAddress));
-        requests = requests.Concat(ReadRequests(block, state, spec, spec.Eip7251ContractAddress));
-        block.Header.RequestsHash = requests.CalculateHash();
-        block.ExecutionRequests = requests.ToArray();
+        block.Header.RequestsHash = CalculateRequestsHash(block, state, receipts, spec, out ExecutionRequest[] requests);
+        block.ExecutionRequests = requests;
     }
 }

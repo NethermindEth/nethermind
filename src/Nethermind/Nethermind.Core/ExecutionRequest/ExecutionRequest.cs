@@ -61,26 +61,6 @@ public static class ExecutionRequestExtensions
         return encoded.ToArray();
     }
 
-    public static Hash256 CalculateHash(this IEnumerable<ExecutionRequest> requests)
-    {
-        using (SHA256 sha256 = SHA256.Create())
-        {
-            using (SHA256 sha256Inner = SHA256.Create())
-            {
-                foreach (ExecutionRequest request in requests)
-                {
-                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
-
-                    // Update the outer hash with the result of each inner hash
-                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
-                }
-                // Complete the final hash computation
-                sha256.TransformFinalBlock(new byte[0], 0, 0);
-                return new Hash256(sha256.Hash!);
-            }
-        }
-    }
-
     public static Hash256 CalculateHash(this ExecutionRequest[] requests)
     {
         using (SHA256 sha256 = SHA256.Create())
