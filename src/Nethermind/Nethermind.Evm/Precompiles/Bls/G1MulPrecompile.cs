@@ -27,6 +27,8 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG1MulPrecompile++;
+
         const int expectedInputLength = BlsConst.LenG1 + BlsConst.LenFr;
         if (inputData.Length != expectedInputLength)
         {

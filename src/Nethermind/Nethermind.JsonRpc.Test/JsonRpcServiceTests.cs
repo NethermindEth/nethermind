@@ -231,7 +231,7 @@ public class JsonRpcServiceTests
         netRpcModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
         JsonRpcSuccessResponse? response = TestRequest(netRpcModule, "net_version", null) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("1"));
-        Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
+        Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
     }
 
     [Test]

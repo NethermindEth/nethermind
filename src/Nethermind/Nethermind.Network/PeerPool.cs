@@ -63,19 +63,12 @@ namespace Nethermind.Network
             _createNewNodePeer = CreateNew;
             _createNewNetworkNodePeer = CreateNew;
 
-            _nodeSource.NodeAdded += NodeSourceOnNodeAdded;
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
             TryRemove(e.Node.Id, out _);
-        }
-
-        private void NodeSourceOnNodeAdded(object? sender, NodeEventArgs e)
-        {
-            // _logger.Error($"Adding a node from source {sender}: {e.Node}");
-            GetOrAdd(e.Node);
         }
 
         public Peer GetOrAdd(Node node)
@@ -268,13 +261,24 @@ namespace Nethermind.Network
 
         public void Start()
         {
-            List<Node> initialNodes = _nodeSource.LoadInitialList();
-            foreach (Node initialNode in initialNodes)
-            {
-                GetOrAdd(initialNode);
-            }
-
+            _ = FeedFromNodeSource();
             StartPeerPersistenceTimer();
+        }
+
+        private async Task FeedFromNodeSource()
+        {
+            CancellationToken token = _cancellationTokenSource.Token;
+
+            await foreach (Node node in _nodeSource.DiscoverNodes(token))
+            {
+                while (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                    await Task.Delay(1000, token);
+                }
+
+                GetOrAdd(node);
+            }
         }
 
         public async Task StopAsync()

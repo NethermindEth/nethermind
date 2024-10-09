@@ -21,7 +21,7 @@ public static class BlsExtensions
             return false;
         }
 
-        p.Point.Clear();
+        p.Zero();
 
         ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
         ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..];
@@ -70,7 +70,7 @@ public static class BlsExtensions
             return false;
         }
 
-        p.Point.Clear();
+        p.Zero();
 
         ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
         ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..(2 * BlsConst.LenFp)];

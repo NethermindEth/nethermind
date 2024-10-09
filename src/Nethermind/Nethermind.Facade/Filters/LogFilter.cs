@@ -23,12 +23,12 @@ namespace Nethermind.Blockchain.Filters
             TopicsFilter = topicsFilter;
         }
 
-        public bool Accepts(LogEntry logEntry) => AddressFilter.Accepts(logEntry.LoggersAddress) && TopicsFilter.Accepts(logEntry);
+        public bool Accepts(LogEntry logEntry) => AddressFilter.Accepts(logEntry.Address) && TopicsFilter.Accepts(logEntry);
 
         public bool Matches(Core.Bloom bloom) => AddressFilter.Matches(bloom) && TopicsFilter.Matches(bloom);
 
         public bool Matches(ref BloomStructRef bloom) => AddressFilter.Matches(ref bloom) && TopicsFilter.Matches(ref bloom);
 
-        public bool Accepts(ref LogEntryStructRef logEntry) => AddressFilter.Accepts(ref logEntry.LoggersAddress) && TopicsFilter.Accepts(ref logEntry);
+        public bool Accepts(ref LogEntryStructRef logEntry) => AddressFilter.Accepts(ref logEntry.Address) && TopicsFilter.Accepts(ref logEntry);
     }
 }

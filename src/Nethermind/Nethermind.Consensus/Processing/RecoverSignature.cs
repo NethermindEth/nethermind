@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
@@ -60,7 +62,7 @@ namespace Nethermind.Consensus.Processing
             // Don't access txPool in Parallel loop as increases contention
             foreach (Transaction tx in txs)
             {
-                if (!ShouldRecoverSender(tx))
+                if (!ShouldRecoverSignatures(tx))
                     continue;
 
                 Transaction? poolTx = null;
@@ -84,22 +86,38 @@ namespace Nethermind.Consensus.Processing
                 {
                     recoverFromEcdsa++;
                 }
+
+                if (tx.HasAuthorizationList)
+                {
+                    for (int i = 0; i < tx.AuthorizationList.Length; i++)
+                    {
+                        if (poolTx.AuthorizationList[i].Authority is not null)
+                        {
+                            tx.AuthorizationList[i].Authority = poolTx.AuthorizationList[i].Authority;
+                        }
+                        else
+                        {
+                            recoverFromEcdsa++;
+                        }
+                    }
+                }
             }
 
             if (recoverFromEcdsa == 0)
                 return;
 
-            bool useSignatureChainId = !_specProvider.GetSpec(block.Header).ValidateChainId;
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
+            bool useSignatureChainId = !releaseSpec.ValidateChainId;
             if (recoverFromEcdsa > 3)
             {
                 // Recover ecdsa in Parallel
                 Parallel.For(0, txs.Length, i =>
                 {
                     Transaction tx = txs[i];
-                    if (!ShouldRecoverSender(tx)) return;
+                    if (!ShouldRecoverSignatures(tx)) return;
 
-                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
-
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                    RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
                 });
             }
@@ -107,17 +125,41 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    if (!ShouldRecoverSender(tx)) continue;
+                    if (!ShouldRecoverSignatures(tx)) continue;
 
-                    tx.SenderAddress = _ecdsa.RecoverAddress(tx, useSignatureChainId);
-
+                    tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, useSignatureChainId);
+                    RecoverAuthorities(tx);
                     if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
+                }
+            }
+
+            void RecoverAuthorities(Transaction tx)
+            {
+                if (!releaseSpec.IsAuthorizationListEnabled
+                    || !tx.HasAuthorizationList)
+                {
+                    return;
+                }
+
+                if (tx.AuthorizationList.Length > 3)
+                {
+                    Parallel.ForEach(tx.AuthorizationList.Where(t => t.Authority is null), (tuple) =>
+                    {
+                        tuple.Authority = _ecdsa.RecoverAddress(tuple);
+                    });
+                }
+                else
+                {
+                    foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
+                    {
+                        tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
+                    }
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ShouldRecoverSender(Transaction tx)
-            => tx.IsSigned && tx.SenderAddress is null;
+        private static bool ShouldRecoverSignatures(Transaction tx)
+            => tx.IsSigned && (tx.SenderAddress is null || (tx.HasAuthorizationList && tx.AuthorizationList.Any(a => a.Authority is null)));
     }
 }

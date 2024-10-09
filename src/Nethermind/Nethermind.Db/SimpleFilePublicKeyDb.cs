@@ -90,6 +90,7 @@ namespace Nethermind.Db
         public void Clear()
         {
             File.Delete(DbPath);
+            _cache.Clear();
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;

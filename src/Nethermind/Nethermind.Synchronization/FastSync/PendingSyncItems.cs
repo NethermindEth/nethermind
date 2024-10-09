@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.FastSync
         [MethodImpl(MethodImplOptions.Synchronized)]
         public string RecalculatePriorities()
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
 
             string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
             reviewMessage += $"  before {Description}" + Environment.NewLine;
@@ -225,8 +225,7 @@ namespace Nethermind.Synchronization.FastSync
 
             reviewMessage += $"  after {Description}" + Environment.NewLine;
 
-            stopwatch.Stop();
-            reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
+            reviewMessage += $"  time spent in review: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms";
             return reviewMessage;
         }
     }

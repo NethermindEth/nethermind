@@ -28,6 +28,8 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG1AddPrecompile++;
+
         const int expectedInputLength = 2 * BlsConst.LenG1;
         if (inputData.Length != expectedInputLength)
         {

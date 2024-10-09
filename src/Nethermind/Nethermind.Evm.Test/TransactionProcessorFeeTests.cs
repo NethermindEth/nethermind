@@ -13,11 +13,12 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Int256;
 using NUnit.Framework;
+using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Evm.Test;
 
@@ -32,7 +33,7 @@ public class TransactionProcessorFeeTests
     [SetUp]
     public void Setup()
     {
-        _spec = new(London.Instance);
+        _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
@@ -56,7 +57,7 @@ public class TransactionProcessorFeeTests
     {
         if (withFeeCollector)
         {
-            _spec.Eip1559FeeCollector = TestItem.AddressC;
+            _spec.FeeCollector = TestItem.AddressC;
         }
 
         Transaction tx = Build.A.Transaction
@@ -84,7 +85,7 @@ public class TransactionProcessorFeeTests
     {
         if (withFeeCollector)
         {
-            _spec.Eip1559FeeCollector = TestItem.AddressC;
+            _spec.FeeCollector = TestItem.AddressC;
         }
 
         Transaction tx1 = Build.A.Transaction
@@ -107,6 +108,40 @@ public class TransactionProcessorFeeTests
         tracer.BurntFees.Should().Be(84000);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Check_paid_fees_with_blob(bool withFeeCollector)
+    {
+        UInt256 initialBalance = 0;
+        if (withFeeCollector)
+        {
+            _spec.FeeCollector = TestItem.AddressC;
+            initialBalance = _stateProvider.GetBalance(TestItem.AddressC);
+        }
+
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).TestObject;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.Blob)
+            .WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1).TestObject;
+
+        Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(1)
+            .WithBeneficiary(TestItem.AddressB).WithTransactions(tx).WithGasLimit(21000).WithHeader(header).TestObject;
+
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        tracer.Fees.Should().Be(0);
+
+        block.GasUsed.Should().Be(21000);
+        tracer.BurntFees.Should().Be(131072);
+
+        if (withFeeCollector)
+        {
+            UInt256 currentBalance = _stateProvider.GetBalance(TestItem.AddressC);
+            (currentBalance - initialBalance).Should().Be(131072);
+        }
+    }
 
     [Test]
     public void Check_paid_fees_with_byte_code()

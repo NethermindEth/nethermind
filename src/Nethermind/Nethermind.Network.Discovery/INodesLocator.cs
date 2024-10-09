@@ -18,4 +18,6 @@ public interface INodesLocator
     Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken);
 
     void Initialize(Node masterNode);
+
+    bool ShouldThrottle { get; set; }
 }

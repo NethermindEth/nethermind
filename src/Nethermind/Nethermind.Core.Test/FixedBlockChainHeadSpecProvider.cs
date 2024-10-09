@@ -27,6 +27,8 @@ namespace Nethermind.Core.Test
 
         public long? DaoBlockNumber => specProvider.DaoBlockNumber;
 
+        public ulong? BeaconChainGenesisTimestamp => specProvider.BeaconChainGenesisTimestamp;
+
         public ulong NetworkId => specProvider.NetworkId;
         public ulong ChainId => specProvider.ChainId;
 

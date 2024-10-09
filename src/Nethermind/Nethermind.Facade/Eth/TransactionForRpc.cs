@@ -61,6 +61,11 @@ public class TransactionForRpc
         {
             AccessList = null;
         }
+        AuthorizationList = transaction.SupportsAuthorizationList
+            ? transaction.AuthorizationList is null
+                ? Array.Empty<AuthorizationTupleForRpc>()
+                : AuthorizationTupleForRpc.FromAuthorizationList(transaction.AuthorizationList)
+            : null;
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas;
         BlobVersionedHashes = transaction.BlobVersionedHashes;
 
@@ -126,6 +131,8 @@ public class TransactionForRpc
     public TxType Type { get; set; }
 
     public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IEnumerable<AuthorizationTupleForRpc>? AuthorizationList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? MaxFeePerBlobGas { get; set; } // eip4844

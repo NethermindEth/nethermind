@@ -28,6 +28,8 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsMapFp2ToG2Precompile++;
+
         const int expectedInputLength = 2 * BlsConst.LenFp;
         if (inputData.Length != expectedInputLength)
         {

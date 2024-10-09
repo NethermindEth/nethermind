@@ -15,7 +15,6 @@ using NUnit.Framework;
 namespace Nethermind.Specs.Test.ChainSpecStyle;
 
 [Parallelizable(ParallelScope.All)]
-[TestFixture]
 public class ChainSpecLoaderTests
 {
     [Test]
@@ -48,7 +47,7 @@ public class ChainSpecLoaderTests
 
         Assert.That(chainSpec.ChainId, Is.EqualTo(1), $"{nameof(chainSpec.ChainId)}");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
-        Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
+        Assert.That(chainSpec.Genesis, Is.Not.Null, $"{nameof(ChainSpec.Genesis)}");
 
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"initial base fee value");
         Assert.That(chainSpec.Parameters.Eip1559ElasticityMultiplier, Is.EqualTo((long)1), $"elasticity multiplier");
@@ -66,7 +65,7 @@ public class ChainSpecLoaderTests
             $"genesis {nameof(BlockHeader.ExtraData)}");
         Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(0x8000000L), $"genesis {nameof(BlockHeader.GasLimit)}");
 
-        Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
+        Assert.That(chainSpec.Allocations, Is.Not.Null, $"{nameof(ChainSpec.Allocations)}");
         Assert.That(chainSpec.Allocations.Count, Is.EqualTo(1), $"allocations count");
         Assert.That(
             chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Balance, Is.EqualTo(new UInt256(0xf4240)),

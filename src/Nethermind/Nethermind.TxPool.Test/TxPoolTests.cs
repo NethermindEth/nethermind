@@ -1660,7 +1660,7 @@ namespace Nethermind.TxPool.Test
             // No need to check for deposit tx
             if (txType == TxType.DepositTx) return;
 
-            ISpecProvider specProvider = GetCancunSpecProvider();
+            ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
 
@@ -1684,8 +1684,10 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(0)
                 .WithType(txType)
                 .WithShardBlobTxTypeAndFieldsIfBlobTx()
+                .WithAuthorizationCodeIfAuthorizationListTx()
                 .WithMaxFeePerGas(9.GWei())
                 .WithMaxPriorityFeePerGas(9.GWei())
+                .WithGasLimit(txType != TxType.SetCode ? GasCostOf.Transaction : GasCostOf.Transaction + GasCostOf.NewAccount)
                 .WithTo(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
@@ -1696,6 +1698,35 @@ namespace Nethermind.TxPool.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(expectedResult ? 1 : 0);
             _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
             _txPool.GetPendingTransactions().Should().NotContain(testTx);
+        }
+
+        static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
+        {
+            yield return (new byte[16], AcceptTxResult.SenderIsContract);
+            //Delegation code
+            yield return ([.. Eip7702Constants.DelegationHeader, .. new byte[20]], AcceptTxResult.Accepted);
+        }
+        [TestCaseSource(nameof(CodeCases))]
+        public void SubmitTx_CodeIsNotDelegationAndDelegation_DelegationIsAccepted((byte[] code, AcceptTxResult expected) testCase)
+        {
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
+            _txPool = CreatePool(txPoolConfig, specProvider);
+
+            Transaction testTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithMaxFeePerGas(9.GWei())
+                .WithMaxPriorityFeePerGas(9.GWei())
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            _stateProvider.InsertCode(TestItem.PrivateKeyA.Address, testCase.code, Prague.Instance);
+
+            AcceptTxResult result = _txPool.SubmitTx(testTx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(testCase.expected);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
@@ -1726,7 +1757,7 @@ namespace Nethermind.TxPool.Test
             txStorage ??= new BlobTxStorage();
 
             _headInfo = chainHeadInfoProvider;
-            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider);
+            _headInfo ??= new ChainHeadInfoProvider(specProvider, _blockTree, _stateProvider, new CodeInfoRepository());
 
             return new TxPool(
                 _ethereumEcdsa,
@@ -1760,6 +1791,13 @@ namespace Nethermind.TxPool.Test
         {
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Cancun.Instance);
+            return specProvider;
+        }
+
+        private static ISpecProvider GetPragueSpecProvider()
+        {
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Prague.Instance);
             return specProvider;
         }
 

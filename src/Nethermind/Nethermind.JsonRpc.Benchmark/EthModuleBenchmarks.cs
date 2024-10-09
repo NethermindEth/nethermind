@@ -37,6 +37,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 

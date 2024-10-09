@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
@@ -37,7 +36,7 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
@@ -60,7 +59,7 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
@@ -83,7 +82,7 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
@@ -106,6 +105,6 @@ public class PluginLoaderTests
             typeof(HealthChecksPlugin),
             typeof(HivePlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 }

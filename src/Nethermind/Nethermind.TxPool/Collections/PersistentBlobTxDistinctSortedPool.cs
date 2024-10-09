@@ -33,7 +33,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
         foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
         {
             if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
@@ -46,11 +46,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
         if (_logger.IsInfo && numberOfTxsInDb != 0)
         {
-            long loadingTime = stopwatch.ElapsedMilliseconds;
-            _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime}ms");
+            long loadingTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+            _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime:N0}ms");
             _logger.Info($"There are {BlobIndex.Count} unique blobs indexed");
         }
-        stopwatch.Stop();
     }
 
     public override bool TryInsert(ValueHash256 hash, Transaction fullBlobTx, out Transaction? removed)

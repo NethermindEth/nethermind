@@ -34,7 +34,7 @@ public class MergePluginTests
     {
         _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
         BlocksConfig? miningConfig = new();
-        IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
+        IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
 
         _context = Build.ContextWithMocks();
         _context.SealEngineType = SealEngineType.Clique;
@@ -109,10 +109,10 @@ public class MergePluginTests
         await _plugin.InitSynchronization();
         await _plugin.InitNetworkProtocol();
         ISyncConfig syncConfig = _context.Config<ISyncConfig>();
-        Assert.IsTrue(syncConfig.NetworkingEnabled);
-        Assert.IsTrue(_context.GossipPolicy.CanGossipBlocks);
+        Assert.That(syncConfig.NetworkingEnabled, Is.True);
+        Assert.That(_context.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!, null);
-        Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
+        Assert.That(_context.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
         await _plugin.InitRpcModules();
         _context.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
         await _plugin.DisposeAsync();

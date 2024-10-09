@@ -12,7 +12,6 @@ using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;
 
-[TestFixture]
 [Parallelizable(ParallelScope.Self)]
 public class VirtualMachineTests : VirtualMachineTestsBase
 {
@@ -61,7 +60,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(e => e.Error is not null), Is.True);
     }
 
     [Test]
@@ -74,7 +73,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(e => e.Error is not null), Is.True);
     }
 
     [Test]
@@ -88,7 +87,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(e => e.Error is not null), Is.True);
     }
 
     [Test]
@@ -103,7 +102,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.True(trace.Entries.Any(e => e.Error is not null));
+        Assert.That(trace.Entries.Any(e => e.Error is not null), Is.True);
     }
 
     [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]

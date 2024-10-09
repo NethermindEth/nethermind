@@ -6,19 +6,17 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public readonly struct TxExecutionContext
+    public readonly struct TxExecutionContext(
+        in BlockExecutionContext blockExecutionContext,
+        Address origin,
+        in UInt256 gasPrice,
+        byte[][] blobVersionedHashes,
+        ICodeInfoRepository codeInfoRepository)
     {
-        public readonly BlockExecutionContext BlockExecutionContext;
-        public Address Origin { get; }
-        public UInt256 GasPrice { get; }
-        public byte[][]? BlobVersionedHashes { get; }
-
-        public TxExecutionContext(in BlockExecutionContext blockExecutionContext, Address origin, in UInt256 gasPrice, byte[][] blobVersionedHashes)
-        {
-            BlockExecutionContext = blockExecutionContext;
-            Origin = origin;
-            GasPrice = gasPrice;
-            BlobVersionedHashes = blobVersionedHashes;
-        }
+        public readonly BlockExecutionContext BlockExecutionContext = blockExecutionContext;
+        public Address Origin { get; } = origin;
+        public UInt256 GasPrice { get; } = gasPrice;
+        public byte[][]? BlobVersionedHashes { get; } = blobVersionedHashes;
+        public ICodeInfoRepository CodeInfoRepository { get; } = codeInfoRepository;
     }
 }

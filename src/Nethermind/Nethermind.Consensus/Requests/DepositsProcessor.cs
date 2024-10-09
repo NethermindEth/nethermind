@@ -30,7 +30,7 @@ public class DepositsProcessor : IDepositsProcessor
                 for (var j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
-                    if (log.LoggersAddress == spec.DepositContractAddress)
+                    if (log.Address == spec.DepositContractAddress)
                     {
                         yield return DecodeDeposit(log);
                     }

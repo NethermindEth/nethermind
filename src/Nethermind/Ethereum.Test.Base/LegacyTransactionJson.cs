@@ -14,6 +14,7 @@ namespace Ethereum.Test.Base
         public UInt256 Nonce { get; set; }
         public Address To { get; set; }
         public UInt256 Value { get; set; }
+        public string Sender { get; set; }
         public byte[] R { get; set; }
         public byte[] S { get; set; }
         public ulong V { get; set; }

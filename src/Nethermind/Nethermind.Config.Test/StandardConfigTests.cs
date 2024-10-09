@@ -31,7 +31,7 @@ namespace Nethermind.Config.Test
             string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.JsonRpc.dll").OrderBy(n => n).ToArray();
             foreach (string dll in dlls)
             {
-                TestContext.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
+                TestContext.Out.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
                 Assembly assembly = Assembly.LoadFile(dll);
                 Type[] configs =
                     assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface)
@@ -39,7 +39,7 @@ namespace Nethermind.Config.Test
 
                 foreach (Type configType in configs)
                 {
-                    TestContext.WriteLine($"  Verifying type {configType.Name}");
+                    TestContext.Out.WriteLine($"  Verifying type {configType.Name}");
                     PropertyInfo[] properties = configType.GetProperties();
 
                     Type? implementationType = configType.Assembly.GetExportedTypes()
@@ -56,7 +56,7 @@ namespace Nethermind.Config.Test
                     {
                         try
                         {
-                            TestContext.WriteLine($"    Verifying property {property.Name}");
+                            TestContext.Out.WriteLine($"    Verifying property {property.Name}");
                             verifier(property, instance);
                         }
                         catch (Exception e)

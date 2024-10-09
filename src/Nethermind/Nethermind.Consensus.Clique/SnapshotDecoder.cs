@@ -25,8 +25,7 @@ namespace Nethermind.Consensus.Clique
             List<Vote> votes = DecodeVotes(rlpStream);
             // Tally
             Dictionary<Address, Tally> tally = DecodeTally(rlpStream);
-            Snapshot snapshot = new Snapshot(number, hash, signers, tally);
-            snapshot.Votes = votes;
+            Snapshot snapshot = new(number, hash, signers, tally) { Votes = votes };
 
             return snapshot;
         }

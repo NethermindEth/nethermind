@@ -116,7 +116,7 @@ public partial class BlockDownloaderTests
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        Assert.True(ctx.PosSwitcher.HasEverReachedTerminalBlock());
+        Assert.That(ctx.PosSwitcher.HasEverReachedTerminalBlock(), Is.True);
     }
 
     [TestCase(32L, DownloaderOptions.MoveToMain, 16, false, 16)]

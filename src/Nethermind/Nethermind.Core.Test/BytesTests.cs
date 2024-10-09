@@ -161,8 +161,8 @@ namespace Nethermind.Core.Test
                     Assert.That(bytes[32 - 1 - i], Is.EqualTo(before[i]));
                 }
 
-                TestContext.WriteLine(before.ToHexString());
-                TestContext.WriteLine(bytes.ToHexString());
+                TestContext.Out.WriteLine(before.ToHexString());
+                TestContext.Out.WriteLine(bytes.ToHexString());
             }
         }
 

@@ -7,7 +7,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Facade.Filters;
 
-namespace Nethermind.Blockchain.Find
+namespace Nethermind.Facade.Find
 {
     public interface ILogFinder
     {

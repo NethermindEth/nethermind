@@ -90,7 +90,7 @@ public class ChainParameters
     /// <summary>
     /// Optional, address where burnt EIP-1559 fees will go
     /// </summary>
-    public Address Eip1559FeeCollector { get; set; }
+    public Address FeeCollector { get; set; }
 
     /// <summary>
     /// Block from which EIP1559 base fee cannot drop below <see cref="Eip1559BaseFeeMinValue"/>
@@ -107,6 +107,7 @@ public class ChainParameters
     public long? TerminalPoWBlockNumber { get; set; }
 
     public UInt256? TerminalTotalDifficulty { get; set; }
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }
     public ulong? Eip3860TransitionTimestamp { get; set; }
@@ -121,9 +122,12 @@ public class ChainParameters
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
+    public ulong? Eip7251TransitionTimestamp { get; set; }
+    public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
     public Address Eip2935ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
 
     #region EIP-4844 parameters
@@ -150,5 +154,10 @@ public class ChainParameters
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844#parameters">EIP-4844</see>.
     /// </summary>
     public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
+
+    /// <summary>
+    /// Enables blob gas fee collection for Gnosis chain
+    /// </summary>
+    public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     #endregion
 }

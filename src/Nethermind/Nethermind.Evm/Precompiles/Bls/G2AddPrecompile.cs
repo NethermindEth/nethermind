@@ -28,6 +28,8 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG2AddPrecompile++;
+
         const int expectedInputLength = 2 * BlsConst.LenG2;
         if (inputData.Length != expectedInputLength)
         {

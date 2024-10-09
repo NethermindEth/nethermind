@@ -8,12 +8,16 @@ namespace Nethermind.Serialization.Rlp;
 
 public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlpValueDecoder<ConsensusRequest>, IRlpObjectDecoder<ConsensusRequest>
 {
-    private readonly WithdrawalRequestDecoder _withdrawalRequestDecoder = new();
+    public static ConsensusRequestDecoder Instance { get; } = new();
+
     private readonly DepositDecoder _depositDecoder = DepositDecoder.Instance;
+    private readonly WithdrawalRequestDecoder _withdrawalRequestDecoder = WithdrawalRequestDecoder.Instance;
+    private readonly ConsolidationRequestDecoder _consolidationRequestDecoder = ConsolidationRequestDecoder.Instance;
     public int GetContentLength(ConsensusRequest item, RlpBehaviors rlpBehaviors)
     {
         int length = item.Type switch
         {
+            ConsensusRequestsType.ConsolidationRequest => _consolidationRequestDecoder.GetContentLength((ConsolidationRequest)item, rlpBehaviors),
             ConsensusRequestsType.WithdrawalRequest => _withdrawalRequestDecoder.GetContentLength((WithdrawalRequest)item, rlpBehaviors),
             ConsensusRequestsType.Deposit => _depositDecoder.GetContentLength((Deposit)item, rlpBehaviors),
             _ => throw new RlpException($"Unsupported consensus request type {item.Type}")
@@ -25,6 +29,7 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
     {
         int length = item.Type switch
         {
+            ConsensusRequestsType.ConsolidationRequest => _consolidationRequestDecoder.GetLength((ConsolidationRequest)item, rlpBehaviors),
             ConsensusRequestsType.WithdrawalRequest => _withdrawalRequestDecoder.GetLength((WithdrawalRequest)item, rlpBehaviors),
             ConsensusRequestsType.Deposit => _depositDecoder.GetLength((Deposit)item, rlpBehaviors),
             _ => throw new RlpException($"Unsupported consensus request type {item.Type}")
@@ -55,6 +60,7 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
 
         ConsensusRequest result = consensusRequestsType switch
         {
+            ConsensusRequestsType.ConsolidationRequest => _consolidationRequestDecoder.Decode(rlpStream, rlpBehaviors),
             ConsensusRequestsType.WithdrawalRequest => _withdrawalRequestDecoder.Decode(rlpStream, rlpBehaviors),
             ConsensusRequestsType.Deposit => _depositDecoder.Decode(rlpStream, rlpBehaviors),
 
@@ -81,6 +87,7 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
 
         ConsensusRequest result = consensusRequestsType switch
         {
+            ConsensusRequestsType.ConsolidationRequest => _consolidationRequestDecoder.Decode(ref decoderContext, rlpBehaviors),
             ConsensusRequestsType.WithdrawalRequest => _withdrawalRequestDecoder.Decode(ref decoderContext, rlpBehaviors),
             ConsensusRequestsType.Deposit => _depositDecoder.Decode(ref decoderContext, rlpBehaviors),
             _ => throw new RlpException($"Unsupported consensus request type {consensusRequestsType}")
@@ -102,6 +109,9 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
         stream.WriteByte((byte)item.Type);
         switch (item.Type)
         {
+            case ConsensusRequestsType.ConsolidationRequest:
+                _consolidationRequestDecoder.Encode(stream, (ConsolidationRequest)item, rlpBehaviors);
+                break;
             case ConsensusRequestsType.WithdrawalRequest:
                 _withdrawalRequestDecoder.Encode(stream, (WithdrawalRequest)item, rlpBehaviors);
                 break;

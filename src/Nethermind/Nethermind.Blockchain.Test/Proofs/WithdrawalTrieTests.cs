@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain.Test.Proofs;
 
 public class WithdrawalTrieTests
 {
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_compute_hash_root()
     {
         var block = Build.A.Block.WithWithdrawals(10).TestObject;
@@ -23,7 +23,7 @@ public class WithdrawalTrieTests
             trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Should_verify_proof()
     {
         var count = 10;
@@ -32,7 +32,7 @@ public class WithdrawalTrieTests
 
         for (int i = 0; i < count; i++)
         {
-            Assert.IsTrue(VerifyProof(trie.BuildProof(i), trie.RootHash));
+            Assert.That(VerifyProof(trie.BuildProof(i), trie.RootHash), Is.True);
         }
     }
 

@@ -36,6 +36,8 @@ public class G2MultiMulPrecompile : IPrecompile<G2MultiMulPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG2MSMPrecompile++;
+
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
             return IPrecompile.Failure;

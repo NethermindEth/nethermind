@@ -199,9 +199,9 @@ namespace Nethermind.Serialization.Ssz.Test
         //        )
         //    );
 
-        //    TestContext.WriteLine("root: {0:x}", root);
-        //    TestContext.WriteLine("bytes: {0}", bytes.ToHexString(true));
-        //    TestContext.WriteLine("expected: {0}", expected.ToHexString(true));
+        //    TestContext.Out.WriteLine("root: {0:x}", root);
+        //    TestContext.Out.WriteLine("bytes: {0}", bytes.ToHexString(true));
+        //    TestContext.Out.WriteLine("expected: {0}", expected.ToHexString(true));
 
         //    bytes.ToArray().ShouldBe(expected);
         //}
@@ -229,9 +229,9 @@ namespace Nethermind.Serialization.Ssz.Test
         //    Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
 
         //    Merkle.Ize(out UInt256 root0, depositDataList[0]);
-        //    TestContext.WriteLine("root0: {0:x}", root0);
+        //    TestContext.Out.WriteLine("root0: {0:x}", root0);
         //    Merkle.Ize(out UInt256 root1, depositDataList[1]);
-        //    TestContext.WriteLine("root1: {0:x}", root1);
+        //    TestContext.Out.WriteLine("root1: {0:x}", root1);
 
         //    // assert
         //    byte[] hash1 = HashUtility.Hash(
@@ -279,8 +279,8 @@ namespace Nethermind.Serialization.Ssz.Test
         //        )
         //    );
 
-        //    TestContext.WriteLine("Hash1: {0}", Bytes.ToHexString(hash1, true));
-        //    TestContext.WriteLine("Hash2: {0}", Bytes.ToHexString(hash2, true));
+        //    TestContext.Out.WriteLine("Hash1: {0}", Bytes.ToHexString(hash1, true));
+        //    TestContext.Out.WriteLine("Hash2: {0}", Bytes.ToHexString(hash2, true));
 
         //    byte[] hashList = HashUtility.Merge( // list, depth 32
         //        HashUtility.Hash(
@@ -289,13 +289,13 @@ namespace Nethermind.Serialization.Ssz.Test
         //        ),
         //        HashUtility.ZeroHashes(1, 32)
         //    ).ToArray();
-        //    TestContext.WriteLine("Hash list: {0}", Bytes.ToHexString(hashList, true));
+        //    TestContext.Out.WriteLine("Hash list: {0}", Bytes.ToHexString(hashList, true));
 
         //    byte[] expected = HashUtility.Hash(
         //        hashList,
         //        HashUtility.Chunk(new byte[] { 0x02 }) // mix in length
         //    );
-        //    TestContext.WriteLine("Hash expected: {0}", Bytes.ToHexString(expected, true));
+        //    TestContext.Out.WriteLine("Hash expected: {0}", Bytes.ToHexString(expected, true));
 
         //    bytes.ToArray().ShouldBe(expected);
         //}
@@ -344,9 +344,9 @@ namespace Nethermind.Serialization.Ssz.Test
         //                )
         //            );
         //            
-        //            TestContext.WriteLine("root: {0:x}", root);
-        //            TestContext.WriteLine("bytes: {0}", bytes.ToHexString(true));
-        //            TestContext.WriteLine("expected: {0}", expected.ToHexString(true));
+        //            TestContext.Out.WriteLine("root: {0:x}", root);
+        //            TestContext.Out.WriteLine("bytes: {0}", bytes.ToHexString(true));
+        //            TestContext.Out.WriteLine("expected: {0}", expected.ToHexString(true));
         //
         //            bytes.ToArray().ShouldBe(expected);
         //        }
