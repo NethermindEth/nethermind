@@ -37,7 +37,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
-        block.Header.RequestsHash = ExecutionRequests != null ? ExecutionRequests.CalculateHash() : Hash256.Zero;
+        block.Header.RequestsHash = ExecutionRequests != null ? ExecutionRequests.CalculateHash() : null;
         return true;
     }
 

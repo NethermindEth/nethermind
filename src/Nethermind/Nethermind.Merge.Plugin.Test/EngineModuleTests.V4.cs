@@ -172,7 +172,7 @@ public partial class EngineModuleTests
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
         Transaction invalidSetCodeTx = Build.A.Transaction
@@ -196,7 +196,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
 
-        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, ExecutionRequests: ExecutionRequestsProcessorMock.Requests);
+        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
@@ -220,7 +220,7 @@ public partial class EngineModuleTests
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
@@ -233,7 +233,7 @@ public partial class EngineModuleTests
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null)
+        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null, bool withRequests = false)
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
@@ -248,7 +248,7 @@ public partial class EngineModuleTests
             ExecutionPayloadV3? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
                 parentBlock.Timestamp + 12,
                 random ?? TestItem.KeccakA, Address.Zero);
-            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, Array.Empty<byte[]>(), Keccak.Zero, ExecutionRequests: ExecutionRequestsProcessorMock.Requests)).Data;
+            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, Array.Empty<byte[]>(), Keccak.Zero, executionRequests: withRequests? ExecutionRequestsProcessorMock.Requests : [])).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
             if (setHead)
             {
@@ -303,7 +303,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = await BuildAndGetPayloadResultV4(rpc, chain, head,
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
-            await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot, ExecutionRequests: ExecutionRequestsProcessorMock.Requests);
+            await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
         return executionPayload;
     }
