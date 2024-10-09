@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -63,6 +65,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+        executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
 
         if (!executionPayload.ValidateFork(_specProvider))
         {
