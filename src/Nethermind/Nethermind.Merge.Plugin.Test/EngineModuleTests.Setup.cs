@@ -180,7 +180,7 @@ public partial class EngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null, bool? keepStateEmptyOnStart = false)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
@@ -188,6 +188,7 @@ public partial class EngineModuleTests
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
             LogManager = logManager ?? LogManager;
             ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
+            KeepStateEmptyAtInit = keepStateEmptyOnStart ?? false;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
