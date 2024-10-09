@@ -154,7 +154,7 @@ public class EraWriter : IDisposable
         if (_firstBlock)
             throw new EraException("Finalize was called, but no blocks have been added yet.");
 
-        byte[] root = _accumulatorCalculator.ComputeRoot().ToArray();
+        byte[] root = _accumulatorCalculator.ComputeRoot().ToByteArray();
         _totalWritten += await _e2StoreStream.WriteEntry(EntryTypes.Accumulator, root, cancellation);
 
         long blockIndexPosition = _totalWritten;

@@ -34,9 +34,9 @@ internal class AccumulatorCalculator : IDisposable
         _roots.Add(new SszBasicVector(tree.HashTreeRoot()));
     }
 
-    public ReadOnlySpan<byte> ComputeRoot()
+    public ValueHash256 ComputeRoot()
     {
-        return new SszTree(new SszList(_roots, EraWriter.MaxEra1Size)).HashTreeRoot();
+        return new ValueHash256(new SszTree(new SszList(_roots, EraWriter.MaxEra1Size)).HashTreeRoot());
     }
 
     internal void Clear() => _roots.Clear();

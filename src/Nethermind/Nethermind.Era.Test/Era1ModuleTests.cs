@@ -93,7 +93,7 @@ public class Era1ModuleTests
         {
             var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
 
-            using var eraEnumerator = await EraReader.Create(era);
+            using var eraEnumerator = await EraReader.Create(era, new FileSystem(), default);
             using var destination = new MemoryStream();
             using var builder = EraWriter.Create(destination, specProvider);
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)

@@ -37,15 +37,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         _isDescendingOrder = descendingOrder;
         Reset(_isDescendingOrder);
     }
-    public static Task<EraReader> Create(string file, in CancellationToken token = default)
-    {
-        return Create(file, new FileSystem(), token);
-    }
     public static Task<EraReader> Create(string file, IFileSystem fileSystem, in CancellationToken token = default)
     {
         return Create(file, fileSystem, false, null, token);
     }
-    public static Task<EraReader> Create(string file, IFileSystem? fileSystem, bool descendingOrder = false, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
+    private static Task<EraReader> Create(string file, IFileSystem? fileSystem, bool descendingOrder = false, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
         if (fileSystem == null)
@@ -78,12 +74,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             yield return (result.Value.Block, result.Value.Receipts, result.Value.TotalDifficulty);
         }
     }
+
     /// <summary>
     /// Verify that the accumulator matches the archive data.
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<bool> VerifyAccumulator(byte[] expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
+    public async Task<bool> VerifyAccumulator(ValueHash256 expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
         UInt256 currentTd = await CalculateStartingTotalDiffulty(cancellation);
@@ -115,7 +112,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             actualCount++;
         }
 
-        return Enumerable.SequenceEqual(expectedAccumulator, calculator.ComputeRoot().ToArray());
+        return expectedAccumulator == calculator.ComputeRoot();
     }
 
     private async Task<UInt256> CalculateStartingTotalDiffulty(CancellationToken cancellation)
@@ -125,13 +122,14 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    public Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
+    public Task<ValueHash256> ReadAccumulator(CancellationToken cancellation = default)
     {
         _storeStream.Seek(EraMetadata.AccumulatorOffset, SeekOrigin.Begin);
-        return _storeStream.ReadEntryAndDecode<byte[]>(
-            (buffer) => buffer.ReadAllBytesAsArray(),
+        return _storeStream.ReadEntryAndDecode<ValueHash256>(
+            (buffer) => new ValueHash256(buffer.ReadAllBytesAsArray()),
             EntryTypes.Accumulator, cancellation);
     }
+
     public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
         if (number < EraMetadata.Start)

@@ -109,7 +109,7 @@ public class EraStore : IEraStore
             using MemoryStream destination = new();
             using EraReader eraReader = await EraReader.Create(era, _fileSystem, cancellationToken);
             var eraAccumulator = await eraReader.ReadAccumulator();
-            if (trustedAccumulators == null || !trustedAccumulators.Contains(new ValueHash256(eraAccumulator)))
+            if (trustedAccumulators == null || !trustedAccumulators.Contains(eraAccumulator))
             {
                 throw new EraVerificationException($"Accumulator {eraAccumulator} not trusted from era file {era}");
             }
@@ -139,7 +139,7 @@ public class EraStore : IEraStore
         {
             using (EraReader reader = await EraReader.Create(kv.Value, _fileSystem, cancellationToken))
             {
-                string root = (await reader.ReadAccumulator(cancellationToken)).ToHexString(true);
+                string root = (await reader.ReadAccumulator(cancellationToken)).BytesAsSpan.ToHexString(true);
                 if (!first)
                     root = Environment.NewLine + root;
                 else
