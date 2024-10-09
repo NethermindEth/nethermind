@@ -520,7 +520,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             accessedAddresses.Add(recipient);
             accessedAddresses.Add(tx.SenderAddress!);
-            
+
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
             ICodeInfo codeInfo = null;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
@@ -601,128 +601,128 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
 
-                    ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
+                ExecutionType executionType = tx.IsContractCreation ? (tx.IsEofContractCreation ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
 
-                    using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
+                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
+                {
+                    if (spec.UseTxAccessLists)
                     {
-                        if (spec.UseTxAccessLists)
+                        state.WarmUp(tx.AccessList); // eip-2930
+                    }
+
+                    if (spec.UseHotAndColdStorage)
+                    {
+                        state.WarmUp(tx.SenderAddress); // eip-2929
+                        state.WarmUp(env.ExecutingAccount); // eip-2929
+                    }
+
+                    if (spec.AddCoinbaseToTxAccessList)
+                    {
+                        state.WarmUp(header.GasBeneficiary);
+                    }
+                    WarmUp(tx, header, spec, state, accessedAddresses);
+                    substate = !tracer.IsTracingActions
+                        ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
+                        : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
+
+                    unspentGas = state.GasAvailable;
+
+                    if (tracer.IsTracingAccess)
+                    {
+                        tracer.ReportAccess(state.AccessedAddresses, state.AccessedStorageCells);
+                    }
+                }
+
+                if (substate.ShouldRevert || substate.IsError)
+                {
+                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                    WorldState.Restore(snapshot);
+                }
+                else
+                {
+                    // tks: there is similar code fo contract creation from init and from CREATE
+                    // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
+                    if (tx.IsLegacyContractCreation)
+                    {
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
+                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
                         {
-                            state.WarmUp(tx.AccessList); // eip-2930
+                            goto Fail;
                         }
 
-                        if (spec.UseHotAndColdStorage)
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
                         {
-                            state.WarmUp(tx.SenderAddress); // eip-2929
-                            state.WarmUp(env.ExecutingAccount); // eip-2929
+                            goto Fail;
                         }
 
-                        if (spec.AddCoinbaseToTxAccessList)
+                        if (unspentGas >= codeDepositGasCost)
                         {
-                            state.WarmUp(header.GasBeneficiary);
-                        }
-                        WarmUp(tx, header, spec, state, accessedAddresses);
-                        substate = !tracer.IsTracingActions
-                            ? VirtualMachine.Run<NotTracing>(state, WorldState, tracer)
-                            : VirtualMachine.Run<IsTracing>(state, WorldState, tracer);
+                            var code = substate.Output.Bytes.ToArray();
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
-                        unspentGas = state.GasAvailable;
-
-                        if (tracer.IsTracingAccess)
-                        {
-                            tracer.ReportAccess(state.AccessedAddresses, state.AccessedStorageCells);
+                            unspentGas -= codeDepositGasCost;
                         }
                     }
 
-                    if (substate.ShouldRevert || substate.IsError)
+                    if (tx.IsEofContractCreation)
                     {
-                        if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                        WorldState.Restore(snapshot);
+                        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
+                        ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
+                        EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
+
+                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.MachineCode.Length + auxExtraData.Length);
+                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+                        {
+                            goto Fail;
+                        }
+
+                        byte[] bytecodeResultArray = null;
+
+                        // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
+                        Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
+                        // 2 - 1 - 1 - copy old container
+                        deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
+                        // 2 - 1 - 2 - copy aux data to dataSection
+                        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
+
+                        // 2 - 2 - update data section size in the header u16
+                        int dataSubheaderSectionStart =
+                            VERSION_OFFSET // magic + version
+                            + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
+                            + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
+                            + (deployCodeInfo.EofContainer.Header.ContainerSections is null
+                                ? 0 // container section :  (0 bytes if no container section is available)
+                                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
+                            + ONE_BYTE_LENGTH; // data section seperator
+
+                        ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
+                        bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
+                        bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
+
+                        bytecodeResultArray = bytecodeResult.ToArray();
+
+                        // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
+                        bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
+                        if (unspentGas >= codeDepositGasCost && !invalidCode)
+                        {
+                            // 4 - set state[new_address].code to the updated deploy container
+                            // push new_address onto the stack (already done before the ifs)
+                            _codeInfoRepository.InsertCode(WorldState, bytecodeResultArray, env.ExecutingAccount, spec);
+                            unspentGas -= codeDepositGasCost;
+                        }
                     }
-                    else
+
+                    foreach (Address toBeDestroyed in substate.DestroyList)
                     {
-                        // tks: there is similar code fo contract creation from init and from CREATE
-                        // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
-                        if (tx.IsLegacyContractCreation)
-                        {
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
-                            if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
-                            {
-                                goto Fail;
-                            }
+                        if (Logger.IsTrace)
+                            Logger.Trace($"Destroying account {toBeDestroyed}");
 
-                            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
-                            {
-                                goto Fail;
-                            }
+                        WorldState.ClearStorage(toBeDestroyed);
+                        WorldState.DeleteAccount(toBeDestroyed);
 
-                            if (unspentGas >= codeDepositGasCost)
-                            {
-                                var code = substate.Output.Bytes.ToArray();
-                                _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
-
-                                unspentGas -= codeDepositGasCost;
-                            }
-                        }
-
-                        if (tx.IsEofContractCreation)
-                        {
-                            // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCONTRACT is executed
-                            ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
-                            EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
-
-                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.MachineCode.Length + auxExtraData.Length);
-                            if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
-                            {
-                                goto Fail;
-                            }
-
-                            byte[] bytecodeResultArray = null;
-
-                            // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-                            Span<byte> bytecodeResult = new byte[deployCodeInfo.MachineCode.Length + auxExtraData.Length];
-                            // 2 - 1 - 1 - copy old container
-                            deployCodeInfo.MachineCode.Span.CopyTo(bytecodeResult);
-                            // 2 - 1 - 2 - copy aux data to dataSection
-                            auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.MachineCode.Length..]);
-
-                            // 2 - 2 - update data section size in the header u16
-                            int dataSubheaderSectionStart =
-                                VERSION_OFFSET // magic + version
-                                + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-                                + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                                + (deployCodeInfo.EofContainer.Header.ContainerSections is null
-                                    ? 0 // container section :  (0 bytes if no container section is available)
-                                    : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
-                                + ONE_BYTE_LENGTH; // data section seperator
-
-                            ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-                            bytecodeResult[dataSubheaderSectionStart + 1] = (byte)(dataSize >> 8);
-                            bytecodeResult[dataSubheaderSectionStart + 2] = (byte)(dataSize & 0xFF);
-
-                            bytecodeResultArray = bytecodeResult.ToArray();
-
-                            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-                            bool invalidCode = !(bytecodeResultArray.Length < spec.MaxCodeSize);
-                            if (unspentGas >= codeDepositGasCost && !invalidCode)
-                            {
-                                // 4 - set state[new_address].code to the updated deploy container
-                                // push new_address onto the stack (already done before the ifs)
-                                _codeInfoRepository.InsertCode(WorldState, bytecodeResultArray, env.ExecutingAccount, spec);
-                                unspentGas -= codeDepositGasCost;
-                            }
-                        }
-
-                        foreach (Address toBeDestroyed in substate.DestroyList)
-                        {
-                            if (Logger.IsTrace)
-                                Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                            WorldState.ClearStorage(toBeDestroyed);
-                            WorldState.DeleteAccount(toBeDestroyed);
-
-                            if (tracer.IsTracingRefunds)
-                                tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
-                        }
+                        if (tracer.IsTracingRefunds)
+                            tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
+                    }
 
                     statusCode = StatusCode.Success;
                 }
