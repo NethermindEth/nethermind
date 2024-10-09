@@ -136,7 +136,7 @@ internal class EraWriterTests
         E2StoreStream storeStream = new E2StoreStream(stream);
         EraMetadata metadata = await storeStream.GetMetadata(default);
 
-        metadata.BlockOffset(0).Should().Be(8)
+        metadata.BlockOffset(0).Should().Be(8);
     }
 
     [Test]

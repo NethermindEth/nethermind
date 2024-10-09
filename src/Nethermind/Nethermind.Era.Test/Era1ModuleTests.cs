@@ -77,7 +77,7 @@ public class Era1ModuleTests
     [Test]
     public async Task ImportAndExportGethFiles()
     {
-        var eraFiles = EraReader.GetAllEraFiles("geth", "mainnet");
+        var eraFiles = EraReader.GetAllEraFiles("testdata/holesky", "holesky");
 
         Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 
@@ -106,7 +106,7 @@ public class Era1ModuleTests
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in exportedToImported)
             {
                 Assert.That(i, Is.LessThan(readFromFile.Count()), "Exceeded the block count read from the file.");
-                b.Should().BeEquivalentTo(readFromFile[i].b);
+                b.ToString(Block.Format.Full).Should().BeEquivalentTo(readFromFile[i].b.ToString(Block.Format.Full));
                 r.Should().BeEquivalentTo(readFromFile[i].r);
                 Assert.That(td, Is.EqualTo(readFromFile[i].td));
                 i++;
@@ -211,31 +211,16 @@ public class Era1ModuleTests
 
         await builder.Finalize();
 
-        //Block index is layed out as 64 bit segments
-        //start-number | index | index | index ... | count
         byte[] buffer = new byte[1024];
-        stream.Seek(-8, SeekOrigin.End);
-        stream.Read(buffer, 0, buffer.Length);
-        long count = BinaryPrimitives.ReadInt64LittleEndian(buffer);
-        //Plus genesis block
-        Assert.That(count, Is.EqualTo(numOfBlocks + 1));
-        //Seek to start of block index
-        stream.Seek(-8 - 8 - count * 8, SeekOrigin.End);
-        stream.Read(buffer, 0, 8);
 
-        long startNumber = BinaryPrimitives.ReadInt64LittleEndian(buffer);
+        EraMetadata metadata = await EraMetadata.CreateEraMetadata(stream, default);
+        Assert.That(metadata.Start, Is.EqualTo(0));
+        Assert.That(metadata.Count, Is.EqualTo(numOfBlocks + 1));
 
-        Assert.That(startNumber, Is.EqualTo(0));
-
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < metadata.Count; i++)
         {
-            //Seek to next block index
-            stream.Seek(-8 - count * 8 + i * 8, SeekOrigin.End);
-            stream.Read(buffer, 0, 8);
-
-            long blockOffset = BinaryPrimitives.ReadInt64LittleEndian(buffer);
-            //Block offsets should be relative to index position
-            stream.Seek(blockOffset, SeekOrigin.Current);
+            long blockOffset = metadata.BlockOffset(i);
+            stream.Seek(blockOffset, SeekOrigin.Begin);
 
             stream.Read(buffer, 0, 2);
 

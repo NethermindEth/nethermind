@@ -32,10 +32,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="geth\mainnet-00000-5ec1ffb8.era1">
+    <None Update="testdata\holesky\holesky-00000-a3bfd81f.era1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="geth\mainnet-00001-a5364e9a.era1">
+    <None Update="testdata\holesky\holesky-00001-e343db12.era1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="testdata\holesky\holesky-00002-5a3ecb1a.era1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
