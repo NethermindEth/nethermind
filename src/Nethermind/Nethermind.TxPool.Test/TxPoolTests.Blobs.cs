@@ -727,7 +727,7 @@ namespace Nethermind.TxPool.Test
                         blobPool.TryGetBlobAndProof(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
                     }
 
-                    if (i % 2 == 0) blobPool.Remove(tx.Hash, out _).Should().BeTrue();
+                    if (i % 2 == 0) blobPool.TryRemove(tx.Hash, out _).Should().BeTrue();
                 }
             });
 

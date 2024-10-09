@@ -470,7 +470,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual removal mechanism.
         /// </summary>
-        internal virtual bool Remove(TKey key, out TValue? value)
+        protected virtual bool Remove(TKey key, out TValue? value)
         {
             // Now remove from cache
             if (_cacheMap.Remove(key, out value))

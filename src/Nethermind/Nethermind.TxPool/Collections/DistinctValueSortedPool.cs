@@ -57,7 +57,7 @@ namespace Nethermind.TxPool.Collections
             _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }
 
-        internal override bool Remove(TKey key, out TValue? value)
+        protected override bool Remove(TKey key, out TValue? value)
         {
             if (base.Remove(key, out value))
             {
