@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 
@@ -23,7 +25,7 @@ internal class E2StoreStreamTests
 
         await sut.WriteEntry(type, Array.Empty<byte>());
 
-        Assert.That(BitConverter.ToInt16(stream.ToArray()), Is.EqualTo(type));
+        Assert.That(BinaryPrimitives.ReadInt16LittleEndian(stream.ToArray()), Is.EqualTo(type));
     }
 
     [TestCase(6)]
@@ -36,7 +38,7 @@ internal class E2StoreStreamTests
 
         await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[length]);
 
-        Assert.That(BitConverter.ToInt32(stream.ToArray(), 2), Is.EqualTo(length));
+        Assert.That(BinaryPrimitives.ReadInt32LittleEndian(stream.ToArray().Slice(2)), Is.EqualTo(length));
     }
 
     [TestCase(1)]

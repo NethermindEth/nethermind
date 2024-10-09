@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -215,32 +216,32 @@ public class Era1ModuleTests
         byte[] buffer = new byte[1024];
         stream.Seek(-8, SeekOrigin.End);
         stream.Read(buffer, 0, buffer.Length);
-        long count = BitConverter.ToInt64(buffer, 0);
+        long count = BinaryPrimitives.ReadInt64LittleEndian(buffer);
         //Plus genesis block
         Assert.That(count, Is.EqualTo(numOfBlocks + 1));
         //Seek to start of block index
         stream.Seek(-8 - 8 - count * 8, SeekOrigin.End);
         stream.Read(buffer, 0, 8);
 
-        long startNumber = BitConverter.ToInt64(buffer, 0);
+        long startNumber = BinaryPrimitives.ReadInt64LittleEndian(buffer);
 
         Assert.That(startNumber, Is.EqualTo(0));
 
         for (int i = 0; i < count; i++)
         {
-            //Seek to next block index 
+            //Seek to next block index
             stream.Seek(-8 - count * 8 + i * 8, SeekOrigin.End);
             stream.Read(buffer, 0, 8);
 
-            long blockOffset = BitConverter.ToInt64(buffer, 0);
+            long blockOffset = BinaryPrimitives.ReadInt64LittleEndian(buffer);
             //Block offsets should be relative to index position
             stream.Seek(blockOffset, SeekOrigin.Current);
 
             stream.Read(buffer, 0, 2);
 
-            ushort entryType = BitConverter.ToUInt16(buffer);
+            ushort entryType = BinaryPrimitives.ReadUInt16LittleEndian(buffer);
 
-            //We expect to find a compressed header in this position 
+            //We expect to find a compressed header in this position
             Assert.That(entryType, Is.EqualTo(EntryTypes.CompressedHeader));
         }
     }

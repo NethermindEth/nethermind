@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Era1;
@@ -78,7 +79,7 @@ public class EraMetadata: IDisposable
 
             int indexOffset = (int)(blockNumber - _start) * 8;
             int blockIndexOffset = 8 + indexOffset;
-            long relativeOffset = BitConverter.ToInt64(_index.AsSpan(blockIndexOffset, 8));
+            long relativeOffset = BinaryPrimitives.ReadInt64LittleEndian(_index.AsSpan(blockIndexOffset, 8));
 
             return _length - SizeIncludingHeader + relativeOffset;
         }
@@ -90,20 +91,19 @@ public class EraMetadata: IDisposable
 
             stream.Position = stream.Length - 8;
             await stream.ReadAsync(bytes, cancellation);
-            long c = BitConverter.ToInt64(bytes.Span);
+            long c = BinaryPrimitives.ReadInt64LittleEndian(bytes.Span);
 
             int indexLength = CountValue + StartingBlockNumberValue + 8 * (int)c;
 
             if (indexLength < 16 || indexLength > EraWriter.MaxEra1Size * 8 + CountValue + StartingBlockNumberValue)
                 throw new EraFormatException("Index is in an invalid format.");
 
-            using ArrayPoolList<byte> blockIndex = new(indexLength);
-            blockIndex.AddRange(bytes.Span);
-
             long startIndex = stream.Length - indexLength;
             stream.Position = startIndex;
+
+            using ArrayPoolList<byte> blockIndex = new(indexLength, indexLength);
             await stream.ReadAsync(blockIndex.AsMemory(0, indexLength), cancellation);
-            long s = BitConverter.ToInt64(blockIndex.AsSpan(0, 8));
+            long s = BinaryPrimitives.ReadInt64LittleEndian(blockIndex.AsSpan(0, 8));
             return new(blockIndex.AsSpan(0, indexLength), s, c, stream.Length);
         }
         private void Dispose(bool disposing)

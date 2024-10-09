@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
@@ -133,7 +134,7 @@ internal class E2StoreStream : IDisposable
             var read = await _stream.ReadAsync(buf.AsMemory(0, HeaderSize), token);
             if (read != HeaderSize)
                 throw new EraFormatException($"Entry header could not be read at position {_stream.Position}.");
-            Entry entry = new Entry(BitConverter.ToUInt16(buf, 0), BitConverter.ToUInt32(buf, 2));
+            Entry entry = new Entry(BinaryPrimitives.ReadUInt16LittleEndian(buf), BinaryPrimitives.ReadUInt32LittleEndian(buf.AsSpan().Slice(2)));
             if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
             if (entry.Length + _stream.Position > StreamLength)
                 throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");

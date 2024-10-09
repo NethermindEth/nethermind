@@ -213,7 +213,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (blockNumber < EraMetadata.Start
             || blockNumber > EraMetadata.Start + EraMetadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
-        _storeStream.Seek(0, SeekOrigin.Begin);
         SeekToBlock(blockNumber);
 
         (BlockHeader header, Hash256? currentComputedHeaderHash) = await _storeStream.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(

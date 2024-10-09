@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -112,7 +113,7 @@ internal class EraWriterTests
         stream.Seek(-buffer.Length - 4 * 8, SeekOrigin.End);
         stream.Read(buffer, 0, buffer.Length);
 
-        Assert.That(BitConverter.ToUInt16(buffer), Is.EqualTo(EntryTypes.Accumulator));
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(buffer), Is.EqualTo(EntryTypes.Accumulator));
     }
 
     [Test]
@@ -135,7 +136,7 @@ internal class EraWriterTests
         E2StoreStream storeStream = new E2StoreStream(stream);
         EraMetadata metadata = await storeStream.GetMetadata(default);
 
-        metadata.BlockOffset(0).Should().Be(8);
+        metadata.BlockOffset(0).Should().Be(8)
     }
 
     [Test]

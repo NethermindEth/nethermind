@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -161,7 +162,7 @@ public class EraWriter : IDisposable
         //Index is 64 bits segments in the format => start | index | index | ... | count
         //16 bytes is for the start and count plus every entry
         byte[] blockIndex = new byte[16 + _entryIndexes.Count * 8];
-        WriteUInt64(blockIndex, 0, _startNumber);
+        WriteInt64(blockIndex, 0, _startNumber);
 
         //era1:= Version | block-tuple ... | other-entries ... | Accumulator | BlockIndex
         //block-index := starting-number | index | index | index... | count
@@ -170,10 +171,10 @@ public class EraWriter : IDisposable
         for (int i = 0; i < _entryIndexes.Count; i++)
         {
             //Skip 8 bytes for the start value
-            WriteUInt64(blockIndex, 8 + i * 8, _entryIndexes[i] - blockIndexPosition);
+            WriteInt64(blockIndex, 8 + i * 8, _entryIndexes[i] - blockIndexPosition);
         }
 
-        WriteUInt64(blockIndex, 8 + _entryIndexes.Count * 8, _entryIndexes.Count);
+        WriteInt64(blockIndex, 8 + _entryIndexes.Count * 8, _entryIndexes.Count);
 
         await _e2StoreStream.WriteEntry(EntryTypes.BlockIndex, blockIndex, cancellation);
         await _e2StoreStream.Flush(cancellation);
@@ -183,9 +184,10 @@ public class EraWriter : IDisposable
         _finalized = true;
         return root;
     }
-    private static bool WriteUInt64(Span<byte> destination, int off, long value)
+
+    private static void WriteInt64(Span<byte> destination, int off, long value)
     {
-        return BitConverter.TryWriteBytes(destination.Slice(off, 8), value) == false ? throw new EraException("Failed to write UInt64 to output.") : true;
+        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
     }
 
     private Task<int> WriteVersion()
