@@ -131,14 +131,14 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
     public Hash256 CalculateRequestsHash(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, out ExecutionRequest[] requests)
     {
-        requests = Array.Empty<ExecutionRequest>();
+        List<ExecutionRequest> requestsList = new();
         using (SHA256 sha256 = SHA256.Create())
         {
             using (SHA256 sha256Inner = SHA256.Create())
             {
                 foreach (ExecutionRequest request in ProcessDeposits(receipts, spec))
                 {
-                    requests.AddRange(request);
+                    requestsList.AddRange(request);
                     byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
 
                     // Update the outer hash with the result of each inner hash
@@ -146,7 +146,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
                 }
                 foreach (ExecutionRequest request in ReadRequests(block, state, spec, spec.Eip7002ContractAddress))
                 {
-                    requests.AddRange(request);
+                    requestsList.AddRange(request);
                     byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
 
                     sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
@@ -154,7 +154,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
                 foreach (ExecutionRequest request in ReadRequests(block, state, spec, spec.Eip7251ContractAddress))
                 {
-                    requests.AddRange(request);
+                    requestsList.AddRange(request);
                     byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
 
                     sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
@@ -162,6 +162,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
                 // Complete the final hash computation
                 sha256.TransformFinalBlock(new byte[0], 0, 0);
+                requests = requestsList.ToArray();
                 return new Hash256(sha256.Hash!);
             }
         }
