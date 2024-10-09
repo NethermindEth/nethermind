@@ -67,7 +67,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.", nameof(stream));
 
-        E2StoreStream e2 = await E2StoreStream.ForRead(stream, token);
+        E2StoreStream e2 = await E2StoreStream.ForRead(stream, allocator ?? PooledByteBufferAllocator.Default, token);
         EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default, descendingOrder);
 
         return e;
@@ -163,21 +163,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             yield return file;
         }
     }
-    public async Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
+    public Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
     {
         _storeStream.Seek(-32 - 8 * 4 - EraMetadata.Count * 8, SeekOrigin.End);
-        Entry accumulator = await _storeStream.ReadEntry(cancellation);
-        CheckType(accumulator, EntryTypes.Accumulator);
-        IByteBuffer buffer = _byteBufferAllocator.Buffer(32);
-        try
-        {
-            await _storeStream.ReadEntryValue(buffer, accumulator, cancellation);
-            return buffer.ReadAllBytesAsArray();
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        return _storeStream.ReadEntryAndDecode<byte[]>(
+            (buffer) => buffer.ReadAllBytesAsArray(),
+            EntryTypes.Accumulator, cancellation);
     }
     public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {

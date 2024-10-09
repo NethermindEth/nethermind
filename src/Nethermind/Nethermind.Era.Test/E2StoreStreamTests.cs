@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Serialization.Rlp;
@@ -122,10 +118,8 @@ internal class E2StoreStreamTests
         try
         {
             stream.Position = originalPosition;
-            Entry entry = await sut.ReadEntry(default);
-            int read = await sut.ReadEntryValue(buffer, entry);
-
-            Assert.That(new ArraySegment<byte>(buffer.Array, buffer.ArrayOffset, read), Is.EquivalentTo(bytes));
+            var readBytes = await sut.ReadEntryAndDecode(buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator, default);
+            Assert.That(readBytes, Is.EquivalentTo(bytes));
         }
         finally
         {
@@ -141,13 +135,12 @@ internal class E2StoreStreamTests
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         long position = stream.Position;
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
-        IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
         stream.Position = position;
 
-        Entry entry = await sut.ReadEntry(default);
-        int result = await sut.ReadEntryValue(buffer, entry);
+        var readBytes = await sut.ReadEntryAndDecode(buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator, default);
+        Assert.That(readBytes, Is.EquivalentTo(bytes));
 
-        Assert.That(result, Is.EqualTo(bytes.Length));
+        Assert.That(readBytes.Length, Is.EqualTo(bytes.Length));
     }
 
     [Test]
@@ -167,10 +160,9 @@ internal class E2StoreStreamTests
         try
         {
             stream.Position = originalPosition;
-            var entry = await sut.ReadEntry(default);
-            int read = await sut.ReadEntryValueAsSnappy(buffer, entry);
 
-            Assert.That(new ArraySegment<byte>(buffer.Array, 0, read), Is.EquivalentTo(bytes));
+            var readBytes = await sut.ReadSnappyCompressedEntryAndDecode(buf => buf.ReadAllBytesAsArray(), EntryTypes.CompressedHeader, default);
+            Assert.That(readBytes, Is.EquivalentTo(bytes));
         }
         finally
         {

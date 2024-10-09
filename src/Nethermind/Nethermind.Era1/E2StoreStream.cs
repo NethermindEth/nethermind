@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Snappier;
 namespace Nethermind.Era1;
 
@@ -16,7 +17,7 @@ internal class E2StoreStream : IDisposable
 
     private readonly Stream _stream;
     private bool _disposedValue;
-
+    private IByteBufferAllocator _bufferAllocator;
     private MemoryStream? _compressedData;
 
     public long StreamLength => _stream.Length;
@@ -34,16 +35,17 @@ internal class E2StoreStream : IDisposable
             throw new ArgumentException("Stream must be writeable.", nameof(stream));
         return new(stream);
     }
-    public static Task<E2StoreStream> ForRead(Stream stream, CancellationToken cancellation)
+    public static Task<E2StoreStream> ForRead(Stream stream, IByteBufferAllocator? bufferAllocator, CancellationToken cancellation)
     {
         if (!stream.CanRead)
             throw new ArgumentException("Stream must be readable.", nameof(stream));
-        E2StoreStream storeStream = new(stream);
+        E2StoreStream storeStream = new(stream, bufferAllocator);
         return Task.FromResult(storeStream);
     }
-    internal E2StoreStream(Stream stream)
+    internal E2StoreStream(Stream stream, IByteBufferAllocator? bufferAllocator = null)
     {
         _stream = stream;
+        _bufferAllocator = bufferAllocator ?? PooledByteBufferAllocator.Default;
     }
 
     public Task<int> WriteEntryAsSnappy(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
@@ -92,6 +94,46 @@ internal class E2StoreStream : IDisposable
         return length + HeaderSize;
     }
 
+    public async Task<T> ReadEntryAndDecode<T>(Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
+    {
+        Entry entry = await ReadEntry(token);
+        CheckType(entry, expectedType);
+
+        IByteBuffer buffer = _bufferAllocator.Buffer((int)entry.Length);
+        try
+        {
+            await ReadEntryValue(buffer, entry, token);
+            return decoder.Invoke(buffer);
+        }
+        finally
+        {
+            buffer.Release();
+        }
+    }
+
+    public async Task<T> ReadSnappyCompressedEntryAndDecode<T>(Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
+    {
+        Entry entry = await ReadEntry(token);
+        CheckType(entry, expectedType);
+
+        IByteBuffer buffer = _bufferAllocator.Buffer((int)2.MiB());
+        try
+        {
+            await ReadEntryValueAsSnappy(buffer, entry, token);
+            return decoder.Invoke(buffer);
+        }
+        finally
+        {
+            buffer.Release();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CheckType(Entry e, ushort expected)
+    {
+        if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
+    }
+
     public async Task<Entry> ReadEntry(CancellationToken token = default)
     {
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
@@ -130,6 +172,7 @@ internal class E2StoreStream : IDisposable
 
         using StreamSegment streamSegment = new(_stream, _stream.Position, e.Length);
         using SnappyStream decompressor = new(streamSegment, CompressionMode.Decompress, true);
+
         int totalRead = 0;
         int read;
         do
