@@ -27,13 +27,14 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private readonly bool _isDescendingOrder;
 
     public long CurrentBlockNumber => _currentBlockNumber;
-    public EraMetadata EraMetadata => _store.Metadata;
+    public EraMetadata EraMetadata { get; }
 
     private static readonly char[] separator = new char[] { '-' };
 
     private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
     {
         _store = e2;
+        EraMetadata = e2.GetMetadata(default).GetAwaiter().GetResult();
         _byteBufferAllocator = byteBufferAllocator;
         _isDescendingOrder = descendingOrder;
         Reset(_isDescendingOrder);
@@ -124,7 +125,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private async Task<UInt256> CalculateStartingTotalDiffulty(CancellationToken cancellation)
     {
-        EntryReadResult? result = await ReadBlockAndReceipts(_store.Metadata.Start, true, cancellation);
+        EntryReadResult? result = await ReadBlockAndReceipts(EraMetadata.Start, true, cancellation);
         if (result == null) throw new EraException("Invalid Era1 archive format.");
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
@@ -164,7 +165,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     }
     public async Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
     {
-        _store.Seek(-32 - 8 * 4 - _store.Metadata.Count * 8, SeekOrigin.End);
+        _store.Seek(-32 - 8 * 4 - EraMetadata.Count * 8, SeekOrigin.End);
         Entry accumulator = await _store.ReadEntryCurrentPosition(cancellation);
         CheckType(accumulator, EntryTypes.Accumulator);
         IByteBuffer buffer = _byteBufferAllocator.Buffer(32);
@@ -180,10 +181,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     }
     public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
-        if (number < _store.Metadata.Start)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_store.Metadata.Start}.");
-        if (number > _store.Metadata.End)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_store.Metadata.End}.");
+        if (number < EraMetadata.Start)
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {EraMetadata.Start}.");
+        if (number > EraMetadata.End)
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {EraMetadata.End}.");
         EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
         return (result.Block, result.Receipts, result.TotalDifficulty);
     }
@@ -191,7 +192,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (_isDescendingOrder)
         {
-            if (_store.Metadata.Start > _currentBlockNumber)
+            if (EraMetadata.Start > _currentBlockNumber)
             {
                 //TODO test enumerate more than once
                 Reset(_isDescendingOrder);
@@ -200,7 +201,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         }
         else
         {
-            if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockNumber)
+            if (EraMetadata.Start + EraMetadata.Count <= _currentBlockNumber)
             {
                 //TODO test enumerate more than once
                 Reset(_isDescendingOrder);
@@ -218,8 +219,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
-        if (blockNumber < _store.Metadata.Start
-            || blockNumber > _store.Metadata.Start + _store.Metadata.Count)
+        if (blockNumber < EraMetadata.Start
+            || blockNumber > EraMetadata.Start + EraMetadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
         long seeked = SeekToBlock(blockNumber);
         //Worst case scenario buffer
@@ -278,23 +279,25 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private long SeekToBlock(long blockNumber)
     {
-        long offset = _store.BlockOffset(blockNumber) - _store.Position;
+        long offset = EraMetadata.BlockOffset(blockNumber) - _store.Position;
         if (offset == 0)
             return 0;
         return _store.Seek(offset, SeekOrigin.Current);
     }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Reset(bool descendingOrder)
     {
         if (descendingOrder)
         {
-            _currentBlockNumber = _store.Metadata.Start + _store.Metadata.Count - 1;
+            _currentBlockNumber = EraMetadata.Start + EraMetadata.Count - 1;
         }
         else
         {
-            _currentBlockNumber = _store.Metadata.Start;
+            _currentBlockNumber = EraMetadata.Start;
         }
     }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckType(Entry e, ushort expected)
     {

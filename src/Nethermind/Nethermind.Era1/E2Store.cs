@@ -15,16 +15,18 @@ internal class E2Store : IDisposable
     internal const int ValueSizeLimit = 1024 * 1024 * 50;
 
     private readonly Stream _stream;
-    private BlockIndex? _blockIndex;
     private bool _disposedValue;
 
-    private EraMetadata? _metadata;
     private MemoryStream? _compressedData;
 
     public long StreamLength => _stream.Length;
-    public EraMetadata Metadata => GetMetadata();
 
     public long Position => _stream.Position;
+
+    public Task<EraMetadata> GetMetadata(CancellationToken token)
+    {
+        return EraMetadata.CreateEraMetadata(_stream, token);
+    }
 
     public static E2Store ForWrite(Stream stream)
     {
@@ -32,31 +34,16 @@ internal class E2Store : IDisposable
             throw new ArgumentException("Stream must be writeable.", nameof(stream));
         return new(stream);
     }
-    public static async Task<E2Store> ForRead(Stream stream, CancellationToken cancellation)
+    public static Task<E2Store> ForRead(Stream stream, CancellationToken cancellation)
     {
         if (!stream.CanRead)
             throw new ArgumentException("Stream must be readable.", nameof(stream));
         E2Store store = new(stream);
-        await store.SetMetaData(cancellation);
-        return store;
+        return Task.FromResult(store);
     }
     internal E2Store(Stream stream)
     {
         _stream = stream;
-    }
-
-    private EraMetadata GetMetadata()
-    {
-        if (_metadata is null)
-        {
-            _metadata = ReadEraMetaData().GetAwaiter().GetResult();
-        }
-        return _metadata;
-    }
-
-    private async Task SetMetaData(CancellationToken token)
-    {
-        _metadata = await ReadEraMetaData(token);
     }
 
     public Task<int> WriteEntryAsSnappy(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
@@ -105,18 +92,6 @@ internal class E2Store : IDisposable
         return length + HeaderSize;
     }
 
-    private async Task<EraMetadata> ReadEraMetaData(CancellationToken token = default)
-    {
-        long l = _stream!.Length;
-        if (_stream.Length < 16)
-            throw new EraFormatException($"Data is not in a valid Era format.");
-
-        if (_blockIndex == null)
-            _blockIndex = await BlockIndex.InitializeIndex(_stream, token);
-
-        return new EraMetadata(_blockIndex.Start, _blockIndex.Count, l);
-    }
-
     // Reads the header metadata at the given offset.
     private async Task<HeaderData> ReadEntryHeader(CancellationToken token = default)
     {
@@ -136,25 +111,6 @@ internal class E2Store : IDisposable
             if (h.Length + _stream.Position > StreamLength)
                 throw new EraFormatException($"Entry has an invalid length of {h.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");
             return h;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buf);
-        }
-    }
-
-    public long BlockOffset(long blockNumber) => _blockIndex!.BlockOffset(blockNumber);
-
-    public async Task<long> ReadValueAt(long off, CancellationToken token = default)
-    {
-        CheckStreamBounds(off);
-
-        byte[] buf = ArrayPool<byte>.Shared.Rent(8);
-        try
-        {
-            _stream.Position = off;
-            await _stream.ReadAsync(buf, 0, 8, token);
-            return BitConverter.ToInt64(buf);
         }
         finally
         {
@@ -240,7 +196,6 @@ internal class E2Store : IDisposable
             if (disposing)
             {
                 _stream?.Dispose();
-                _blockIndex?.Dispose();
                 _compressedData?.Dispose();
             }
             _disposedValue = true;
@@ -265,86 +220,4 @@ internal class E2Store : IDisposable
             throw new ArgumentOutOfRangeException(nameof(offset), "Cannot read beyond the length of the stream.");
     }
 
-    private sealed class BlockIndex : IDisposable
-    {
-        private bool _disposedValue;
-        private readonly long _start;
-        private readonly long _count;
-        private readonly long _length;
-        private readonly ArrayPoolList<byte> _index;
-
-        public long Start => _start;
-        public long Count => _count;
-
-        private BlockIndex(Span<byte> index, long start, long count, long length)
-        {
-            try
-            {
-                _index = new ArrayPoolList<byte>(index.Length);
-                index.CopyTo(_index.AsSpan(0, index.Length));
-            }
-            catch
-            {
-                _index?.Dispose();
-                throw;
-            }
-            _start = start;
-            _count = count;
-            _length = length;
-        }
-
-        public long BlockOffset(long blockNumber)
-        {
-            if (blockNumber > Start + Count || blockNumber < Start)
-                throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
-
-            int indexOffset = (int)(blockNumber - _start) * 8;
-            int blockIndexOffset = 8 + indexOffset;
-            long relativeOffset = BitConverter.ToInt64(_index.AsSpan(blockIndexOffset, 8));
-
-            int indexLength = 16 + 8 * (int)_count;
-            return _length - indexLength + blockIndexOffset + 8 + relativeOffset;
-        }
-
-        public static async Task<BlockIndex> InitializeIndex(Stream stream, CancellationToken cancellation)
-        {
-            using ArrayPoolList<byte> pooledBytes = new(8);
-            Memory<byte> bytes = pooledBytes.AsMemory(0, 8);
-
-            stream.Position = stream.Length - 8;
-            await stream.ReadAsync(bytes, cancellation);
-            long c = BitConverter.ToInt64(bytes.Span);
-
-            int indexLength = 16 + 8 * (int)c;
-
-            if (indexLength < 16 || indexLength > EraWriter.MaxEra1Size * 8 + 16)
-                throw new EraFormatException("Index is in an invalid format.");
-
-            using ArrayPoolList<byte> blockIndex = new(indexLength);
-            blockIndex.AddRange(bytes.Span);
-
-            long startIndex = stream.Length - indexLength;
-            stream.Position = startIndex;
-            await stream.ReadAsync(blockIndex.AsMemory(0, indexLength), cancellation);
-            long s = BitConverter.ToInt64(blockIndex.AsSpan(0, 8));
-            return new(blockIndex.AsSpan(0, indexLength), s, c, stream.Length);
-        }
-        private void Dispose(bool disposing)
-        {
-            if (!_disposedValue)
-            {
-                if (disposing)
-                {
-                    _index?.Dispose();
-                }
-                _disposedValue = true;
-            }
-        }
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
-    }
 }

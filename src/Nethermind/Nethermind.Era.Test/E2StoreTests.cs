@@ -169,22 +169,6 @@ internal class E2StoreTests
         }
     }
 
-
-    [TestCase(0)]
-    [TestCase(8)]
-    [TestCase(16)]
-    public async Task ReadValueAt_ReadingValueAtDifferentOffset_ReturnsCorrectValue(int offset)
-    {
-        using MemoryStream stream = new();
-        using E2Store sut = new E2Store(stream);
-        byte[] bytes = new byte[] { 0xf0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0 };
-        stream.Write(bytes, 0, bytes.Length);
-
-        long result = await sut.ReadValueAt(offset);
-
-        Assert.That(result, Is.EqualTo(BitConverter.ToInt64(bytes, offset)));
-    }
-
     [TestCase(6)]
     [TestCase(14)]
     [TestCase(24)]
