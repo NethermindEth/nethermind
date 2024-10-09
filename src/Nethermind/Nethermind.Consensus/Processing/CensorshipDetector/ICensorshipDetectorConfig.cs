@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
 public interface ICensorshipDetectorConfig : IConfig
 {
-    [ConfigItem(DefaultValue = "true",
+    [ConfigItem(DefaultValue = "false",
         Description = "Enabling censorship detection feature")]
     bool Enabled { get; set; }
 
