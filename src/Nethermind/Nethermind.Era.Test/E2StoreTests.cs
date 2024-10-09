@@ -204,24 +204,6 @@ internal class E2StoreTests
         Assert.That(result.Offset, Is.EqualTo(offset));
     }
 
-    [TestCase(12)]
-    [TestCase(20)]
-    [TestCase(32)]
-    public async Task ReadEntryHeaderAt_ReadingEntryHeaderAtDifferentOffset_ReturnsCorrectEntryHeader(int offset)
-    {
-        using MemoryStream stream = new();
-        using E2Store sut = new E2Store(stream);
-        byte[] bytes = new byte[] { 0xff, 0xff, 0xff, 0xff };
-        stream.SetLength(offset);
-        stream.Seek(0, SeekOrigin.End);
-        await sut.WriteEntry(EntryTypes.CompressedHeader, bytes);
-
-        HeaderData result = await sut.ReadEntryHeaderAt(offset);
-
-        Assert.That(result.Type, Is.EqualTo(EntryTypes.CompressedHeader));
-        Assert.That(result.Length, Is.EqualTo(bytes.Length));
-    }
-
     [Test]
     public void Test()
     {

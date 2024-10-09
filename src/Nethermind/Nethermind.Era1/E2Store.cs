@@ -118,26 +118,23 @@ internal class E2Store : IDisposable
     }
 
     // Reads the header metadata at the given offset.
-    public async Task<HeaderData> ReadEntryHeaderAt(long offset, CancellationToken token = default)
+    private async Task<HeaderData> ReadEntryHeader(CancellationToken token = default)
     {
-        CheckStreamBounds(offset);
-
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
         {
-            _stream!.Position = offset;
             var read = await _stream.ReadAsync(buf.AsMemory(0, HeaderSize), token);
             if (read != HeaderSize)
-                throw new EraFormatException($"Entry header could not be read at position {offset}.");
+                throw new EraFormatException($"Entry header could not be read at position {_stream.Position}.");
             if (buf[6] != 0 || buf[7] != 0)
-                throw new EraFormatException($"Reserved header bytes has invalid values at position {offset}.");
+                throw new EraFormatException($"Reserved header bytes has invalid values at position {_stream.Position}.");
             HeaderData h = new()
             {
                 Type = BitConverter.ToUInt16(buf, 0),
                 Length = BitConverter.ToUInt32(buf, 2)
             };
-            if (h.Length > StreamLength - offset)
-                throw new EraFormatException($"Entry has an invalid length of {h.Length} at position {offset}, which is longer than stream length of {StreamLength}.");
+            if (h.Length + _stream.Position > StreamLength)
+                throw new EraFormatException($"Entry has an invalid length of {h.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");
             return h;
         }
         finally
@@ -145,6 +142,7 @@ internal class E2Store : IDisposable
             ArrayPool<byte>.Shared.Return(buf);
         }
     }
+
     public long BlockOffset(long blockNumber) => _blockIndex!.BlockOffset(blockNumber);
 
     public async Task<long> ReadValueAt(long off, CancellationToken token = default)
@@ -163,17 +161,12 @@ internal class E2Store : IDisposable
             ArrayPool<byte>.Shared.Return(buf);
         }
     }
-    public Task<Entry> ReadEntryCurrentPosition(CancellationToken token = default)
-    {
-        return ReadEntryAt(_stream.Position, token);
-    }
-    public async Task<Entry> ReadEntryAt(long off, CancellationToken token = default)
-    {
-        CheckStreamBounds(off);
 
-        var eHeader = await ReadEntryHeaderAt(off, token);
+    public async Task<Entry> ReadEntryCurrentPosition(CancellationToken token = default)
+    {
+        var eHeader = await ReadEntryHeader(token);
 
-        Entry e = new(eHeader.Type, off, eHeader.Length);
+        Entry e = new(eHeader.Type, _stream.Position - HeaderSize, eHeader.Length);
 
         if (eHeader.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {eHeader.Length}.");
@@ -182,6 +175,13 @@ internal class E2Store : IDisposable
             return e;
 
         return e;
+    }
+
+    public Task<Entry> ReadEntryAt(long off, CancellationToken token = default)
+    {
+        CheckStreamBounds(off);
+        _stream.Position = off;
+        return ReadEntryCurrentPosition(token);
     }
 
     public async Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
@@ -198,7 +198,7 @@ internal class E2Store : IDisposable
         do
         {
             int before = buffer.WriterIndex;
-            //We don't know the uncompressed length 
+            //We don't know the uncompressed length
             await buffer.WriteBytesAsync(decompressor, (int)e.Length * 4, cancellation);
             read = buffer.WriterIndex - before;
             totalRead += read;

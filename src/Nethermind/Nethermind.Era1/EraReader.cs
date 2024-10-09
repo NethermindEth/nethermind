@@ -83,7 +83,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         }
     }
     /// <summary>
-    /// Verify that the accumulator matches the archive data. 
+    /// Verify that the accumulator matches the archive data.
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
@@ -222,7 +222,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             || blockNumber > _store.Metadata.Start + _store.Metadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
         long seeked = SeekToBlock(blockNumber);
-        //Worst case scenario buffer 
+        //Worst case scenario buffer
         IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024 * 2);
 
         try
@@ -254,7 +254,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         finally
         {
             buffer.Release();
-        };
+        }
     }
 
     /// <summary>
