@@ -120,5 +120,5 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     /// For tests only - to test sorting
     /// </summary>
     internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? lightBlobTx)
-        => base.TryGetValue(hash, out lightBlobTx);
+        => base.TryGetValueNonLocked(hash, out lightBlobTx);
 }
