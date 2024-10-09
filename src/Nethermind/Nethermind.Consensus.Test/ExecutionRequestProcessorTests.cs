@@ -123,6 +123,6 @@ public class ExecutionProcessorTests
             Assert.That(processedRequest.RequestData, Is.EqualTo(expectedRequest.RequestData));
         }
 
-        Assert.That(block.Header.RequestsHash, Is.EqualTo(block.ExecutionRequests.CalculateHash()));
+        Assert.That(block.Header.RequestsHash, Is.EqualTo(block.ExecutionRequests.ToArray().CalculateHash()));
     }
 }

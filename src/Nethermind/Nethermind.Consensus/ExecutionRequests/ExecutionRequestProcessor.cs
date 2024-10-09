@@ -129,9 +129,9 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
     }
 
-    public Hash256 CalculateRequestsHash(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, out ExecutionRequest[] requests)
+    public Hash256 CalculateRequestsHash(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, out ArrayPoolList<ExecutionRequest> requests)
     {
-        List<ExecutionRequest> requestsList = new();
+        ArrayPoolList<ExecutionRequest> requestsList = new ArrayPoolList<ExecutionRequest>(0);
         using (SHA256 sha256 = SHA256.Create())
         {
             using (SHA256 sha256Inner = SHA256.Create())
@@ -162,7 +162,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
                 // Complete the final hash computation
                 sha256.TransformFinalBlock(new byte[0], 0, 0);
-                requests = requestsList.ToArray();
+                requests = requestsList;
                 return new Hash256(sha256.Hash!);
             }
         }
@@ -172,7 +172,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     {
         if (!spec.RequestsEnabled)
             return;
-        block.Header.RequestsHash = CalculateRequestsHash(block, state, receipts, spec, out ExecutionRequest[] requests);
+        block.Header.RequestsHash = CalculateRequestsHash(block, state, receipts, spec, out ArrayPoolList<ExecutionRequest> requests);
         block.ExecutionRequests = requests;
     }
 }

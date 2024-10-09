@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -30,7 +31,11 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
         if (block.IsGenesis)
             return;
 
-        block.ExecutionRequests = Requests;
+        block.ExecutionRequests = new ArrayPoolList<ExecutionRequest>(Requests.Length);
+        foreach (var request in Requests)
+        {
+            block.ExecutionRequests.Add(request);
+        }
         block.Header.RequestsHash = Requests.CalculateHash();
     }
 }

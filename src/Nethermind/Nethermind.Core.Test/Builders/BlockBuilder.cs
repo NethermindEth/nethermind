@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -251,7 +252,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithEmptyRequestsHash()
         {
             TestObjectInternal.Header.RequestsHash = Array.Empty<ExecutionRequest.ExecutionRequest>().CalculateHash();
-            TestObjectInternal.ExecutionRequests = Array.Empty<ExecutionRequest.ExecutionRequest>();
+            TestObjectInternal.ExecutionRequests = new ArrayPoolList<ExecutionRequest.ExecutionRequest>(0);
             return this;
         }
 
