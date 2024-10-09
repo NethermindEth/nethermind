@@ -31,6 +31,6 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
             return;
 
         block.ExecutionRequests = Requests;
-        block.Header.RequestsHash = Requests.CalculateRoot();
+        block.Header.RequestsHash = Requests.CalculateHash();
     }
 }

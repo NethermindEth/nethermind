@@ -122,5 +122,7 @@ public class ExecutionProcessorTests
             Assert.That(processedRequest.RequestType, Is.EqualTo(expectedRequest.RequestType));
             Assert.That(processedRequest.RequestData, Is.EqualTo(expectedRequest.RequestData));
         }
+
+        Assert.That(block.Header.RequestsHash, Is.EqualTo(block.ExecutionRequests.CalculateHash()));
     }
 }

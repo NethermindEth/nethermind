@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data.SqlTypes;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -83,11 +85,11 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
     private IEnumerable<ExecutionRequest> ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress)
     {
-        bool IsWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
+        bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
 
-        int requestBytesSize = IsWithdrawalRequests ? withdrawalRequestsBytesSize : consolidationRequestsBytesSize;
+        int requestBytesSize = isWithdrawalRequests ? withdrawalRequestsBytesSize : consolidationRequestsBytesSize;
 
-        if (!(IsWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
+        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
             yield break;
 
         if (!state.AccountExists(contractAddress))
@@ -118,7 +120,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
             int offset = i * requestBytesSize;
             yield return new ExecutionRequest
             {
-                RequestType = (byte)(IsWithdrawalRequests ? ExecutionRequestType.WithdrawalRequest : ExecutionRequestType.ConsolidationRequest),
+                RequestType = (byte)(isWithdrawalRequests ? ExecutionRequestType.WithdrawalRequest : ExecutionRequestType.ConsolidationRequest),
                 RequestData = result.Slice(offset, requestBytesSize).ToArray()
             };
         }
@@ -130,13 +132,11 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         if (!spec.RequestsEnabled)
             return;
 
-        List<ExecutionRequest> requests =
-        [
-            .. ProcessDeposits(receipts, spec),
-            .. ReadRequests(block, state, spec, spec.Eip7002ContractAddress),
-            .. ReadRequests(block, state, spec, spec.Eip7251ContractAddress),
-        ];
-        block.Header.RequestsHash = requests.ToArray().CalculateRoot();
+        IEnumerable<ExecutionRequest> requests;
+        requests = ProcessDeposits(receipts, spec);
+        requests = requests.Concat(ReadRequests(block, state, spec, spec.Eip7002ContractAddress));
+        requests = requests.Concat(ReadRequests(block, state, spec, spec.Eip7251ContractAddress));
+        block.Header.RequestsHash = requests.CalculateHash();
         block.ExecutionRequests = requests.ToArray();
     }
 }
