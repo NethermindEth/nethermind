@@ -13,6 +13,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -160,10 +161,22 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
             }
 
-            Block block = new(headerSearch.Object!, new[] { tx }, Enumerable.Empty<BlockHeader>());
+            BlockHeader header = headerSearch.Object!.Clone();
+
+            // Fake next-block header to force BlockProcessor to start from <blockParameter> instead of <blockParameter> - 1
+            // TODO consider alternative approaches to achieve this
+            BlockHeader nextHeader = header.Clone();
+            nextHeader.Number = header.Number + 1;
+            nextHeader.ParentHash = header.Hash;
+            nextHeader.MaybeParent = new (header);
+
+            Block block = new(nextHeader, [tx], []);
+            nextHeader.Hash = block.CalculateHash();
+
+            using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(header, stateOverride) : null;
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
-            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1), stateOverride);
+            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
 
@@ -326,15 +339,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer,
-            Dictionary<Address, AccountOverride>? stateOverride = null)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(block.Header, stateOverride) : null;
             _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
-
             return tracer.BuildResult();
         }
 

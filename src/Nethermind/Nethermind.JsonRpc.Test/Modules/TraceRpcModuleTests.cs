@@ -21,7 +21,9 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Json;
@@ -29,6 +31,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -673,6 +676,63 @@ public class TraceRpcModuleTests
         Assert.That(traces.Data.Action!.CallType, Is.EqualTo("call"));
         Assert.That(traces.Data.Action.From, Is.EqualTo(TestItem.AddressB));
         Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
+    }
+
+    [Test]
+    public async Task Trace_call_runs_on_top_of_specified_block()
+    {
+        Context context = new();
+        await context.Build();
+        TestRpcBlockchain blockchain = context.Blockchain;
+
+        PrivateKey addressKey = Build.A.PrivateKey.TestObject;
+        Address address = addressKey.Address;
+        UInt256 balance = 100.Ether(), send = balance / 2;
+
+        await blockchain.AddFunds(address, balance);
+        Hash256 lastBlockHash = blockchain.BlockTree.Head!.Hash!;
+
+        string[] traceTypes = ["stateDiff"];
+        Transaction transaction = Build.A.Transaction
+            .SignedAndResolved(addressKey)
+            .WithTo(TestItem.AddressC)
+            .WithValue(send)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_call(
+            new(transaction), traceTypes, new(lastBlockHash)
+        );
+
+        ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
+        stateChanges?.Balance?.Should().BeEquivalentTo(new ParityStateChange<UInt256>(balance, balance - send));
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_runs_on_top_of_specified_block()
+    {
+        Context context = new();
+        await context.Build();
+        TestRpcBlockchain blockchain = context.Blockchain;
+
+        PrivateKey addressKey = Build.A.PrivateKey.TestObject;
+        Address address = addressKey.Address;
+        UInt256 balance = 100.Ether(), send = balance / 2;
+
+        await blockchain.AddFunds(address, balance);
+
+        string[] traceTypes = ["stateDiff"];
+        Transaction transaction = Build.A.Transaction
+            .WithTo(TestItem.AddressC)
+            .WithValue(send)
+            .SignedAndResolved(addressKey)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction(
+            TxDecoder.Instance.Encode(transaction).Bytes, traceTypes
+        );
+
+        ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
+        stateChanges?.Balance?.Should().BeEquivalentTo(new ParityStateChange<UInt256>(balance, balance - send));
     }
 
     [Test]
