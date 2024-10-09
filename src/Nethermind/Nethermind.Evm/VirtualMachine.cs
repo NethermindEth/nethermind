@@ -75,7 +75,8 @@ public class VirtualMachine : IVirtualMachine
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        bool isStateless = false)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         if (!logger.IsTrace)
@@ -86,6 +87,7 @@ public class VirtualMachine : IVirtualMachine
         {
             _evm = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
         }
+        if(isStateless) CodeCache.Clear();
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
@@ -634,7 +636,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
                     {
-                        if (!isAddressPreCompile)
+                        if (!isAddressPreCompile && !isSystemContract)
                         {
                             var gasBefore = gasAvailable;
                             result = vmState.Env.Witness.AccessAccountData(address, ref gasAvailable);
@@ -2621,7 +2623,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // get the verkle witness cost and charge the account access gas if the verkle cost is zero
         var gasBefore = gasAvailable;
         if (!vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, contractBalance.IsZero,
-                inheritorAccountExists, ref gasAvailable))
+                inheritorAccountExists,
+                inheritor.IsPrecompile(spec) || inheritor.IsSystemContract(spec),
+                ref gasAvailable))
         {
             return EvmExceptionType.OutOfGas;
         }

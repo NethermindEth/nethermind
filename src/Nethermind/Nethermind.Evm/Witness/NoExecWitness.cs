@@ -41,7 +41,7 @@ public class NoExecWitness : IExecutionWitness
     public bool AccessAccountForWithdrawal(Address address) => true;
     public bool AccessForBlockhashInsertionWitness(Address address, UInt256 key) => true;
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero,
-        bool inheritorExist, ref long gasAvailable) => true;
+        bool inheritorExist, bool isPrecompileOrSystemContract, ref long gasAvailable) => true;
     public Hash256[] GetAccessedKeys() => [];
     public bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable) => true;
     public bool AccessForContractCreationCheck(Address contractAddress, ref long gasAvailable) => true;
