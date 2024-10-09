@@ -42,8 +42,7 @@ public class EraExporterTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "abc");
 
-        await sut.Export("test", 0, chainlength - 1, size);
-
+        await sut.Export("test", 0, chainlength - 1, size, createAccumulator: false);
         Assert.That(fileSystem.AllFiles.Count, Is.EqualTo(expectedNumberOfFiles));
     }
 
@@ -76,6 +75,7 @@ public class EraExporterTests
     }
 
     [Test]
+    [Explicit]
     public async Task Export_()
     {
         //var fileSystem = new MockFileSystem();

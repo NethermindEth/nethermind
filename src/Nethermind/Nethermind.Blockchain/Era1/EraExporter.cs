@@ -53,6 +53,7 @@ public class EraExporter : IEraExporter
         long start,
         long end,
         int size = EraWriter.MaxEra1Size,
+        bool createAccumulator = true,
         CancellationToken cancellation = default)
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
@@ -73,8 +74,6 @@ public class EraExporter : IEraExporter
         int txProcessedSinceLast = 0;
 
         List<byte[]> eraRoots = new();
-        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-        _fileSystem.File.Delete(accumulatorPath);
         for (long i = start; i <= end; i += size)
         {
             string filePath = Path.Combine(
@@ -132,13 +131,17 @@ public class EraExporter : IEraExporter
                 }
             }
         }
-        await CreateAccumulatorFile(destinationPath, _networkName, _fileSystem, cancellation);
+
+        if (createAccumulator)
+            await CreateAccumulatorFile(destinationPath, _networkName, _fileSystem, cancellation);
     }
 
-    private static async Task CreateAccumulatorFile(string destination, string network, IFileSystem fileSystem, CancellationToken cancellationToken)
+    private async Task CreateAccumulatorFile(string destination, string network, IFileSystem fileSystem, CancellationToken cancellationToken)
     {
         IEnumerable<string> files = EraReader.GetAllEraFiles(destination, network, fileSystem);
-        using StreamWriter stream = new StreamWriter(fileSystem.File.Create(Path.Combine(destination, AccumulatorFileName)), System.Text.Encoding.UTF8);
+        string accumulatorPath = Path.Combine(destination, AccumulatorFileName);
+        _fileSystem.File.Delete(accumulatorPath);
+        using StreamWriter stream = new StreamWriter(fileSystem.File.Create(accumulatorPath), System.Text.Encoding.UTF8);
         bool first = true;
         foreach (string file in files)
         {

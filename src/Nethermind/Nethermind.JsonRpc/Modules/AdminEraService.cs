@@ -131,7 +131,7 @@ public class AdminEraService : IAdminEraService
                 from,
                 to,
                 EraWriter.MaxEra1Size,
-                _processExit.Token);
+                cancellation: _processExit.Token);
             if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
