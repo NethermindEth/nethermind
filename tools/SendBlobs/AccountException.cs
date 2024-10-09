@@ -22,8 +22,4 @@ internal class AccountException : Exception
     public AccountException(string? message, Exception? innerException) : base(message, innerException)
     {
     }
-
-    protected AccountException(SerializationInfo info, StreamingContext context) : base(info, context)
-    {
-    }
 }
