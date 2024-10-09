@@ -336,14 +336,14 @@ namespace Nethermind.TxPool.Collections
         /// <param name="key">Key to be returned.</param>
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
-        public virtual bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
+        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
             using var lockRelease = Lock.Acquire();
 
             return TryGetValueNonLocked(key, out value);
         }
 
-        protected bool TryGetValueNonLocked(TKey key, [NotNullWhen(true)] out TValue? value) => _cacheMap.TryGetValue(key, out value) && value is not null;
+        protected virtual bool TryGetValueNonLocked(TKey key, [NotNullWhen(true)] out TValue? value) => _cacheMap.TryGetValue(key, out value) && value is not null;
 
         /// <summary>
         /// Tries to insert element.
