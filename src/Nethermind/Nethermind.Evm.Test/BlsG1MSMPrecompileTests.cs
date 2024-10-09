@@ -12,15 +12,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsMultiMulG1PrecompileTests
+public class BlsG1MSMPrecompileTests
 {
     [Test]
     public void Test()
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            IPrecompile precompile = G1MultiMulPrecompile.Instance;
-            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
+            IPrecompile precompile = G1MSMPrecompile.Instance;
+            (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, Prague.Instance);
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
             success.Should().BeTrue();
         }
