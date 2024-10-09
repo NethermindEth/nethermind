@@ -705,7 +705,7 @@ namespace Nethermind.TxPool.Test
                 EnsureSenderBalance(privateKey.Address, UInt256.MaxValue);
             }
 
-            // adding txs in parallel
+            // adding, getting and removing txs in parallel
             Parallel.ForEach(TestItem.PrivateKeys, privateKey =>
             {
                 for (int i = 0; i < txsPerSender; i++)
@@ -727,11 +727,12 @@ namespace Nethermind.TxPool.Test
                         blobPool.TryGetBlobAndProof(expectedBlobVersionedHash.ToBytes(), out _, out _).Should().BeTrue();
                     }
 
+                    // removing 50% of txs
                     if (i % 2 == 0) blobPool.TryRemove(tx.Hash, out _).Should().BeTrue();
                 }
             });
 
-            // we expect index to have 1 key with poolSize values
+            // we expect index to have 1 key with poolSize/2 values (50% of txs were removed)
             blobPool.BlobIndex.Count.Should().Be(1);
             blobPool.BlobIndex.TryGetValue(expectedBlobVersionedHash, out List<Hash256> values).Should().BeTrue();
             values.Count.Should().Be(poolSize / 2);
