@@ -571,7 +571,7 @@ namespace Nethermind.Blockchain
                         return new ArrayPoolList<BlockHeader>(1) { startHeader };
                     }
 
-                    ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
+                    using ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(numberOfBlocks, numberOfBlocks);
 
                     BlockHeader current = startHeader;
                     int responseIndex = reverse ? 0 : numberOfBlocks - 1;
