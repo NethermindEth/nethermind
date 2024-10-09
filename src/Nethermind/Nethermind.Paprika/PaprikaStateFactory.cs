@@ -50,7 +50,7 @@ public class PaprikaStateFactory : IStateFactory
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
-        _db = PagedDb.MemoryMappedDb(config.SizeInGb.GB(), (byte)config.HistoryDepth, directory, flushToDisk: true);
+        _db = PagedDb.MemoryMappedDb(config.SizeInGb.GiB(), (byte)config.HistoryDepth, directory, flushToDisk: true);
 
         var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
