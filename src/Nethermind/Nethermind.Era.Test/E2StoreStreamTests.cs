@@ -170,24 +170,6 @@ internal class E2StoreStreamTests
         }
     }
 
-    [TestCase(6)]
-    [TestCase(14)]
-    [TestCase(24)]
-    public async Task ReadEntryAt_ReadingEntryAtDifferentOffset_ReturnsCorrectEntry(int offset)
-    {
-        using MemoryStream stream = new();
-        using E2StoreStream sut = new E2StoreStream(stream);
-        byte[] bytes = new byte[] { 0xff, 0xff, 0xff, 0xff };
-        stream.SetLength(offset);
-        stream.Seek(0, SeekOrigin.End);
-        await sut.WriteEntry(EntryTypes.CompressedHeader, bytes);
-
-        Entry result = await sut.ReadEntryAt(offset);
-
-        Assert.That(result.Type, Is.EqualTo(EntryTypes.CompressedHeader));
-        Assert.That(result.Length, Is.EqualTo(bytes.Length));
-    }
-
     [Test]
     public void Test()
     {

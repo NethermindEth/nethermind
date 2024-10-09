@@ -219,25 +219,20 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
         try
         {
-            await ReadEntryHere(buffer, EntryTypes.CompressedHeader, cancellationToken);
-            NettyRlpStream rlpStream = new NettyRlpStream(buffer);
-            Hash256? currentComputedHeaderHash = null;
-            if (computeHeaderHash)
-                currentComputedHeaderHash = rlpStream.ComputeNextItemHash();
-            BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
+            (BlockHeader header, Hash256? currentComputedHeaderHash) = await _storeStream.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
+                computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash, EntryTypes.CompressedHeader, cancellationToken);
 
-            await ReadEntryHere(buffer, EntryTypes.CompressedBody, cancellationToken);
+            BlockBody body = await _storeStream.ReadSnappyCompressedEntryAndDecode(
+                (buffer) => Rlp.Decode<BlockBody>(new NettyRlpStream(buffer)),
+                EntryTypes.CompressedBody, cancellationToken);
 
-            BlockBody body = Rlp.Decode<BlockBody>(new NettyRlpStream(buffer));
+            TxReceipt[] receipts  = await _storeStream.ReadSnappyCompressedEntryAndDecode(
+                (buffer) => DecodeReceipts(buffer),
+                EntryTypes.CompressedReceipts, cancellationToken);
 
-            await ReadEntryHere(buffer, EntryTypes.CompressedReceipts, cancellationToken);
-            TxReceipt[] receipts = DecodeReceipts(buffer);
-
-            Entry e = await _storeStream.ReadEntry(cancellationToken);
-            CheckType(e, EntryTypes.TotalDifficulty);
-            await _storeStream.ReadEntryValue(buffer, e, cancellationToken);
-
-            UInt256 currentTotalDiffulty = new UInt256(buffer.ReadAllBytesAsSpan());
+            UInt256 currentTotalDiffulty = await _storeStream.ReadEntryAndDecode(
+                (buffer) => new UInt256(buffer.AsSpan(), isBigEndian: false),
+                EntryTypes.TotalDifficulty, cancellationToken);
 
             Block block = new Block(header, body);
 
@@ -249,18 +244,19 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         }
     }
 
-    /// <summary>
-    /// Reads an entry and loads it's value into <paramref name="buffer"/> from the current position in the stream.
-    /// </summary>
-    /// <param name="buffer"></param>
-    /// <param name="expectedType"></param>
-    /// <param name="cancellation"></param>
-    /// <returns></returns>
-    private async Task ReadEntryHere(IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
+    (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderAndHash(IByteBuffer buffer)
     {
-        Entry e = await _storeStream.ReadEntry(cancellation);
-        CheckType(e, expectedType);
-        await _storeStream.ReadEntryValueAsSnappy(buffer, e, cancellation);
+        NettyRlpStream rlpStream = new NettyRlpStream(buffer);
+        Hash256? currentComputedHeaderHash = rlpStream.ComputeNextItemHash();
+        BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
+        return (header, currentComputedHeaderHash);
+    }
+
+    (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderButNoHash(IByteBuffer buffer)
+    {
+        NettyRlpStream rlpStream = new NettyRlpStream(buffer);
+        BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
+        return (header, null);
     }
 
     private TxReceipt[] DecodeReceipts(IByteBuffer buf)
@@ -287,12 +283,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         {
             _currentBlockNumber = EraMetadata.Start;
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CheckType(Entry e, ushort expected)
-    {
-        if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
     }
 
     private static bool IsValidFilename(string file)

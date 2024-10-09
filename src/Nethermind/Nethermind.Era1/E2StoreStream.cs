@@ -6,7 +6,6 @@ using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Snappier;
 namespace Nethermind.Era1;
 
@@ -98,11 +97,12 @@ internal class E2StoreStream : IDisposable
     {
         Entry entry = await ReadEntry(token);
         CheckType(entry, expectedType);
+        if (_stream.Position + entry.Length > StreamLength) throw new EraFormatException($"Entry has a length ({entry.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
 
         IByteBuffer buffer = _bufferAllocator.Buffer((int)entry.Length);
         try
         {
-            await ReadEntryValue(buffer, entry, token);
+            await buffer.WriteBytesAsync(_stream, (int)entry.Length, token);
             return decoder.Invoke(buffer);
         }
         finally
@@ -116,10 +116,9 @@ internal class E2StoreStream : IDisposable
         Entry entry = await ReadEntry(token);
         CheckType(entry, expectedType);
 
-        IByteBuffer buffer = _bufferAllocator.Buffer((int)2.MiB());
+        IByteBuffer buffer = await ReadEntryValueAsSnappy(entry, token);
         try
         {
-            await ReadEntryValueAsSnappy(buffer, entry, token);
             return decoder.Invoke(buffer);
         }
         finally
@@ -134,7 +133,7 @@ internal class E2StoreStream : IDisposable
         if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
     }
 
-    public async Task<Entry> ReadEntry(CancellationToken token = default)
+    private async Task<Entry> ReadEntry(CancellationToken token = default)
     {
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
@@ -157,36 +156,36 @@ internal class E2StoreStream : IDisposable
         }
     }
 
-    public Task<Entry> ReadEntryAt(long off, CancellationToken token = default)
+    private async Task<IByteBuffer> ReadEntryValueAsSnappy(Entry e, CancellationToken cancellation = default)
     {
-        CheckStreamBounds(off);
-        _stream.Position = off;
-        return ReadEntry(token);
-    }
-
-    public async Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
-    {
-        if (buffer is null) throw new ArgumentNullException(nameof(buffer));
         if (_stream.Position + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
+
+        IByteBuffer buffer = _bufferAllocator.Buffer((int)(e.Length * 4));
         buffer.EnsureWritable((int)e.Length * 4, true);
 
         using StreamSegment streamSegment = new(_stream, _stream.Position, e.Length);
         using SnappyStream decompressor = new(streamSegment, CompressionMode.Decompress, true);
 
-        int totalRead = 0;
         int read;
         do
         {
+            if (buffer.WritableBytes <= 0)
+            {
+                IByteBuffer newBuffer = _bufferAllocator.Buffer(buffer.ReadableBytes * 2);
+                newBuffer.WriteBytes(buffer);
+                buffer.Release();
+                buffer = newBuffer;
+            }
+
             int before = buffer.WriterIndex;
             //We don't know the uncompressed length
-            await buffer.WriteBytesAsync(decompressor, (int)e.Length * 4, cancellation);
+            await buffer.WriteBytesAsync(decompressor, buffer.WritableBytes, cancellation);
             read = buffer.WriterIndex - before;
-            totalRead += read;
         }
         while (read != 0);
-        return totalRead;
-    }
 
+        return buffer;
+    }
 
     private void EnsureCompressedStream(int minLength)
     {
@@ -194,17 +193,6 @@ internal class E2StoreStream : IDisposable
             _compressedData = new MemoryStream(minLength);
         else
             _compressedData.SetLength(0);
-
-    }
-
-    public async ValueTask<int> ReadEntryValue(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
-    {
-        if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-        if (buffer.Capacity < e.Length) throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
-        if (_stream.Position + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
-
-        await buffer.WriteBytesAsync(_stream, (int)e.Length, cancellation);
-        return (int)e.Length;
     }
 
     public Task Flush(CancellationToken cancellation = default)
@@ -234,13 +222,4 @@ internal class E2StoreStream : IDisposable
     {
         return _stream.Seek(offset, origin);
     }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void CheckStreamBounds(long offset)
-    {
-        if (offset < 0)
-            throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be a negative number.");
-        if (offset > StreamLength - 8)
-            throw new ArgumentOutOfRangeException(nameof(offset), "Cannot read beyond the length of the stream.");
-    }
-
 }
