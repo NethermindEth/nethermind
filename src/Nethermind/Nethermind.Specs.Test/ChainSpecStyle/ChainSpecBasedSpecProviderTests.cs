@@ -149,7 +149,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
     }
 
     public static IEnumerable<TestCaseData> HoleskyActivations
@@ -216,7 +216,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
     public static IEnumerable<TestCaseData> GnosisActivations
@@ -263,7 +263,7 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics();
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestampConst, GnosisBlockTime).Should().BeTrue());
     }
 
     private static void VerifyGnosisCancunSpecifics()
@@ -375,7 +375,7 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
 
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
+            t => ValidateSlotByTimestamp(t, MainnetSpecProvider.BeaconChainGenesisTimestampConst).Should().BeTrue());
     }
 
     [Flags]
@@ -708,7 +708,9 @@ public class ChainSpecBasedSpecProviderTests
                 Eip3855TransitionTimestamp = 1000000012,
                 Eip3860TransitionTimestamp = 1000000012,
                 Eip1153TransitionTimestamp = 1000000024,
-                Eip2537TransitionTimestamp = 1000000024
+                Eip2537TransitionTimestamp = 1000000024,
+
+                Eip7702TransitionTimestamp = 1000000032,
             }
         };
 
@@ -787,6 +789,7 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3860Enabled = true;
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
+        TestTransitions((40001L, 1000000032), r => { r.IsEip7702Enabled = true; });
     }
 
     [TestCaseSource(nameof(BlockNumbersAndTimestampsNearForkActivations))]

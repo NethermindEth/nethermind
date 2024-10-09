@@ -129,6 +129,7 @@ internal class ChainSpecParamsJson
     public UInt256? TerminalTotalDifficulty { get; set; }
 
     public long? TerminalPoWBlockNumber { get; set; }
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
 
     public ulong? Eip1153TransitionTimestamp { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
@@ -152,6 +153,9 @@ internal class ChainSpecParamsJson
     public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
+    public ulong? Eip7251TransitionTimestamp { get; set; }
+    public Address Eip7251ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
+    public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
 }

@@ -17,6 +17,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -33,7 +34,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,7 +47,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null,
         IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
-        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, logManager, mockedConsensusRequestsProcessor);
+        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService, null, logManager, mockedConsensusRequestsProcessor);
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
@@ -99,15 +99,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         return base.Can_apply_withdrawals_correctly(input);
     }
 
-    class MergeAuRaTestBlockchain : MergeTestBlockchain
+    public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         private AuRaNethermindApi? _api;
+        protected ITxSource? _additionalTxSource;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ITxSource? additionalTxSource = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
             : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedConsensusRequestsProcessor)
         {
             ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
             SealEngineType = Core.SealEngineType.AuRa;
+            _additionalTxSource = additionalTxSource;
         }
 
         protected override Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
@@ -194,12 +196,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ConsensusRequestsProcessor);
 
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_additionalTxSource);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                CreateBlockImprovementContextFactory(PostMergeBlockProducer),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
@@ -227,5 +229,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
+
+        protected virtual IBlockImprovementContextFactory CreateBlockImprovementContextFactory(IBlockProducer blockProducer)
+            => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
     }
 }
