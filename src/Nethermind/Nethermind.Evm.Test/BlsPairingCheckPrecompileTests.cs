@@ -12,14 +12,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsPairingPrecompileTests
+public class BlsPairingCheckPrecompileTests
 {
     [Test]
     public void Test()
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            IPrecompile precompile = PairingPrecompile.Instance;
+            IPrecompile precompile = PairingCheckPrecompile.Instance;
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
 
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
