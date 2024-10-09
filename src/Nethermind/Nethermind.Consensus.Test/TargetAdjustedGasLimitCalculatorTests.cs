@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Test
             Assert.That(actualValue, Is.EqualTo(gasLimit * Eip1559Constants.DefaultElasticityMultiplier));
         }
 
-        [TestCase(30_000_000,100_000_000, 30029295)]
+        [TestCase(30_000_000, 100_000_000, 30029295)]
         public void Is_calculating_correct_gasLimit(long currentGasLimit, long targetGasLimit, long expectedGasLimit)
         {
             int blockNumber = 20_000_000;
