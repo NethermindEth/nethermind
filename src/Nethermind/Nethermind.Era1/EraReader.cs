@@ -165,7 +165,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     }
     public Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
     {
-        _storeStream.Seek(-32 - 8 * 4 - EraMetadata.Count * 8, SeekOrigin.End);
+        _storeStream.Seek(EraMetadata.AccumulatorOffset, SeekOrigin.Begin);
         return _storeStream.ReadEntryAndDecode<byte[]>(
             (buffer) => buffer.ReadAllBytesAsArray(),
             EntryTypes.Accumulator, cancellation);
@@ -213,35 +213,27 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (blockNumber < EraMetadata.Start
             || blockNumber > EraMetadata.Start + EraMetadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
-        long seeked = SeekToBlock(blockNumber);
-        //Worst case scenario buffer
-        IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024 * 2);
+        _storeStream.Seek(0, SeekOrigin.Begin);
+        SeekToBlock(blockNumber);
 
-        try
-        {
-            (BlockHeader header, Hash256? currentComputedHeaderHash) = await _storeStream.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
-                computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash, EntryTypes.CompressedHeader, cancellationToken);
+        (BlockHeader header, Hash256? currentComputedHeaderHash) = await _storeStream.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
+            computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash, EntryTypes.CompressedHeader, cancellationToken);
 
-            BlockBody body = await _storeStream.ReadSnappyCompressedEntryAndDecode(
-                (buffer) => Rlp.Decode<BlockBody>(new NettyRlpStream(buffer)),
-                EntryTypes.CompressedBody, cancellationToken);
+        BlockBody body = await _storeStream.ReadSnappyCompressedEntryAndDecode(
+            (buffer) => Rlp.Decode<BlockBody>(new NettyRlpStream(buffer)),
+            EntryTypes.CompressedBody, cancellationToken);
 
-            TxReceipt[] receipts  = await _storeStream.ReadSnappyCompressedEntryAndDecode(
-                (buffer) => DecodeReceipts(buffer),
-                EntryTypes.CompressedReceipts, cancellationToken);
+        TxReceipt[] receipts  = await _storeStream.ReadSnappyCompressedEntryAndDecode(
+            (buffer) => DecodeReceipts(buffer),
+            EntryTypes.CompressedReceipts, cancellationToken);
 
-            UInt256 currentTotalDiffulty = await _storeStream.ReadEntryAndDecode(
-                (buffer) => new UInt256(buffer.AsSpan(), isBigEndian: false),
-                EntryTypes.TotalDifficulty, cancellationToken);
+        UInt256 currentTotalDiffulty = await _storeStream.ReadEntryAndDecode(
+            (buffer) => new UInt256(buffer.AsSpan(), isBigEndian: false),
+            EntryTypes.TotalDifficulty, cancellationToken);
 
-            Block block = new Block(header, body);
+        Block block = new Block(header, body);
 
-            return new EntryReadResult(block, receipts, currentTotalDiffulty, currentComputedHeaderHash);
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        return new EntryReadResult(block, receipts, currentTotalDiffulty, currentComputedHeaderHash);
     }
 
     (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderAndHash(IByteBuffer buffer)
@@ -266,7 +258,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private long SeekToBlock(long blockNumber)
     {
-        long offset = EraMetadata.BlockOffset(blockNumber) - _storeStream.Position;
+        long blockOffset = EraMetadata.BlockOffset(blockNumber);
+        long offset = blockOffset - _storeStream.Position;
         if (offset == 0)
             return 0;
         return _storeStream.Seek(offset, SeekOrigin.Current);

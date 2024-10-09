@@ -88,11 +88,12 @@ public class EraExporterTests
 
         //await sut.Export("test", 0, ChainLength - 1, 8192);
         const string NetworkName = "holesky";
-        foreach (var item in EraReader.GetAllEraFiles(@"C:/ethereum/export", NetworkName).Skip(2))
+        foreach (var item in EraReader.GetAllEraFiles(@"/home/amirul/sataworkspace/geth-holesky/era-export", NetworkName))
         {
-
+            Console.Error.WriteLine($"{item}");
             using EraReader reader = await EraReader.Create(item);
-
+            using E2StoreStream store = new E2StoreStream(File.OpenRead(item));
+            store.Seek(0, SeekOrigin.Begin);
             var expectedAccumulator = await reader.ReadAccumulator();
             Assert.That(await reader.VerifyAccumulator(expectedAccumulator, HoleskySpecProvider.Instance), Is.True);
         }

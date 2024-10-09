@@ -7,11 +7,14 @@ namespace Nethermind.Era1;
 
 public class EraMetadata: IDisposable
 {
+    private const int AccumulatorValueSize = 32;
+
     private readonly BlockIndex _blockIndex;
     public long Start { get; }
     public long End => Start + Count - 1;
     public long Count { get; }
     public long Length { get; }
+    public long AccumulatorOffset => Length - (E2StoreStream.HeaderSize + AccumulatorValueSize + _blockIndex.SizeIncludingHeader);
 
     private EraMetadata(long start, long count, long length, BlockIndex blockIndex)
     {
@@ -37,6 +40,9 @@ public class EraMetadata: IDisposable
 
     private sealed class BlockIndex : IDisposable
     {
+        private const int CountValue = 8;
+        private const int StartingBlockNumberValue = 8;
+
         private bool _disposedValue;
         private readonly long _start;
         private readonly long _count;
@@ -45,6 +51,8 @@ public class EraMetadata: IDisposable
 
         public long Start => _start;
         public long Count => _count;
+
+        public long SizeIncludingHeader =>  E2StoreStream.HeaderSize + CountValue + StartingBlockNumberValue + 8 * (int)_count;
 
         private BlockIndex(Span<byte> index, long start, long count, long length)
         {
@@ -72,8 +80,7 @@ public class EraMetadata: IDisposable
             int blockIndexOffset = 8 + indexOffset;
             long relativeOffset = BitConverter.ToInt64(_index.AsSpan(blockIndexOffset, 8));
 
-            int indexLength = 16 + 8 * (int)_count;
-            return _length - indexLength + blockIndexOffset + 8 + relativeOffset;
+            return _length - SizeIncludingHeader + relativeOffset;
         }
 
         public static async Task<BlockIndex> InitializeIndex(Stream stream, CancellationToken cancellation)
@@ -85,9 +92,9 @@ public class EraMetadata: IDisposable
             await stream.ReadAsync(bytes, cancellation);
             long c = BitConverter.ToInt64(bytes.Span);
 
-            int indexLength = 16 + 8 * (int)c;
+            int indexLength = CountValue + StartingBlockNumberValue + 8 * (int)c;
 
-            if (indexLength < 16 || indexLength > EraWriter.MaxEra1Size * 8 + 16)
+            if (indexLength < 16 || indexLength > EraWriter.MaxEra1Size * 8 + CountValue + StartingBlockNumberValue)
                 throw new EraFormatException("Index is in an invalid format.");
 
             using ArrayPoolList<byte> blockIndex = new(indexLength);

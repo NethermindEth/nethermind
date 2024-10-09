@@ -95,8 +95,7 @@ internal class E2StoreStream : IDisposable
 
     public async Task<T> ReadEntryAndDecode<T>(Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
     {
-        Entry entry = await ReadEntry(token);
-        CheckType(entry, expectedType);
+        Entry entry = await ReadEntry(expectedType, token);
         if (_stream.Position + entry.Length > StreamLength) throw new EraFormatException($"Entry has a length ({entry.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
 
         IByteBuffer buffer = _bufferAllocator.Buffer((int)entry.Length);
@@ -113,8 +112,7 @@ internal class E2StoreStream : IDisposable
 
     public async Task<T> ReadSnappyCompressedEntryAndDecode<T>(Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
     {
-        Entry entry = await ReadEntry(token);
-        CheckType(entry, expectedType);
+        Entry entry = await ReadEntry(expectedType, token);
 
         IByteBuffer buffer = await ReadEntryValueAsSnappy(entry, token);
         try
@@ -127,13 +125,7 @@ internal class E2StoreStream : IDisposable
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CheckType(Entry e, ushort expected)
-    {
-        if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
-    }
-
-    private async Task<Entry> ReadEntry(CancellationToken token = default)
+    public async Task<Entry> ReadEntry(ushort? expectedType, CancellationToken token = default)
     {
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
@@ -141,14 +133,15 @@ internal class E2StoreStream : IDisposable
             var read = await _stream.ReadAsync(buf.AsMemory(0, HeaderSize), token);
             if (read != HeaderSize)
                 throw new EraFormatException($"Entry header could not be read at position {_stream.Position}.");
+            Entry entry = new Entry(BitConverter.ToUInt16(buf, 0), BitConverter.ToUInt32(buf, 2));
+            if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
+            if (entry.Length + _stream.Position > StreamLength)
+                throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");
+            if (entry.Length > ValueSizeLimit)
+                throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
             if (buf[6] != 0 || buf[7] != 0)
                 throw new EraFormatException($"Reserved header bytes has invalid values at position {_stream.Position}.");
-            Entry h = new Entry(BitConverter.ToUInt16(buf, 0), BitConverter.ToUInt32(buf, 2));
-            if (h.Length + _stream.Position > StreamLength)
-                throw new EraFormatException($"Entry has an invalid length of {h.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");
-            if (h.Length > ValueSizeLimit)
-                throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {h.Length}.");
-            return h;
+            return entry;
         }
         finally
         {
