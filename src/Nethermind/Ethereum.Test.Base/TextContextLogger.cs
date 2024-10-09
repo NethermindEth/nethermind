@@ -23,7 +23,7 @@ public class TextContextLogger : InterfaceLogger
 
     public void Error(string text, Exception ex = null) => WriteEntry(text + " " + ex);
 
-    private static void WriteEntry(string text) => TestContext.WriteLine(text);
+    private static void WriteEntry(string text) => TestContext.Out.WriteLine(text);
 
     public bool IsInfo => true;
     public bool IsWarn => true;

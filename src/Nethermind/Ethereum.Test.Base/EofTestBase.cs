@@ -48,8 +48,8 @@ namespace Ethereum.Test.Base
 
         protected bool RunTest(EofTest test, ITxTracer txTracer)
         {
-            TestContext.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Assert.IsNull(test.LoadFailure, "test data loading failure");
+            TestContext.Out.WriteLine($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             var vector = test.Vector;
             var code = vector.Code;

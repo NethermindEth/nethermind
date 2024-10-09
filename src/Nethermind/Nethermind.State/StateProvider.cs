@@ -30,7 +30,7 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly ClockKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024);
+        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
         private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
@@ -38,7 +38,7 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private readonly IKeyValueStore _codeDb;
 
-        private List<Change> _changes = new(Resettable.StartCapacity);
+        private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
@@ -117,7 +117,7 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
 
@@ -150,7 +150,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when updating code hash");
             }
 
-            if (account.CodeHash != codeHash)
+            if (account.CodeHash.ValueHash256 != codeHash)
             {
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);

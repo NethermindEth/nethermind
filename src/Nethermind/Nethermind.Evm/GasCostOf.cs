@@ -81,5 +81,6 @@ namespace Nethermind.Evm
         public const long Callf = 5;
         public const long Jumpf = 5;
         public const long Retf = 3;
+        public const long PerAuthBaseCost = 2500; // eip-7702
     }
 }

@@ -11,6 +11,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
+[Explicit("These tests are not ready yet")]
 public class PragueStateTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]

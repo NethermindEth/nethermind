@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -12,7 +14,15 @@ namespace Nethermind.Evm;
 
 public interface ICodeInfoRepository
 {
-    ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
-    ICodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode, IReleaseSpec vmSpec);
+    ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress);
+    ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address, IReleaseSpec spec);
     void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
+    void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec);
+    bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
+}
+
+public static class CodeInfoRepositoryExtensions
+{
+    public static ICodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+        => codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec, out _);
 }

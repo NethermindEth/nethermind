@@ -15,7 +15,8 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip1559Enabled { get; }
         public long Eip1559TransitionBlock { get; }
-        public Address? Eip1559FeeCollector => null;
+        // Collects for both EIP-1559 and EIP-4844-Pectra
+        public Address? FeeCollector => null;
         public UInt256? Eip1559BaseFeeMinValue => null;
         public UInt256 ForkBaseFee { get; }
         public UInt256 BaseFeeMaxChangeDenominator { get; }

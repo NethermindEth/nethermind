@@ -16,6 +16,8 @@ public static class TxErrorMessages
         $"InvalidTxType: Transaction type in {name} is not supported.";
     public const string IntrinsicGasTooLow =
         "IntrinsicGasTooLow: Gas limit is too low.";
+    public const string TxMissingTo =
+        "TxMissingTo: Must be set.";
 
     public const string InvalidTxSignature =
         "InvalidTxSignature: Signature is invalid.";
@@ -37,8 +39,8 @@ public static class TxErrorMessages
     public const string InvalidTransaction =
         $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
 
-    public const string TxMissingTo =
-        "TxMissingTo: Must be set.";
+    public const string NotAllowedCreateTransaction =
+        "NotAllowedCreateTransaction: To must be set.";
 
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
@@ -69,6 +71,12 @@ public static class TxErrorMessages
 
     public static readonly string InvalidBlobProofSize =
         $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
+
+    public const string NotAllowedAuthorizationList = $"NotAllowedAuthorizationList: Only transactions with type {nameof(TxType.SetCode)} can have authorization_list.";
+
+    public const string MissingAuthorizationList = "MissingAuthorizationList: Must be set.";
+
+    public const string InvalidAuthoritySignature = "InvalidAuthoritySignature: Invalid signature in authorization list.";
 
     public const string InvalidBlobCommitmentHash =
         "InvalidBlobCommitmentHash: Commitment hash does not match.";
