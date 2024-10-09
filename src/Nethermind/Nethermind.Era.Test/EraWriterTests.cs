@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Core;
 using NUnit.Framework.Internal;
 using Nethermind.Core.Test.Builders;
@@ -112,6 +113,29 @@ internal class EraWriterTests
         stream.Read(buffer, 0, buffer.Length);
 
         Assert.That(BitConverter.ToUInt16(buffer), Is.EqualTo(EntryTypes.Accumulator));
+    }
+
+    [Test]
+    public async Task Finalize_AddOneBlock_WritesCorrectBlockIndex()
+    {
+        using MemoryStream stream = new();
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        byte[] buffer = new byte[40];
+        await sut.Add(
+            Keccak.Zero,
+            buffer.AsMemory(0, 1),
+            buffer.AsMemory(0, 1),
+            buffer.AsMemory(0, 1),
+            0,
+            0,
+            0);
+
+        await sut.Finalize();
+
+        E2StoreStream storeStream = new E2StoreStream(stream);
+        EraMetadata metadata = await storeStream.GetMetadata(default);
+
+        metadata.BlockOffset(0).Should().Be(8);
     }
 
     [Test]

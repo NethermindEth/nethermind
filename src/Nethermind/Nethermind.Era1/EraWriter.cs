@@ -92,7 +92,7 @@ public class EraWriter : IDisposable
         }
     }
     /// <summary>
-    /// Write RLP encoded data to the underlying stream. 
+    /// Write RLP encoded data to the underlying stream.
     /// </summary>
     /// <param name="blockHash"></param>
     /// <param name="blockHeader"></param>
@@ -156,25 +156,24 @@ public class EraWriter : IDisposable
         byte[] root = _accumulatorCalculator.ComputeRoot().ToArray();
         _totalWritten += await _e2StoreStream.WriteEntry(EntryTypes.Accumulator, root, cancellation);
 
+        long blockIndexPosition = _totalWritten;
+
         //Index is 64 bits segments in the format => start | index | index | ... | count
-        //16 bytes is for the start and count plus every entry 
+        //16 bytes is for the start and count plus every entry
         byte[] blockIndex = new byte[16 + _entryIndexes.Count * 8];
-        WriteUInt64(blockIndex, 0, (ulong)_startNumber);
+        WriteUInt64(blockIndex, 0, _startNumber);
 
         //era1:= Version | block-tuple ... | other-entries ... | Accumulator | BlockIndex
         //block-index := starting-number | index | index | index... | count
 
-        long firstIndexEnd = _totalWritten + 2 * 8;
-
         //All positions are relative to the end position in the index
         for (int i = 0; i < _entryIndexes.Count; i++)
         {
-            long relativePosition = _entryIndexes[i] - 8 - (firstIndexEnd + i * 8);
             //Skip 8 bytes for the start value
-            WriteUInt64(blockIndex, 8 + i * 8, (ulong)relativePosition);
+            WriteUInt64(blockIndex, 8 + i * 8, _entryIndexes[i] - blockIndexPosition);
         }
 
-        WriteUInt64(blockIndex, 8 + _entryIndexes.Count * 8, (ulong)_entryIndexes.Count);
+        WriteUInt64(blockIndex, 8 + _entryIndexes.Count * 8, _entryIndexes.Count);
 
         await _e2StoreStream.WriteEntry(EntryTypes.BlockIndex, blockIndex, cancellation);
         await _e2StoreStream.Flush(cancellation);
@@ -184,9 +183,9 @@ public class EraWriter : IDisposable
         _finalized = true;
         return root;
     }
-    private static bool WriteUInt64(byte[] destination, int off, ulong value)
+    private static bool WriteUInt64(Span<byte> destination, int off, long value)
     {
-        return BitConverter.TryWriteBytes(new Span<byte>(destination, off, 8), value) == false ? throw new EraException("Failed to write UInt64 to output.") : true;
+        return BitConverter.TryWriteBytes(destination.Slice(off, 8), value) == false ? throw new EraException("Failed to write UInt64 to output.") : true;
     }
 
     private Task<int> WriteVersion()
