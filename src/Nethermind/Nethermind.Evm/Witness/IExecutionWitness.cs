@@ -64,7 +64,8 @@ public interface IExecutionWitness
     bool AccessAccountForWithdrawal(Address address);
     bool AccessForBlockhashInsertionWitness(Address address, UInt256 key);
 
-    bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable);
+    bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist,
+        bool isPrecompileOrSystemContract, ref long gasAvailable);
     Hash256[] GetAccessedKeys();
 
     bool AccessForValueTransfer(Address from, Address to, ref long gasAvailable);

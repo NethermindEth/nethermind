@@ -11,17 +11,19 @@ using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Test.Runner;
 
-public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
+public class BlockchainTestsRunner : IBlockchainTestRunner
 {
     private readonly ConsoleColor _defaultColour;
     private readonly ITestSourceLoader _testsSource;
     private readonly string? _filter;
+    private readonly IBlockchainTestBase _blockchainTestBase;
 
-    public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter)
+    public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter, IBlockchainTestBase blockchainTestBase)
     {
         _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         _defaultColour = Console.ForegroundColor;
         _filter = filter;
+        _blockchainTestBase  = blockchainTestBase;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
@@ -32,7 +34,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         {
             if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
                 continue;
-            Setup();
+            _blockchainTestBase.Setup();
 
             Console.Write($"{test,-120} ");
             if (test.LoadFailure != null)
@@ -42,7 +44,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
             }
             else
             {
-                EthereumTestResult result = await RunTest(test);
+                EthereumTestResult result = await _blockchainTestBase.RunTest(test);
                 testResults.Add(result);
                 if (result.Pass)
                     WriteGreen("PASS");

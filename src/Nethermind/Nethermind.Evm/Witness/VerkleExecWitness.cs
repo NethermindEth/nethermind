@@ -156,9 +156,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="inheritor"></param>
     /// <param name="balanceIsZero"></param>
     /// <param name="inheritorExist"></param>
+    /// <param name="isPrecompileOrSystemContract"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist,
+        bool isPrecompileOrSystemContract,
         ref long gasAvailable)
     {
         // access the basic data for the contract calling the selfdestruct
@@ -166,7 +168,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
         // TODO: move precompile check to outside
         // if the inheritor is a pre-compile and there is no balance transfer, there is nothing else to do
-        if (inheritor.IsPrecompile(Osaka.Instance) && balanceIsZero) return true;
+        if (isPrecompileOrSystemContract && balanceIsZero) return true;
 
         // now if the contract and inheritor is not the same, then access the inheritor basic data
         // here this is charged because we need gas to check if the inheritor exists or not
@@ -255,7 +257,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     public bool AccessForBlockhashInsertionWitness(Address address, UInt256 key)
     {
         long fakeGas = 1_000_000;
-        AccessCompleteAccount<NoGas>(address, ref fakeGas);
         AccessKey<NoGas>(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), ref fakeGas, true);
         return true;
     }
