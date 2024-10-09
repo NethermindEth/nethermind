@@ -22,7 +22,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private bool _disposedValue;
     private long _currentBlockNumber;
     private ReceiptMessageDecoder _receiptDecoder = new();
-    private E2Store _store;
+    private E2StoreStream _storeStream;
     private IByteBufferAllocator _byteBufferAllocator;
     private readonly bool _isDescendingOrder;
 
@@ -31,9 +31,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private static readonly char[] separator = new char[] { '-' };
 
-    private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
+    private EraReader(E2StoreStream e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
     {
-        _store = e2;
+        _storeStream = e2;
         EraMetadata = e2.GetMetadata(default).GetAwaiter().GetResult();
         _byteBufferAllocator = byteBufferAllocator;
         _isDescendingOrder = descendingOrder;
@@ -67,7 +67,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.", nameof(stream));
 
-        E2Store e2 = await E2Store.ForRead(stream, token);
+        E2StoreStream e2 = await E2StoreStream.ForRead(stream, token);
         EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default, descendingOrder);
 
         return e;
@@ -165,13 +165,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     }
     public async Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
     {
-        _store.Seek(-32 - 8 * 4 - EraMetadata.Count * 8, SeekOrigin.End);
-        Entry accumulator = await _store.ReadEntryCurrentPosition(cancellation);
+        _storeStream.Seek(-32 - 8 * 4 - EraMetadata.Count * 8, SeekOrigin.End);
+        Entry accumulator = await _storeStream.ReadEntry(cancellation);
         CheckType(accumulator, EntryTypes.Accumulator);
         IByteBuffer buffer = _byteBufferAllocator.Buffer(32);
         try
         {
-            await _store.ReadEntryValue(buffer, accumulator, cancellation);
+            await _storeStream.ReadEntryValue(buffer, accumulator, cancellation);
             return buffer.ReadAllBytesAsArray();
         }
         finally
@@ -242,9 +242,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             await ReadEntryHere(buffer, EntryTypes.CompressedReceipts, cancellationToken);
             TxReceipt[] receipts = DecodeReceipts(buffer);
 
-            Entry e = await _store.ReadEntryCurrentPosition(cancellationToken);
+            Entry e = await _storeStream.ReadEntry(cancellationToken);
             CheckType(e, EntryTypes.TotalDifficulty);
-            await _store.ReadEntryValue(buffer, e, cancellationToken);
+            await _storeStream.ReadEntryValue(buffer, e, cancellationToken);
 
             UInt256 currentTotalDiffulty = new UInt256(buffer.ReadAllBytesAsSpan());
 
@@ -267,9 +267,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     /// <returns></returns>
     private async Task ReadEntryHere(IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
     {
-        Entry e = await _store.ReadEntryCurrentPosition(cancellation);
+        Entry e = await _storeStream.ReadEntry(cancellation);
         CheckType(e, expectedType);
-        await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+        await _storeStream.ReadEntryValueAsSnappy(buffer, e, cancellation);
     }
 
     private TxReceipt[] DecodeReceipts(IByteBuffer buf)
@@ -279,10 +279,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private long SeekToBlock(long blockNumber)
     {
-        long offset = EraMetadata.BlockOffset(blockNumber) - _store.Position;
+        long offset = EraMetadata.BlockOffset(blockNumber) - _storeStream.Position;
         if (offset == 0)
             return 0;
-        return _store.Seek(offset, SeekOrigin.Current);
+        return _storeStream.Seek(offset, SeekOrigin.Current);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -321,7 +321,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         {
             if (disposing)
             {
-                _store?.Dispose();
+                _storeStream?.Dispose();
             }
             _disposedValue = true;
         }

@@ -9,7 +9,7 @@ using Nethermind.Core.Collections;
 using Snappier;
 namespace Nethermind.Era1;
 
-internal class E2Store : IDisposable
+internal class E2StoreStream : IDisposable
 {
     internal const int HeaderSize = 8;
     internal const int ValueSizeLimit = 1024 * 1024 * 50;
@@ -28,20 +28,20 @@ internal class E2Store : IDisposable
         return EraMetadata.CreateEraMetadata(_stream, token);
     }
 
-    public static E2Store ForWrite(Stream stream)
+    public static E2StoreStream ForWrite(Stream stream)
     {
         if (!stream.CanWrite)
             throw new ArgumentException("Stream must be writeable.", nameof(stream));
         return new(stream);
     }
-    public static Task<E2Store> ForRead(Stream stream, CancellationToken cancellation)
+    public static Task<E2StoreStream> ForRead(Stream stream, CancellationToken cancellation)
     {
         if (!stream.CanRead)
             throw new ArgumentException("Stream must be readable.", nameof(stream));
-        E2Store store = new(stream);
-        return Task.FromResult(store);
+        E2StoreStream storeStream = new(stream);
+        return Task.FromResult(storeStream);
     }
-    internal E2Store(Stream stream)
+    internal E2StoreStream(Stream stream)
     {
         _stream = stream;
     }
@@ -92,8 +92,7 @@ internal class E2Store : IDisposable
         return length + HeaderSize;
     }
 
-    // Reads the header metadata at the given offset.
-    private async Task<HeaderData> ReadEntryHeader(CancellationToken token = default)
+    public async Task<Entry> ReadEntry(CancellationToken token = default)
     {
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
@@ -103,13 +102,11 @@ internal class E2Store : IDisposable
                 throw new EraFormatException($"Entry header could not be read at position {_stream.Position}.");
             if (buf[6] != 0 || buf[7] != 0)
                 throw new EraFormatException($"Reserved header bytes has invalid values at position {_stream.Position}.");
-            HeaderData h = new()
-            {
-                Type = BitConverter.ToUInt16(buf, 0),
-                Length = BitConverter.ToUInt32(buf, 2)
-            };
+            Entry h = new Entry(BitConverter.ToUInt16(buf, 0), BitConverter.ToUInt32(buf, 2));
             if (h.Length + _stream.Position > StreamLength)
                 throw new EraFormatException($"Entry has an invalid length of {h.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");
+            if (h.Length > ValueSizeLimit)
+                throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {h.Length}.");
             return h;
         }
         finally
@@ -118,36 +115,20 @@ internal class E2Store : IDisposable
         }
     }
 
-    public async Task<Entry> ReadEntryCurrentPosition(CancellationToken token = default)
-    {
-        var eHeader = await ReadEntryHeader(token);
-
-        Entry e = new(eHeader.Type, _stream.Position - HeaderSize, eHeader.Length);
-
-        if (eHeader.Length > ValueSizeLimit)
-            throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {eHeader.Length}.");
-        if (eHeader.Length == 0)
-            //Empty entry?
-            return e;
-
-        return e;
-    }
-
     public Task<Entry> ReadEntryAt(long off, CancellationToken token = default)
     {
         CheckStreamBounds(off);
         _stream.Position = off;
-        return ReadEntryCurrentPosition(token);
+        return ReadEntry(token);
     }
 
     public async Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-        if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
-        //TODO is this necessary?
+        if (_stream.Position + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
         buffer.EnsureWritable((int)e.Length * 4, true);
 
-        using StreamSegment streamSegment = new(_stream, e.ValueOffset, e.Length);
+        using StreamSegment streamSegment = new(_stream, _stream.Position, e.Length);
         using SnappyStream decompressor = new(streamSegment, CompressionMode.Decompress, true);
         int totalRead = 0;
         int read;
@@ -177,9 +158,8 @@ internal class E2Store : IDisposable
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
         if (buffer.Capacity < e.Length) throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
-        if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
+        if (_stream.Position + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
 
-        _stream.Position = e.ValueOffset;
         await buffer.WriteBytesAsync(_stream, (int)e.Length, cancellation);
         return (int)e.Length;
     }

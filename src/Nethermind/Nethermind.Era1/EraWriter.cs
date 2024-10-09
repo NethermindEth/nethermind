@@ -24,7 +24,7 @@ public class EraWriter : IDisposable
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
     private readonly IByteBufferAllocator _byteBufferAllocator;
 
-    private readonly E2Store _e2Store;
+    private readonly E2StoreStream _e2StoreStream;
     private readonly AccumulatorCalculator _accumulatorCalculator;
     private readonly ISpecProvider _specProvider;
     private bool _disposedValue;
@@ -39,13 +39,13 @@ public class EraWriter : IDisposable
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
-        EraWriter b = new(E2Store.ForWrite(stream), specProvider, bufferAllocator);
+        EraWriter b = new(E2StoreStream.ForWrite(stream), specProvider, bufferAllocator);
         return b;
     }
 
-    private EraWriter(E2Store e2Store, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator)
+    private EraWriter(E2StoreStream e2StoreStream, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator)
     {
-        _e2Store = e2Store;
+        _e2StoreStream = e2StoreStream;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
         _byteBufferAllocator = bufferAllocator ?? PooledByteBufferAllocator.Default;
@@ -137,13 +137,13 @@ public class EraWriter : IDisposable
 
         _entryIndexes.Add(_totalWritten);
         _accumulatorCalculator.Add(blockHash, totalDifficulty);
-        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedHeader, blockHeader, cancellation);
+        _totalWritten += await _e2StoreStream.WriteEntryAsSnappy(EntryTypes.CompressedHeader, blockHeader, cancellation);
 
-        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedBody, blockBody, cancellation);
+        _totalWritten += await _e2StoreStream.WriteEntryAsSnappy(EntryTypes.CompressedBody, blockBody, cancellation);
 
-        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptsArray, cancellation);
+        _totalWritten += await _e2StoreStream.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptsArray, cancellation);
 
-        _totalWritten += await _e2Store.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
+        _totalWritten += await _e2StoreStream.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
 
         return true;
     }
@@ -154,7 +154,7 @@ public class EraWriter : IDisposable
             throw new EraException("Finalize was called, but no blocks have been added yet.");
 
         byte[] root = _accumulatorCalculator.ComputeRoot().ToArray();
-        _totalWritten += await _e2Store.WriteEntry(EntryTypes.Accumulator, root, cancellation);
+        _totalWritten += await _e2StoreStream.WriteEntry(EntryTypes.Accumulator, root, cancellation);
 
         //Index is 64 bits segments in the format => start | index | index | ... | count
         //16 bytes is for the start and count plus every entry 
@@ -176,8 +176,8 @@ public class EraWriter : IDisposable
 
         WriteUInt64(blockIndex, 8 + _entryIndexes.Count * 8, (ulong)_entryIndexes.Count);
 
-        await _e2Store.WriteEntry(EntryTypes.BlockIndex, blockIndex, cancellation);
-        await _e2Store.Flush(cancellation);
+        await _e2StoreStream.WriteEntry(EntryTypes.BlockIndex, blockIndex, cancellation);
+        await _e2StoreStream.Flush(cancellation);
 
         _entryIndexes.Clear();
         _accumulatorCalculator.Clear();
@@ -191,7 +191,7 @@ public class EraWriter : IDisposable
 
     private Task<int> WriteVersion()
     {
-        return _e2Store.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
+        return _e2StoreStream.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
     }
 
     private class EntryIndexInfo
@@ -209,7 +209,7 @@ public class EraWriter : IDisposable
         {
             if (disposing)
             {
-                _e2Store?.Dispose();
+                _e2StoreStream?.Dispose();
                 _accumulatorCalculator?.Dispose();
                 _entryIndexes?.Dispose();
             }
