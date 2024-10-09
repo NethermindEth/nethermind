@@ -53,12 +53,12 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         stopwatch.Stop();
     }
 
-    protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
+    protected override bool InsertCore(ValueHash256 hash, Transaction fullBlobTx, AddressAsKey groupKey)
     {
-        if (base.InsertCore(key, value, groupKey))
+        if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
         {
-            _blobTxCache.Set(value.Hash, value);
-            _blobTxStorage.Add(value);
+            _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
+            _blobTxStorage.Add(fullBlobTx);
             return true;
         }
 
