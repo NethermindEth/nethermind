@@ -22,14 +22,14 @@ using Label = Sigil.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer tracer, byte[][] immediatesData);
     public class SegmentExecutionCtx
     {
         public string Name => PrecompiledSegment.Method.Name;
         public ExecuteSegment PrecompiledSegment;
         public byte[][] Data;
     }
-    public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data)
+    public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data, bool bakeInTracerCalls = true)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
@@ -43,7 +43,7 @@ internal class ILCompiler
         }
         else
         {
-            EmitSegmentBody(method, code);
+            EmitSegmentBody(method, code, bakeInTracerCalls);
         }
 
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
@@ -54,7 +54,7 @@ internal class ILCompiler
         };
     }
 
-    private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
+    private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -139,6 +139,18 @@ internal class ILCompiler
                 method.MarkLabel(jumpDestinations[op.ProgramCounter]);
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
+            }
+
+            if(bakeInTracerCalls)
+            {
+                method.LoadArgument(5);
+                method.LoadConstant((int)op.instruction);
+                method.LoadArgument(0);
+                method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                method.LoadLocal(gasAvailable);
+                method.LoadConstant(op.ProgramCounter);
+                method.LoadLocal(head);
+                method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.StartInstructionTrace)));
             }
 
             // check if opcode is activated in current spec
@@ -289,7 +301,7 @@ internal class ILCompiler
                         method.Load(stack, head);
 
                         // we load the span of bytes
-                        method.LoadArgument(5);
+                        method.LoadArgument(6);
                         method.LoadConstant(op.Arguments.Value);
                         method.LoadElement<byte[]>();
                         method.Call(Word.SetArray);
@@ -1846,6 +1858,16 @@ internal class ILCompiler
                     }
                     break;
             }
+
+            if(bakeInTracerCalls)
+            {
+                method.LoadArgument(5);
+                method.LoadLocal(gasAvailable);
+                method.LoadArgument(0);
+                method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+                method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
+                method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTrace)));
+            }
         }
 
         Label skipProgramCounterSetting = method.DefineLabel();
@@ -1937,7 +1959,6 @@ internal class ILCompiler
 
 
         // if (jumpDest > uint.MaxValue)
-        method.Print(jmpDestination);
         method.LoadConstant(uint.MaxValue);
         method.LoadLocal(jmpDestination);
         // goto invalid address
@@ -1980,6 +2001,14 @@ internal class ILCompiler
 
         foreach (var kvp in evmExceptionLabels)
         {
+            if (bakeInTracerCalls)
+            {
+                method.LoadArgument(5);
+                method.LoadLocal(gasAvailable);
+                method.LoadConstant((int)kvp.Key);
+                method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTraceError)));
+            }
+
             method.MarkLabel(kvp.Value);
             method.LoadArgument(0);
             method.LoadConstant((int)kvp.Key);

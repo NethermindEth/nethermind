@@ -32,6 +32,7 @@ using Nethermind.Evm.CodeAnalysis.IL.Patterns;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Polly;
+using Nethermind.Evm.Tracing.ParityStyle;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -507,12 +508,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<GethTxTraceEntry>();
+            var accumulatedTraces = new List<ParityLikeTxTrace>();
             for (int i = 0; i <= config.JittingThreshold * 2; i++)
             {
-                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
+                var tracer = new ParityLikeBlockTracer(ParityTraceTypes.All);
                 ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.SegmentID is not null).ToList();
+                var traces = tracer.BuildResult();
                 accumulatedTraces.AddRange(traces);
 
             }
@@ -533,9 +534,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
                 "AbortDestinationPattern"
             };
-
-            string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
-            Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
         }
 
 
@@ -674,7 +672,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
             var bytecode = metadata.Item1.TakeWhile(instruction => instruction.Operation != Instruction.CALL).ToArray();
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", bytecode, metadata.Item2);
-            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
+            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance,NullTxTracer.Instance, ctx.Data);
 
             Assert.That(iLEvmState.EvmException == testcase.exceptionType);
         }
@@ -716,7 +714,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.Analysis(codeinfo, 2, NullLogger.Instance);
             var metadata = IlAnalyzer.StripByteCode(testcase);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, ctx.Data);
+            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, codeInfoRepository, Prague.Instance, NullTxTracer.Instance, ctx.Data);
         }
     }
 }

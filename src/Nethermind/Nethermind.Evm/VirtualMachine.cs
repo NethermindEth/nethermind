@@ -798,7 +798,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
+                StartInstructionTrace(_txTracer, instruction, vmState, gasAvailable, programCounter, stack.Head);
 
             programCounter++;
             Span<byte> bytes;
@@ -2064,7 +2064,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
-                EndInstructionTrace(gasAvailable, vmState.Memory.Size);
+                EndInstructionTrace(_txTracer, gasAvailable, vmState.Memory.Size);
             }
         }
 
@@ -2072,7 +2072,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
     EmptyReturn:
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(_txTracer, gasAvailable, vmState.Memory.Size);
         EmptyReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
@@ -2082,7 +2082,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
         return CallResult.Empty;
     DataReturn:
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(_txTracer, gasAvailable, vmState.Memory.Size);
         DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
@@ -2468,7 +2468,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(_txTracer, gasAvailable, vmState.Memory.Size);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -2748,7 +2748,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private CallResult GetFailureReturn<TTracingInstructions>(long gasAvailable, EvmExceptionType exceptionType)
         where TTracingInstructions : struct, IIsTracing
     {
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTraceError(gasAvailable, exceptionType);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTraceError(_txTracer, gasAvailable, exceptionType);
 
         return exceptionType switch
         {
@@ -2808,34 +2808,33 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
-        where TIsTracing : struct, IIsTracing
+    public static void StartInstructionTrace(ITxTracer tracer, Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, int stackHead)
     {
-        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
-        if (_txTracer.IsTracingMemory)
+        tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
+        if (tracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
-            _txTracer.SetOperationMemorySize(vmState.Memory.Size);
+            tracer.SetOperationMemory(vmState.Memory.GetTrace());
+            tracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
-        if (_txTracer.IsTracingStack)
+        if (tracer.IsTracingStack)
         {
-            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack<TIsTracing>.WordSize);
-            _txTracer.SetOperationStack(new TraceStack(stackMemory));
+            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackHead * EvmStack<IsTracing>.WordSize);
+            tracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTrace(long gasAvailable, ulong memorySize)
+    public static void EndInstructionTrace(ITxTracer tracer, long gasAvailable, ulong memorySize)
     {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
+        tracer.ReportOperationRemainingGas(gasAvailable);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
+    public static void EndInstructionTraceError(ITxTracer tracer, long gasAvailable, EvmExceptionType evmExceptionType)
     {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
-        _txTracer.ReportOperationError(evmExceptionType);
+        tracer.ReportOperationRemainingGas(gasAvailable);
+        tracer.ReportOperationError(evmExceptionType);
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
