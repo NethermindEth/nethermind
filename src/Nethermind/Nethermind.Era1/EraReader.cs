@@ -198,7 +198,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderAndHash(IByteBuffer buffer)
     {
         NettyRlpStream rlpStream = new NettyRlpStream(buffer);
-        Hash256? currentComputedHeaderHash = rlpStream.ComputeNextItemHash();
+        Hash256? currentComputedHeaderHash = Keccak.Compute(rlpStream.PeekNextItem());
         BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
         return (header, currentComputedHeaderHash);
     }
