@@ -207,6 +207,7 @@ namespace Nethermind.Trie
                         committer.ReturnConcurrencyQuota();
                     });
 
+                    // TODO: .Net 9 stackalloc
                     ArrayPoolList<Task>? childTasks = null;
 
                     for (int i = 0; i < 16; i++)
