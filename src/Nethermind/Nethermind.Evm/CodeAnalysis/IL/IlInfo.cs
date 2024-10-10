@@ -72,6 +72,8 @@ internal class IlInfo
         result = null;
         if (programCounter > ushort.MaxValue || Mode == ILMode.NO_ILVM)
             return false;
+
+        long initialGas = gasAvailable;
         try
         {
 
@@ -101,7 +103,7 @@ internal class IlInfo
                 stack.Head = ilvmState.StackHead;
 
                 if (typeof(TTracingInstructions) == typeof(IsTracing))
-                    tracer.ReportOperationRemainingGas(gasAvailable);
+                    EndTracingSegment(tracer, initialGas, gasAvailable);
             }
             else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
             {
@@ -114,7 +116,7 @@ internal class IlInfo
                 chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
 
                 if (typeof(TTracingInstructions) == typeof(IsTracing))
-                    tracer.ReportOperationRemainingGas(gasAvailable);
+                    EndTracingSegment(tracer, initialGas, gasAvailable);
             }
             else
             {
@@ -127,6 +129,12 @@ internal class IlInfo
             logger.Error($"Error while executing IL-EVM segment at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}", e);
             return false;
         }
+    }
+
+    private static void EndTracingSegment(ITxTracer tracer, long initialGas, long gasAvailable)
+    {
+        tracer.ReportGasUpdateForVmTrace(0, initialGas - gasAvailable);
+        tracer.ReportOperationRemainingGas(gasAvailable);
     }
 
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)

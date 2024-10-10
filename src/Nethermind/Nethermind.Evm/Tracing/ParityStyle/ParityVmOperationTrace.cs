@@ -25,6 +25,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public ParityStorageChangeTrace Store { get; set; }
         public long Used { get; set; }
         public int Pc { get; set; }
+        public string IlevmChunkId { get; set; }
+        public bool IsIlevmSegment { get; set; }
+        public bool IsIlevmPattern { get; set; }
         public ParityVmTrace Sub { get; set; }
     }
 }

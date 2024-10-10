@@ -74,6 +74,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             writer.WriteEndObject();
 
             writer.WriteNumber("pc"u8, value.Pc);
+            writer.WriteString("ilevmChunkId"u8, value.IlevmChunkId);
+            writer.WriteBoolean("isIlevmSegment"u8, value.IsIlevmSegment);
+            writer.WriteBoolean("isIlevmPattern"u8, value.IsIlevmPattern);
             writer.WritePropertyName("sub"u8);
             JsonSerializer.Serialize(writer, value.Sub, options);
 
