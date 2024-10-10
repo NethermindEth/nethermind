@@ -7,5 +7,5 @@ namespace Nethermind.Taiko;
 
 internal static class TaikoHeaderHelper
 {
-    public static byte? GetBasefeeSharingPctg(this BlockHeader header) => header.ExtraData is { Length: >= 32 } ? header.ExtraData[31] : null;
+    public static byte? DecodeOntakeExtraData(this BlockHeader header) => header.ExtraData is { Length: >= 32 } ? header.ExtraData[31] : null;
 }

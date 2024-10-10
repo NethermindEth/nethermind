@@ -48,7 +48,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
-    private ITaikoConfig? _taikoConfig;
 
     private BlockCacheService? _blockCacheService;
     private IPeerRefresher? _peerRefresher;
@@ -59,8 +58,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public Task Init(INethermindApi api)
     {
-        _taikoConfig = api.Config<ITaikoConfig>();
-
         if (!ShouldRunSteps(api))
             return Task.CompletedTask;
 
@@ -150,44 +147,44 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         TaikoSimplePayloadPreparationService payloadPreparationService = null!;
 
-        {
-            TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+        
+        TaikoReadOnlyTxProcessingEnv txProcessingEnv =
+            new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
+        IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-            BlockProcessor blockProcessor =
-                new(_api.SpecProvider,
-                    _api.BlockValidator,
-                    NoBlockRewards.Instance,
-                    new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
-                    scope.WorldState,
-                    _api.ReceiptStorage,
-                    _api.TransactionProcessor,
-                    new BeaconBlockRootHandler(_api.TransactionProcessor),
-                    new BlockhashStore(_api.SpecProvider, scope.WorldState),
-                    _api.LogManager,
-                    new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
-
-            IBlockchainProcessor blockchainProcessor =
-                new BlockchainProcessor(
-                    _api.BlockTree,
-                    blockProcessor,
-                    _api.BlockPreprocessor,
-                    txProcessingEnv.StateReader,
-                    _api.LogManager,
-                    BlockchainProcessor.Options.NoReceipts);
-
-            OneTimeChainProcessor chainProcessor = new(
+        BlockProcessor blockProcessor =
+            new(_api.SpecProvider,
+                _api.BlockValidator,
+                NoBlockRewards.Instance,
+                new BlockInvalidTxExecutor(new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), scope.WorldState),
                 scope.WorldState,
-                blockchainProcessor);
+                _api.ReceiptStorage,
+                _api.TransactionProcessor,
+                new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new BlockhashStore(_api.SpecProvider, scope.WorldState),
+                _api.LogManager,
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
 
-            payloadPreparationService = new(
-                chainProcessor,
-                scope.WorldState,
-                l1OriginStore,
-                _api.LogManager);
-        }
+        IBlockchainProcessor blockchainProcessor =
+            new BlockchainProcessor(
+                _api.BlockTree,
+                blockProcessor,
+                _api.BlockPreprocessor,
+                txProcessingEnv.StateReader,
+                _api.LogManager,
+                BlockchainProcessor.Options.NoReceipts);
+
+        OneTimeChainProcessor chainProcessor = new(
+            scope.WorldState,
+            blockchainProcessor);
+
+        payloadPreparationService = new(
+            chainProcessor,
+            scope.WorldState,
+            l1OriginStore,
+            _api.LogManager);
+        
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 

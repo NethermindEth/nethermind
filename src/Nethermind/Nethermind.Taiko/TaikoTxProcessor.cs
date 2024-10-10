@@ -49,7 +49,7 @@ public class TaikoTransactionProcessor(
             {
                 if (spec.IsOntakeEnabled)
                 {
-                    byte basefeeSharingPctg = TaikoHeaderHelper.GetBasefeeSharingPctg(header) ?? 0;
+                    byte basefeeSharingPctg = TaikoHeaderHelper.DecodeOntakeExtraData(header) ?? 0;
 
                     UInt256 feeCoinbase = baseFees * basefeeSharingPctg / 100;
                     WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
