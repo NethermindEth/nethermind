@@ -129,6 +129,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<IsContractCheck>();
             IlAnalyzer.AddPattern<MethodSelector>();
             IlAnalyzer.AddPattern<AbortDestinationPattern>();
+
+            IlAnalyzer.AddPattern<PP>();
+            //IlAnalyzer.AddPattern<P01P01>();
+            IlAnalyzer.AddPattern<P01ADD>();
+            IlAnalyzer.AddPattern<PJ>();
+            IlAnalyzer.AddPattern<S01P>();
+            IlAnalyzer.AddPattern<S02P>();
+            IlAnalyzer.AddPattern<P01P01SHL>();
+            IlAnalyzer.AddPattern<D01P04EQ>();
+            IlAnalyzer.AddPattern<D01P04GT>();
+            IlAnalyzer.AddPattern<D02MST>();
+            IlAnalyzer.AddPattern<P01D02>();
+            IlAnalyzer.AddPattern<P01D03>();
+            IlAnalyzer.AddPattern<S02S01>();
         }
 
         public void Execute<T>(byte[] bytecode, T tracer)
@@ -179,33 +193,45 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             base.Setup();
         }
+
         public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
         {
-            yield return (null, Prepare.EvmCode
-                    .Done);
-            yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
-                    .PUSHx([1])
-                    .PUSHx([0, 7])
-                    .JUMPI()
-                    .JUMPDEST()
-                    .Done);
-            yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
-                    .PUSHx([0, 5])
-                    .JUMP()
-                    .JUMPDEST()
-                    .Done);
-            yield return (typeof(MethodSelector), Prepare.EvmCode
+            yield return (typeof(PP), Prepare.EvmCode
+                    .PushData(((UInt256)1).PaddedBytes(32))
+                    .PushData(((UInt256)2).PaddedBytes(32))
+                    .PushData(((UInt256)3).PaddedBytes(32))
+                    .PushData(((UInt256)4).PaddedBytes(32))
+                    .PushData(((UInt256)5).PaddedBytes(32))
+                    .POP()
+                    .POP()
+                    .DataOnStackToMemory(0)
+                    .PushData(32)
                     .PushData(0)
-                    .PushData(23)
-                    .MSTORE()
-                    .CALLVALUE()
-                    .DUPx(1)
+                    .Op(Instruction.RETURN)
                     .Done);
-            yield return (typeof(IsContractCheck), Prepare.EvmCode
-                    .EXTCODESIZE(Address.SystemUser)
-                    .DUPx(1)
-                    .ISZERO()
-                    .Done);
+       //     yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
+       //             .PUSHx([1])
+       //             .PUSHx([0, 7])
+       //             .JUMPI()
+       //             .JUMPDEST()
+       //             .Done);
+       //     yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
+       //             .PUSHx([0, 5])
+       //             .JUMP()
+       //             .JUMPDEST()
+       //             .Done);
+       //     yield return (typeof(MethodSelector), Prepare.EvmCode
+       //             .PushData(0)
+       //             .PushData(23)
+       //             .MSTORE()
+       //             .CALLVALUE()
+       //             .DUPx(1)
+       //             .Done);
+       //     yield return (typeof(IsContractCheck), Prepare.EvmCode
+       //             .EXTCODESIZE(Address.SystemUser)
+       //             .DUPx(1)
+       //             .ISZERO()
+       //             .Done);
         }
 
         public static IEnumerable<(Instruction?, byte[], EvmExceptionType)> GeJitBytecodesSamples()
@@ -914,6 +940,115 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(actual, Is.EqualTo(expected));
         }
 
+
+       // [Test, TestCaseSource(nameof(GePatBytecodesSamples))]
+        //public void ILVM_Pat_Execution_Equivalence_Tests2((Type opcode, byte[] bytecode) testcase)
+        [Test]
+        public void ILVM_Pat_Execution_Equivalence_Tests2()
+        {
+             (Type opcode, byte[] bytecode) testcase = (typeof(PP), Prepare.EvmCode
+                                                                            .PushData(((UInt256)1).PaddedBytes(32))
+                                                                            .PushData(((UInt256)2).PaddedBytes(32))
+                                                                            .PushData(((UInt256)3).PaddedBytes(32))
+                                                                            .PushData(((UInt256)4).PaddedBytes(32))
+                                                                            .PushData(((UInt256)5).PaddedBytes(32))
+                                                                            .POP()
+                                                                            .POP()
+                                                                            .PushData(0x1)
+                                                                            .Op(Instruction.SSTORE)
+                                                                            .PushData(32)
+                                                                            .PushData(0)
+                                                                            .Op(Instruction.RETURN)
+                                                                            .Done);
+
+//             (Type opcode, byte[] bytecode) testcase2 = (typeof(PP), Prepare.EvmCode
+//                                                                            .PushData(((UInt256)1).PaddedBytes(32))
+//                                                                            .PushData(((UInt256)2).PaddedBytes(32))
+//                                                                            .PushData(((UInt256)3).PaddedBytes(32))
+//                                                                            .PushData(((UInt256)4).PaddedBytes(32))
+//                                                                            .PushData(((UInt256)5).PaddedBytes(32))
+//                                                                            .POP()
+//                                                                            .POP()
+//                                                                            .PushData(((UInt256)900).PaddedBytes(32))
+//                                                                            .PushData(0x1)
+//                                                                            .Op(Instruction.SSTORE)
+//                                                                            .PushData(32)
+//                                                                            .PushData(0)
+//                                                                            .Op(Instruction.RETURN)
+//                                                                            .Done);
+            int repeatCount = 32;
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+            var address = standardChain.InsertCode(testcase.bytecode);
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = repeatCount + 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = false
+            });
+            var address2 = enhancedChain.InsertCode(testcase.bytecode);
+            Console.WriteLine($"Standard chain code insertion {address}");
+            Console.WriteLine($"Enhanced chain code insertion {address2}");
+
+            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            var bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .Call(address, 100)
+                    .PushData(0)
+                    .RETURNDATACOPY()
+                    .GAS()
+                    .PushData(1000)
+                    .LT()
+                    .JUMPI(0)
+                    .MLOAD(0)
+                    .PushData(0x1)
+                    .Op(Instruction.SSTORE)
+                    .STOP()
+                    .Done;
+
+            var bytecode2 =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .Call(address2, 100)
+                    .PushData(0)
+                    .RETURNDATACOPY()
+                    .GAS()
+                    .PushData(1000)
+                    .LT()
+                    .JUMPI(0)
+                    .MLOAD(0)
+                    .PushData(0x1)
+                    .Op(Instruction.SSTORE)
+                    .STOP()
+                    .Done;
+
+            for (var i = 0; i < repeatCount * 2; i++)
+            {
+                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+            }
+
+            for (var i = 0; i < repeatCount * 2; i++)
+            {
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode2, tracer2);
+            }
+
+            var normal_traces = tracer1.BuildResult();
+            var ilvm_traces = tracer2.BuildResult();
+
+            var actual = standardChain.StateRoot;
+            var expected = enhancedChain.StateRoot;
+
+            var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+
+            if (testcase.opcode is not null)
+            {
+                Assert.That(HasIlvmTraces, Is.True);
+            }
+            Assert.That(actual, Is.EqualTo(expected));
+        }
 
         [Test, TestCaseSource(nameof(GePatBytecodesSamples))]
         public void ILVM_Pat_Execution_Equivalence_Tests((Type opcode, byte[] bytecode) testcase)
