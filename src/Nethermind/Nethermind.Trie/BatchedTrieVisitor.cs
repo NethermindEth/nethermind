@@ -147,7 +147,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 .Select(_ => Task.Run(BatchedThread))
                 .ToArray();
 
-            Task.WhenAll(tasks).Wait();
+            Task.WaitAll(tasks);
         }
         catch (Exception)
         {
