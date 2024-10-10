@@ -61,7 +61,7 @@ public class SubscriptionFactory : ISubscriptionFactory
                 new LogsSubscription(jsonRpcDuplexClient, receiptCanonicalityMonitor, filterStore, blockTree, logManager, filter)),
 
             [SubscriptionType.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) =>
-                new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager, args)),
+                new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, specProvider, logManager, args)),
 
             [SubscriptionType.DroppedPendingTransactions] = CreateSubscriptionType(jsonRpcDuplexClient =>
                 new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager)),

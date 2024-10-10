@@ -15,7 +15,6 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -28,7 +27,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.State.Tracing;
 using NSubstitute;
 
@@ -88,7 +87,7 @@ public class ProofRpcModuleTests
     public async Task Can_get_transaction(bool withHeader)
     {
         Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
-        TransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
+        TransactionForRpcWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
         Assert.That(txWithProof.Transaction, Is.Not.Null);
         Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
         if (withHeader)
@@ -100,7 +99,7 @@ public class ProofRpcModuleTests
             Assert.That(txWithProof.BlockHeader, Is.Null);
         }
 
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, withHeader);
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
@@ -109,7 +108,7 @@ public class ProofRpcModuleTests
     public async Task When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, withHeader);
         Assert.That(response.Contains($"{ErrorCodes.ResourceNotFound}"), Is.True);
     }
 
@@ -118,7 +117,7 @@ public class ProofRpcModuleTests
     public async Task When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
     {
         Hash256 txHash = TestItem.KeccakH;
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         Assert.That(response.Contains($"{ErrorCodes.ResourceNotFound}"), Is.True);
     }
 
@@ -128,23 +127,23 @@ public class ProofRpcModuleTests
         Hash256 txHash = TestItem.KeccakH;
 
         // missing with header
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash);
         Assert.That(response.Contains($"{ErrorCodes.InvalidParams}"), Is.True, "missing");
 
         // too many
-        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", "true", "false");
+        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, true, false);
         Assert.That(response.Contains($"{ErrorCodes.InvalidParams}"), Is.True, "too many");
 
         // missing with header
-        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}");
+        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash);
         Assert.That(response.Contains($"{ErrorCodes.InvalidParams}"), Is.True, "missing");
 
         // too many
-        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", "true", "false");
+        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", txHash, true, false);
         Assert.That(response.Contains($"{ErrorCodes.InvalidParams}"), Is.True, "too many");
 
         // all wrong
-        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{txHash}");
+        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", txHash);
         Assert.That(response.Contains($"{ErrorCodes.InvalidParams}"), Is.True, "missing");
     }
 
@@ -166,7 +165,7 @@ public class ProofRpcModuleTests
             Assert.That(receiptWithProof.BlockHeader, Is.Null);
         }
 
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         response.Should().Be(expectedResult);
     }
 
@@ -236,7 +235,7 @@ public class ProofRpcModuleTests
             Assert.That(receiptWithProof.BlockHeader, Is.Null);
         }
 
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", txHash, withHeader);
         response.Should().Be(expectedResult);
     }
 
@@ -251,7 +250,7 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-        TransactionForRpc tx = new()
+        TransactionForRpc tx = new LegacyTransactionForRpc
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
@@ -260,8 +259,7 @@ public class ProofRpcModuleTests
 
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Number));
 
-        EthereumJsonSerializer serializer = new();
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Number}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, block.Number);
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
@@ -276,7 +274,7 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-        TransactionForRpc tx = new()
+        TransactionForRpc tx = new LegacyTransactionForRpc
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
@@ -284,8 +282,7 @@ public class ProofRpcModuleTests
         };
         _proofRpcModule.proof_call(tx, new BlockParameter(block.Hash!));
 
-        EthereumJsonSerializer serializer = new();
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{block.Hash}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, block.Hash);
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
@@ -300,18 +297,17 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-        TransactionForRpc tx = new()
+        TransactionForRpc tx = new LegacyTransactionForRpc
         {
             From = TestItem.AddressA,
             To = TestItem.AddressB,
             GasPrice = _useNonZeroGasPrice ? 10.GWei() : 0
         };
 
-        EthereumJsonSerializer serializer = new();
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = block.Hash, requireCanonical = true });
         Assert.That(response.Contains("-32000"), Is.True);
 
-        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{TestItem.KeccakG}\", \"requireCanonical\" : true}}");
+        response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, new { blockHash = TestItem.KeccakG, requireCanonical = true });
         Assert.That(response.Contains("-32001"), Is.True);
     }
 
@@ -780,7 +776,7 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-        TransactionForRpc tx = new()
+        TransactionForRpc tx = new LegacyTransactionForRpc
         {
             From = from,
             To = TestItem.AddressB,
@@ -799,8 +795,7 @@ public class ProofRpcModuleTests
             }
         }
 
-        EthereumJsonSerializer serializer = new();
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, blockOnTop.Number);
         Assert.That(response.Contains("\"result\""), Is.True);
 
         return callResultWithProof;
@@ -827,7 +822,7 @@ public class ProofRpcModuleTests
 
         // would need to setup state root somehow...
 
-        TransactionForRpc tx = new()
+        TransactionForRpc tx = new LegacyTransactionForRpc
         {
             // we are testing system transaction here when From is null
             From = from,
@@ -874,8 +869,7 @@ public class ProofRpcModuleTests
             }
         }
 
-        EthereumJsonSerializer serializer = new();
-        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{blockOnTop.Number}");
+        string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", tx, blockOnTop.Number);
         Assert.That(response.Contains("\"result\""), Is.True);
     }
 
