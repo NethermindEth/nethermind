@@ -251,7 +251,7 @@ jobs:
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
-            docker logs sedge-execution-op-l2-client
+            docker logs sedge-consensus-op-l2-client
           else
             docker logs sedge-consensus-client      
           fi
