@@ -45,13 +45,13 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             [G1AddPrecompile.Address] = new CodeInfo(G1AddPrecompile.Instance),
             [G1MulPrecompile.Address] = new CodeInfo(G1MulPrecompile.Instance),
-            [G1MultiMulPrecompile.Address] = new CodeInfo(G1MultiMulPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new CodeInfo(G1MSMPrecompile.Instance),
             [G2AddPrecompile.Address] = new CodeInfo(G2AddPrecompile.Instance),
             [G2MulPrecompile.Address] = new CodeInfo(G2MulPrecompile.Instance),
-            [G2MultiMulPrecompile.Address] = new CodeInfo(G2MultiMulPrecompile.Instance),
-            [PairingPrecompile.Address] = new CodeInfo(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new CodeInfo(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new CodeInfo(MapToG2Precompile.Instance),
+            [G2MSMPrecompile.Address] = new CodeInfo(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new CodeInfo(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new CodeInfo(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new CodeInfo(MapFp2ToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
 

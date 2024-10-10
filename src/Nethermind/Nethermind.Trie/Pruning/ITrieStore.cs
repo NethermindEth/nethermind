@@ -13,10 +13,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStore : IDisposable
     {
-        void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
-
-        void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
-
         bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
 
         IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
@@ -37,6 +33,7 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
+        ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags);
     }
 
     public interface IPruningTrieStore

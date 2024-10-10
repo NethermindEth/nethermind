@@ -12,14 +12,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsMapToG2Tests
+public class BlsMapFp2ToG2Tests
 {
     [Test]
     public void Test()
     {
         foreach ((byte[] input, ReadOnlyMemory<byte> expectedResult) in Inputs)
         {
-            IPrecompile precompile = MapToG2Precompile.Instance;
+            IPrecompile precompile = MapFp2ToG2Precompile.Instance;
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(input, MuirGlacier.Instance);
 
             output.ToArray().Should().BeEquivalentTo(expectedResult.ToArray());
