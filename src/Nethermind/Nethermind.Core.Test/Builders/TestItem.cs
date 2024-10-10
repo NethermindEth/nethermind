@@ -115,6 +115,13 @@ namespace Nethermind.Core.Test.Builders
         public static WithdrawalRequest WithdrawalRequestE = new() { SourceAddress = AddressE, ValidatorPubkey = PublicKeyE.Bytes };
         public static WithdrawalRequest WithdrawalRequestF = new() { SourceAddress = AddressF, ValidatorPubkey = PublicKeyF.Bytes };
 
+        public static ConsolidationRequest ConsolidationRequestA = new() { SourceAddress = AddressA, SourcePubkey = PublicKeyA.Bytes, TargetPubkey = PublicKeyB.Bytes };
+        public static ConsolidationRequest ConsolidationRequestB = new() { SourceAddress = AddressB, SourcePubkey = PublicKeyB.Bytes, TargetPubkey = PublicKeyC.Bytes };
+        public static ConsolidationRequest ConsolidationRequestC = new() { SourceAddress = AddressC, SourcePubkey = PublicKeyC.Bytes, TargetPubkey = PublicKeyD.Bytes };
+        public static ConsolidationRequest ConsolidationRequestD = new() { SourceAddress = AddressD, SourcePubkey = PublicKeyD.Bytes, TargetPubkey = PublicKeyE.Bytes };
+        public static ConsolidationRequest ConsolidationRequestE = new() { SourceAddress = AddressE, SourcePubkey = PublicKeyE.Bytes, TargetPubkey = PublicKeyF.Bytes };
+        public static ConsolidationRequest ConsolidationRequestF = new() { SourceAddress = AddressF, SourcePubkey = PublicKeyF.Bytes, TargetPubkey = PublicKeyA.Bytes };
+
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
         public static IPEndPoint IPEndPointC = IPEndPoint.Parse("10.0.0.3");

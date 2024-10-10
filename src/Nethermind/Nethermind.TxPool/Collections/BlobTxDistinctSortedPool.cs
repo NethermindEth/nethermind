@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,7 +18,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 {
     protected override string ShortPoolName => "BlobPool";
 
-    internal readonly ConcurrentDictionary<byte[], List<Hash256>> BlobIndex = new(Bytes.EqualityComparer);
+    internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = new(Bytes.EqualityComparer);
 
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
@@ -26,19 +27,24 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out byte[]? proof)
     {
-        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes)
-            && txHashes[0] is not null
-            && TryGetValue(txHashes[0], out Transaction? blobTx)
-            && blobTx.BlobVersionedHashes?.Length > 0)
+        using var lockRelease = Lock.Acquire();
+
+        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
         {
-            for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
-                if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
-                    && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                if (TryGetValueNonLocked(hash, out Transaction? blobTx) && blobTx.BlobVersionedHashes?.Length > 0)
                 {
-                    blob = wrapper.Blobs[indexOfBlob];
-                    proof = wrapper.Proofs[indexOfBlob];
-                    return true;
+                    for (int indexOfBlob = 0; indexOfBlob < blobTx.BlobVersionedHashes.Length; indexOfBlob++)
+                    {
+                        if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
+                            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+                        {
+                            blob = wrapper.Blobs[indexOfBlob];
+                            proof = wrapper.Proofs[indexOfBlob];
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -48,11 +54,11 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    public override bool TryInsert(ValueHash256 hash, Transaction blobTx, out Transaction? removed)
+    protected override bool InsertCore(ValueHash256 key, Transaction value, AddressAsKey groupKey)
     {
-        if (base.TryInsert(blobTx.Hash, blobTx, out removed))
+        if (base.InsertCore(key, value, groupKey))
         {
-            AddToBlobIndex(blobTx);
+            AddToBlobIndex(value);
             return true;
         }
 
@@ -67,13 +73,9 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             {
                 if (blobVersionedHash?.Length == KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
-                    BlobIndex.AddOrUpdate(blobVersionedHash,
-                        k => [blobTx.Hash!],
-                        (k, b) =>
-                        {
-                            b.Add(blobTx.Hash!);
-                            return b;
-                        });
+                    ref List<Hash256>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(BlobIndex, blobVersionedHash, out _);
+                    list ??= new List<Hash256>();
+                    list.Add(blobTx.Hash!);
                 }
             }
         }
@@ -99,8 +101,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             foreach (var blobVersionedHash in blobTx.BlobVersionedHashes)
             {
-                if (blobVersionedHash is not null
-                    && BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
+                if (blobVersionedHash is not null && BlobIndex.TryGetValue(blobVersionedHash, out List<Hash256>? txHashes))
                 {
                     if (txHashes.Count < 2)
                     {
@@ -119,5 +120,5 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     /// For tests only - to test sorting
     /// </summary>
     internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? lightBlobTx)
-        => base.TryGetValue(hash, out lightBlobTx);
+        => base.TryGetValueNonLocked(hash, out lightBlobTx);
 }
