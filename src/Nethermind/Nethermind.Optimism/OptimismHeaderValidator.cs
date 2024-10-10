@@ -14,8 +14,17 @@ public class OptimismHeaderValidator(
     IBlockTree? blockTree,
     ISealValidator? sealValidator,
     ISpecProvider? specProvider,
+    IOptimismSpecHelper specHelper,
     ILogManager? logManager)
     : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+
+    protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error)
+    {
+        if (specHelper.IsBedrock(header))
+            return (header.TotalDifficulty ?? 0) == 0;
+
+        return base.ValidateTotalDifficulty(parent, header, ref error);
+    }
 }
