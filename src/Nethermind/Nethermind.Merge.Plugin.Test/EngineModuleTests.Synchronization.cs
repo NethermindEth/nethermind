@@ -257,6 +257,7 @@ public partial class EngineModuleTests
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
+
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(nextUnconnectedBlock));
@@ -273,6 +274,7 @@ public partial class EngineModuleTests
         nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
         pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
+
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
         AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
@@ -974,14 +976,14 @@ public partial class EngineModuleTests
         response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         // invalid best state calculation
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number < chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
 
         // autofix
         chain.BlockTree.RecalculateTreeLevels();
 
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number >= chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
     }
 
     [Test]
@@ -1011,14 +1013,14 @@ public partial class EngineModuleTests
         response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
         // invalid best state calculation
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number < chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number < chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
 
         MultiSyncModeSelector multiSyncModeSelector = CreateMultiSyncModeSelector(chain);
         multiSyncModeSelector.Update();
 
-        Assert.True(chain.BlockTree.BestSuggestedBody!.Number >= chain.BlockTree.Head!.Number);
-        Assert.True(chain.BlockTree.BestSuggestedHeader!.Number >= chain.BlockTree.Head!.Number);
+        Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
+        Assert.That(chain.BlockTree.BestSuggestedHeader!.Number, Is.GreaterThanOrEqualTo(chain.BlockTree.Head!.Number));
     }
 
     private MultiSyncModeSelector CreateMultiSyncModeSelector(MergeTestBlockchain chain)

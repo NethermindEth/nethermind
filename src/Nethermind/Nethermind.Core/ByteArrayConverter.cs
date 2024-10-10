@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Json;
 
 public class ByteArrayConverter : JsonConverter<byte[]>
 {
-    private readonly static ushort _hexPrefix = MemoryMarshal.Cast<byte, ushort>("0x"u8)[0];
+    private static readonly ushort _hexPrefix = MemoryMarshal.Cast<byte, ushort>("0x"u8)[0];
 
     public override byte[]? Read(
         ref Utf8JsonReader reader,

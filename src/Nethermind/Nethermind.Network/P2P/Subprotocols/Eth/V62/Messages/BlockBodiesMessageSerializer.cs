@@ -59,7 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             private readonly TxDecoder _txDecoder = TxDecoder.Instance;
             private readonly HeaderDecoder _headerDecoder = new();
             private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
-            private readonly ConsensusRequestDecoder _requestsDecoder = new();
+            private readonly ConsensusRequestDecoder _requestsDecoder = ConsensusRequestDecoder.Instance;
 
             public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
             {

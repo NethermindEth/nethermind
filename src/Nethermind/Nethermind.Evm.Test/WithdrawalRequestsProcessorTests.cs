@@ -32,11 +32,8 @@ public class WithdrawalRequestProcessorTests
     private IEthereumEcdsa _ethereumEcdsa;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
-
     private ICodeInfoRepository _codeInfoRepository;
-
     private static readonly UInt256 AccountBalance = 1.Ether();
-
     private readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
 
     [SetUp]
@@ -72,7 +69,7 @@ public class WithdrawalRequestProcessorTests
     public void ShouldProcessWithdrawalRequest()
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip7002Enabled.Returns(true);
+        spec.WithdrawalRequestsEnabled.Returns(true);
         spec.Eip7002ContractAddress.Returns(eip7002Account);
 
         Block block = Build.A.Block.TestObject;
@@ -86,7 +83,7 @@ public class WithdrawalRequestProcessorTests
             Amount = 0
         };
 
-        var withdrawalRequests = withdrawalRequestsProcessor.ReadWithdrawalRequests(block, _stateProvider, spec).ToList();
+        var withdrawalRequests = withdrawalRequestsProcessor.ReadRequests(block, _stateProvider, spec).ToList();
 
         Assert.That(withdrawalRequests, Has.Count.EqualTo(16));
 

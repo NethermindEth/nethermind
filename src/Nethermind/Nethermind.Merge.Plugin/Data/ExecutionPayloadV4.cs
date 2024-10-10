@@ -25,7 +25,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     {
         TExecutionPayload executionPayload = ExecutionPayloadV3.Create<TExecutionPayload>(block);
         ConsensusRequest[]? blockRequests = block.Requests;
-        (executionPayload.DepositRequests, executionPayload.WithdrawalRequests) = blockRequests?.SplitRequests() ?? ([], []);
+        (executionPayload.DepositRequests, executionPayload.WithdrawalRequests, executionPayload.ConsolidationRequests) = blockRequests?.SplitRequests() ?? ([], [], []);
         return executionPayload;
     }
 
@@ -40,7 +40,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
         var depositsLength = DepositRequests?.Length ?? 0;
         var withdrawalRequestsLength = WithdrawalRequests?.Length ?? 0;
-        var requestsCount = depositsLength + withdrawalRequestsLength;
+        var consolidationRequestsLength = ConsolidationRequests?.Length ?? 0;
+        var requestsCount = depositsLength + withdrawalRequestsLength + consolidationRequestsLength;
         if (requestsCount > 0)
         {
             var requests = new ConsensusRequest[requestsCount];
@@ -50,9 +51,14 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
                 requests[i] = DepositRequests![i];
             }
 
-            for (; i < requestsCount; ++i)
+            for (; i < depositsLength + withdrawalRequestsLength; ++i)
             {
                 requests[i] = WithdrawalRequests![i - depositsLength];
+            }
+
+            for (; i < requestsCount; ++i)
+            {
+                requests[i] = ConsolidationRequests![i - depositsLength - withdrawalRequestsLength];
             }
 
             block.Body.Requests = requests;
@@ -69,7 +75,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).DepositsEnabled
-        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled;
+        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled
+        && specProvider.GetSpec(BlockNumber, Timestamp).ConsolidationRequestsEnabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.Requests"/> as defined in
@@ -84,4 +91,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// </summary>
     [JsonRequired]
     public sealed override WithdrawalRequest[]? WithdrawalRequests { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ConsolidationRequests"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
+    /// </summary>
+    [JsonRequired]
+    public sealed override ConsolidationRequest[]? ConsolidationRequests { get; set; }
 }

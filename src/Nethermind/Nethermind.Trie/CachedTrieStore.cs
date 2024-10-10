@@ -20,46 +20,25 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 {
     private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-    {
-        return _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
-    }
+    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+        _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        return @base.LoadRlp(in path, hash, flags);
-    }
+    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        @base.LoadRlp(in path, hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        return @base.TryLoadRlp(in path, hash, flags);
-    }
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        @base.TryLoadRlp(in path, hash, flags);
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
-    {
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
         throw new InvalidOperationException("unsupported");
-    }
 
     public INodeStorage.KeyScheme Scheme => @base.Scheme;
 
-    public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-    {
-        @base.CommitNode(blockNumber, nodeCommitInfo, writeFlags);
-    }
+    public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+        @base.BeginCommit(trieType, blockNumber, root, writeFlags);
 
-    public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
-    {
-        @base.FinishBlockCommit(trieType, blockNumber, root, writeFlags);
-    }
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => @base.IsPersisted(in path, in keccak);
 
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
-    {
-        return @base.IsPersisted(in path, in keccak);
-    }
-
-    public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp)
-    {
-        @base.Set(in path, in keccak, rlp);
-    }
+    public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) => @base.Set(in path, in keccak, rlp);
 }
 

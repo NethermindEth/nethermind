@@ -39,23 +39,23 @@ public class StatementHistoryManagerTests
 
         _historyManager.UpdateHistory("notSecured");
 
-        CollectionAssert.AreEqual(new[] { "notSecured" }, fileContents);
-        CollectionAssert.AreEqual(new[] { "notSecured" }, ReadLine.GetHistory());
+        Assert.That(new[] { "notSecured" }, Is.EqualTo(fileContents).AsCollection);
+        Assert.That(new[] { "notSecured" }, Is.EqualTo(ReadLine.GetHistory()).AsCollection);
 
         _historyManager.UpdateHistory("unlockAccount");
 
-        CollectionAssert.AreEqual(new[] { "notSecured" }, fileContents);
-        CollectionAssert.AreEqual(new[] { "notSecured", "*removed*" }, ReadLine.GetHistory());
+        Assert.That(new[] { "notSecured" }, Is.EqualTo(fileContents).AsCollection);
+        Assert.That(new[] { "notSecured", "*removed*" }, Is.EqualTo(ReadLine.GetHistory()).AsCollection);
 
         _historyManager.UpdateHistory("notSecured2");
 
-        CollectionAssert.AreEqual(new[] { "notSecured", "notSecured2" }, fileContents);
-        CollectionAssert.AreEqual(new[] { "notSecured", "*removed*", "notSecured2" }, ReadLine.GetHistory());
+        Assert.That(new[] { "notSecured", "notSecured2" }, Is.EqualTo(fileContents).AsCollection);
+        Assert.That(new[] { "notSecured", "*removed*", "notSecured2" }, Is.EqualTo(ReadLine.GetHistory()).AsCollection);
 
         _historyManager.UpdateHistory("newAccount");
 
-        CollectionAssert.AreEqual(new[] { "notSecured", "notSecured2" }, fileContents);
-        CollectionAssert.AreEqual(new[] { "notSecured", "*removed*", "notSecured2", "*removed*" }, ReadLine.GetHistory());
+        Assert.That(new[] { "notSecured", "notSecured2" }, Is.EqualTo(fileContents).AsCollection);
+        Assert.That(new[] { "notSecured", "*removed*", "notSecured2", "*removed*" }, Is.EqualTo(ReadLine.GetHistory()).AsCollection);
     }
 
     [Test]
@@ -68,6 +68,6 @@ public class StatementHistoryManagerTests
 
         _historyManager.Init();
 
-        CollectionAssert.AreEqual(fileContents, ReadLine.GetHistory());
+        Assert.That(fileContents, Is.EqualTo(ReadLine.GetHistory()).AsCollection);
     }
 }

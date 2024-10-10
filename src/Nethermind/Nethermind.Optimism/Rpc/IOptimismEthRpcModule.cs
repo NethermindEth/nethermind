@@ -7,8 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Int256;
-using System.Threading.Tasks;
-using Nethermind.Facade.Eth;
 
 namespace Nethermind.Optimism.Rpc;
 
