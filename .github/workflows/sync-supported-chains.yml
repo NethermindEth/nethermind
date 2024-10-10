@@ -175,7 +175,6 @@ jobs:
 
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
-        timeout-minutes: 180
         run: |
           declare -A bad_logs
           bad_logs["Corrupt"]=1
