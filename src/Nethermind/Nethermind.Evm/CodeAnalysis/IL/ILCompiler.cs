@@ -2001,6 +2001,8 @@ internal class ILCompiler
 
         foreach (var kvp in evmExceptionLabels)
         {
+
+            method.MarkLabel(kvp.Value);
             if (bakeInTracerCalls)
             {
                 method.LoadArgument(5);
@@ -2008,8 +2010,6 @@ internal class ILCompiler
                 method.LoadConstant((int)kvp.Key);
                 method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTraceError)));
             }
-
-            method.MarkLabel(kvp.Value);
             method.LoadArgument(0);
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
