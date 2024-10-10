@@ -138,16 +138,13 @@ namespace Nethermind.Trie
                 ThrowReadOnlyTrieException();
             }
 
-            int maxLevelForConcurrentCommit = -1;
-            _writeBeforeCommit /= 64;
-            if (_writeBeforeCommit > 0)
+            int maxLevelForConcurrentCommit = _writeBeforeCommit switch
             {
-                maxLevelForConcurrentCommit++; // Ok, we separate at top level
-                if (_writeBeforeCommit / 16 > 0)
-                {
-                    maxLevelForConcurrentCommit++; // Another level
-                }
-            }
+                > 64 * 16 => 1, // we separate at two top levels
+                > 64 => 0, // we separate at top level
+                _ => -1
+            };
+
             _writeBeforeCommit = 0;
 
             using (ICommitter committer = TrieStore.BeginCommit(TrieType, blockNumber, RootRef, writeFlags))
@@ -204,14 +201,11 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    Task CreateTaskForPath(TreePath childPath, TrieNode childNode, int idx)
+                    Task CreateTaskForPath(TreePath childPath, TrieNode childNode, int idx) => Task.Run(() =>
                     {
-                        return Task.Run(() =>
-                        {
-                            Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx), maxLevelForConcurrentCommit);
-                            committer.ReturnConcurrencyQuota();
-                        });
-                    }
+                        Commit(committer, ref childPath, new NodeCommitInfo(childNode!, node, idx), maxLevelForConcurrentCommit);
+                        committer.ReturnConcurrencyQuota();
+                    });
 
                     ArrayPoolList<Task>? childTasks = null;
 
@@ -243,7 +237,7 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    if (childTasks != null)
+                    if (childTasks is not null)
                     {
                         Task.WaitAll(childTasks.ToArray());
                         childTasks.Dispose();

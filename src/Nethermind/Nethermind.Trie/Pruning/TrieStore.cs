@@ -154,14 +154,14 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
-                TrieNode node = nodeCommitInfo.Node!;
+                TrieNode node = nodeCommitInfo.Node;
 
-                if (node!.Keccak is null)
+                if (node.Keccak is null)
                 {
                     ThrowUnknownHash(node);
                 }
 
-                if (node!.LastSeen >= 0)
+                if (node.LastSeen >= 0)
                 {
                     ThrowNodeHasBeenSeen(blockNumber, node);
                 }
@@ -233,7 +233,7 @@ namespace Nethermind.Trie.Pruning
 
         private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, NodeCommitInfo nodeCommitInfo, TrieNode node)
         {
-            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, node.Keccak);
+            TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
             if (DirtyNodesTryGetValue(in key, out TrieNode cachedNodeCopy))
             {
                 Metrics.LoadedFromCacheNodesCount++;
@@ -276,14 +276,12 @@ namespace Nethermind.Trie.Pruning
 
         public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
         {
-            int concurrency = 0;
-            if (_pruningStrategy.PruningEnabled)
-            {
-                // The write batch when pruning is not enabled is not concurrent safe
-                concurrency = Environment.ProcessorCount;
-            }
             ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
+
+            int concurrency = _pruningStrategy.PruningEnabled
+                ? Environment.ProcessorCount
+                : 0; // The write batch when pruning is not enabled is not concurrent safe
 
             return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags, concurrency);
         }
@@ -1127,8 +1125,9 @@ namespace Nethermind.Trie.Pruning
             int concurrency
         ) : ICommitter
         {
-            private bool _needToResetRoot = root is not null && root.IsDirty;
+            private readonly bool _needToResetRoot = root is not null && root.IsDirty;
             private int _concurrency = concurrency;
+            private TrieNode? _root = root;
 
             public void Dispose()
             {
@@ -1136,33 +1135,27 @@ namespace Nethermind.Trie.Pruning
                 {
                     // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
                     // This ensure that the root that we use here is the same.
-                    root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root.Keccak);
+                    _root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, _root?.Keccak);
                 }
-                trieStore.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
+
+                trieStore.FinishBlockCommit(trieType, blockNumber, address, _root, writeFlags);
             }
 
-            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
-            {
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
                 trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags);
-            }
 
             public bool CanSpawnTask()
             {
-                if (Interlocked.Decrement(ref _concurrency) < 0)
-                {
-                    ReturnConcurrencyQuota();
-                    return false;
-                }
-                else
+                if (Interlocked.Decrement(ref _concurrency) >= 0)
                 {
                     return true;
                 }
+
+                ReturnConcurrencyQuota();
+                return false;
             }
 
-            public void ReturnConcurrencyQuota()
-            {
-                Interlocked.Increment(ref _concurrency);
-            }
+            public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
         }
 
 
