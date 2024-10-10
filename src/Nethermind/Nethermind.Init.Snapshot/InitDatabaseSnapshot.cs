@@ -71,44 +71,53 @@ public class InitDatabaseSnapshot : InitDatabase
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        if (GetCheckpoint(snapshotConfig) < Stage.Downloaded)
+        if (!File.Exists(snapshotUrl))
         {
-            while (true)
+            if (GetCheckpoint(snapshotConfig) < Stage.Downloaded)
             {
-                try
+                while (true)
                 {
-                    await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
-                    break;
+                    try
+                    {
+                        await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+                        break;
+                    }
+                    catch (IOException e)
+                    {
+                        if (_logger.IsError)
+                            _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                        await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                    }
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
-                catch (IOException e)
-                {
-                    if (_logger.IsError)
-                        _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
-                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-                }
-                cancellationToken.ThrowIfCancellationRequested();
+                SetCheckpoint(snapshotConfig, Stage.Downloaded);
             }
-            SetCheckpoint(snapshotConfig, Stage.Downloaded);
+
+            if (GetCheckpoint(snapshotConfig) < Stage.Verified)
+            {
+                if (snapshotConfig.Checksum is not null)
+                {
+                    bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
+                    if (!isChecksumValid)
+                    {
+                        if (_logger.IsError)
+                            _logger.Error("Snapshot checksum verification failed. Aborting, but will continue running.");
+                        return;
+                    }
+
+                    if (_logger.IsInfo)
+                        _logger.Info("Snapshot checksum verified.");
+                }
+                else if (_logger.IsWarn)
+                    _logger.Warn("Snapshot checksum is not configured");
+                SetCheckpoint(snapshotConfig, Stage.Verified);
+            }
         }
-
-        if (GetCheckpoint(snapshotConfig) < Stage.Verified)
+        else
         {
-            if (snapshotConfig.Checksum is not null)
-            {
-                bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
-                if (!isChecksumValid)
-                {
-                    if (_logger.IsError)
-                        _logger.Error("Snapshot checksum verification failed. Aborting, but will continue running.");
-                    return;
-                }
-
-                if (_logger.IsInfo)
-                    _logger.Info("Snapshot checksum verified.");
-            }
-            else if (_logger.IsWarn)
-                _logger.Warn("Snapshot checksum is not configured");
-            SetCheckpoint(snapshotConfig, Stage.Verified);
+            if (_logger.IsWarn)
+                _logger.Warn("Snapshot is taken from local path, no checksum verification will be applied.");
+            snapshotFileName = snapshotUrl;
         }
 
         await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);

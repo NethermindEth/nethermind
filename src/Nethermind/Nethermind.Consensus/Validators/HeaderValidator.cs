@@ -302,7 +302,7 @@ namespace Nethermind.Consensus.Validators
         /// <param name="error">Detailed error message if validation fails, otherwise <value>False</value></param>
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
         public virtual bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded), isUncle, out error);
+            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle, out error);
 
         private bool ValidateGenesis(BlockHeader header) =>
             header.GasUsed < header.GasLimit &&
