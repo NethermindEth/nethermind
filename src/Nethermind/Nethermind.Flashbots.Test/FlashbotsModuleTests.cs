@@ -14,8 +14,8 @@ namespace Nethermind.Flasbots.Test;
 
 public partial class FlashbotsModuleTests
 {
-    
-    public async Task TestValidateBuilderSubmissionV3 ()
+
+    public async Task TestValidateBuilderSubmissionV3()
     {
         using MergeTestBlockChain chain = await CreateBlockChain();
         ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = chain.CreateReadOnlyTxProcessingEnv();
@@ -26,7 +26,7 @@ public partial class FlashbotsModuleTests
         UInt256 nonce = State.GetNonce(TestKeysAndAddress.TestAddr);
 
         Transaction tx1 = new Transaction(
-            
+
         );
     }
 }

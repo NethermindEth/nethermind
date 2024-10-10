@@ -34,7 +34,7 @@ public class Flashbots : INethermindPlugin
             _api.LogManager
         );
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
-            _api.HeaderValidator?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
+            _api.HeaderValidator ?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
             _api.BlockValidator ?? throw new ArgumentNullException(nameof(_api.BlockValidator)),
             readOnlyTxProcessingEnv,
             _flashbotsConfig
