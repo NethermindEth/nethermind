@@ -201,4 +201,16 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.RequestsRoot = requestsRoot;
         return this;
     }
+
+    public BlockHeaderBuilder WithTargetBlobCount(ulong? targetBlobCount)
+    {
+        TestObjectInternal.TargetBlobCount = targetBlobCount;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithMaxBlobCount(ulong? maxBlobCount)
+    {
+        TestObjectInternal.MaxBlobCount = maxBlobCount;
+        return this;
+    }
 }
