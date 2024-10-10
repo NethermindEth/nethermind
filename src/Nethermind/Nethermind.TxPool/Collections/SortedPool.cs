@@ -336,12 +336,14 @@ namespace Nethermind.TxPool.Collections
         /// <param name="key">Key to be returned.</param>
         /// <param name="value">Returned element or null.</param>
         /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
-        public virtual bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
+        public bool TryGetValue(TKey key, [NotNullWhen(true)] out TValue? value)
         {
             using var lockRelease = Lock.Acquire();
 
-            return _cacheMap.TryGetValue(key, out value) && value is not null;
+            return TryGetValueNonLocked(key, out value);
         }
+
+        protected virtual bool TryGetValueNonLocked(TKey key, [NotNullWhen(true)] out TValue? value) => _cacheMap.TryGetValue(key, out value) && value is not null;
 
         /// <summary>
         /// Tries to insert element.
@@ -360,7 +362,7 @@ namespace Nethermind.TxPool.Collections
 
                 if (group is not null)
                 {
-                    InsertCore(key, value, group);
+                    bool inserted = InsertCore(key, value, group);
 
                     if (_cacheMap.Count > _capacity)
                     {
@@ -372,11 +374,11 @@ namespace Nethermind.TxPool.Collections
                             RemoveLast(out removed);
                         }
 
-                        return true;
+                        return inserted;
                     }
 
                     removed = default;
-                    return true;
+                    return inserted;
                 }
             }
 
@@ -430,7 +432,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Actual insert mechanism.
         /// </summary>
-        protected virtual void InsertCore(TKey key, TValue value, TGroupKey groupKey)
+        protected virtual bool InsertCore(TKey key, TValue value, TGroupKey groupKey)
         {
             if (!_buckets.TryGetValue(groupKey, out EnhancedSortedSet<TValue>? bucket))
             {
@@ -445,7 +447,10 @@ namespace Nethermind.TxPool.Collections
                 UpdateSortedValues(bucket, last);
                 _snapshot = null;
                 Inserted?.Invoke(this, new SortedPoolEventArgs(key, value));
+                return true;
             }
+
+            return false;
         }
 
         private void UpdateSortedValues(EnhancedSortedSet<TValue> bucket, TValue? previousLast)

@@ -33,7 +33,6 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
-[TestFixture]
 public class TraceRpcModuleTests
 {
     private class Context
@@ -584,7 +583,7 @@ public class TraceRpcModuleTests
         Assert.That(traces.Data.Action!.From, Is.EqualTo(TestItem.AddressB));
         Assert.That(traces.Data.Action.To, Is.EqualTo(TestItem.AddressC));
         Assert.That(traces.Data.Action.CallType, Is.EqualTo("call"));
-        Assert.IsTrue(traces.Result.ResultType == ResultType.Success);
+        Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
     }
 
     [Test]
@@ -612,7 +611,7 @@ public class TraceRpcModuleTests
         ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_replayTransaction(transaction.Hash!, traceTypes);
         Assert.That(traces.Data.Action!.CallType, Is.EqualTo("reward"));
         Assert.That(traces.Data.Action.Value, Is.EqualTo(UInt256.Parse("2000000000000000000")));
-        Assert.IsTrue(traces.Result.ResultType == ResultType.Success);
+        Assert.That(traces.Result.ResultType == ResultType.Success, Is.True);
     }
 
     [Test]

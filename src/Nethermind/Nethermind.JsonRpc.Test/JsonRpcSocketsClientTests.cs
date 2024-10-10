@@ -234,7 +234,7 @@ public class JsonRpcSocketsClientTests
             int received = receiveMessages.Result;
 
             Assert.That(received, Is.EqualTo(sent));
-            CollectionAssert.AreEqual(sentMessages, receivedMessages);
+            Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
         }
 
         private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)

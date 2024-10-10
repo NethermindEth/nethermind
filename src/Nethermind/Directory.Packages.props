@@ -19,8 +19,8 @@
     <PackageVersion Include="FastEnum" Version="1.8.0" />
     <PackageVersion Include="FluentAssertions" Version="6.12.0" />
     <PackageVersion Include="FluentAssertions.Json" Version="6.1.0" />
-    <PackageVersion Include="Google.Protobuf" Version="3.27.2" />
-    <PackageVersion Include="Google.Protobuf.Tools" Version="3.27.2" />
+    <PackageVersion Include="Google.Protobuf" Version="3.28.0" />
+    <PackageVersion Include="Google.Protobuf.Tools" Version="3.28.0" />
     <PackageVersion Include="Grpc" Version="2.46.6" />
     <PackageVersion Include="Grpc.Tools" Version="2.65.0" />
     <PackageVersion Include="HexMate" Version="0.0.3" />
@@ -44,22 +44,23 @@
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
-    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.2" />
+    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.3" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.1.1" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.2.2" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
+    <PackageVersion Include="Nethermind.Libp2p" Version="1.0.0-preview.33" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.2.0" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NLog" Version="5.3.2" />
     <PackageVersion Include="NLog.Targets.Seq" Version="4.0.1" />
     <PackageVersion Include="NonBlocking" Version="2.1.2" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
-    <PackageVersion Include="NUnit" Version="3.14.0" />
-    <PackageVersion Include="NUnit.Analyzers" Version="3.9.0" />
-    <PackageVersion Include="NUnit3TestAdapter" Version="4.5.0" />
+    <PackageVersion Include="NUnit" Version="4.2.2" />
+    <PackageVersion Include="NUnit.Analyzers" Version="4.3.0" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="4.6.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.4" />
     <PackageVersion Include="Polly" Version="8.4.1" />

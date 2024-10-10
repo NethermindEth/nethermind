@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FluentAssertions;
+using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,7 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
-[TestFixture]
 public class TxValidatorTests
 {
     [SetUp]
@@ -31,7 +31,7 @@ public class TxValidatorTests
     {
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Curve_is_correct()
     {
         BigInteger N =
@@ -45,7 +45,7 @@ public class TxValidatorTests
         (HalfN == halfN).Should().BeTrue();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Zero_r_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -59,9 +59,9 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    private static byte CalculateV() => (byte)EthereumEcdsa.CalculateV(TestBlockchainIds.ChainId);
+    private static byte CalculateV() => (byte)EthereumEcdsaExtensions.CalculateV(TestBlockchainIds.ChainId);
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Zero_s_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -75,7 +75,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Bad_chain_id_is_not_valid()
     {
         byte[] sigData = new byte[65];
@@ -89,7 +89,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_chain_id_legacy_tx_is_valid()
     {
         byte[] sigData = new byte[65];
@@ -103,7 +103,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
     }
 
-    [Test, Timeout(Timeout.MaxTestTime)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Is_valid_with_valid_chain_id()
     {
         byte[] sigData = new byte[65];
@@ -117,7 +117,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true)]
     [TestCase(false)]
     public void Before_eip_155_has_to_have_valid_chain_id_unless_overridden(bool validateChainId)
@@ -137,7 +137,7 @@ public class TxValidatorTests
         txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(!validateChainId);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, ExpectedResult = true)]
     [TestCase(TxType.Legacy, false, ExpectedResult = true)]
     [TestCase(TxType.AccessList, false, ExpectedResult = false)]
@@ -164,7 +164,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, eip2930 ? Berlin.Instance : MuirGlacier.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, true, false, ExpectedResult = true)]
     [TestCase(TxType.Legacy, false, false, ExpectedResult = true)]
     [TestCase(TxType.AccessList, false, false, ExpectedResult = false)]
@@ -195,7 +195,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, releaseSpec);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, ExpectedResult = true)]
     [TestCase(TxType.AccessList, ExpectedResult = false)]
     [TestCase(TxType.EIP1559, ExpectedResult = false)]
@@ -219,7 +219,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Berlin.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
     [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
@@ -250,7 +250,7 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, London.Instance);
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(true, 1, false)]
     [TestCase(false, 1, true)]
     [TestCase(true, -1, true)]
@@ -349,7 +349,7 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(txWithTo, Cancun.Instance).AsBool());
     }
 
-    [Timeout(Timeout.MaxTestTime)]
+    [MaxTime(Timeout.MaxTestTime)]
     [TestCase(TxType.EIP1559, false, ExpectedResult = true)]
     [TestCase(TxType.EIP1559, true, ExpectedResult = false)]
     [TestCase(TxType.Blob, true, ExpectedResult = true)]
@@ -521,6 +521,129 @@ public class TxValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
+    }
+
+    [Test]
+    public void IsWellFormed_CreateTxInSetCode_ReturnsFalse()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .WithTo(null);
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.Multiple(() =>
+        {
+            ValidationResult validationResult = txValidator.IsWellFormed(tx, Prague.Instance);
+            Assert.That(validationResult.AsBool(), Is.False);
+            Assert.That(validationResult.Error, Is.EqualTo(TxErrorMessages.NotAllowedCreateTransaction));
+        });
+    }
+
+    [Test]
+    public void IsWellFormed_AuthorizationListTxInPragueSpec_ReturnsTrue()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressA)
+            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_EmptyAuthorizationList_ReturnsFalse()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressA)
+            .WithAuthorizationCode([])
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
+    }
+    [Test]
+    public void IsWellFormed_NullAuthorizationList_ReturnsFalse()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressA)
+            .WithAuthorizationCode((AuthorizationTuple[])null!)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.False);
+    }
+
+    private static object[] BadSignatures =
+    {
+        new object[] { 1ul, (UInt256)1, Secp256K1Curve.HalfNPlusOne, false},
+        new object[] { 1ul, UInt256.Zero, Secp256K1Curve.HalfN, true },
+        new object[] { 0ul, UInt256.Zero, UInt256.Zero, true },
+    };
+    [TestCaseSource(nameof(BadSignatures))]
+    public void IsWellFormed_AuthorizationTupleHasBadSignature_ReturnsFalse(ulong yParity, UInt256 r, UInt256 s, bool expected)
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressA)
+            .WithAuthorizationCode(new AuthorizationTuple(0, Address.Zero, 0, new Signature(r, s, yParity + Signature.VOffset)))
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.EqualTo(expected));
+    }
+
+    private static IEnumerable<TxType> NonSetCodeTypes() =>
+        Enum.GetValues<TxType>().Where(t => t != TxType.SetCode && t != TxType.DepositTx);
+
+    [TestCaseSource(nameof(NonSetCodeTypes))]
+    public void IsWellFormed_NonSetCodeTxHasAuthorizationList_ReturnsFalse(TxType type)
+    {
+        var x = Enum.GetValues<TxType>().Where(t => t != TxType.SetCode);
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            .WithType(type)
+            .WithTo(TestItem.AddressA)
+            .WithMaxFeePerGas(100000)
+            .WithGasLimit(1000000)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithShardBlobTxTypeAndFieldsIfBlobTx()
+            .WithAuthorizationCode(new AuthorizationTuple(TestBlockchainIds.ChainId, TestItem.AddressA, 0, new Signature(new byte[65])))
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
     private static byte[] MakeArray(int count, params byte[] elements) =>
