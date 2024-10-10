@@ -49,8 +49,6 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof);
         UInt256 GetLatestPendingNonce(Address address);
-        void Disable();
-
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;

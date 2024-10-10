@@ -73,7 +73,6 @@ namespace Nethermind.TxPool
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
-        public void Disable() { }
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {
