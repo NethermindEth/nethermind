@@ -36,9 +36,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         long startTime = Stopwatch.GetTimestamp();
         foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
+            if (base.InsertCore(lightBlobTx.Hash, lightBlobTx, lightBlobTx.SenderAddress!))
             {
-                AddToBlobIndex(lightBlobTx);
                 numberOfTxsInDb++;
                 numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
