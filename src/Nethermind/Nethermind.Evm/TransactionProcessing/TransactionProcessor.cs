@@ -254,6 +254,12 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
+                if (authorizationTuple.Nonce == ulong.MaxValue)
+                {
+                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
+                    return false;
+                }
+
                 accessedAddresses.Add(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
