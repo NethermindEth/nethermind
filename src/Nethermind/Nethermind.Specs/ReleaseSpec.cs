@@ -111,6 +111,8 @@ namespace Nethermind.Specs
             set => _eip4788ContractAddress = value;
         }
 
+        public bool IsEofEnabled { get; set; }
+
         public bool IsEip6110Enabled { get; set; }
 
         private Address _depositContractAddress;
