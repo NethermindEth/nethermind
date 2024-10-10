@@ -82,12 +82,10 @@ namespace Nethermind.Core.Test.Encoding
 
             IEnumerable<Task<AndConstraint<ComparableTypeAssertions<Hash256>>>> tasks = Enumerable
                 .Range(0, 32)
-                .Select((_) =>
-                    Task.Factory
-                        .StartNew(() => decodedTx.Hash.Should().Be(expectedHash),
-                            TaskCreationOptions.RunContinuationsAsynchronously));
+                .Select(_ => Task.Factory.StartNew(() => decodedTx.Hash.Should().Be(expectedHash),
+                    TaskCreationOptions.RunContinuationsAsynchronously));
 
-            Task.WaitAll(tasks.ToArray());
+            Task.WaitAll(tasks);
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

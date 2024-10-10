@@ -797,11 +797,13 @@ namespace Nethermind.Trie.Pruning
                 });
             }
 
-            Task.WaitAll(parallelStartNodes.Select(entry => Task.Run(() =>
+            using ArrayPoolList<Task> tasks = parallelStartNodes.Select(entry => Task.Run(() =>
             {
                 (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
                 PersistNodeStartingFrom(trieNode, address2, path2, commitSet, persistedNodeRecorder, writeFlags, disposeQueue);
-            })).ToArray());
+            })).ToPooledList(parallelStartNodes.Count);
+
+            Task.WaitAll(tasks.AsSpan());
 
             disposeQueue.CompleteAdding();
             Task.WaitAll(_disposeTasks);

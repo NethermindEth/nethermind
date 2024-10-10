@@ -12,7 +12,9 @@ using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -206,7 +208,7 @@ namespace Nethermind.Network
         private async Task RunPeerUpdateLoop()
         {
             Channel<Peer> taskChannel = Channel.CreateBounded<Peer>(1);
-            List<Task>? tasks = Enumerable.Range(0, _outgoingConnectParallelism).Select(async (idx) =>
+            using ArrayPoolList<Task> tasks = Enumerable.Range(0, _outgoingConnectParallelism).Select(async idx =>
             {
                 await foreach (Peer peer in taskChannel.Reader.ReadAllAsync(_cancellationTokenSource.Token))
                 {
@@ -226,7 +228,7 @@ namespace Nethermind.Network
                     }
                 }
                 if (_logger.IsDebug) _logger.Debug($"Connect worker {idx} completed");
-            }).ToList();
+            }).ToPooledList(_outgoingConnectParallelism);
 
             int loopCount = 0;
             long previousActivePeersCount = 0;
@@ -359,7 +361,7 @@ namespace Nethermind.Network
             }
 
             taskChannel.Writer.Complete();
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks.AsSpan());
         }
 
         private bool EnsureAvailableActivePeerSlot()
