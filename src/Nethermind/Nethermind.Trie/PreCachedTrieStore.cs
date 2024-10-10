@@ -34,14 +34,9 @@ public class PreCachedTrieStore : ITrieStore
         _inner.Dispose();
     }
 
-    public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+    public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
     {
-        _inner.CommitNode(blockNumber, address, in nodeCommitInfo, writeFlags);
-    }
-
-    public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
-    {
-        _inner.FinishBlockCommit(trieType, blockNumber, address, root, writeFlags);
+        return _inner.BeginCommit(trieType, blockNumber, address, root, writeFlags);
     }
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)

@@ -149,37 +149,33 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        private void CommitNode(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
-            EnsureCommitSetExistsForBlock(blockNumber);
-
             if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
-                TrieNode node = nodeCommitInfo.Node!;
+                TrieNode node = nodeCommitInfo.Node;
 
-                if (node!.Keccak is null)
+                if (node.Keccak is null)
                 {
                     ThrowUnknownHash(node);
                 }
 
-                if (CurrentPackage is null)
-                {
-                    ThrowUnknownPackage(blockNumber, node);
-                }
-
-                if (node!.LastSeen >= 0)
+                if (node.LastSeen >= 0)
                 {
                     ThrowNodeHasBeenSeen(blockNumber, node);
                 }
 
-                node = SaveOrReplaceInDirtyNodesCache(address, nodeCommitInfo, node);
+                if (_pruningStrategy.PruningEnabled)
+                {
+                    node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
+                }
+
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen);
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
-                    PersistNode(address, nodeCommitInfo.Path, node, blockNumber, writeFlags);
+                    PersistNode(address, path, node, blockNumber, writeFlags);
                 }
 
                 CommittedNodesCount++;
@@ -194,10 +190,6 @@ namespace Nethermind.Trie.Pruning
             [DoesNotReturn]
             [StackTraceHidden]
             static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowUnknownPackage(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
 
             [DoesNotReturn]
             [StackTraceHidden]
@@ -239,37 +231,33 @@ namespace Nethermind.Trie.Pruning
         private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
             GetDirtyNodeShard(key).FindCachedOrUnknown(key);
 
-        private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, NodeCommitInfo nodeCommitInfo, TrieNode node)
+        private TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, NodeCommitInfo nodeCommitInfo, TrieNode node)
         {
-            if (_pruningStrategy.PruningEnabled)
+            TrieStoreDirtyNodesCache.Key key = new(address, path, node.Keccak);
+            if (DirtyNodesTryGetValue(in key, out TrieNode cachedNodeCopy))
             {
-                TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, nodeCommitInfo.Path, node.Keccak);
-                if (DirtyNodesTryGetValue(in key, out TrieNode cachedNodeCopy))
+                Metrics.LoadedFromCacheNodesCount++;
+                if (!ReferenceEquals(cachedNodeCopy, node))
                 {
-                    Metrics.LoadedFromCacheNodesCount++;
-                    if (!ReferenceEquals(cachedNodeCopy, node))
+                    if (_logger.IsTrace) Trace(node, cachedNodeCopy);
+                    cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
+                    if (node.Keccak != cachedNodeCopy.Keccak)
                     {
-                        if (_logger.IsTrace) Trace(node, cachedNodeCopy);
-                        TreePath path = nodeCommitInfo.Path;
-                        cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
-                        if (node.Keccak != cachedNodeCopy.Keccak)
-                        {
-                            ThrowNodeIsNotSame(node, cachedNodeCopy);
-                        }
-
-                        if (!nodeCommitInfo.IsRoot)
-                        {
-                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
-                        }
-
-                        node = cachedNodeCopy;
-                        Metrics.ReplacedNodesCount++;
+                        ThrowNodeIsNotSame(node, cachedNodeCopy);
                     }
+
+                    if (!nodeCommitInfo.IsRoot)
+                    {
+                        nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
+                    }
+
+                    node = cachedNodeCopy;
+                    Metrics.ReplacedNodesCount++;
                 }
-                else
-                {
-                    DirtyNodesSaveInCache(key, node);
-                }
+            }
+            else
+            {
+                DirtyNodesSaveInCache(key, node);
             }
 
             return node;
@@ -286,11 +274,20 @@ namespace Nethermind.Trie.Pruning
                 throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
         }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
 
+            int concurrency = _pruningStrategy.PruningEnabled
+                ? Environment.ProcessorCount
+                : 0; // The write batch when pruning is not enabled is not concurrent safe
+
+            return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags, concurrency);
+        }
+
+        private void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        {
             try
             {
                 if (trieType == TrieType.State) // storage tries happen before state commits
@@ -1117,6 +1114,50 @@ namespace Nethermind.Trie.Pruning
 
             return true;
         }
+
+        private class TrieStoreCommitter(
+            TrieStore trieStore,
+            TrieType trieType,
+            long blockNumber,
+            Hash256? address,
+            TrieNode? root,
+            WriteFlags writeFlags,
+            int concurrency
+        ) : ICommitter
+        {
+            private readonly bool _needToResetRoot = root is not null && root.IsDirty;
+            private int _concurrency = concurrency;
+            private TrieNode? _root = root;
+
+            public void Dispose()
+            {
+                if (_needToResetRoot)
+                {
+                    // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
+                    // This ensure that the root that we use here is the same.
+                    _root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, _root?.Keccak);
+                }
+
+                trieStore.FinishBlockCommit(trieType, blockNumber, address, _root, writeFlags);
+            }
+
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
+                trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags);
+
+            public bool CanSpawnTask()
+            {
+                if (Interlocked.Decrement(ref _concurrency) >= 0)
+                {
+                    return true;
+                }
+
+                ReturnConcurrencyQuota();
+                return false;
+            }
+
+            public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
+        }
+
 
         internal static class HashHelpers
         {
