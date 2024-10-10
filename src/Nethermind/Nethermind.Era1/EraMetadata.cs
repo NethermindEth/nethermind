@@ -60,7 +60,7 @@ public class EraMetadata: IDisposable
             try
             {
                 _index = new ArrayPoolList<byte>(index.Length);
-                index.CopyTo(_index.AsSpan(0, index.Length));
+                index.CopyTo(_index.AsSpan()[..index.Length]);
             }
             catch
             {
@@ -79,7 +79,7 @@ public class EraMetadata: IDisposable
 
             int indexOffset = (int)(blockNumber - _start) * 8;
             int blockIndexOffset = 8 + indexOffset;
-            long relativeOffset = BinaryPrimitives.ReadInt64LittleEndian(_index.AsSpan(blockIndexOffset, 8));
+            long relativeOffset = BinaryPrimitives.ReadInt64LittleEndian(_index.AsSpan()[blockIndexOffset..8]);
 
             return _length - SizeIncludingHeader + relativeOffset;
         }
@@ -87,7 +87,7 @@ public class EraMetadata: IDisposable
         public static async Task<BlockIndex> InitializeIndex(Stream stream, CancellationToken cancellation)
         {
             using ArrayPoolList<byte> pooledBytes = new(8);
-            Memory<byte> bytes = pooledBytes.AsMemory(0, 8);
+            Memory<byte> bytes = pooledBytes.AsMemory()[..8];
 
             stream.Position = stream.Length - 8;
             await stream.ReadAsync(bytes, cancellation);
@@ -102,9 +102,9 @@ public class EraMetadata: IDisposable
             stream.Position = startIndex;
 
             using ArrayPoolList<byte> blockIndex = new(indexLength, indexLength);
-            await stream.ReadAsync(blockIndex.AsMemory(0, indexLength), cancellation);
-            long s = BinaryPrimitives.ReadInt64LittleEndian(blockIndex.AsSpan(0, 8));
-            return new(blockIndex.AsSpan(0, indexLength), s, c, stream.Length);
+            await stream.ReadAsync(blockIndex.AsMemory()[..indexLength], cancellation);
+            long s = BinaryPrimitives.ReadInt64LittleEndian(blockIndex.AsSpan()[..8]);
+            return new(blockIndex.AsSpan()[..indexLength], s, c, stream.Length);
         }
         private void Dispose(bool disposing)
         {

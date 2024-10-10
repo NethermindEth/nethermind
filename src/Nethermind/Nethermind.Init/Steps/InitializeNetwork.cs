@@ -38,6 +38,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 using System.Linq;
+using Nethermind.Blockchain.Era1;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Init.Steps;
@@ -280,7 +281,7 @@ public class InitializeNetwork : IStep
         var networkName = BlockchainIds.GetBlockchainName(api.SpecProvider.NetworkId);
         _logger.Info($"Checking for unimported blocks '{syncConfig.ImportDirectory}'");
 
-        var eraFiles = EraReader.GetAllEraFiles(syncConfig.ImportDirectory, networkName).ToArray();
+        var eraFiles = EraPathUtils.GetAllEraFiles(syncConfig.ImportDirectory, networkName).ToArray();
         if (eraFiles.Length == 0)
         {
             _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");

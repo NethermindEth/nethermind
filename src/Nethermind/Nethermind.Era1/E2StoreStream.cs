@@ -84,7 +84,7 @@ internal class E2StoreStream : IDisposable
         headerBuffer.Add(0);
         headerBuffer.Add(0);
 
-        ReadOnlyMemory<byte> headerMemory = headerBuffer.AsReadOnlyMemory(0, HeaderSize);
+        ReadOnlyMemory<byte> headerMemory = headerBuffer.AsReadOnlyMemory()[..HeaderSize];
         await _stream.WriteAsync(headerMemory, cancellation);
         if (length > 0)
         {
