@@ -630,6 +630,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.EXTCODESIZE:
+                {
+                    if (!isAddressPreCompile)
+                    {
+                        var gasBefore = gasAvailable;
+                        result = vmState.Env.Witness.AccessAccountData(address, ref gasAvailable);
+                        witnessGasCharged = gasBefore != gasAvailable;
+                    }
+
+                    break;
+                }
                 case Instruction.EXTCODECOPY:
                 case Instruction.CALL:
                 case Instruction.CALLCODE:
