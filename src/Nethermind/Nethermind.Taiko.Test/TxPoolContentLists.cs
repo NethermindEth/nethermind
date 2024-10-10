@@ -2,19 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
-using Nethermind.Facade.Eth;
-using Nethermind.Facade;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Taiko.Rpc;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core;
@@ -26,6 +18,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm;
 using System.Collections;
 using System.Linq;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Taiko.Test;
 
@@ -65,24 +61,29 @@ public class TxPoolContentLists
         IReadOnlyTxProcessorSource txProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
         txProcessorSource.Build(Arg.Any<Hash256>()).Returns(scope);
 
-        var taikoRpcModule = new TaikoRpcModule(
-             Substitute.For<IJsonRpcConfig>(),
-             Substitute.For<IBlockchainBridge>(),
-             blockFinder,
-             Substitute.For<IReceiptFinder>(),
-             Substitute.For<IStateReader>(),
-             txPool,
-             Substitute.For<ITxSender>(),
-             Substitute.For<IWallet>(),
-             Substitute.For<ILogManager>(),
-             Substitute.For<ISpecProvider>(),
-             Substitute.For<IGasPriceOracle>(),
-             Substitute.For<IEthSyncingInfo>(),
-             Substitute.For<IFeeHistoryOracle>(),
-             12,
-             Substitute.For<ISyncConfig>(),
-             Substitute.For<IL1OriginStore>(),
-             txProcessorSource
+        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<ReadOnlyTxProcessingEnvFactory>();
+        readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);
+
+        TaikoEngineRpcModule taikoRpcModule = new(
+            Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+            Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+            Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
+            Substitute.For<IForkchoiceUpdatedHandler>(),
+            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+            Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+            Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
+            Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+            Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<GCKeeper>(),
+            Substitute.For<ILogManager>(),
+            txPool,
+            blockFinder,
+            readOnlyTxProcessingEnvFactory
          );
 
         ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(
