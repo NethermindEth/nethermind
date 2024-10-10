@@ -39,6 +39,7 @@ namespace Nethermind.JsonRpc
         public long? MaxRequestBodySize { get; set; } = 30000000;
         public int MaxLogsPerResponse { get; set; } = 20_000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
+        public int? FlashbotsModuleConcurrentInstances { get; set; } = null;
         public string JwtSecretFile { get; set; } = "keystore/jwt-secret";
         public bool UnsecureDevNoRpcAuthentication { get; set; }
         public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
