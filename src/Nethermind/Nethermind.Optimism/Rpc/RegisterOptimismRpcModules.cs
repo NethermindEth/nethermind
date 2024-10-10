@@ -51,18 +51,12 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
         if (_config.SequencerUrl is null && _logger.IsWarn)
         {
-            _logger.Warn($"SequencerUrl is not set. Nethermind will behave as a Sequencer");
+            _logger.Warn("SequencerUrl is not set. Nethermind will behave as a Sequencer");
         }
 
-        if (_config.SequencerUrl is not null)
-        {
-            _api.TxPool.Disable();
-        }
-
-        BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is null
-            ? null
-            : new(new Uri(_config.SequencerUrl), _api.EthereumJsonSerializer, _api.LogManager);
-        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
+        BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is not null
+            ? new(new Uri(_config.SequencerUrl), _api.EthereumJsonSerializer, _api.LogManager)
+            : null;
 
         ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
         TxSealer sealer = new(txSigner, _api.Timestamper);

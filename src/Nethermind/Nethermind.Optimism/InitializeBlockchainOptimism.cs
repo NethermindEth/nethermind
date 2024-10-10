@@ -15,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -103,4 +104,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
+
+    protected override ITxPool CreateTxPool() =>
+        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool();
 }
