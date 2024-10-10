@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n"};
+    private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
     private const string? WithLog = """{"withLog":true}""";
     private const string? OnlyTopCall = """{"onlyTopCall":true}""";
     private const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
