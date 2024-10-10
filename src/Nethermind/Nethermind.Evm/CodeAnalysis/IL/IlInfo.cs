@@ -127,6 +127,16 @@ internal class IlInfo
         } catch (Exception e)
         {
             logger.Error($"Error while executing IL-EVM segment at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}", e);
+            EvmExceptionType? exceptionType = e switch
+            {
+                EvmException evmException => evmException.ExceptionType,
+                _ => null
+            };
+
+            if(exceptionType is not null)
+            {
+                EndInstructionTraceError(tracer, gasAvailable, exceptionType.Value);
+            }
             return false;
         }
     }
@@ -136,7 +146,11 @@ internal class IlInfo
         tracer.ReportGasUpdateForVmTrace(0, initialGas - gasAvailable);
         tracer.ReportOperationRemainingGas(gasAvailable);
     }
-
+    private void EndInstructionTraceError(ITxTracer tracer, long gasAvailable, EvmExceptionType evmExceptionType)
+    {
+        tracer.ReportOperationRemainingGas(gasAvailable);
+        tracer.ReportOperationError(evmExceptionType);
+    }
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
