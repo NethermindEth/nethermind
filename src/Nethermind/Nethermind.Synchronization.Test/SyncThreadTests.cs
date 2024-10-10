@@ -5,6 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -42,6 +45,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
+using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie;
 
@@ -356,28 +360,32 @@ namespace Nethermind.Synchronization.Test
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            BlockDownloaderFactory blockDownloaderFactory = new(
-                MainnetSpecProvider.Instance,
-                blockValidator,
-                sealValidator,
-                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                logManager);
-            Synchronizer synchronizer = new(
-                dbProvider,
-                new NodeStorage(dbProvider.StateDb),
-                MainnetSpecProvider.Instance,
-                tree,
-                NullReceiptStorage.Instance,
-                syncPeerPool,
-                nodeStatsManager,
-                syncConfig,
-                blockDownloaderFactory,
-                pivot,
-                Substitute.For<IProcessExitSource>(),
-                bestPeerStrategy,
-                new ChainSpec(),
-                stateReader,
-                logManager);
+
+            ContainerBuilder builder = new ContainerBuilder();
+            builder
+                .AddSingleton(dbProvider)
+                .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddSingleton<IBlockTree>(tree)
+                .AddSingleton(NullReceiptStorage.Instance)
+                .AddSingleton<ISyncPeerPool>(syncPeerPool)
+                .AddSingleton<INodeStatsManager>(nodeStatsManager)
+                .AddSingleton(syncConfig)
+                .AddSingleton<IBlockValidator>(blockValidator)
+                .AddSingleton<ISealValidator>(sealValidator)
+                .AddSingleton<IPivot>(pivot)
+                .AddSingleton(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddSingleton(new ChainSpec())
+                .AddSingleton<IStateReader>(stateReader)
+                .AddSingleton<IReceiptStorage>(receiptStorage)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<ILogManager>(logManager);
+            dbProvider.ConfigureServiceCollection(builder);
+            builder.RegisterModule(new SynchronizerModule(syncConfig));
+            IContainer container = builder.Build();
+
+            Synchronizer synchronizer = container.Resolve<Synchronizer>();
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;
             SyncServer syncServer = new(
