@@ -30,7 +30,7 @@ public sealed class AppCommand : Command<AppSettings>
             ConfigGenerator.Generate(settings.DocsPath);
 
         if (settings.GenerateDBSize)
-            DBSizeGenerator.Generate(settings.DocsPath);
+            DBSizeGenerator.Generate(settings.DocsPath, settings.DBSizeSourcePath);
 
         if (settings.GenerateJsonRpc)
             JsonRpcGenerator.Generate(settings.DocsPath);
@@ -44,6 +44,10 @@ public sealed class AppCommand : Command<AppSettings>
 
 public sealed class AppSettings : CommandSettings
 {
+    [Description("Path to the directory with DB size files")]
+    [CommandOption("--dbsize-src")]
+    public string? DBSizeSourcePath { get; init; }
+
     [Description("Path to the docs")]
     [CommandArgument(0, "[docspath]")]
     public string? DocsPath { get; init; }
