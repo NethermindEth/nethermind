@@ -22,6 +22,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PivotUpdator
 {
+    private readonly bool _shouldUseFinalizedBlock;
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncPeerPool _syncPeerPool;
@@ -38,7 +39,8 @@ public class PivotUpdator
     private int _updateInProgress;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
-    public PivotUpdator(IBlockTree blockTree,
+    public PivotUpdator(bool shouldUseFinalizedBlock,
+        IBlockTree blockTree,
         ISyncModeSelector syncModeSelector,
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
@@ -47,6 +49,7 @@ public class PivotUpdator
         IDb metadataDb,
         ILogManager logManager)
     {
+        _shouldUseFinalizedBlock = shouldUseFinalizedBlock;
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -141,7 +144,12 @@ public class PivotUpdator
 
     private Hash256? TryGetPotentialPivotBlockHashFromCl()
     {
-        Hash256? potentialPivotBlockHash = GetPotentialPivotBlockHash();
+        Hash256? potentialPivotBlockHash = _shouldUseFinalizedBlock
+            ? _beaconSyncStrategy.GetFinalizedHash()    // getting finalized block hash as it is safe,
+                                                        // because can't be reorganized
+            : _beaconSyncStrategy.GetHeadBlockHash();   // getting potentially unsafe head block hash, because some
+                                                        // chains (e.g. optimism) aren't providing finalized block hash
+                                                        // until fully synced
 
         if (potentialPivotBlockHash is null || potentialPivotBlockHash == Keccak.Zero)
         {

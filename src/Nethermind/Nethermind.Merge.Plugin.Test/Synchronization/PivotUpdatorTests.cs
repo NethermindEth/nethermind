@@ -14,7 +14,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Optimism;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -67,6 +66,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         public void TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
             PivotUpdator pivotUpdator = new(
+                true,
                 _blockTree!,
                 _syncModeSelector!,
                 _syncPeerPool!,
@@ -96,7 +96,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void TrySetFreshPivot_for_optimism_saves_HeadBlockHash_in_db()
         {
-            OptimismPivotUpdator optimismPivotUpdator = new(
+            PivotUpdator pivotUpdator = new(
+                false,
                 _blockTree!,
                 _syncModeSelector!,
                 _syncPeerPool!,
