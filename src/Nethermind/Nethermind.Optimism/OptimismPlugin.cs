@@ -180,7 +180,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.LogManager
         );
 
-        _ = new OptimismPivotUpdator(
+        _ = new UnsafePivotUpdator(
             _api.BlockTree,
             _api.Synchronizer.SyncModeSelector,
             _api.SyncPeerPool,

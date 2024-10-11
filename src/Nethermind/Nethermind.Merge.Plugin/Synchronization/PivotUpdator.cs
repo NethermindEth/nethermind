@@ -24,12 +24,12 @@ public class PivotUpdator
 {
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly ISyncPeerPool _syncPeerPool;
+    protected readonly ISyncPeerPool _syncPeerPool;
     private readonly ISyncConfig _syncConfig;
     private readonly IBlockCacheService _blockCacheService;
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
-    private readonly ILogger _logger;
+    protected readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
 
@@ -125,7 +125,7 @@ public class PivotUpdator
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        Hash256? potentialPivotBlockHash = TryGetPotentialPivotBlockHashFromCl();
+        Hash256? potentialPivotBlockHash = await TryGetPotentialPivotBlockHash(cancellationToken);
 
         if (potentialPivotBlockHash is null || potentialPivotBlockHash == Keccak.Zero)
         {
@@ -139,30 +139,19 @@ public class PivotUpdator
         return potentialPivotBlockNumber is not null && TryOverwritePivot(potentialPivotBlockHash, (long)potentialPivotBlockNumber);
     }
 
-    private Hash256? TryGetPotentialPivotBlockHashFromCl()
-    {
-        Hash256? potentialPivotBlockHash = GetPotentialPivotBlockHash();
-
-        if (potentialPivotBlockHash is null || potentialPivotBlockHash == Keccak.Zero)
-        {
-            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
-
-            return null;
-        }
-
-        if (_alreadyAnnouncedNewPivotHash != potentialPivotBlockHash)
-        {
-            if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {potentialPivotBlockHash}");
-            _alreadyAnnouncedNewPivotHash = potentialPivotBlockHash;
-        }
-
-        return potentialPivotBlockHash;
-    }
-
-    protected virtual Hash256? GetPotentialPivotBlockHash()
+    protected virtual Task<Hash256?> TryGetPotentialPivotBlockHash(CancellationToken cancellationToken)
     {
         // getting finalized block hash as it is safe, because can't be reorganized
-        return _beaconSyncStrategy.GetFinalizedHash();
+        Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
+
+        if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
+        {
+            PrintWaitingForMessageFromCl();
+            return Task.FromResult<Hash256?>(null);
+        }
+
+        UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
+        return Task.FromResult<Hash256?>(finalizedBlockHash);
     }
 
     private long? TryGetPotentialPivotBlockNumberFromBlockCache(Hash256 potentialPivotBlockHash)
@@ -227,7 +216,7 @@ public class PivotUpdator
             }
         }
 
-        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Potential new pivot block hash: {potentialPivotBlockHash}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
+        PrintPotentialNewPivotAndWaiting(potentialPivotBlockHash.ToString());
         return null;
     }
 
@@ -262,4 +251,22 @@ public class PivotUpdator
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
     }
 
+    protected void PrintWaitingForMessageFromCl()
+    {
+        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+    }
+
+    protected void PrintPotentialNewPivotAndWaiting(string potentialPivotBlockHash)
+    {
+        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Potential new pivot block: {potentialPivotBlockHash}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
+    }
+
+    protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)
+    {
+        if (_alreadyAnnouncedNewPivotHash != finalizedBlockHash)
+        {
+            if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
+            _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
+        }
+    }
 }
