@@ -91,11 +91,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object!;
-            if (headerSearch.Object!.IsGenesis)
-            {
-                header = GenerateFakeNextHeader(header);
-            }
-
             if (!_stateReader.HasStateForBlock(header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
@@ -127,32 +122,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 
-        /// <summary>
-        /// Generates fake next-block header to force <see cref="BlockProcessor"/> to start from the specified <c>header</c> instead of <c>header - 1</c>.
-        /// </summary>
-        private static BlockHeader GenerateFakeNextHeader(BlockHeader header)
-        {
-            UInt256 baseFee = header.BaseFeePerGas;
-            var nextHeader = new BlockHeader(
-                header.Hash!,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                header.Difficulty,
-                header.Number + 1,
-                header.GasLimit,
-                header.Timestamp + 1,
-                header.ExtraData,
-                header.BlobGasUsed,
-                header.ExcessBlobGas)
-            {
-                MaybeParent = new(header),
-                TotalDifficulty = 2 * header.Difficulty,
-                BaseFeePerGas = baseFee
-            };
-
-            return nextHeader;
-        }
-
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
             Dictionary<Address, AccountOverride>? stateOverride = null)
         {
@@ -163,8 +132,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object!.Clone();
-            BlockHeader nextHeader = GenerateFakeNextHeader(header);
-            Block block = new(nextHeader, [tx], []);
+            Block block = new(header, [tx], []);
 
             using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(header, stateOverride) : null;
 

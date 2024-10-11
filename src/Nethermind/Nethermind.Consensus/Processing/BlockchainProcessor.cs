@@ -632,8 +632,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            branchingPoint = options.ContainsFlag(ProcessingOptions.ForceState)
+                ? toBeProcessed.Header
+                : _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
             if (branchingPoint is null)
             {
                 // genesis block

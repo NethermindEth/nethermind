@@ -76,7 +76,8 @@ public class TraceRpcModuleTests
             ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor);
             ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor);
 
-            Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor);
+            Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor,
+                traceOptions: ProcessingOptions.TraceTransactions);
             TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, txProcessingEnv, Blockchain.SpecProvider);
 
             for (int i = 1; i < 10; i++)
@@ -84,7 +85,9 @@ public class TraceRpcModuleTests
                 List<Transaction> transactions = new();
                 for (int j = 0; j < i; j++)
                 {
-                    transactions.Add(Core.Test.Builders.Build.A.Transaction.WithNonce(Blockchain.State.GetNonce(TestItem.AddressB) + (UInt256)j)
+                    transactions.Add(Core.Test.Builders.Build.A.Transaction
+                        .WithTo(Address.Zero)
+                        .WithNonce(Blockchain.State.GetNonce(TestItem.AddressB) + (UInt256)j)
                         .SignedAndResolved(Blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject);
                 }
                 await Blockchain.AddBlock(transactions.ToArray());
@@ -708,6 +711,36 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_callMany_runs_on_top_of_specified_block()
+    {
+        Context context = new();
+        await context.Build();
+        TestRpcBlockchain blockchain = context.Blockchain;
+
+        PrivateKey addressKey = Build.A.PrivateKey.TestObject;
+        Address address = addressKey.Address;
+        UInt256 balance = 100.Ether(), send = balance / 2;
+
+        await blockchain.AddFunds(address, balance);
+        Hash256 lastBlockHash = blockchain.BlockTree.Head!.Hash!;
+
+        string[] traceTypes = ["stateDiff"];
+        Transaction transaction = Build.A.Transaction
+            .SignedAndResolved(addressKey)
+            .WithTo(TestItem.AddressC)
+            .WithValue(send)
+            .TestObject;
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
+            [new() { Transaction = new(transaction), TraceTypes = traceTypes }],
+            new(lastBlockHash)
+        );
+
+        ParityAccountStateChange? stateChanges = traces.Data.Single().StateChanges?.GetValueOrDefault(address);
+        stateChanges?.Balance?.Should().BeEquivalentTo(new ParityStateChange<UInt256>(balance, balance - send));
+    }
+
+    [Test]
     public async Task Trace_rawTransaction_runs_on_top_of_specified_block()
     {
         Context context = new();
@@ -831,7 +864,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_callMany", calls);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x24\",\"to\":\"0x25\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null},{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x25\",\"to\":\"0x26\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null}],\"id\":67}"), serialized.Replace("\"", "\\\""));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2d\",\"to\":\"0x2e\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e5\",\"to\":\"0x3635c9adc5de9f09e4\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x3\",\"to\":\"0x4\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null},{\"output\":null,\"stateDiff\":{\"0x0000000000000000000000000000000000000000\":{\"balance\":{\"*\":{\"from\":\"0x2e\",\"to\":\"0x2f\"}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":{\"*\":{\"from\":\"0x3635c9adc5de9f09e4\",\"to\":\"0x3635c9adc5de9f09e3\"}},\"code\":\"=\",\"nonce\":{\"*\":{\"from\":\"0x4\",\"to\":\"0x5\"}},\"storage\":{}}},\"trace\":[],\"vmTrace\":null}],\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
