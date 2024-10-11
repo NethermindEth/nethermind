@@ -99,12 +99,14 @@
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild" DependsOnTargets="CollectPlugins">
     <Message Text="Copying plugins after build..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)/plugins" SkipUnchangedFiles="true" Retries="0" />
+    <Message Text="Plugins copied" />
   </Target>
 
   <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish" DependsOnTargets="CollectPlugins">
     <Message Text="Copying plugins after publish..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)/plugins" SkipUnchangedFiles="true" Retries="0" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)/plugins" SkipUnchangedFiles="true" Retries="0" />
+    <Message Text="Plugins copied" />
   </Target>
 
 </Project>
