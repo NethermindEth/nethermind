@@ -120,8 +120,15 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
+        private static ExecutionPayloadV3 CreateBlockRequestV3(
+            MergeTestBlockchain chain,
+            ExecutionPayload parent,
+            Address miner,
+            Withdrawal[]? withdrawals = null,
+            ulong? blobGasUsed = null,
+            ulong? excessBlobGas = null,
+            Transaction[]? transactions = null,
+            Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
@@ -171,9 +178,11 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Deposit[]? deposits = null;
             WithdrawalRequest[]? withdrawalRequests = null;
+            ConsolidationRequest[]? consolidationRequests = null;
+
             if (requests is not null)
             {
-                (deposits, withdrawalRequests) = requests.SplitRequests();
+                (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
             }
 
             T blockRequest = new()
@@ -192,7 +201,8 @@ namespace Nethermind.Merge.Plugin.Test
                 ExcessBlobGas = excessBlobGas,
                 ParentBeaconBlockRoot = parentBeaconBlockRoot,
                 DepositRequests = deposits,
-                WithdrawalRequests = withdrawalRequests
+                WithdrawalRequests = withdrawalRequests,
+                ConsolidationRequests = consolidationRequests,
             };
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());

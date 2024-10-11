@@ -24,6 +24,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -256,24 +257,25 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return CreateTxPoolTxComparer();
     }
 
-    protected override TxPool.TxPool CreateTxPool()
+    protected override TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
-        var txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
-        var localDataSource = _api.TxPriorityContractLocalDataSource;
+        TxPriorityContract txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
+        TxPriorityContract.LocalDataSource? localDataSource = _api.TxPriorityContractLocalDataSource;
 
         ReportTxPriorityRules(txPriorityContract, localDataSource);
 
-        var minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
+        DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore
+            = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(_api, txPriorityContract, localDataSource);
 
         ITxFilter txPoolFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, minGasPricesContractDataStore);
 
         return new TxPool.TxPool(
-            _api.EthereumEcdsa,
+            _api.EthereumEcdsa!,
             _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-            new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
+            new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
             NethermindApi.Config<ITxPoolConfig>(),
-            _api.TxValidator,
+            _api.TxValidator!,
             _api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _api.TxGossipPolicy,

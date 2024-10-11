@@ -20,7 +20,9 @@ public class ConsensusRequestsProcessorMock : IConsensusRequestsProcessor
         TestItem.DepositA_1Eth,
         TestItem.DepositB_2Eth,
         TestItem.WithdrawalRequestA,
-        TestItem.WithdrawalRequestB
+        TestItem.WithdrawalRequestB,
+        TestItem.ConsolidationRequestA,
+        TestItem.ConsolidationRequestB
     ];
 
     public void ProcessRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)

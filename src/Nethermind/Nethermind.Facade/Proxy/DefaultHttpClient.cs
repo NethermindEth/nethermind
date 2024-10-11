@@ -79,7 +79,7 @@ namespace Nethermind.Facade.Proxy
             string methodType = method.ToString();
             string json = payload is null ? "{}" : _jsonSerializer.Serialize(payload);
             if (_logger.IsTrace) _logger.Trace($"Sending HTTP {methodType} request to: {endpoint} [id: {requestId}]{(method == Method.Get ? "." : $": {json}")}");
-            Stopwatch stopWatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             HttpResponseMessage response;
             switch (method)
             {
@@ -94,9 +94,7 @@ namespace Nethermind.Facade.Proxy
                     if (_logger.IsError) _logger.Error($"Unsupported HTTP method: {methodType}.");
                     return default;
             }
-
-            stopWatch.Stop();
-            if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {stopWatch.ElapsedMilliseconds} ms]: {response}");
+            if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
             if (!response.IsSuccessStatusCode)
             {
                 return default;
