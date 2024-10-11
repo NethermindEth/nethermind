@@ -177,21 +177,25 @@ jobs:
         id: wait
         run: |
           declare -A bad_logs
+          declare -A good_logs
+          declare -A required_count
+          
           bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
-      
-          declare -A good_logs
-          good_logs["Synced Chain Head"]=0
+
           good_logs["Processed"]=0
-      
-          declare -A required_count
-          required_count["Synced Chain Head"]=20
-          required_count["Processed"]=20      
+
+          required_count["Processed"]=20
+
+          network="${{ matrix.config.network }}"
+          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" ]]; then
+            good_logs["Synced Chain Head"]=0
+            required_count["Synced Chain Head"]=20
+          fi
             
           counter=0
           found_bad_log=false
 
-          network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
             container_name="sedge-execution-op-l2-client"
           else
@@ -246,7 +250,7 @@ jobs:
           done
           
       - name: Get Consensus Logs
-        if: always()
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
