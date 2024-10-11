@@ -47,7 +47,7 @@ public class EraMetadata: IDisposable
         private bool _disposedValue;
         private readonly long _start;
         private readonly long _count;
-        private readonly long _length;
+        private readonly long _eraLength;
         private readonly ArrayPoolList<byte> _index;
 
         public long Start => _start;
@@ -55,11 +55,11 @@ public class EraMetadata: IDisposable
 
         public long SizeIncludingHeader =>  E2StoreStream.HeaderSize + CountValue + StartingBlockNumberValue + 8 * (int)_count;
 
-        private BlockIndex(Span<byte> index, long start, long count, long length)
+        private BlockIndex(Span<byte> index, long start, long count, long eraLength)
         {
             try
             {
-                _index = new ArrayPoolList<byte>(index.Length);
+                _index = new ArrayPoolList<byte>(index.Length, index.Length);
                 index.CopyTo(_index.AsSpan()[..index.Length]);
             }
             catch
@@ -69,7 +69,7 @@ public class EraMetadata: IDisposable
             }
             _start = start;
             _count = count;
-            _length = length;
+            _eraLength = eraLength;
         }
 
         public long BlockOffset(long blockNumber)
@@ -79,9 +79,9 @@ public class EraMetadata: IDisposable
 
             int indexOffset = (int)(blockNumber - _start) * 8;
             int blockIndexOffset = 8 + indexOffset;
-            long relativeOffset = BinaryPrimitives.ReadInt64LittleEndian(_index.AsSpan()[blockIndexOffset..8]);
+            long relativeOffset = BinaryPrimitives.ReadInt64LittleEndian(_index.AsSpan()[blockIndexOffset..]);
 
-            return _length - SizeIncludingHeader + relativeOffset;
+            return _eraLength - SizeIncludingHeader + relativeOffset;
         }
 
         public static async Task<BlockIndex> InitializeIndex(Stream stream, CancellationToken cancellation)
