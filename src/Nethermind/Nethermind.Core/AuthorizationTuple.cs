@@ -17,10 +17,10 @@ public class AuthorizationTuple(
         ulong chainId,
         Address codeAddress,
         ulong nonce,
-        ulong yParity,
+        byte yParity,
         UInt256 r,
         UInt256 s,
-        Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, yParity + Signature.VOffset), authority)
+        Address? authority = null) : this(chainId, codeAddress, nonce, new Signature(r, s, (ulong)yParity + Signature.VOffset), authority)
     { }
 
     public ulong ChainId { get; } = chainId;
