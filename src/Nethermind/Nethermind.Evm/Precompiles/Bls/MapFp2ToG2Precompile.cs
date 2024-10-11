@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -12,11 +13,11 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
+public class MapFp2ToG2Precompile : IPrecompile<MapFp2ToG2Precompile>
 {
-    public static readonly MapToG2Precompile Instance = new();
+    public static readonly MapFp2ToG2Precompile Instance = new();
 
-    private MapToG2Precompile()
+    private MapFp2ToG2Precompile()
     {
     }
 
@@ -26,6 +27,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsMapFp2ToG2Precompile++;
