@@ -168,7 +168,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader nextHeader = header.Clone();
             nextHeader.Number = header.Number + 1;
             nextHeader.ParentHash = header.Hash;
-            nextHeader.MaybeParent = new (header);
+            nextHeader.MaybeParent = new(header);
 
             Block block = new(nextHeader, [tx], []);
             nextHeader.Hash = block.CalculateHash();

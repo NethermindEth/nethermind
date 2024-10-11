@@ -35,7 +35,6 @@ public class OverridableWorldStateManager : IWorldStateManager
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        // TODO add if needed?
         if (forWarmup is not null)
             throw new NotSupportedException("Overridable world state with warm up is not supported.");
 

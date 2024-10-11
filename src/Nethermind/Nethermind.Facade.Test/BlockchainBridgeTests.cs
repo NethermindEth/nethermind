@@ -157,7 +157,7 @@ namespace Nethermind.Facade.Test
 
             Transaction tx = Build.A.Transaction.TestObject;
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx =>
@@ -173,7 +173,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
@@ -188,7 +188,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
@@ -203,7 +203,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithBeneficiary(TestItem.AddressB).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),

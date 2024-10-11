@@ -50,6 +50,6 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address) =>
         codeInfoRepository.GetExecutableCodeHash(worldState, address);
-        
+
     public void ResetOverrides() => _codeOverwrites.Clear();
 }
