@@ -84,15 +84,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             blockParameter ??= BlockParameter.Latest;
 
-            SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
+            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
             }
 
-            if (!_stateReader.HasStateForBlock(headerSearch.Object))
+            BlockHeader header = headerSearch.Object!;
+            if (headerSearch.Object!.IsGenesis)
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(headerSearch.Object);
+                header = GenerateFakeNextHeader(header);
+            }
+
+            if (!_stateReader.HasStateForBlock(header))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
             }
 
             Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
@@ -107,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
 
-            Block block = new(headerSearch.Object!, txs, Enumerable.Empty<BlockHeader>());
+            Block block = new(header, txs, Enumerable.Empty<BlockHeader>());
             IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
         }
@@ -121,57 +127,44 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 
-        private SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter)
+        /// <summary>
+        /// Generates fake next-block header to force <see cref="BlockProcessor"/> to start from the specified <c>header</c> instead of <c>header - 1</c>.
+        /// </summary>
+        private static BlockHeader GenerateFakeNextHeader(BlockHeader header)
         {
-            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
-            if (headerSearch.IsError)
+            UInt256 baseFee = header.BaseFeePerGas;
+            var nextHeader = new BlockHeader(
+                header.Hash!,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                header.Difficulty,
+                header.Number + 1,
+                header.GasLimit,
+                header.Timestamp + 1,
+                header.ExtraData,
+                header.BlobGasUsed,
+                header.ExcessBlobGas)
             {
-                return headerSearch;
-            }
+                MaybeParent = new(header),
+                TotalDifficulty = 2 * header.Difficulty,
+                BaseFeePerGas = baseFee
+            };
 
-            BlockHeader header = headerSearch.Object;
-            if (header!.IsGenesis)
-            {
-                UInt256 baseFee = header.BaseFeePerGas;
-                header = new BlockHeader(
-                    header.Hash!,
-                    Keccak.OfAnEmptySequenceRlp,
-                    Address.Zero,
-                    header.Difficulty,
-                    header.Number + 1,
-                    header.GasLimit,
-                    header.Timestamp + 1,
-                    header.ExtraData,
-                    header.BlobGasUsed,
-                    header.ExcessBlobGas);
-
-                header.TotalDifficulty = 2 * header.Difficulty;
-                header.BaseFeePerGas = baseFee;
-            }
-
-            return new SearchResult<BlockHeader>(header);
+            return nextHeader;
         }
 
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
             Dictionary<Address, AccountOverride>? stateOverride = null)
         {
-            SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
+            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
             }
 
             BlockHeader header = headerSearch.Object!.Clone();
-
-            // Fake next-block header to force BlockProcessor to start from <blockParameter> instead of <blockParameter> - 1
-            // TODO consider alternative approaches to achieve this
-            BlockHeader nextHeader = header.Clone();
-            nextHeader.Number = header.Number + 1;
-            nextHeader.ParentHash = header.Hash;
-            nextHeader.MaybeParent = new(header);
-
+            BlockHeader nextHeader = GenerateFakeNextHeader(header);
             Block block = new(nextHeader, [tx], []);
-            nextHeader.Hash = block.CalculateHash();
 
             using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(header, stateOverride) : null;
 
