@@ -29,5 +29,4 @@ public interface ITaikoRpcModule : IEthRpcModule
         IsSharable = true,
         IsImplemented = true)]
     Task<ResultWrapper<string>> taiko_getSyncMode();
-#pragma warning restore IDE1006 // Naming Styles
 }

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -62,6 +63,8 @@ public class TaikoRpcModule(
    feeHistoryOracle,
    secondsPerSlot), ITaikoRpcModule
 {
+    private static readonly ResultWrapper<L1Origin?> NotFound = ResultWrapper<L1Origin?>.Fail("not found");
+
     public Task<ResultWrapper<string>> taiko_getSyncMode() => ResultWrapper<string>.Success(syncConfig switch
     {
         { SnapSync: true } => "snap",
@@ -73,18 +76,18 @@ public class TaikoRpcModule(
         UInt256? head = l1OriginStore.ReadHeadL1Origin();
         if (head is null)
         {
-            return ResultWrapper<L1Origin?>.Fail("not found");
+            return NotFound;
         }
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(head.Value);
 
-        return origin is null ? ResultWrapper<L1Origin?>.Fail("not found") : ResultWrapper<L1Origin?>.Success(origin);
+        return origin is null ? NotFound : ResultWrapper<L1Origin?>.Success(origin);
     }
 
     public Task<ResultWrapper<L1Origin?>> taiko_l1OriginByID(UInt256 blockId)
     {
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId);
 
-        return origin is null ? ResultWrapper<L1Origin?>.Fail("not found") : ResultWrapper<L1Origin?>.Success(origin);
+        return origin is null ? NotFound : ResultWrapper<L1Origin?>.Success(origin);
     }
 }
