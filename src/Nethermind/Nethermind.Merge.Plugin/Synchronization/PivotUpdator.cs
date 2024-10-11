@@ -167,12 +167,6 @@ public class PivotUpdator
         return potentialPivotBlockHash;
     }
 
-    protected virtual Hash256? GetPotentialPivotBlockHash()
-    {
-        // getting finalized block hash as it is safe, because can't be reorganized
-        return _beaconSyncStrategy.GetFinalizedHash();
-    }
-
     private long? TryGetPotentialPivotBlockNumberFromBlockCache(Hash256 potentialPivotBlockHash)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
