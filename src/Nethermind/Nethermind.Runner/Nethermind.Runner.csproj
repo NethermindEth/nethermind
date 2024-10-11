@@ -102,7 +102,7 @@
     <Message Text="Plugins copied" />
   </Target>
 
-  <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish" DependsOnTargets="CollectPlugins">
+  <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish" DependsOnTargets="CopyPluginsAfterBuild">
     <Message Text="Copying plugins after publish..." Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)/plugins" SkipUnchangedFiles="true" Retries="0" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)/plugins" SkipUnchangedFiles="true" Retries="0" />
