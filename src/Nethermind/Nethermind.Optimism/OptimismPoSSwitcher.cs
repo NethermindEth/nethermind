@@ -10,7 +10,7 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 {
     public UInt256? TerminalTotalDifficulty => specProvider.TerminalTotalDifficulty;
 
-    public UInt256? FinalTotalDifficulty => 0;
+    public UInt256? FinalTotalDifficulty => TerminalTotalDifficulty;
 
     public bool TransitionFinished => true;
 
@@ -22,12 +22,14 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 
     public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash) { }
 
-    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header) => (false, IsPostMerge(header));
+    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
+    {
+        return (header.Number == bedrockBlockNumber - 1, header.Number >= bedrockBlockNumber);
+    }
 
     public bool HasEverReachedTerminalBlock() => true;
 
-    public bool IsPostMerge(BlockHeader header) => header
-    .Number >= bedrockBlockNumber;
+    public bool IsPostMerge(BlockHeader header) => GetBlockConsensusInfo(header).IsPostMerge;
 
     public bool TryUpdateTerminalBlock(BlockHeader header)
     {
