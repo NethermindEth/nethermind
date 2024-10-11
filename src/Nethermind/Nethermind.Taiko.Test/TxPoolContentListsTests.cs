@@ -21,11 +21,10 @@ using System.Linq;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Taiko.Test;
 
-public class TxPoolContentLists
+public class TxPoolContentListsTests
 {
     [TestCaseSource(nameof(FinalizingTests))]
     public int[][] Test_TxLists_AreConstructed(
@@ -44,16 +43,17 @@ public class TxPoolContentLists
 
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         transactionProcessor.When((x) => x.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
-            .Do(info =>
-            {
-                if (((BlockExecutionContext)info[1]).Header.GasUsed + Transaction.BaseTxGasCost <= ((BlockExecutionContext)info[1]).Header.GasLimit)
-                {
-                    ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost;
-                }
-            });
+            .Do(info => ((BlockExecutionContext)info[1]).Header.GasUsed += Transaction.BaseTxGasCost);
 
         transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>())
-            .Returns(info => ((BlockExecutionContext)info[1]).Header.GasUsed - Transaction.BaseTxGasCost < ((BlockExecutionContext)info[1]).Header.GasLimit ? TransactionResult.Ok : TransactionResult.BlockGasLimitExceeded);
+            .Returns(info =>
+            {
+                if (((BlockExecutionContext)info[1]).Header.GasUsed <= ((BlockExecutionContext)info[1]).Header.GasLimit)
+                    return TransactionResult.Ok;
+
+                ((BlockExecutionContext)info[1]).Header.GasUsed -= Transaction.BaseTxGasCost;
+                return TransactionResult.BlockGasLimitExceeded;
+            });
 
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
         scope.TransactionProcessor.Returns(transactionProcessor);
@@ -61,7 +61,7 @@ public class TxPoolContentLists
         IReadOnlyTxProcessorSource txProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
         txProcessorSource.Build(Arg.Any<Hash256>()).Returns(scope);
 
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<ReadOnlyTxProcessingEnvFactory>();
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         readOnlyTxProcessingEnvFactory.Create().Returns(txProcessorSource);
 
         TaikoEngineRpcModule taikoRpcModule = new(
@@ -79,12 +79,12 @@ public class TxPoolContentLists
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),
             Substitute.For<ISpecProvider>(),
-            Substitute.For<GCKeeper>(),
+            null!,
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
             readOnlyTxProcessingEnvFactory
-         );
+        );
 
         ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(
             Address.Zero,
