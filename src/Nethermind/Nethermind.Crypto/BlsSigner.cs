@@ -4,12 +4,10 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
-using G1 = Bls.P1;
 using G1Affine = Bls.P1Affine;
 using G2 = Bls.P2;
 using G2Affine = Bls.P2Affine;
