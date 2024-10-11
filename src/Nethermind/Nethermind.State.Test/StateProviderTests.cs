@@ -182,7 +182,7 @@ public class StateProviderTests
         provider.CreateAccount(_address1, 1);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.IncrementNonce(_address1);
-        provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance);
+        provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance, false);
         provider.UpdateStorageRoot(_address1, Hash2);
 
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));

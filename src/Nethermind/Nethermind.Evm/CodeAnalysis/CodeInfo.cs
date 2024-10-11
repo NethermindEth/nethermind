@@ -10,6 +10,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Config;
 using Nethermind.Logging;
+using ILMode = int;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -31,7 +32,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
             Interlocked.Increment(ref _callCount);
             // use Interlocked just in case of concurrent execution to run it only once
-            var mode =
+            ILMode mode =
                  vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
                     ? IlInfo.ILMode.PAT_MODE
                     : vmConfig.IsJitEnabled && _callCount == vmConfig.JittingThreshold
@@ -39,7 +40,7 @@ namespace Nethermind.Evm.CodeAnalysis
                         : IlInfo.ILMode.NO_ILVM;
 
             if (mode == IlInfo.ILMode.NO_ILVM)
-                return;
+                    return;
 
             await IlAnalyzer.StartAnalysis(this, mode, logger).ConfigureAwait(false);
         }

@@ -13,6 +13,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
+using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
+using ILMode = int;
+
 namespace Nethermind.Evm.CodeAnalysis.IL;
 using Mode = int;
 
@@ -58,7 +61,7 @@ public static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    internal static Task StartAnalysis(CodeInfo codeInfo, Mode mode, ILogger logger)
+    internal static Task StartAnalysis(CodeInfo codeInfo, ILMode mode, ILogger logger)
     {
         Metrics.IlvmContractsAnalyzed++;
 
@@ -101,7 +104,7 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    internal static void Analysis(CodeInfo codeInfo, Mode mode, ILogger logger)
+    private static void Analysis(CodeInfo codeInfo, ILMode mode, ILogger logger)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
@@ -125,6 +128,7 @@ public static class IlAnalyzer
                 }
             }
 
+            long segmentAvgSize = 0;
             for (int i = -1; i <= j; i++)
             {
                 int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
@@ -143,6 +147,9 @@ public static class IlAnalyzer
                 var lastOp = segment[^1];
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
+                segmentAvgSize += segment.Length;
+                ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter, CompileSegment(segmentName, segment, codeData.Item2));
+            }
                 List<ushort> pcKeys = [segment[0].ProgramCounter];
 
                 for (int k = 0; k < segment.Length; k++)
@@ -153,6 +160,8 @@ public static class IlAnalyzer
                     }
                 }
 
+            Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
+        }
                 var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2);
                 foreach (ushort pc in pcKeys)
                 {
@@ -190,15 +199,12 @@ public static class IlAnalyzer
         switch (mode)
         {
             case IlInfo.ILMode.PAT_MODE:
-                if (logger.IsInfo) logger.Info($"Starting Analysis of patterns of code {codeInfo.CodeHash}");
+                if (logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.CodeHash}");
                 CheckPatterns(machineCode, codeInfo.IlInfo);
-                if (logger.IsInfo) logger.Info($"Finished Analysis of patterns of code {codeInfo.CodeHash}");
                 break;
             case IlInfo.ILMode.JIT_MODE:
-                if (logger.IsInfo) logger.Info($"Starting Precompilation of segments of code {codeInfo.CodeHash}");
-                System.IO.File.WriteAllText($"./{codeInfo.CodeHash}.evm", machineCode.ToArray().ToHexString());
+                if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.CodeHash}");
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo);
-                if (logger.IsInfo) logger.Info($"Finished Precompiling of segments of code {codeInfo.CodeHash}");
                 break;
         }
     }

@@ -14,6 +14,12 @@ namespace Nethermind.Core
             _constantDate = constantDate;
         }
 
+        public Timestamper(long timestamp)
+        {
+            var blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            _constantDate = blockTime.UtcDateTime;
+        }
+
         public DateTime UtcNow => _constantDate ?? DateTime.UtcNow;
 
         public static readonly ITimestamper Default = new Timestamper();

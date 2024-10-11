@@ -40,7 +40,7 @@ internal class MethodSelector : InstructionChunk
 
         byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
         byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
-        VirtualMachine<T>.UpdateMemoryCost(ref vmState.Memory, ref gasAvailable, location, 32);
+        VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32);
         vmState.Memory.SaveByte(location, value);
         stack.PushUInt256(vmState.Env.Value);
         stack.PushUInt256(vmState.Env.Value);
@@ -74,7 +74,7 @@ internal class IsContractCheck : InstructionChunk
 
         Address address = stack.PopAddress();
 
-        if (!VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, NullTxTracer.Instance))
+        if (!VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, worldState, spec, NullTxTracer.Instance, true))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         int contractCodeSize = codeInfoRepository.GetCachedCodeInfo(worldState, address, spec).MachineCode.Length;

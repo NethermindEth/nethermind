@@ -75,13 +75,13 @@ internal class IlInfo
         try
         {
 
-            var executionResult = new ILChunkExecutionResult();
-            if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
-            {
-                Metrics.IlvmPrecompiledSegmentsExecutions++;
-                if (typeof(TTracingInstructions) == typeof(IsTracing))
-                    StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
-                if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}");
+        var executionResult = new ILChunkExecutionResult();
+        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
+        {
+            Metrics.IlvmPrecompiledSegmentsExecutions++;
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
+            if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
 
                 vmState.DataStackHead = stack.Head;
                 var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
@@ -100,12 +100,12 @@ internal class IlInfo
 
                 stack.Head = ilvmState.StackHead;
 
-                if (typeof(TTracingInstructions) == typeof(IsTracing))
-                    tracer.ReportOperationRemainingGas(gasAvailable);
-            }
-            else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
-            {
-                Metrics.IlvmPredefinedPatternsExecutions++;
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportOperationRemainingGas(gasAvailable);
+        }
+        else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+        {
+            Metrics.IlvmPredefinedPatternsExecutions++;
 
                 if (typeof(TTracingInstructions) == typeof(IsTracing))
                     StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
