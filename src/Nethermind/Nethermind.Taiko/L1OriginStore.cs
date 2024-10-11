@@ -3,6 +3,8 @@
 
 using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -12,7 +14,6 @@ namespace Nethermind.Taiko;
 
 public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginStore
 {
-    private readonly IDb _db = db;
     private readonly ILogger? _logger = logManager?.GetClassLogger<L1OriginStore>();
 
     private static readonly int L1OriginHeadKeyLength = 32;
@@ -23,7 +24,7 @@ public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginSt
         Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
         blockId.ToBigEndian(key);
 
-        return _db.Get(key) switch
+        return db.Get(key) switch
         {
             null => null,
             byte[] bytes => Rlp.Decode<L1Origin>(bytes)
@@ -43,23 +44,25 @@ public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginSt
             return;
         }
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(decoder.GetLength(l1Origin, RlpBehaviors.None));
+
+        int capacity = decoder.GetLength(l1Origin, RlpBehaviors.None);
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(capacity, capacity);
 
         try
         {
             using NettyRlpStream stream = new(buffer);
             decoder.Encode(stream, l1Origin);
-            _db.Set(key, buffer.Array);
+            db.Set(new Core.Crypto.ValueHash256(key), buffer.AsSpan());
         }
         finally
         {
-            buffer.Release();
+            buffer.SafeRelease();
         }
     }
 
     public UInt256? ReadHeadL1Origin()
     {
-        return _db.Get(L1OriginHeadKey) switch
+        return db.Get(L1OriginHeadKey) switch
         {
             null => null,
             byte[] bytes => new UInt256(bytes, isBigEndian: true)
@@ -68,6 +71,6 @@ public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginSt
 
     public void WriteHeadL1Origin(UInt256 blockId)
     {
-        _db.Set(L1OriginHeadKey, blockId.ToBigEndian());
+        db.Set(L1OriginHeadKey, blockId.ToBigEndian());
     }
 }

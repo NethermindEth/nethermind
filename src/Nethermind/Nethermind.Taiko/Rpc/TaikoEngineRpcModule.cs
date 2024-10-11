@@ -82,18 +82,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return VerifyBlockMetadata(payloadAttributes) ?? base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
-    }
-
-    private Task<ResultWrapper<ForkchoiceUpdatedV1Result>>? VerifyBlockMetadata(TaikoPayloadAttributes? payloadAttributes)
-    {
-        if (payloadAttributes?.BlockMetadata?.BasefeeSharingPctg is > 100)
-        {
-            if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
-            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"invalid basefeeSharingPctg {payloadAttributes.BlockMetadata.BasefeeSharingPctg}", MergeErrorCodes.InvalidPayloadAttributes));
-        }
-
-        return null;
+        return base.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(TaikoExecutionPayload executionPayload)
@@ -103,7 +92,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
-        return VerifyBlockMetadata(payloadAttributes) ?? base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+        return base.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
     }
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(TaikoExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)

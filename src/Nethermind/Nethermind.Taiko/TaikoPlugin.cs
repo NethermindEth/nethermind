@@ -90,7 +90,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         return Task.CompletedTask;
     }
 
-    public void InitRlpDecoders(INethermindApi api)
+    public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
         if (ShouldRunSteps(api))
         {
@@ -147,7 +147,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         TaikoSimplePayloadPreparationService payloadPreparationService = null!;
 
-        
+
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
@@ -184,7 +184,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             scope.WorldState,
             l1OriginStore,
             _api.LogManager);
-        
+
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 

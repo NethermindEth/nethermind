@@ -20,9 +20,6 @@ public class BlockMetadata
 
     public required byte[] TxList { get; set; }
 
-    public required UInt256 HighestBlockID { get; set; }
-
     [JsonConverter(typeof(Base64Converter))]
     public required byte[] ExtraData { get; set; }
-    public byte? BasefeeSharingPctg { get; set; }
 }
