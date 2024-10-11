@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Optimism;
 
-public class OptimismPoSSwitcher(ISpecProvider specProvider, IOptimismSpecHelper opSpecHelper) : IPoSSwitcher
+public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNumber) : IPoSSwitcher
 {
     public UInt256? TerminalTotalDifficulty => specProvider.TerminalTotalDifficulty;
 
@@ -26,7 +26,8 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, IOptimismSpecHelper
 
     public bool HasEverReachedTerminalBlock() => true;
 
-    public bool IsPostMerge(BlockHeader header) => opSpecHelper.IsBedrock(header);
+    public bool IsPostMerge(BlockHeader header) => header
+    .Number >= bedrockBlockNumber;
 
     public bool TryUpdateTerminalBlock(BlockHeader header)
     {
