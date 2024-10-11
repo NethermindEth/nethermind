@@ -8,7 +8,6 @@ namespace Nethermind.DocGen;
 
 internal static class DBSizeGenerator
 {
-    private const string _chainSizesDir = "chainSizes";
     private const string _startMark = "<!--[start autogen]-->";
     private const string _endMark = "<!--[end autogen]-->";
 
@@ -23,7 +22,7 @@ internal static class DBSizeGenerator
         "blobTransactions"
     ];
 
-    internal static void Generate(string path)
+    internal static void Generate(string docsPath, string? dbSizeSourcePath)
     {
         IList<string> chainOrder =
         [
@@ -36,9 +35,10 @@ internal static class DBSizeGenerator
             "volta"
         ];
 
-        var chainSizesPath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, _chainSizesDir);
+        dbSizeSourcePath ??= AppDomain.CurrentDomain.BaseDirectory;
+
         var chains = Directory
-            .GetFiles(chainSizesPath)
+            .GetFiles(dbSizeSourcePath)
             .Select(Path.GetFileNameWithoutExtension)
             .OrderBy(c =>
             {
@@ -48,14 +48,14 @@ internal static class DBSizeGenerator
             })
             .ToList();
 
-        GenerateFile(Path.Join(path, "docs", "fundamentals"), chains!);
-        GenerateFile(Path.Join(path, "versioned_docs", $"version-{GetLatestVersion(path)}", "fundamentals"), chains!);
+        GenerateFile(Path.Join(docsPath, "docs", "fundamentals"), dbSizeSourcePath, chains!);
+        GenerateFile(Path.Join(docsPath, "versioned_docs", $"version-{GetLatestVersion(docsPath)}", "fundamentals"), dbSizeSourcePath, chains!);
     }
 
-    private static void GenerateFile(string path, IList<string> chains)
+    private static void GenerateFile(string docsPath, string dbSizeSourcePath, IList<string> chains)
     {
-        var fileName = Path.Join(path, "database.md");
-        var tempFileName = Path.Join(path, "~database.md");
+        var fileName = Path.Join(docsPath, "database.md");
+        var tempFileName = Path.Join(docsPath, "~database.md");
 
         // Delete the temp file if it exists
         File.Delete(tempFileName);
@@ -77,7 +77,7 @@ internal static class DBSizeGenerator
 
         writeStream.WriteLine();
 
-        WriteMarkdown(writeStream, chains!);
+        WriteMarkdown(writeStream, dbSizeSourcePath, chains!);
 
         var skip = true;
 
@@ -103,12 +103,12 @@ internal static class DBSizeGenerator
         AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }
 
-    private static void WriteMarkdown(StreamWriter file, IList<string> chains)
+    private static void WriteMarkdown(StreamWriter file, string dbSizeSourcePath, IList<string> chains)
     {
         file.WriteLine("<Tabs>");
 
         foreach (var chain in chains)
-            WriteChainSize(file, chain);
+            WriteChainSize(file, dbSizeSourcePath, chain);
 
         file.WriteLine("""
             </Tabs>
@@ -116,9 +116,10 @@ internal static class DBSizeGenerator
             """);
     }
 
-    private static void WriteChainSize(StreamWriter file, string chain)
+    private static void WriteChainSize(StreamWriter file, string dbSizeSourcePath, string chain)
     {
-        using var json = JsonDocument.Parse(File.ReadAllText($"{_chainSizesDir}/{chain}.json"));
+        var path = Path.Join(dbSizeSourcePath, $"{chain}.json");
+        using var json = JsonDocument.Parse(File.ReadAllText(path));
 
         if (json.RootElement.ValueKind != JsonValueKind.Object)
             return;

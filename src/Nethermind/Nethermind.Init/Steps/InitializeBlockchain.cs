@@ -208,8 +208,8 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-            new(_api.EthereumEcdsa!,
+        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
+            new TxPool.TxPool(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
                 _api.Config<ITxPoolConfig>(),
