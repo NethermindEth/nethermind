@@ -99,7 +99,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
-        _api.PoSSwitcher = AlwaysPoS.Instance;
+        ArgumentNullException.ThrowIfNull(_api.SpecHelper);
+        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+
+        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _api.SpecHelper);
 
         _blockCacheService = new BlockCacheService();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
