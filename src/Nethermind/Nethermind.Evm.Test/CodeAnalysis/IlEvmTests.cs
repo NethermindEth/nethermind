@@ -954,6 +954,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                                                                             .PushData(((UInt256)5).PaddedBytes(32))
                                                                             .POP()
                                                                             .POP()
+                                                                            .PushData(((UInt256)3).PaddedBytes(32))
+                                                                            .EQ()
                                                                             .PushData(0x1)
                                                                             .Op(Instruction.SSTORE)
                                                                             .PushData(32)
@@ -976,7 +978,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 //                                                                            .PushData(0)
 //                                                                            .Op(Instruction.RETURN)
 //                                                                            .Done);
-            int repeatCount = 32;
+            int repeatCount = 10;
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
             var address = standardChain.InsertCode(testcase.bytecode);
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
@@ -993,18 +995,34 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
-            var bytecode =
+            var bytecode0 =
                 Prepare.EvmCode
                     .JUMPDEST()
-                    .Call(address, 100)
-                    .PushData(0)
-                    .RETURNDATACOPY()
+                    .Call(address, 100000)
+                    .POP()
                     .GAS()
                     .PushData(1000)
                     .LT()
                     .JUMPI(0)
-                    .MLOAD(0)
-                    .PushData(0x1)
+                    .STOP()
+                    .Done;
+
+            var bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushData(((UInt256)1).PaddedBytes(32))
+                    .PushData(((UInt256)2).PaddedBytes(32))
+                    .PushData(((UInt256)3).PaddedBytes(32))
+                    .PushData(((UInt256)4).PaddedBytes(32))
+                    .PushData(((UInt256)5).PaddedBytes(32))
+                    .POP()
+                    .POP()
+                    .GAS()
+                    .PushData(97086)
+                    .LT()
+                    .JUMPI(0)
+                    .PushData(((UInt256)3).PaddedBytes(32))
+                    .EQ()
                     .Op(Instruction.SSTORE)
                     .STOP()
                     .Done;
@@ -1012,7 +1030,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var bytecode2 =
                 Prepare.EvmCode
                     .JUMPDEST()
-                    .Call(address2, 100)
+                    .Call(address2, 1000000)
                     .PushData(0)
                     .RETURNDATACOPY()
                     .GAS()
@@ -1025,16 +1043,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            for (var i = 0; i < repeatCount * 2; i++)
+            for (var i = 0; i < (repeatCount * 2 - 1); i++)
             {
-                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
+                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode0, tracer1);
             }
 
-            for (var i = 0; i < repeatCount * 2; i++)
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode0, tracer1);
+
+            for (var i = 0; i < (repeatCount * 2 - 1); i++)
             {
-                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode2, tracer2);
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode0, tracer2);
             }
 
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode0, tracer2);
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
 
@@ -1086,6 +1107,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
             }
 
+                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
             for (var i = 0; i < repeatCount * 2; i++)
             {
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
