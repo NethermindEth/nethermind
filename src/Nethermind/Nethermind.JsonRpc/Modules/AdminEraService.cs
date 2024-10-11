@@ -21,7 +21,7 @@ public class AdminEraService : IAdminEraService
     private readonly IEraImporter _eraImporter;
     private readonly IEraExporter _eraExporter;
     private readonly IEthSyncingInfo _ethSyncingInfo;
-    private readonly IProcessExitToken _processExit;
+    private readonly IProcessExitSource _processExit;
     private readonly IFileSystem _fileSystem;
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
@@ -32,7 +32,7 @@ public class AdminEraService : IAdminEraService
         IEraImporter eraImporter,
         IEraExporter eraExporter,
         IEthSyncingInfo ethSyncingInfo,
-        IProcessExitToken processExit,
+        IProcessExitSource processExit,
         IFileSystem fileSystem,
         ILogManager logManager)
     {

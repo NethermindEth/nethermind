@@ -6,14 +6,12 @@ using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Era1;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -48,7 +46,6 @@ namespace Nethermind.Api
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
         IProcessExitSource? ProcessExit { get; set; }
-        IProcessExitToken? ProcessExitToken { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

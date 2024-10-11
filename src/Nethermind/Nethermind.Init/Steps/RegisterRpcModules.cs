@@ -150,7 +150,7 @@ public class RegisterRpcModules : IStep
             eraImport,
             eraExporter,
             _api.EthSyncingInfo,
-            _api.ProcessExitToken!,
+            _api.ProcessExit!,
             _api.FileSystem,
             _api.LogManager);
         ManualPruningTrigger pruningTrigger = new();
