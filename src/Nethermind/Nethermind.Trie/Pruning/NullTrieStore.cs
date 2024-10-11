@@ -21,7 +21,7 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
 
-        public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new NullCommitter();
+        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new NullCommitter();
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
@@ -31,11 +31,13 @@ namespace Nethermind.Trie.Pruning
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
-        internal class NullCommitter : ICommitter
+        internal class NullCommitter : ICommitter, IBlockCommitter
         {
             public void Dispose() { }
 
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
+            public ICommitter GetCommitterFor(Hash256? address) => this;
+            public void Finish(TrieNode? stateRoot) { }
         }
     }
 }

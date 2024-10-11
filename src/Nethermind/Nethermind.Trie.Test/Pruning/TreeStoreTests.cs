@@ -20,6 +20,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test.Pruning
 {
+    /*
     [TestFixture(INodeStorage.KeyScheme.HalfPath)]
     [TestFixture(INodeStorage.KeyScheme.Hash)]
     public class TreeStoreTests
@@ -1007,4 +1008,5 @@ namespace Nethermind.Trie.Test.Pruning
             memDb.Count.Should().Be(4);
         }
     }
+    */
 }

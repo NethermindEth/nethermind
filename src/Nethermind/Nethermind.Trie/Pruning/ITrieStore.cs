@@ -33,11 +33,18 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
-        ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags);
+        ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
+        IBlockCommitter BeginBlockCommit(long blockNumber);
     }
 
     public interface IPruningTrieStore
     {
         public void PersistCache(CancellationToken cancellationToken);
+    }
+
+    public interface IBlockCommitter : IDisposable
+    {
+        bool CanSpawnTask() => false;
+        void ReturnConcurrencyQuota() { }
     }
 }

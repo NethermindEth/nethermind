@@ -147,7 +147,7 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit = 0;
 
-            using (ICommitter committer = TrieStore.BeginCommit(TrieType, blockNumber, RootRef, writeFlags))
+            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
             {
                 if (RootRef is not null && RootRef.IsDirty)
                 {
