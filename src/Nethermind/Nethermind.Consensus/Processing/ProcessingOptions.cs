@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// Forces to run on top of specified block state, instead of reverting to the previous one.
         /// </summary>
-        ForceState = 1 << 8,
+        ForceSameBlock = 1 << 8,
 
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Processing
         /// EVM tracing needs to process one or more transactions on top of the specified block (instead of the previous one)
         /// without storing the data on chain.
         /// </summary>
-        TraceTransactions = Trace | ForceState,
+        TraceTransactions = Trace | ForceSameBlock,
 
         /// <summary>
         /// Processing options for engine_NewPayload
