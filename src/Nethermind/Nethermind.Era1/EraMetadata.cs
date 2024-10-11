@@ -86,7 +86,7 @@ public class EraMetadata: IDisposable
 
         public static async Task<BlockIndex> InitializeIndex(Stream stream, CancellationToken cancellation)
         {
-            using ArrayPoolList<byte> pooledBytes = new(8);
+            using ArrayPoolList<byte> pooledBytes = new(8, 8);
             Memory<byte> bytes = pooledBytes.AsMemory()[..8];
 
             stream.Position = stream.Length - 8;

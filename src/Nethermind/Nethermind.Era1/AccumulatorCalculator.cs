@@ -1,21 +1,16 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Cortex.SimpleSerialize;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Merkleization;
 
 namespace Nethermind.Era1;
 //See https://github.com/ethereum/portal-network-specs/blob/master/history-network.md#algorithms
 internal class AccumulatorCalculator : IDisposable
 {
-    ArrayPoolList<SszComposite> _roots;
+    ArrayPoolList<ReadOnlyMemory<byte>> _roots;
     private bool _disposedValue;
 
     public AccumulatorCalculator()
@@ -26,17 +21,18 @@ internal class AccumulatorCalculator : IDisposable
     public void Add(Hash256? headerHash, UInt256 td)
     {
         if (headerHash is null) throw new ArgumentNullException(nameof(headerHash));
-        SszTree tree = new(new SszContainer(new[]
-        {
-            new SszBasicVector(headerHash.Bytes),
-            new SszBasicVector(td.ToLittleEndian())
-        }));
-        _roots.Add(new SszBasicVector(tree.HashTreeRoot()));
+
+        Merkleizer merkleizer = new Merkleizer((int)Merkle.NextPowerOfTwoExponent(2));
+        merkleizer.Feed(headerHash.Bytes);
+        merkleizer.Feed(td.ToLittleEndian());
+        _roots.Add(merkleizer.CalculateRoot().ToLittleEndian());
     }
 
     public ValueHash256 ComputeRoot()
     {
-        return new ValueHash256(new SszTree(new SszList(_roots, EraWriter.MaxEra1Size)).HashTreeRoot());
+        Merkleizer merkleizer = new Merkleizer(0);
+        merkleizer.Feed(_roots, EraWriter.MaxEra1Size);
+        return new ValueHash256(merkleizer.CalculateRoot().ToLittleEndian());
     }
 
     internal void Clear() => _roots.Clear();
