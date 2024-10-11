@@ -951,18 +951,20 @@ public class TraceRpcModuleTests
 
     [TestCase(
         """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000"}""",
+        "stateDiff",
         """{"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099":{"balance":"0x123", "nonce": "0x123"}}"""
     )]
     [TestCase(
         """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000","input":"0xf8b2cb4f000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099"}""",
+        "trace",
         """{"0xc200000000000000000000000000000000000000":{"code":"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033"}}"""
     )]
-    public async Task Trace_call_with_state_override_does_not_affect_other_calls(string transaction, string stateOverride)
+    public async Task Trace_call_with_state_override_does_not_affect_other_calls(string transaction, string traceType, string stateOverride)
     {
         Context context = new();
         await context.Build();
 
-        var traceTypes = new[] { "stateDiff" };
+        var traceTypes = new[] { traceType };
 
         var resultOverrideBefore = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null, stateOverride);
