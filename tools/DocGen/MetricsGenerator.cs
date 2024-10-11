@@ -85,13 +85,7 @@ internal static partial class MetricsGenerator
             return;
 
         file.WriteLine($"""
-            <details>
-            <summary className="nd-details-heading">
-
-            #### {GetNamespace(metricsType.FullName)}
-
-            </summary>
-            <p>
+            ### {GetNamespace(metricsType.FullName)}
 
             """);
 
@@ -100,7 +94,7 @@ internal static partial class MetricsGenerator
             var attr = prop.GetCustomAttribute<DescriptionAttribute>();
             var param = _regex.Replace(prop.Name, m => $"_{m.Value.ToLowerInvariant()}");
 
-            file.WriteLine($"- **`nethermind{param}`**");
+            file.WriteLine($"- #### `nethermind{param}` \\{{#{param[1..]}\\}}");
 
             if (!string.IsNullOrWhiteSpace(attr?.Description))
                 file.WriteLine($"""
@@ -110,12 +104,7 @@ internal static partial class MetricsGenerator
                     """);
         }
 
-        file.WriteLine("""
-
-            </p>
-            </details>
-
-            """);
+        file.WriteLine();
     }
 
     private static string? GetNamespace(string? fullTypeName)
