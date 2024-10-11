@@ -1209,7 +1209,7 @@ public partial class EthRpcModuleTests
         var specProvider = new TestSpecProvider(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(specProvider);
 
         Transaction testTx = Build.A.Transaction
           .WithType(TxType.SetCode)
@@ -1234,7 +1234,7 @@ public partial class EthRpcModuleTests
         var specProvider = new TestSpecProvider(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(specProvider);
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.State.GetNonce(TestItem.AddressB))
@@ -1271,7 +1271,7 @@ public partial class EthRpcModuleTests
         var specProvider = new TestSpecProvider(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(specProvider);
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.State.GetNonce(TestItem.AddressB))
