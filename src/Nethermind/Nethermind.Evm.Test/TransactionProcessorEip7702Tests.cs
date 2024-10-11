@@ -569,43 +569,42 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> EXTCODEHASHAccountSetup()
     {
-        //yield return new object[] {
-        //    (IWorldState state, Address account) =>
-        //    {
-        //        //Account does not exists
-        //    },
-        //    true };
+        yield return new object[] {
+            (IWorldState state, Address account) =>
+            {
+                //Account does not exists
+            },
+            true };
         yield return new object[] {
             (IWorldState state, Address account) =>
             {
                 //Account is empty
                 state.CreateAccount(account, 0);
-                var x = state.AccountExists(account);
             },
             true};
-        //yield return new object[] {
-        //    (IWorldState state, Address account) =>
-        //    {
-        //        //Account has balance
-        //        state.CreateAccount(account, 1);
-        //    },
-        //    false};
-        //yield return new object[] {
-        //    (IWorldState state, Address account) =>
-        //    {
-        //        //Account has nonce
-        //        state.CreateAccount(account, 0, 1);
-        //    },
-        //    false};
+        yield return new object[] {
+            (IWorldState state, Address account) =>
+            {
+                //Account has balance
+                state.CreateAccount(account, 1);
+            },
+            false};
+        yield return new object[] {
+            (IWorldState state, Address account) =>
+            {
+                //Account has nonce
+                state.CreateAccount(account, 0, 1);
+            },
+            false};
 
-        //yield return new object[] {
-        //    (IWorldState state, Address account) =>
-        //    {
-        //        //Account has code
-        //        state.CreateAccount(account, 0);
-        //        state.InsertCode(account, Prepare.EvmCode.RETURN().Done, Prague.Instance);
-        //    },
-        //    false};
+        yield return new object[] {
+            (IWorldState state, Address account) =>
+            {
+                //Account has code
+                state.CreateAccount(account, 0);
+                state.InsertCode(account, Prepare.EvmCode.RETURN().Done, Prague.Instance);
+            },
+            false};
     }
     [TestCaseSource(nameof(EXTCODEHASHAccountSetup))]
     public void Execute_CodeSavesEXTCODEHASHWithDifferentAccountSetup_SavesZeroIfAccountDoesNotExistsOrIsEmpty(Action<IWorldState, Address> setupAccount, bool expectZero)
@@ -629,7 +628,7 @@ internal class TransactionProcessorEip7702Tests
         DeployCode(codeSource, code);
         DeployCode(signer.Address, [.. Eip7702Constants.DelegationHeader, .. target.Bytes]);
 
-        _stateProvider.Commit(Prague.Instance);
+        _stateProvider.Commit(Prague.Instance, true);
 
         Transaction tx = Build.A.Transaction
             .WithTo(codeSource)
