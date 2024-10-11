@@ -197,7 +197,6 @@ public static partial class Program
             INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
             ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
             nethermindApi.ProcessExit = _processExitSource;
-            nethermindApi.ProcessExitToken = _processExitSource;
 
             _appClosed.Reset();
             EthereumRunner ethereumRunner = new(nethermindApi);
