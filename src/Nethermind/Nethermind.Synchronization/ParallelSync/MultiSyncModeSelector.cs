@@ -365,7 +365,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           isPostMerge &&
                           stateSyncNotFinished;
 
-            if (_logger.IsTrace)
+            if (_logger.IsDebug)
             {
                 LogDetailedSyncModeChecks("UPDATING PIVOT",
                     (nameof(updateRequestedAndNotFinished), updateRequestedAndNotFinished),
