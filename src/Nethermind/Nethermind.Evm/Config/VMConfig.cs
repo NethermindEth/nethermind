@@ -15,4 +15,5 @@ public class VMConfig : IVMConfig
     public bool IsJitEnabled { get; set; } = false;
     public int PatternMatchingThreshold { get; set; } = 32;
     public int JittingThreshold { get; set; } = 128;
+    public bool AggressiveJitMode { get; set; } = false;
 }

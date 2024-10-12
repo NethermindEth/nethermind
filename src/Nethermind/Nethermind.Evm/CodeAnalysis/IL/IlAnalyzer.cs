@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -60,12 +61,12 @@ public static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    internal static Task StartAnalysis(CodeInfo codeInfo, ILMode mode, ILogger logger)
+    internal static Task StartAnalysis(CodeInfo codeInfo, ILMode mode, ILogger logger, IVMConfig vmConfig)
     {
         Metrics.IlvmContractsAnalyzed++;
 
         if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.CodeHash}");
-        return Task.Run(() => Analysis(codeInfo, mode, logger));
+        return Task.Run(() => Analysis(codeInfo, mode, vmConfig, logger));
     }
 
     public static (OpcodeInfo[], byte[][]) StripByteCode(ReadOnlySpan<byte> machineCode)
@@ -93,11 +94,11 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, ILMode mode, ILogger logger)
+    private static void Analysis(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo)
+        static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
         {
             if (codeData.Item1.Length == 0)
             {
@@ -137,7 +138,28 @@ public static class IlAnalyzer
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
                 segmentAvgSize += segment.Length;
-                ilinfo.Segments.GetOrAdd((ushort)segment[0].ProgramCounter, CompileSegment(segmentName, segment, codeData.Item2));
+
+                var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2);
+                if(vmConfig.AggressiveJitMode)
+                {
+                    List<ushort> pcKeys = [segment[0].ProgramCounter];
+                    for (int k = 0; k < segment.Length; k++)
+                    {
+                        if (segment[k].Operation == Instruction.JUMPDEST)
+                        {
+                            pcKeys.Add(segment[k].ProgramCounter);
+                        }
+                    }
+                    foreach (ushort pc in pcKeys)
+                    {
+                        ilinfo.Segments.GetOrAdd(pc, segmentExecutionCtx);
+                    }
+                } else
+                {
+                    ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
+                }
+
+                Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
             }
 
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
@@ -175,7 +197,7 @@ public static class IlAnalyzer
                 break;
             case IlInfo.ILMode.JIT_MODE:
                 if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.CodeHash}");
-                SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo);
+                SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
                 break;
         }
     }

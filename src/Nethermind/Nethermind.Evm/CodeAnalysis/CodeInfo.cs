@@ -42,7 +42,7 @@ namespace Nethermind.Evm.CodeAnalysis
             if (mode == IlInfo.ILMode.NO_ILVM)
                     return;
 
-            await IlAnalyzer.StartAnalysis(this, mode, logger).ConfigureAwait(false);
+            await IlAnalyzer.StartAnalysis(this, mode, logger, vmConfig).ConfigureAwait(false);
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());

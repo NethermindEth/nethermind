@@ -172,6 +172,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 IsJitEnabled = true,
                 IsPatternMatchingEnabled = true,
+                AggressiveJitMode = true,
 
                 PatternMatchingThreshold = 4,
                 JittingThreshold = 256,
@@ -760,7 +761,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, ILMode.PAT_MODE, NullLogger.Instance);
+            await IlAnalyzer.StartAnalysis(codeInfo, ILMode.PAT_MODE, NullLogger.Instance, config);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
@@ -789,7 +790,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, NullLogger.Instance);
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, NullLogger.Instance, config);
 
             codeInfo.IlInfo.Segments.Count.Should().Be(2);
         }
@@ -1025,7 +1026,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 "ILEVM_PRECOMPILED_(0x3dff15...1db9a1)[0..5]",
                 "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
                 "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
-                "AbortDestinationPattern"
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
             };
 
             string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
