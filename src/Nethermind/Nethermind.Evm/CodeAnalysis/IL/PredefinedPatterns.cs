@@ -225,7 +225,7 @@ internal class P01P01SHL : InstructionChunk
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
        // stack.PopUInt256(out  UInt256 value);
-       // stack.PushUInt256(new UInt256(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 1)) << (int)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 4]);
+        stack.PushUInt256((UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << (int)((UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3]).u0);
 
         programCounter += 5;
 
