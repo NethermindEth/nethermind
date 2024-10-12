@@ -192,10 +192,10 @@ internal class PP : InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
-        //stack.Head -=3;
-        stack.PopLimbo();
-        stack.PopLimbo();
-        stack.PopLimbo();
+        stack.Head -=2;
+        //stack.PopLimbo();
+        //stack.PopLimbo();
+        //stack.PopLimbo();
 
         programCounter += 2;
     }
@@ -209,7 +209,7 @@ internal class P01P01SHL : InstructionChunk
 
     public long GasCost(EvmState vmState, IReleaseSpec spec)
     {
-        long gasCost = GasCostOf.VeryLow + GasCostOf.VeryLow;
+        long gasCost = GasCostOf.VeryLow * 3;
         return gasCost;
     }
 
@@ -224,8 +224,8 @@ internal class P01P01SHL : InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
-        stack.PopUInt256(out  UInt256 value);
-        stack.PushUInt256(new UInt256(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 1)) << (int)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 4]);
+       // stack.PopUInt256(out  UInt256 value);
+       // stack.PushUInt256(new UInt256(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 1)) << (int)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 4]);
 
         programCounter += 5;
 
