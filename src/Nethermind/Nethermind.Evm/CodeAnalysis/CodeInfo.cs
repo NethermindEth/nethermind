@@ -40,7 +40,7 @@ namespace Nethermind.Evm.CodeAnalysis
                         : IlInfo.ILMode.NO_ILVM;
 
             if (mode == IlInfo.ILMode.NO_ILVM)
-                    return;
+                return;
 
             await IlAnalyzer.StartAnalysis(this, mode, logger, vmConfig).ConfigureAwait(false);
         }

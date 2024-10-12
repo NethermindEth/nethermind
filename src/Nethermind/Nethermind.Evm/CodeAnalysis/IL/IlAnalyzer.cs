@@ -140,7 +140,7 @@ public static class IlAnalyzer
                 segmentAvgSize += segment.Length;
 
                 var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2);
-                if(vmConfig.AggressiveJitMode)
+                if (vmConfig.AggressiveJitMode)
                 {
                     List<ushort> pcKeys = [segment[0].ProgramCounter];
                     for (int k = 0; k < segment.Length; k++)
@@ -154,7 +154,8 @@ public static class IlAnalyzer
                     {
                         ilinfo.Segments.GetOrAdd(pc, segmentExecutionCtx);
                     }
-                } else
+                }
+                else
                 {
                     ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
                 }
