@@ -32,6 +32,7 @@ using Nethermind.Evm.CodeAnalysis.IL.Patterns;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Polly;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -131,10 +132,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<AbortDestinationPattern>();
         }
 
-        public void Execute<T>(byte[] bytecode, T tracer)
+        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null)
             where T : ITxTracer
         {
-            Execute<T>(tracer, bytecode, null, 1_000_000);
+            Execute<T>(tracer, bytecode, fork, 1_000_000);
         }
 
         public Address InsertCode(byte[] bytecode)
@@ -798,6 +799,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Execution_Swap_Happens_When_Pattern_Occurs()
         {
+            int repeatCount = 32;
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = repeatCount + 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = false,
+                AggressiveJitMode = false
+            });
+
             var pattern1 = IlAnalyzer.GetPatternHandler<SomeAfterTwoPush>();
             var pattern2 = IlAnalyzer.GetPatternHandler<EmulatedStaticJump>();
             var pattern3 = IlAnalyzer.GetPatternHandler<EmulatedStaticCJump>();
@@ -834,9 +846,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i < config.PatternMatchingThreshold * 2; i++)
             {
-                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
-                ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.IsPrecompiled is not null && !tr.IsPrecompiled.Value).ToList();
+                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
+                var traces = tracer.BuildResult().Entries.Where(tr => tr.IsPrecompiled is not null && !tr.IsPrecompiled.Value).ToList();
                 accumulatedTraces.AddRange(traces);
             }
 
@@ -898,13 +910,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
-
-            var ilvm_callsComp = ilvm_traces.Entries.Where(tr => tr.Opcode == "CALL");
-            var norm_callsComp = normal_traces.Entries.Where(tr => tr.Opcode == "CALL");
-
-            var zipped = ilvm_callsComp.Zip(norm_callsComp, (ilvm, norm) => (ilvm, norm)).ToList();
-
-            var indexOfChange = zipped.FindIndex(pair => pair.ilvm.Gas != pair.norm.Gas);
 
             var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
@@ -973,8 +978,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment()
+        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_On()
         {
+            int repeatCount = 32;
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = repeatCount + 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = true,
+                AggressiveJitMode = true
+            });
+
             var address = InsertCode(Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
@@ -1005,9 +1021,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i <= config.JittingThreshold * 2; i++)
             {
-                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
-                ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.SegmentID is not null).ToList();
+                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                enhancedChain.Execute(bytecode, tracer);
+                var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
                 accumulatedTraces.AddRange(traces);
 
             }
@@ -1035,8 +1051,92 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
 
         [Test]
+        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_Off()
+        {
+            int repeatCount = 32;
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = repeatCount + 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = true,
+                AggressiveJitMode = false
+            });
+
+            var address = InsertCode(Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .ADD()
+                .STOP().Done);
+
+            byte[] bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(1000)
+                    .GAS()
+                    .LT()
+                    .JUMPI(58)
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .Call(address, 100)
+                    .POP()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .POP()
+                    .JUMP(0)
+                    .JUMPDEST()
+                    .STOP()
+                    .Done;
+
+            var accumulatedTraces = new List<GethTxTraceEntry>();
+            for (int i = 0; i <= config.JittingThreshold * 2; i++)
+            {
+                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                enhancedChain.Execute(bytecode, tracer);
+                var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
+                accumulatedTraces.AddRange(traces);
+
+            }
+
+            // in the last stint gas is almost below 1000
+            // it executes segment 0 (0..46)
+            // then calls address 23 (segment 0..5 since it is precompiled as well)
+            // then it executes segment 48..59 which ends in jump back to pc = 0
+            // then it executes segment 0..46 again but this time gas is below 1000
+            // it ends jumping to pc = 59 (which is index of AbortDestinationPattern)
+            // so the last segment executed is AbortDestinationPattern
+
+            string[] desiredTracePattern = new[]
+            {
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
+                "ILEVM_PRECOMPILED_(0x3dff15...1db9a1)[0..5]",
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
+                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
+                "AbortDestinationPattern",
+            };
+
+            string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
+            Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
+        }
+
+
+        [Test]
         public void JIT_invalid_opcode_results_in_failure()
         {
+            int repeatCount = 32;
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = repeatCount + 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = true,
+                AggressiveJitMode = false
+            });
+
             byte[] bytecode =
                 Prepare.EvmCode
                     .PUSHx() // PUSH0
@@ -1044,23 +1144,33 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<GethLikeTxTrace>();
+            var accumulatedTraces = new List<bool>();
             var numberOfRuns = config.JittingThreshold * 1024;
             for (int i = 0; i < numberOfRuns; i++)
             {
-                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
-                ExecuteBlock(tracer, bytecode, (1024, null));
-                var traces = tracer.BuildResult().ToList();
-                accumulatedTraces.AddRange(traces);
+                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                enhancedChain.Execute(bytecode, tracer);
+                var traces = tracer.BuildResult();
+                accumulatedTraces.AddRange(traces.Failed);
             }
 
-            var failedTraces = accumulatedTraces.Where(tr => tr.Failed && tr.Entries.Any(subtr => subtr.Error == EvmExceptionType.BadInstruction.ToString())).ToList();
-            Assert.That(failedTraces.Count, Is.EqualTo(numberOfRuns));
+            Assert.That(accumulatedTraces.All(status => status is false), Is.True);
         }
 
         [Test]
         public void Execution_Swap_Happens_When_Segments_are_compiled()
         {
+            int repeatCount = 32;
+
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = repeatCount + 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = int.MaxValue,
+                IsJitEnabled = true,
+                AggressiveJitMode = false
+            });
+
             byte[] bytecode =
                 Prepare.EvmCode
                     .JUMPDEST()
@@ -1086,9 +1196,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var accumulatedTraces = new List<GethTxTraceEntry>();
             for (int i = 0; i <= config.JittingThreshold * 32; i++)
             {
-                var tracer = new GethLikeBlockMemoryTracer(GethTraceOptions.Default);
-                ExecuteBlock(tracer, bytecode);
-                var traces = tracer.BuildResult().SelectMany(txTrace => txTrace.Entries).Where(tr => tr.IsPrecompiled is not null && tr.IsPrecompiled.Value).ToList();
+                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                enhancedChain.Execute(bytecode, tracer);
+                var traces = tracer.BuildResult().Entries.Where(tr => tr.IsPrecompiled is not null && tr.IsPrecompiled.Value).ToList();
                 accumulatedTraces.AddRange(traces);
             }
 
