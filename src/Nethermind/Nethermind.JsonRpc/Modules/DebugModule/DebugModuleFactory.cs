@@ -59,7 +59,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IFileSystem fileSystem,
         ILogManager logManager)
     {
-        _worldStateManager = worldStateManager;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -75,6 +74,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logManager.GetClassLogger();
+        _worldStateManager = new OverridableWorldStateManager(dbProvider, worldStateManager.TrieStore, logManager);
     }
 
     public override IDebugRpcModule Create()
@@ -109,7 +109,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _badBlockStore,
             _specProvider,
             transactionProcessorAdapter,
-            _fileSystem);
+            _fileSystem,
+            txEnv);
 
         DebugBridge debugBridge = new(
             _configProvider,

@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
@@ -36,6 +37,7 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly IWorldState _worldState;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
+    private readonly ReadOnlyTxProcessingEnv _env;
 
     public GethStyleTracer(IBlockchainProcessor processor,
         IWorldState worldState,
@@ -44,7 +46,8 @@ public class GethStyleTracer : IGethStyleTracer
         IBlockStore badBlockStore,
         ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
-        IFileSystem fileSystem)
+        IFileSystem fileSystem,
+        ReadOnlyTxProcessingEnv env)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _worldState = worldState;
@@ -54,6 +57,7 @@ public class GethStyleTracer : IGethStyleTracer
         _specProvider = specProvider;
         _transactionProcessorAdapter = transactionProcessorAdapter;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _env = env ?? throw new ArgumentNullException(nameof(env));
     }
 
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
@@ -82,6 +86,9 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
+            Dictionary<Address, AccountOverride>? stateOverride = options.StateOverrides;
+            using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(block.Header, stateOverride) : null;
+
             return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }
         finally
@@ -253,5 +260,13 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         return block;
+    }
+
+    private IReadOnlyTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
+    {
+        IReadOnlyTxProcessingScope scope = _env.Build(header.StateRoot!);
+        scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
+        header.StateRoot = scope.WorldState.StateRoot;
+        return scope;
     }
 }
