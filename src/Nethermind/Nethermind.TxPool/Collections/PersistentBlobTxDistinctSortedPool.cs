@@ -36,9 +36,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         long startTime = Stopwatch.GetTimestamp();
         foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
+            if (lightBlobTx.SenderAddress is not null
+                && base.InsertCore(lightBlobTx.Hash, lightBlobTx, lightBlobTx.SenderAddress))
             {
-                AddToBlobIndex(lightBlobTx);
                 numberOfTxsInDb++;
                 numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
             }
@@ -52,9 +52,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         }
     }
 
-    public override bool TryInsert(ValueHash256 hash, Transaction fullBlobTx, out Transaction? removed)
+    protected override bool InsertCore(ValueHash256 hash, Transaction fullBlobTx, AddressAsKey groupKey)
     {
-        if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out removed))
+        if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             _blobTxStorage.Add(fullBlobTx);
@@ -64,11 +64,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    public override bool TryGetValue(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
+    protected override bool TryGetValueNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
         // Firstly check if tx is present in in-memory collection of light blob txs (without actual blobs).
         // If not, just return false
-        if (base.TryGetValue(hash, out Transaction? lightTx))
+        if (base.TryGetValueNonLocked(hash, out Transaction? lightTx))
         {
             // tx is present in light collection. Try to get full blob tx from cache
             if (_blobTxCache.TryGet(hash, out fullBlobTx))

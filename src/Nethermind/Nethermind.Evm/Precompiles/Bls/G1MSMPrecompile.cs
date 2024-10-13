@@ -8,17 +8,18 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
 using G1 = Nethermind.Crypto.Bls.P1;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-2537
 /// </summary>
-public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
+public class G1MSMPrecompile : IPrecompile<G1MSMPrecompile>
 {
-    public static readonly G1MultiMulPrecompile Instance = new();
+    public static readonly G1MSMPrecompile Instance = new();
 
-    private G1MultiMulPrecompile()
+    private G1MSMPrecompile()
     {
     }
 
@@ -32,8 +33,9 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
         return 12000L * k * Discount.For(k) / 1000;
     }
 
-    private const int ItemSize = 160;
+    public const int ItemSize = 160;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.BlsG1MSMPrecompile++;
@@ -45,7 +47,7 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
 
         int nItems = inputData.Length / ItemSize;
 
-        using ArrayPoolList<long> rawPoints = new(nItems * 18, nItems * 18);
+        using ArrayPoolList<long> rawPoints = new(nItems * G1.Sz, nItems * G1.Sz);
         using ArrayPoolList<byte> rawScalars = new(nItems * 32, nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
@@ -66,34 +68,39 @@ public class G1MultiMulPrecompile : IPrecompile<G1MultiMulPrecompile>
         }
 
         bool fail = false;
-        Parallel.ForEach(pointDestinations, (dest, state, i) =>
+
+#pragma warning disable CS0162 // Unreachable code detected
+        if (BlsConst.DisableConcurrency)
         {
-            if (dest != -1)
+            for (int i = 0; i < pointDestinations.Count; i++)
             {
-                int offset = (int)i * ItemSize;
-                ReadOnlySpan<byte> rawPoint = inputData[offset..(offset + BlsConst.LenG1)].Span;
-                ReadOnlySpan<byte> rawScalar = inputData[(offset + BlsConst.LenG1)..(offset + ItemSize)].Span;
-
-                G1 p = new(rawPoints.AsSpan()[(dest * 18)..]);
-
-                if (!p.TryDecodeRaw(rawPoint) || !p.InGroup())
+                if (!BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i))
+                {
+                    fail = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            Parallel.ForEach(pointDestinations, (dest, state, i) =>
+            {
+                int index = (int)i;
+                if (!BlsExtensions.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), dest, index))
                 {
                     fail = true;
                     state.Break();
                 }
-
-                int destOffset = dest * 32;
-                rawScalar.CopyTo(rawScalars.AsSpan()[destOffset..]);
-                rawScalars.AsSpan()[destOffset..(destOffset + 32)].Reverse();
-            }
-        });
+            });
+        }
+#pragma warning restore CS0162 // Unreachable code detected
 
         if (fail)
         {
             return IPrecompile.Failure;
         }
 
-        G1 res = new G1().MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
+        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints.AsSpan(), rawScalars.AsSpan(), npoints);
         return (res.EncodeRaw(), true);
     }
 }
