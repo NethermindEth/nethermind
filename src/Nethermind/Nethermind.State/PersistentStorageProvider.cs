@@ -318,7 +318,7 @@ namespace Nethermind.State
         /// Commit persistent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
-        public void CommitTrees(long blockNumber)
+        public void CommitTrees()
         {
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
@@ -326,7 +326,7 @@ namespace Nethermind.State
                 {
                     continue;
                 }
-                storage.Value.Commit(blockNumber);
+                storage.Value.Commit();
             }
 
             _toUpdateRoots.Clear();

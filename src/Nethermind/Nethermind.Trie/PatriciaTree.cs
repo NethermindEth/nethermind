@@ -131,7 +131,7 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
+        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
             {
@@ -158,14 +158,6 @@ namespace Nethermind.Trie
                     RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
                     SetRootHash(RootRef.Keccak!, true);
                 }
-            }
-
-            if (_logger.IsDebug) Debug(blockNumber);
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Debug(long blockNumber)
-            {
-                _logger.Debug($"Finished committing {RootRef?.Keccak} in block {blockNumber}");
             }
         }
 
