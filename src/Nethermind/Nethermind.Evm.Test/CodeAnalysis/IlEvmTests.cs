@@ -199,25 +199,52 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
         {
 
-            yield return (typeof(P01D03), Prepare.EvmCode
-                     .PUSHx([5])
-                     .PUSHx([1])
-                     .PUSHx([3])
-                     .DUPx(3)
+            yield return (typeof(D01P04EQ), Prepare.EvmCode
+                     .PUSHx([1,2,3,4])
+                     .DUPx(1)
+                     .PUSHx([1,2,3,4])
+                     .EQ()
                      .PushData(0x1)
                      .Op(Instruction.SSTORE)
-                     .PushData(0x2)
+                     .Done);
+            yield return (typeof(D01P04GT), Prepare.EvmCode
+                     .PUSHx([1,2,3,4])
+                     .DUPx(1)
+                     .PUSHx([1,2,3,5])
+                     .GT()
+                     .PushData(0x1)
                      .Op(Instruction.SSTORE)
                      .Done);
-            yield return (typeof(P01D02), Prepare.EvmCode
+            yield return (typeof(D02MST), Prepare.EvmCode
                      .PUSHx([1])
                      .PUSHx([3])
                      .DUPx(2)
+                     .MSTORE()
+                     .POP()
+                     .PUSHx([1])
+                     .MLOAD()
                      .PushData(0x1)
                      .Op(Instruction.SSTORE)
-                     .PushData(0x2)
-                     .Op(Instruction.SSTORE)
                      .Done);
+     //       yield return (typeof(P01D03), Prepare.EvmCode
+     //                .PUSHx([5])
+     //                .PUSHx([1])
+     //                .PUSHx([3])
+     //                .DUPx(3)
+     //                .PushData(0x1)
+     //                .Op(Instruction.SSTORE)
+     //                .PushData(0x2)
+     //                .Op(Instruction.SSTORE)
+     //                .Done);
+     //       yield return (typeof(P01D02), Prepare.EvmCode
+     //                .PUSHx([1])
+     //                .PUSHx([3])
+     //                .DUPx(2)
+     //                .PushData(0x1)
+     //                .Op(Instruction.SSTORE)
+     //                .PushData(0x2)
+     //                .Op(Instruction.SSTORE)
+     //                .Done);
      //       yield return (typeof(S02S01), Prepare.EvmCode
      //                .PUSHx([5])
      //                .PUSHx([1])

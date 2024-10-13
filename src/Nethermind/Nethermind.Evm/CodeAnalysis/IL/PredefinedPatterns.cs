@@ -577,14 +577,13 @@ internal class D01P04EQ: InstructionChunk
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
 
-        ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 3, 4);
+        ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 4);
 
         Span<byte> word = stack.PeekWord256();
 
         Span<byte> paddedSpan = stackalloc byte[32];
 
-        fourByteSpan.CopyTo(paddedSpan);
-
+        fourByteSpan.CopyTo(paddedSpan.Slice(28, 4));
         if (paddedSpan.SequenceEqual(word))
         {
             stack.PushOne();
@@ -621,10 +620,10 @@ internal class D01P04GT: InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 3, 4);
+        ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 4);
 
-        UInt256 rhs = new UInt256(stack.PeekWord256());
-        UInt256 lhs = new UInt256(fourByteSpan);
+        UInt256 rhs = new UInt256(stack.PeekWord256(), true);
+        UInt256 lhs = new UInt256(fourByteSpan, true);
 
         if (lhs > rhs)
         {
@@ -641,13 +640,13 @@ internal class D01P04GT: InstructionChunk
 }
 internal class D02MST: InstructionChunk
 {
-    public string Name => nameof(P01ADDS01D02MST);
+    public string Name => nameof(D02MST);
     public byte[] Pattern => [(byte)Instruction.DUP2, (byte)Instruction.MSTORE];
     public byte CallCount { get; set; } = 0;
 
     public long GasCost(EvmState vmState, IReleaseSpec spec)
     {
-        long gasCost = 3 * GasCostOf.VeryLow;
+        long gasCost = 2 * GasCostOf.VeryLow;
         return gasCost;
     }
 
@@ -668,7 +667,7 @@ internal class D02MST: InstructionChunk
         vmState.Memory.SaveWord(location, stack.PopWord256());
         stack.PushUInt256(location);
 
-        programCounter += 6;
+        programCounter += 2;
 
     }
 }
