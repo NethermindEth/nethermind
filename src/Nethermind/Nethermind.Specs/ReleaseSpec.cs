@@ -86,9 +86,17 @@ namespace Nethermind.Specs
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
+        public bool IsEip7702Enabled { get; set; }
         public bool IsEip4844FeeCollectorEnabled { get; set; }
         public bool IsEip7002Enabled { get; set; }
+        public bool IsEip7251Enabled { get; set; }
 
+        private Address _eip7251ContractAddress;
+        public Address Eip7251ContractAddress
+        {
+            get => IsEip7251Enabled ? _eip7251ContractAddress : null;
+            set => _eip7251ContractAddress = value;
+        }
         private Address _eip7002ContractAddress;
         public Address Eip7002ContractAddress
         {
@@ -122,7 +130,5 @@ namespace Nethermind.Specs
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
-
-
     }
 }

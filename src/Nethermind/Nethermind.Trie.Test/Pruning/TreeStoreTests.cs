@@ -70,7 +70,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty));
+            TreePath emptyPath = TreePath.Empty;
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, null))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+            }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
@@ -85,10 +89,16 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore();
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode);
-            trieStore.CommitNode(124, new NodeCommitInfo(trieNode2, TreePath.Empty));
-            trieStore.CommitNode(11234, new NodeCommitInfo(trieNode3, TreePath.Empty));
+            TreePath emptyPath = TreePath.Empty;
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+            }
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1235, trieNode))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
+            }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(0);
         }
 
@@ -101,8 +111,12 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(kvStore: testMemDb);
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty), WriteFlags.LowPriority);
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority);
+
+            TreePath emptyPath = TreePath.Empty;
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode, WriteFlags.LowPriority))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+            }
 
             if (_scheme == INodeStorage.KeyScheme.HalfPath)
             {
@@ -123,13 +137,13 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance);
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
-            trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
+            trieStore.BeginCommit(TrieType.State, 1, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(0);
-            trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
+            trieStore.BeginCommit(TrieType.State, 2, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(1);
-            trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
+            trieStore.BeginCommit(TrieType.State, 3, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(3);
-            trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
+            trieStore.BeginCommit(TrieType.State, 4, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(6);
         }
 
@@ -142,10 +156,10 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore();
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
-            trieStore.FinishBlockCommit(TrieType.State, 1, trieNode);
-            trieStore.FinishBlockCommit(TrieType.State, 2, trieNode);
-            trieStore.FinishBlockCommit(TrieType.State, 3, trieNode);
-            trieStore.FinishBlockCommit(TrieType.State, 4, trieNode);
+            trieStore.BeginCommit(TrieType.State, 1, trieNode).Dispose();
+            trieStore.BeginCommit(TrieType.State, 2, trieNode).Dispose();
+            trieStore.BeginCommit(TrieType.State, 3, trieNode).Dispose();
+            trieStore.BeginCommit(TrieType.State, 4, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(0L);
         }
 
@@ -189,8 +203,12 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
+            TreePath emptyPath = TreePath.Empty;
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1234, null))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+            }
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
@@ -206,11 +224,18 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3, TreePath.Empty));
-            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4, TreePath.Empty));
+            TreePath emptyPath = TreePath.Empty;
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+            }
+
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 1235, trieNode2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
+            }
 
             // depending on whether the node gets resolved it gives different values here in debugging and run
             // needs some attention
@@ -236,13 +261,21 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(640));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3, TreePath.Empty));
-            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
-            trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
+
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+            }
+
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1235, trieNode2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
+            }
+
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 1236, trieNode2)) { }
+
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
@@ -267,11 +300,19 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(512));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
-            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3, TreePath.Empty));
-            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4, TreePath.Empty));
+
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1234, trieNode2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode1));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode2));
+            }
+
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1235, trieNode2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode3));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode4));
+            }
+
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
                 trieNode2.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize +
@@ -287,16 +328,17 @@ namespace Nethermind.Trie.Test.Pruning
             TreePath emptyPath = TreePath.Empty;
             for (int i = 0; i < 1024; i++)
             {
-                for (int j = 0; j < 1 + i % 3; j++)
-                {
-                    TrieNode trieNode = new(NodeType.Leaf, new byte[0]); // 192B
-                    trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
-                    trieStore.CommitNode(i, new NodeCommitInfo(trieNode, TreePath.Empty));
-                }
-
                 TrieNode fakeRoot = new(NodeType.Leaf, new byte[0]); // 192B
                 fakeRoot.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
-                trieStore.FinishBlockCommit(TrieType.State, i, fakeRoot);
+                using (ICommitter committer = trieStore.BeginCommit(TrieType.State, i, fakeRoot))
+                {
+                    for (int j = 0; j < 1 + i % 3; j++)
+                    {
+                        TrieNode trieNode = new(NodeType.Leaf, new byte[0]); // 192B
+                        trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, true);
+                        committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+                    }
+                }
             }
 
             fullTrieStore.MemoryUsedByDirtyCache.Should().BeLessThan(512 * 2);
@@ -318,12 +360,14 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: new ConstantInterval(4));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.CommitNode(0, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 0, a);
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.FinishBlockCommit(TrieType.State, 3, a);
-            trieStore.FinishBlockCommit(TrieType.State, 4, a);
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 0, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 1, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 3, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, a)) { }
 
             storage.Get(null, TreePath.Empty, a.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
@@ -342,11 +386,13 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB()));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.CommitNode(0, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 0, a);
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.FinishBlockCommit(TrieType.State, 3, a);
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 0, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 1, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 3, a)) { }
             //  <- do not persist in this test
 
             storage.Get(null, TreePath.Empty, a.Keccak).Should().BeNull();
@@ -381,16 +427,18 @@ namespace Nethermind.Trie.Test.Pruning
             );
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitNode(1, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.FinishBlockCommit(TrieType.State, 3, a);
-            trieStore.FinishBlockCommit(TrieType.State, 4, a);
-            trieStore.FinishBlockCommit(TrieType.State, 5, a);
-            trieStore.FinishBlockCommit(TrieType.State, 6, a);
-            trieStore.FinishBlockCommit(TrieType.State, 7, a);
-            trieStore.FinishBlockCommit(TrieType.State, 8, a);
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 0, null)) { }
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 3, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 5, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 6, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 7, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 8, a)) { }
 
             storage.Get(null, TreePath.Empty, a.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
@@ -416,17 +464,21 @@ namespace Nethermind.Trie.Test.Pruning
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitNode(1, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.FinishBlockCommit(TrieType.State, 3, a);
-            trieStore.FinishBlockCommit(TrieType.State, 4, a);
-            trieStore.FinishBlockCommit(TrieType.State, 5, a);
-            trieStore.FinishBlockCommit(TrieType.State, 6, a);
-            trieStore.CommitNode(7, new NodeCommitInfo(b, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 7, b);
-            trieStore.FinishBlockCommit(TrieType.State, 8, b);
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 0, null)) { }
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 3, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 5, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 6, a)) { }
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 7, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b));
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 8, a)) { }
 
             nodeStorage.Get(null, TreePath.Empty, a.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
@@ -451,17 +503,21 @@ namespace Nethermind.Trie.Test.Pruning
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitNode(1, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.CommitNode(3, new NodeCommitInfo(b, TreePath.Empty)); // <- new root
-            trieStore.FinishBlockCommit(TrieType.State, 3, b);
-            trieStore.FinishBlockCommit(TrieType.State, 4, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 5, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 6, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 7, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 8, b); // should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 0, null)) { }
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 3, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b)); // <- new root
+            }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, b)) { } // should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 5, b)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 6, b)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 7, b)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 8, b)) { }
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
@@ -544,21 +600,24 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: new ConstantInterval(4));
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitNode(1, new NodeCommitInfo(a, TreePath.Empty));
-            fullTrieStore.GetTrieStore(TestItem.KeccakA)
-                .CommitNode(1, new NodeCommitInfo(storage1, TreePath.Empty));
-            fullTrieStore.GetTrieStore(TestItem.KeccakA)
-                .FinishBlockCommit(TrieType.Storage, 1, storage1);
-            trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.FinishBlockCommit(TrieType.State, 3, a);
-            trieStore.FinishBlockCommit(TrieType.State, 4, a);
-            trieStore.FinishBlockCommit(TrieType.State, 5, a);
-            trieStore.FinishBlockCommit(TrieType.State, 6, a);
-            trieStore.FinishBlockCommit(TrieType.State, 7, a);
-            trieStore.FinishBlockCommit(TrieType.State, 8, a);
+
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 0, null)) { }
+            using (ICommitter committer = fullTrieStore.GetTrieStore(TestItem.KeccakA).BeginCommit(TrieType.Storage, 1, storage1))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
+            }
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1, a))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+            }
+
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 3, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 5, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 6, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 7, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 8, a)) { }
 
             asStorage.Get(null, TreePath.Empty, a.Keccak).Should().NotBeNull();
             asStorage.Get(TestItem.KeccakA, TreePath.Empty, storage1.Keccak).Should().NotBeNull();
@@ -591,19 +650,27 @@ namespace Nethermind.Trie.Test.Pruning
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitNode(1, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.CommitNode(1, new NodeCommitInfo(storage1, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
-            trieStore.FinishBlockCommit(TrieType.State, 1, a);
-            trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.CommitNode(3, new NodeCommitInfo(b, TreePath.Empty)); // <- new root
-            trieStore.FinishBlockCommit(TrieType.State, 3, b);
-            trieStore.FinishBlockCommit(TrieType.State, 4, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 5, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 6, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 7, b); // should be 'a' to test properly
-            trieStore.FinishBlockCommit(TrieType.State, 8, b); // should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 0, null)) { }
+
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.Storage, 1, storage1))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
+            }
+
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 1, a)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, a)) { }
+
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 2, b))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b)); // <- new root
+            }
+
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, b)) { } // Should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 5, b)) { } // Should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 6, b)) { } // Should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 7, b)) { } // Should be 'a' to test properly
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 8, b)) { } // Should be 'a' to test properly
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             memDb[storage1.Keccak!.Bytes].Should().BeNull();
@@ -653,27 +720,32 @@ namespace Nethermind.Trie.Test.Pruning
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
-            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 0, null)) { }
 
-            IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage1Nib)));
-            storageTrieStore.CommitNode(1, new NodeCommitInfo(storage1, TreePath.Empty));
-            storageTrieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
+            using (ICommitter committer = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage1Nib))).BeginCommit(TrieType.Storage, 1, storage1))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage1));
+            }
 
-            storageTrieStore = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage2Nib)));
-            storageTrieStore.CommitNode(1, new NodeCommitInfo(storage2, TreePath.Empty));
-            storageTrieStore.FinishBlockCommit(TrieType.Storage, 1, storage2);
+            using (ICommitter committer = fullTrieStore.GetTrieStore(new Hash256(Nibbles.ToBytes(storage2Nib))).BeginCommit(TrieType.Storage, 1, storage2))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(storage2));
+            }
 
-            trieStore.CommitNode(1, new NodeCommitInfo(a, TreePath.Empty));
-            trieStore.CommitNode(1, new NodeCommitInfo(b, TreePath.Empty));
-            trieStore.CommitNode(1, new NodeCommitInfo(branch, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 1, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 2, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 3, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 4, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 5, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 6, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 7, branch);
-            trieStore.FinishBlockCommit(TrieType.State, 8, branch);
+            using (ICommitter committer = trieStore.BeginCommit(TrieType.State, 1, branch))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(a));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(b));
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(branch));
+            }
+
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 2, branch)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 3, branch)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 4, branch)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 5, branch)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 6, branch)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 7, branch)) { }
+            using (ICommitter _ = trieStore.BeginCommit(TrieType.State, 8, branch)) { }
 
             storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().NotBeNull();
             storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
@@ -702,7 +774,10 @@ namespace Nethermind.Trie.Test.Pruning
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
             trieNode.ResolveKey(trieStore, ref emptyPath, false);
-            trieStore.CommitNode(1, new NodeCommitInfo(trieNode, TreePath.Empty));
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 0, trieNode))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(trieNode));
+            }
 
             if (beThreadSafe)
             {
@@ -755,8 +830,12 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(pruning));
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            trieStore.CommitNode(0, new NodeCommitInfo(node, TreePath.Empty));
-            trieStore.FinishBlockCommit(TrieType.State, 0, node);
+
+            using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 0, node))
+            {
+                committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+            }
+
             var originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
 
             IReadOnlyTrieStore readOnlyTrieStore = fullTrieStore.AsReadOnly();
@@ -774,7 +853,7 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.TrieStoreDirtyNodesCache.Key.MemoryUsage;
+        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage;
 
         [Test]
         public void After_commit_should_have_has_root()
@@ -807,12 +886,15 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: No.Persistence);
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
-                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
-                trieStore.FinishBlockCommit(TrieType.State, i, node);
+                using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, i, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
 
                 // Pruning is done in background
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
@@ -842,12 +924,15 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.ReorgBoundaryReached += (sender, reached) => reorgBoundary = reached.BlockNumber;
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
-                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
-                trieStore.FinishBlockCommit(TrieType.State, i, node);
+                using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, i, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
 
                 if (i > 4)
                 {
@@ -875,12 +960,15 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: isPruningPersistenceStrategy);
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
-                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
-                trieStore.FinishBlockCommit(TrieType.State, i, node);
+                using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, i, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
 
                 // Pruning is done in background
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
@@ -902,13 +990,15 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy: No.Persistence);
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < 64; i++)
             {
                 TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new byte[2]);
-                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
-                node = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
-                trieStore.FinishBlockCommit(TrieType.State, i, node);
+                using (ICommitter committer = trieStore.BeginCommit(TrieType.State, i, node))
+                {
+                    committer.CommitNode(ref emptyPath, new NodeCommitInfo(node));
+                }
 
                 // Pruning is done in background
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
