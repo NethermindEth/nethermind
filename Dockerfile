@@ -30,6 +30,4 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
-ENV DOTNET_ReadyToRun 0
-
 ENTRYPOINT ["./nethermind"]

@@ -24,6 +24,4 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-ENV DOTNET_ReadyToRun 0
-
 ENTRYPOINT ["dotnet", "nethermind.dll"]

@@ -35,6 +35,4 @@ COPY --from=build --chown=app /publish .
 
 USER app
 
-ENV DOTNET_ReadyToRun 0
-
 ENTRYPOINT ["./nethermind"]
