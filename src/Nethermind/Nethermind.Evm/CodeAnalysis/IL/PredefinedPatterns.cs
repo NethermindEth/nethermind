@@ -525,7 +525,7 @@ internal class P01D03 : InstructionChunk
 }
 internal class S02S01 : InstructionChunk
 {
-    public string Name => nameof(P01D02);
+    public string Name => nameof(S02S01);
     public byte[] Pattern => [(byte)Instruction.SWAP2, (byte)Instruction.SWAP1];
     public byte CallCount { get; set; } = 0;
 
