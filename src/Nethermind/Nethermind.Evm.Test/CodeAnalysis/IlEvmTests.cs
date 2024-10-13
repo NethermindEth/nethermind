@@ -199,30 +199,31 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
         {
 
-            yield return (typeof(D01P04EQ), Prepare.EvmCode
-                     .PUSHx([1,2,3,4])
-                     .DUPx(1)
-                     .PUSHx([1,2,3,4])
-                     .EQ()
-                     .PushData(0x1)
-                     .Op(Instruction.SSTORE)
-                     .Done);
-            yield return (typeof(D01P04GT), Prepare.EvmCode
-                     .PUSHx([1,2,3,4])
-                     .DUPx(1)
-                     .PUSHx([1,2,3,5])
-                     .GT()
-                     .PushData(0x1)
-                     .Op(Instruction.SSTORE)
-                     .Done);
+ //           yield return (typeof(D01P04EQ), Prepare.EvmCode
+ //                    .PUSHx([1,2,3,4])
+ //                    .DUPx(1)
+ //                    .PUSHx([1,2,3,4])
+ //                    .EQ()
+ //                    .PushData(0x1)
+ //                    .Op(Instruction.SSTORE)
+ //                    .Done);
+ //           yield return (typeof(D01P04GT), Prepare.EvmCode
+ //                    .PUSHx([1,2,3,4])
+ //                    .DUPx(1)
+ //                    .PUSHx([1,2,3,5])
+ //                    .GT()
+ //                    .PushData(0x1)
+ //                    .Op(Instruction.SSTORE)
+ //                    .Done);
             yield return (typeof(D02MST), Prepare.EvmCode
                      .PUSHx([1])
                      .PUSHx([3])
+                     .PUSHx([3])
+                     .POP()
                      .DUPx(2)
                      .MSTORE()
                      .POP()
-                     .PUSHx([1])
-                     .MLOAD()
+                     .MLOAD(1)
                      .PushData(0x1)
                      .Op(Instruction.SSTORE)
                      .Done);

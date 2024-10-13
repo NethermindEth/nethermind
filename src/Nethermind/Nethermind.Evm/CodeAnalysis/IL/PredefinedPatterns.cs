@@ -664,7 +664,10 @@ internal class D02MST: InstructionChunk
 
         stack.Dup(2);
         stack.PopUInt256(out UInt256 location);
-        vmState.Memory.SaveWord(location, stack.PopWord256());
+        var bytes = stack.PopWord256();
+        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, in location, (UInt256)32))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+        vmState.Memory.SaveWord(in location, bytes);
         stack.PushUInt256(location);
 
         programCounter += 2;
