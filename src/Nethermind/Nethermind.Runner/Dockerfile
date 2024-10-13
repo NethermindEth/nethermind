@@ -23,4 +23,7 @@ RUN dotnet publish Nethermind.Runner.csproj -c release -o /app/publish -p:UseApp
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+ENV DOTNET_ReadyToRun 0
+
 ENTRYPOINT ["dotnet", "nethermind.dll"]
