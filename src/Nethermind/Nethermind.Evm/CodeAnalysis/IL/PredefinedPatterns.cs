@@ -486,8 +486,8 @@ internal class P01D02 : InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
+        stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1]);
         stack.Dup(2);
-        stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2]);
 
         programCounter += 3;
 
@@ -516,8 +516,8 @@ internal class P01D03 : InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
+        stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1]);
         stack.Dup(3);
-        stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2]);
 
         programCounter += 3;
 
