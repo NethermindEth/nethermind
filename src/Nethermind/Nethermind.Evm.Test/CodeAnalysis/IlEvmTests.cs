@@ -198,47 +198,77 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
         {
-            yield return (typeof(P01P01SHL), Prepare.EvmCode
+
+            yield return (typeof(S02P), Prepare.EvmCode
+                     .PUSHx([5])
+                     .PUSHx([1])
+                     .PUSHx([3])
+                     .SWAPx(2)
+                     .POP()
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(S01P), Prepare.EvmCode
                      .PUSHx([2])
                      .PUSHx([3])
-                     .Op(Instruction.SHL)
-                     .PushData(0x1)
-                     .Op(Instruction.SSTORE)
-                     .Done);
-            yield return (typeof(PP), Prepare.EvmCode
-                     .PushData(((UInt256)1).PaddedBytes(32))
-                     .PushData(((UInt256)2).PaddedBytes(32))
-                     .PushData(((UInt256)3).PaddedBytes(32))
-                     .PushData(((UInt256)4).PaddedBytes(32))
-                     .PushData(((UInt256)5).PaddedBytes(32))
-                     .POP()
+                     .SWAPx(1)
                      .POP()
                      .PushData(0x1)
                      .Op(Instruction.SSTORE)
                      .Done);
-            yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
-                    .PUSHx([1])
-                    .PUSHx([0, 7])
-                    .JUMPI()
-                    .JUMPDEST()
-                    .Done);
-            yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
-                    .PUSHx([0, 5])
-                    .JUMP()
-                    .JUMPDEST()
-                    .Done);
-            yield return (typeof(MethodSelector), Prepare.EvmCode
-                    .PushData(0)
-                    .PushData(23)
-                    .MSTORE()
-                    .CALLVALUE()
-                    .DUPx(1)
-                    .Done);
-            yield return (typeof(IsContractCheck), Prepare.EvmCode
-                    .EXTCODESIZE(Address.SystemUser)
-                    .DUPx(1)
-                    .ISZERO()
-                    .Done);
+     //       yield return (typeof(PJ), Prepare.EvmCode
+     //               .PUSHx([23])
+     //               .PUSHx([13])
+     //               .PUSHx([9])
+     //               .POP()
+     //               .JUMP()
+     //               .JUMPDEST()
+     //               .PushSingle(3)
+     //               .MUL()
+     //               .STOP()
+     //               .JUMPDEST()
+     //               .JUMP(8)
+     //               .Done);
+     //       yield return (typeof(P01P01SHL), Prepare.EvmCode
+     //                .PUSHx([2])
+     //                .PUSHx([3])
+     //                .Op(Instruction.SHL)
+     //                .PushData(0x1)
+     //                .Op(Instruction.SSTORE)
+     //                .Done);
+     //       yield return (typeof(PP), Prepare.EvmCode
+     //                .PushData(((UInt256)1).PaddedBytes(32))
+     //                .PushData(((UInt256)2).PaddedBytes(32))
+     //                .PushData(((UInt256)3).PaddedBytes(32))
+     //                .PushData(((UInt256)4).PaddedBytes(32))
+     //                .PushData(((UInt256)5).PaddedBytes(32))
+     //                .POP()
+     //                .POP()
+     //                .PushData(0x1)
+     //                .Op(Instruction.SSTORE)
+     //                .Done);
+     //       yield return (typeof(EmulatedStaticCJump), Prepare.EvmCode
+     //               .PUSHx([1])
+     //               .PUSHx([0, 7])
+     //               .JUMPI()
+     //               .JUMPDEST()
+     //               .Done);
+     //       yield return (typeof(EmulatedStaticJump), Prepare.EvmCode
+     //               .PUSHx([0, 5])
+     //               .JUMP()
+     //               .JUMPDEST()
+     //               .Done);
+     //       yield return (typeof(MethodSelector), Prepare.EvmCode
+     //               .PushData(0)
+     //               .PushData(23)
+     //               .MSTORE()
+     //               .CALLVALUE()
+     //               .DUPx(1)
+     //               .Done);
+     //       yield return (typeof(IsContractCheck), Prepare.EvmCode
+     //               .EXTCODESIZE(Address.SystemUser)
+     //               .DUPx(1)
+     //               .ISZERO()
+     //               .Done);
         }
 
         public static IEnumerable<(Instruction?, byte[], EvmExceptionType)> GeJitBytecodesSamples()

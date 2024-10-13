@@ -341,7 +341,7 @@ internal class PJ : InstructionChunk
 
     public long GasCost(EvmState vmState, IReleaseSpec spec)
     {
-        long gasCost = GasCostOf.VeryLow + GasCostOf.High;
+        long gasCost = GasCostOf.Base + GasCostOf.Mid;
         return gasCost;
     }
 
@@ -356,7 +356,8 @@ internal class PJ : InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
-        stack.Head--;
+        //stack.Head--;
+        stack.PopLimbo();
         stack.PopUInt256(out  UInt256 jumpDestination);
 
         var jumpDestinationInt = (int)jumpDestination;
@@ -424,7 +425,7 @@ internal class S01P : InstructionChunk
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
-        stack.Swap(3);
+        stack.Swap(2);
         stack.Head--;
 
         programCounter += 2;
