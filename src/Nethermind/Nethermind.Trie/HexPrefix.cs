@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie
 {
@@ -39,23 +41,37 @@ namespace Nethermind.Trie
 
         public static (byte[] key, bool isLeaf) FromBytes(ReadOnlySpan<byte> bytes)
         {
-            bool isLeaf = bytes[0] >= 32;
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
             byte[] path = new byte[nibblesCount];
-            for (int i = 0; i < nibblesCount; i++)
+            Span<byte> span = new(path);
+            if (!isEven)
             {
-                path[i] =
-                    isEven
-                        ? i % 2 == 0
-                            ? (byte)((bytes[1 + i / 2] & 240) / 16)
-                            : (byte)(bytes[1 + i / 2] & 15)
-                        : i % 2 == 0
-                            ? (byte)(bytes[i / 2] & 15)
-                            : (byte)((bytes[1 + i / 2] & 240) / 16);
+                span[0] = (byte)(bytes[0] & 0xF);
+                span = span.Slice(1);
             }
 
-            return (path, isLeaf);
+            Span<ushort> nibbles = MemoryMarshal.Cast<byte, ushort>(span);
+            ref ushort lookup16 = ref MemoryMarshal.GetArrayDataReference(Lookup16);
+            for (int i = 0; i < nibbles.Length; i++)
+            {
+                nibbles[i] = Unsafe.Add(ref lookup16, bytes[i + 1]);
+            }
+
+            return (path, isLeaf: bytes[0] >= 32);
+        }
+
+        private static readonly ushort[] Lookup16 = CreateLookup16("x2");
+
+        private static ushort[] CreateLookup16(string format)
+        {
+            ushort[] result = new ushort[256];
+            for (int i = 0; i < 256; i++)
+            {
+                result[i] = (ushort)(((i & 0xF) << 8) | ((i & 240) >> 4));
+            }
+
+            return result;
         }
     }
 }
