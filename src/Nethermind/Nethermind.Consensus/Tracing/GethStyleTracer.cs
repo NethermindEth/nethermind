@@ -82,7 +82,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            return Trace(block, tx.Hash, cancellationToken, options);
+            return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }
         finally
         {
@@ -189,7 +189,8 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options)
+    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
+        ProcessingOptions processingOptions = ProcessingOptions.Trace)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -197,7 +198,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
