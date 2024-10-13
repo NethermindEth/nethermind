@@ -422,7 +422,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             Metrics.RecoveryQueueSize = _recoveryQueue.Count;
             Metrics.ProcessingQueueSize = _blockQueue.Count;
-            _stats.UpdateStats(lastProcessed, _blockTree, blockProcessingTimeInMicrosecs);
+            _stats.UpdateStats(lastProcessed, blockProcessingTimeInMicrosecs);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
@@ -437,6 +437,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
+
+        Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
 
         return lastProcessed;
     }
