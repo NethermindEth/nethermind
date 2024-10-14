@@ -116,6 +116,9 @@ public static class SetCodeTransactionForRpcTests
             });
         }
         json.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        json.GetProperty("yParity").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
         // NOTE: Empty authorization lists are considered invalid
         json.GetProperty("authorizationList").EnumerateArray().Should().AllSatisfy(tuple =>
         {
@@ -129,9 +132,6 @@ public static class SetCodeTransactionForRpcTests
 
         // Assert deprecated fields are no longer serialized
         json.TryGetProperty("gasPrice", out _).Should().BeFalse();
-        json.TryGetProperty("yParity", out _).Should().BeFalse();
         json.TryGetProperty("v", out _).Should().BeFalse();
-        json.TryGetProperty("r", out _).Should().BeFalse();
-        json.TryGetProperty("s", out _).Should().BeFalse();
     }
 }
