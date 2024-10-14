@@ -29,9 +29,9 @@ public class OverlayWorldStateManager(
 
     public IWorldState CreateResettableWorldState(IWorldState? forWarmup = null)
     {
-        ITrieStore trieStore = overlayTrieStore;
-        if ((forWarmup as IPreBlockCaches)?.Caches is { } preBlockCaches)
-            trieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+        ITrieStore trieStore = (forWarmup as IPreBlockCaches)?.Caches is { } preBlockCaches
+            ? new PreCachedTrieStore(overlayTrieStore, preBlockCaches.RlpCache)
+            : overlayTrieStore;
 
         return new WorldState(trieStore, _codeDb, logManager);
     }
