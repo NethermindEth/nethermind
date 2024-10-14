@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
+using System.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -12,7 +12,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginStore
+public class L1OriginStore(IDb db, IRlpStreamDecoder<L1Origin> decoder, ILogManager? logManager = null) : IL1OriginStore
 {
     private readonly ILogger? _logger = logManager?.GetClassLogger<L1OriginStore>();
 
@@ -21,14 +21,11 @@ public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginSt
 
     public L1Origin? ReadL1Origin(UInt256 blockId)
     {
-        Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
-        blockId.ToBigEndian(key);
+        Span<byte> keyBytes = stackalloc byte[L1OriginHeadKeyLength];
+        blockId.ToBigEndian(keyBytes);
+        ValueHash256 key = new(keyBytes);
 
-        return db.Get(key) switch
-        {
-            null => null,
-            byte[] bytes => Rlp.Decode<L1Origin>(bytes)
-        };
+        return db.Get(key, decoder);
     }
 
     public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)
@@ -36,27 +33,24 @@ public class L1OriginStore(IDb db, ILogManager? logManager = null) : IL1OriginSt
         Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
         blockId.ToBigEndian(key);
 
-        IRlpStreamDecoder<L1Origin>? decoder = Rlp.GetStreamDecoder<L1Origin>();
-
         if (decoder is null)
         {
             _logger?.Warn($"Unable to save L1 origin decoder for {nameof(L1Origin)} not found");
             return;
         }
 
-
-        int capacity = decoder.GetLength(l1Origin, RlpBehaviors.None);
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(capacity, capacity);
+        int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(encodedL1OriginLength);
 
         try
         {
-            using NettyRlpStream stream = new(buffer);
+            RlpStream stream = new(buffer);
             decoder.Encode(stream, l1Origin);
-            db.Set(new Core.Crypto.ValueHash256(key), buffer.AsSpan());
+            db.Set(new ValueHash256(key), buffer.AsSpan(0, encodedL1OriginLength));
         }
         finally
         {
-            buffer.SafeRelease();
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

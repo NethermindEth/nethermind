@@ -139,7 +139,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         IDb db = _api.DbFactory!.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
         _api.DbProvider!.RegisterDb(L1OriginDbName, db);
-        L1OriginStore l1OriginStore = new(db, _api.LogManager);
+        L1OriginStore l1OriginStore = new(db, Rlp.GetStreamDecoder<L1Origin>()!, _api.LogManager);
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
