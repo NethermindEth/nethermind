@@ -83,6 +83,16 @@ configs = {
         "url": "https://sepolia.optimism.io",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    "linea-mainnet": {
+        "url": "https://rpc.linea.build",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "linea-sepolia": {
+        "url": "https://rpc.sepolia.linea.build",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
