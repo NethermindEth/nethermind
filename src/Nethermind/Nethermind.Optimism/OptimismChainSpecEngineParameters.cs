@@ -47,4 +47,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator!.Value;
         }
     }
+
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+    }
 }

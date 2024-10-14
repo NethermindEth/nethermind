@@ -25,4 +25,8 @@ public class CliqueChainSpecEngineParameters : IChainSpecEngineParameters
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
     }
+
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+    }
 }

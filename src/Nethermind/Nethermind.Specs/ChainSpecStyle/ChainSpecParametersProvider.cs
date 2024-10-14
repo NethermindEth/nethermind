@@ -5,6 +5,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Nethermind.Config;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -22,11 +23,15 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
         new(StringComparer.InvariantCultureIgnoreCase);
 
     private readonly Dictionary<Type, IChainSpecEngineParameters> _instances = new();
+
+    private readonly IJsonSerializer _jsonSerializer;
+
     public string SealEngineType { get; }
 
-    public ChainSpecParametersProvider(Dictionary<string, JsonElement> engineParameters)
+    public ChainSpecParametersProvider(Dictionary<string, JsonElement> engineParameters, IJsonSerializer jsonSerializer)
     {
         _chainSpecParameters = new Dictionary<string, JsonElement>(engineParameters, StringComparer.InvariantCultureIgnoreCase);
+        _jsonSerializer = jsonSerializer;
 
         InitializeInstances();
         SealEngineType = CalculateSealEngineType();
@@ -65,18 +70,9 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
             string engineName = @class.Name.Remove(@class.Name.Length - EngineParamsSuffix.Length);
             if (!_chainSpecParameters.ContainsKey(engineName)) continue;
 
-            var instance = (IChainSpecEngineParameters)Activator.CreateInstance(@class);
-            foreach (PropertyInfo property in @class.GetProperties(BindingFlags.Public | BindingFlags.Instance))
-            {
-                if (property.Name == "SealEngineType") continue;
-                JsonProperty jsonProperty = _chainSpecParameters[engineName].EnumerateObject().FirstOrDefault(p =>
-                    string.Compare(p.Name, property.Name, StringComparison.InvariantCultureIgnoreCase) == 0);
+            var deserialized = _jsonSerializer.Deserialize(_chainSpecParameters[engineName].ToString(), @class);
 
-                object value = ConfigSourceHelper.ParseValue(property.PropertyType, jsonProperty.Value.ToString(), "chainspec", property.Name);
-                property.SetValue(instance, value);
-            }
-
-            _instances[@class] = instance;
+            _instances[@class] = (IChainSpecEngineParameters)deserialized;
         }
     }
 
