@@ -367,10 +367,12 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             gasAvailable -= requiredGas;
         }
 
-        _accessedLeaves.Add(key);
-        _accessedSubtrees.Add(subTreeStem);
-
-        if (!isWrite) return true;
+        if (!isWrite)
+        {
+            _accessedLeaves.Add(key);
+            _accessedSubtrees.Add(subTreeStem);
+            return true;
+        }
 
 
         // write check
@@ -393,6 +395,8 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             gasAvailable -= requiredGas;
         }
 
+        _accessedLeaves.Add(key);
+        _accessedSubtrees.Add(subTreeStem);
         _modifiedLeaves.Add(key);
         _modifiedSubtrees.Add(subTreeStem);
 
