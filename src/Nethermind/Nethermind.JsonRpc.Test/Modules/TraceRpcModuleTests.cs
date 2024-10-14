@@ -78,7 +78,7 @@ public class TraceRpcModuleTests
 
             Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor,
                 traceOptions: ProcessingOptions.TraceTransactions);
-            TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, txProcessingEnv, Blockchain.SpecProvider);
+            TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, txProcessingEnv);
 
             for (int i = 1; i < 10; i++)
             {

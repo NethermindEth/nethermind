@@ -87,7 +87,7 @@ public class GethStyleTracer : IGethStyleTracer
         try
         {
             Dictionary<Address, AccountOverride>? stateOverride = options.StateOverrides;
-            using IOverridableTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(block.Header, stateOverride) : null;
+            using IOverridableTxProcessingScope? scope = stateOverride != null ? _env.BuildAndOverride(block.Header, stateOverride) : null;
 
             return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }
@@ -260,13 +260,5 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         return block;
-    }
-
-    private IOverridableTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
-    {
-        IOverridableTxProcessingScope scope = _env.Build(header.StateRoot!);
-        scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
-        header.StateRoot = scope.WorldState.StateRoot;
-        return scope;
     }
 }

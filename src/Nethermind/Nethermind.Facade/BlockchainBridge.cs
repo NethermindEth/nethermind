@@ -151,7 +151,7 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
-            using IOverridableTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
+            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
             TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken), scope);
             return new CallOutput
@@ -191,7 +191,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
-            using IOverridableTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
+            using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -241,24 +241,13 @@ namespace Nethermind.Facade
         {
             try
             {
-                return scope == null
-                    ? CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer)
-                    : CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer,
+                    scope ?? _processingEnv.Build(blockHeader.StateRoot!));
             }
             catch (InsufficientBalanceException ex)
             {
                 return new TransactionResult(ex.Message);
             }
-        }
-
-        private TransactionResult CallAndRestore(
-            BlockHeader blockHeader,
-            Transaction transaction,
-            bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer)
-        {
-            using IOverridableTxProcessingScope? scope = _processingEnv.Build(blockHeader.StateRoot!);
-            return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
         }
 
         private TransactionResult CallAndRestore(
@@ -324,19 +313,6 @@ namespace Nethermind.Facade
         {
             return _stateReader.GetNonce(stateRoot, address);
         }
-
-        private IOverridableTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
-        {
-            IOverridableTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
-
-            if (stateOverride != null)
-            {
-                scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
-                header.StateRoot = scope.WorldState.StateRoot;
-            }
-            return scope;
-        }
-
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);

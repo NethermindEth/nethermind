@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -43,5 +46,13 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnly
         Hash256 originalStateRoot = StateProvider.StateRoot;
         StateProvider.StateRoot = stateRoot;
         return new(CodeInfoRepository, TransactionProcessor, StateProvider, originalStateRoot);
+    }
+
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
+    {
+        OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
+        scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);
+        header.StateRoot = scope.WorldState.StateRoot;
+        return scope;
     }
 }
