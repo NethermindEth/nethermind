@@ -2,22 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
-using G1 = Bls.P1;
 using G1Affine = Bls.P1Affine;
 using G2 = Bls.P2;
 using G2Affine = Bls.P2Affine;
 using GT = Bls.PT;
 
-public class BlsSigner
+public static class BlsSigner
 {
     private static readonly byte[] Cryptosuite = Encoding.UTF8.GetBytes("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_");
     private const int InputLength = 64;
 
+    [SkipLocalsInit]
     public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
     {
         G2 p = new(stackalloc long[G2.Sz]);
@@ -26,16 +27,7 @@ public class BlsSigner
         return new(p.Compress());
     }
 
-    public static void GetPublicKey(G1 res, Bls.SecretKey sk)
-        => res.FromSk(sk);
-
-    public static G1 GetPublicKey(Bls.SecretKey sk)
-    {
-        G1 p = new();
-        GetPublicKey(p, sk);
-        return p;
-    }
-
+    [SkipLocalsInit]
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
         int len = 2 * GT.Sz;

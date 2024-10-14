@@ -57,7 +57,7 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
-        public void UpdateStats(Block? block, IBlockTree blockTreeCtx, long blockProcessingTimeInMicros)
+        public void UpdateStats(Block? block, long blockProcessingTimeInMicros)
         {
             if (block is null)
             {
@@ -82,7 +82,6 @@ namespace Nethermind.Consensus.Processing
             Metrics.GasLimit = block.GasLimit;
 
             Metrics.BlockchainHeight = block.Header.Number;
-            Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
 
             _blockProcessingMicroseconds = _processingStopwatch.ElapsedMicroseconds();
             _runningMicroseconds = _runStopwatch.ElapsedMicroseconds();
