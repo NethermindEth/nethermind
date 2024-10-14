@@ -12,7 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-public class BlsAddG2PrecompileTests
+public class BlsG2AddPrecompileTests
 {
     [Test]
     public void Test()
