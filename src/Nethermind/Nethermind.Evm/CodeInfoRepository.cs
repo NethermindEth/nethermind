@@ -44,13 +44,13 @@ public class CodeInfoRepository : ICodeInfoRepository
 
             [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
             [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiMulPrecompile.Address] = new(G1MultiMulPrecompile.Instance),
+            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
             [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
             [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiMulPrecompile.Address] = new(G2MultiMulPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
+            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
+            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
+            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
 
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
 
@@ -131,9 +131,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         _codeCache.Set(codeHash, codeInfo);
     }
 
-    /// <summary>
-    /// Insert a delegation to <paramref name="codeSource"/> into <paramref name="authority"/>
-    /// </summary>
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
     {
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
@@ -167,6 +164,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     /// <remarks>
     /// Parses delegation code to extract the contained address.
+    /// <b>Assumes </b><paramref name="code"/> <b>is delegation code!</b>
     /// </remarks>
     private static bool TryGetDelegatedAddress(ReadOnlySpan<byte> code, [NotNullWhen(true)] out Address? address)
     {

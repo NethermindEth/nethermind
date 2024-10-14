@@ -42,6 +42,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ICodeInfoRepository _codeInfoRepository;
         private SystemTransactionProcessor? _systemTransactionProcessor;
         private readonly ILogManager _logManager;
+        private readonly HashSet<Address> _accessedAddresses = [];
 
         [Flags]
         protected enum ExecutionOptions
@@ -64,7 +65,12 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Skip potential fail checks
             /// </summary>
-            NoValidation = Commit | 4,
+            Warmup = 4,
+
+            /// <summary>
+            /// Skip potential fail checks and commit state after execution
+            /// </summary>
+            NoValidation = Commit | Warmup,
 
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
@@ -111,6 +117,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
+
+        public TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Warmup);
 
         private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
@@ -678,6 +687,27 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
+        }
+
+        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state, IEnumerable<Address> accessedAddresses)
+        {
+            if (spec.UseTxAccessLists)
+            {
+                state.WarmUp(tx.AccessList); // eip-2930
+            }
+
+            if (spec.UseHotAndColdStorage) // eip-2929
+            {
+                foreach (Address accessed in accessedAddresses)
+                {
+                    state.WarmUp(accessed);
+                }
+            }
+
+            if (spec.AddCoinbaseToTxAccessList)
+            {
+                state.WarmUp(header.GasBeneficiary!);
+            }
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
