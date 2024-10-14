@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Benchmark
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            WorldStateManager stateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+            OverridableWorldStateManager stateManager = new(dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
@@ -135,7 +135,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new ReceiptsRecovery(ecdsa, specProvider));
 
             BlockchainBridge bridge = new(
-                new ReadOnlyTxProcessingEnv(
+                new OverridableTxProcessingEnv(
                     stateManager,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
