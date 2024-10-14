@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -42,7 +43,7 @@ public abstract class RequestProcessor<T>(ITransactionProcessor transactionProce
         transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
         var result = tracer.ReturnValue;
         if (result == null || result.Length == 0)
-            return Array.Empty<T>();
+            return Enumerable.Empty<T>();
         return ParseResult(tracer.ReturnValue);
     }
 

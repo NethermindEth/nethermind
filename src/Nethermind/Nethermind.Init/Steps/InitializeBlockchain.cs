@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
             IStateReader stateReader = setApi.StateReader!;
             PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
             CodeInfoRepository codeInfoRepository = new(preBlockCaches?.PrecompileCache);
-            ITxPool txPool = _api.TxPool = CreateTxPool(_api.WorldState!, codeInfoRepository);
+            ITxPool txPool = _api.TxPool = CreateTxPool(codeInfoRepository);
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
@@ -200,7 +200,7 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual TxPool.TxPool CreateTxPool(IWorldState worldState, CodeInfoRepository codeInfoRepository) =>
+        protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
             new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),

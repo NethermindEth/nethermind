@@ -257,7 +257,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return CreateTxPoolTxComparer();
     }
 
-    protected override TxPool.TxPool CreateTxPool(IWorldState worldState, CodeInfoRepository codeInfoRepository)
+    protected override TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository)
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
         TxPriorityContract txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_api);
