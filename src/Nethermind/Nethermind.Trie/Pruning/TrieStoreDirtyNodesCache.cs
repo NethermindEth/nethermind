@@ -67,7 +67,7 @@ internal class TrieStoreDirtyNodesCache
         if (TryAdd(key, node))
         {
             Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
-            _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false) + KeyMemoryUsage;
+            _trieStore.IncrementMemoryUsedByDirtyCache(node.GetMemorySize(false) + KeyMemoryUsage);
         }
     }
 
