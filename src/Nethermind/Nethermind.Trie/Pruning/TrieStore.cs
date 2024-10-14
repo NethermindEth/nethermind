@@ -873,7 +873,6 @@ namespace Nethermind.Trie.Pruning
                 writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen);
-                PersistedNodesCount++;
                 IncrementPersistedNodesCount();
             }
             else
