@@ -64,7 +64,12 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Skip potential fail checks
             /// </summary>
-            NoValidation = Commit | 4,
+            Warmup = 4,
+
+            /// <summary>
+            /// Skip potential fail checks and commit state after execution
+            /// </summary>
+            NoValidation = Commit | Warmup,
 
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
@@ -111,6 +116,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
+
+        public TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Warmup);
 
         private TransactionResult ExecuteCore(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
