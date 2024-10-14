@@ -60,7 +60,7 @@ jobs:
           tags: "core, self-hosted, dynamic"
           organization: "NethermindEth"
           repo_name: "nethermind"
-          blocked_ports: "8545,8551"
+          blocked_ports: "8545,8546,8551,8552"
   
   sync-chain:
     needs: [setup-matrix, create_a_runner]
@@ -263,6 +263,20 @@ jobs:
         run: |
           du -h $GITHUB_WORKSPACE/sedge
 
+      - name: Destroy VM
+        if: always()
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
     if: always()
@@ -272,19 +286,30 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     steps:    
-      - name: Destroy a Runner
-        id: run-linode-action
+      - name: Destroy VM (make sure is removed if by any unexpected reason it did not removed it on )
+        continue-on-error: true
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          action: "destroy"
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"  
+
+      - name: Destroy Runner
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-runner"
           runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
-          
   trigger_tests:
     needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
     if: success()
