@@ -438,7 +438,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
         }
 
-        Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
+        if (!readonlyChain)
+        {
+            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
+        }
 
         return lastProcessed;
     }
