@@ -37,7 +37,7 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly IWorldState _worldState;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
-    private readonly ReadOnlyTxProcessingEnv _env;
+    private readonly IOverridableTxProcessorSource _env;
 
     public GethStyleTracer(IBlockchainProcessor processor,
         IWorldState worldState,
@@ -47,7 +47,7 @@ public class GethStyleTracer : IGethStyleTracer
         ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
         IFileSystem fileSystem,
-        ReadOnlyTxProcessingEnv env)
+        IOverridableTxProcessorSource env)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _worldState = worldState;
@@ -87,7 +87,7 @@ public class GethStyleTracer : IGethStyleTracer
         try
         {
             Dictionary<Address, AccountOverride>? stateOverride = options.StateOverrides;
-            using IReadOnlyTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(block.Header, stateOverride) : null;
+            using IOverridableTxProcessingScope? scope = stateOverride != null ? BuildProcessingScope(block.Header, stateOverride) : null;
 
             return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }
@@ -262,9 +262,9 @@ public class GethStyleTracer : IGethStyleTracer
         return block;
     }
 
-    private IReadOnlyTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
+    private IOverridableTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
     {
-        IReadOnlyTxProcessingScope scope = _env.Build(header.StateRoot!);
+        IOverridableTxProcessingScope scope = _env.Build(header.StateRoot!);
         scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, _specProvider.GetSpec(header), header.Number);
         header.StateRoot = scope.WorldState.StateRoot;
         return scope;

@@ -2,23 +2,28 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class ReadOnlyTxProcessingScope(
+public class OverridableTxProcessingScope(
+    IOverridableCodeInfoRepository codeInfoRepository,
     ITransactionProcessor transactionProcessor,
-    IWorldState worldState,
+    OverridableWorldState worldState,
     Hash256 originalStateRoot
-) : IReadOnlyTxProcessingScope
+) : IReadOnlyTxProcessingScope, IOverridableTxProcessingScope
 {
     public void Dispose()
     {
         worldState.StateRoot = originalStateRoot;
         worldState.Reset();
+        worldState.ResetOverrides();
+        codeInfoRepository.ResetOverrides();
     }
 
+    public IOverridableCodeInfoRepository CodeInfoRepository => codeInfoRepository;
     public ITransactionProcessor TransactionProcessor => transactionProcessor;
     public IWorldState WorldState => worldState;
 }

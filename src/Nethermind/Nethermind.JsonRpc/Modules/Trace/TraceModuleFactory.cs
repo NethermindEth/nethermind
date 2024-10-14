@@ -30,7 +30,7 @@ public class TraceModuleFactory(
     IPoSSwitcher poSSwitcher,
     ILogManager logManager) : ModuleFactoryBase<ITraceRpcModule>
 {
-    protected readonly IWorldStateManager _worldStateManager = new OverridableWorldStateManager(dbProvider, worldStateManager.TrieStore, logManager);
+    protected readonly OverridableWorldStateManager _worldStateManager = new(dbProvider, worldStateManager.TrieStore, logManager);
     protected readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
     protected readonly IJsonRpcConfig _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
     protected readonly IReceiptStorage _receiptStorage = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -40,7 +40,8 @@ public class TraceModuleFactory(
     protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
     protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
 
-    protected virtual ReadOnlyTxProcessingEnv CreateTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
+    private OverridableTxProcessingEnv CreateOverridableTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
+    protected virtual IReadOnlyTxProcessorSource CreateTxProcessingEnv() => CreateOverridableTxProcessingEnv();
 
     protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
                 scope,
@@ -56,7 +57,7 @@ public class TraceModuleFactory(
 
     public override ITraceRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
+        OverridableTxProcessingEnv txProcessingEnv = CreateOverridableTxProcessingEnv();
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         IRewardCalculator rewardCalculator =
@@ -72,6 +73,6 @@ public class TraceModuleFactory(
         Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor,
             traceOptions: ProcessingOptions.TraceTransactions);
 
-        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv, specProvider);
+        return new TraceRpcModule(_receiptStorage, tracer, _blockTree, _jsonRpcConfig, txProcessingEnv.StateReader, txProcessingEnv, specProvider);
     }
 }

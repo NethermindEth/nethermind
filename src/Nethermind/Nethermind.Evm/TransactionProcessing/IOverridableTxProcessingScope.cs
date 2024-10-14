@@ -6,8 +6,9 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-public interface IReadOnlyTxProcessingScope : IDisposable
+public interface IOverridableTxProcessingScope : IDisposable
 {
-    ITransactionProcessor TransactionProcessor { get; }
     IWorldState WorldState { get; }
+    IOverridableCodeInfoRepository CodeInfoRepository { get; }
+    ITransactionProcessor TransactionProcessor { get; }
 }

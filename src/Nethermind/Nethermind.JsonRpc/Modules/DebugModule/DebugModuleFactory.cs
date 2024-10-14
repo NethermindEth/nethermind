@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly OverridableWorldStateManager _worldStateManager;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -74,12 +74,12 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logManager.GetClassLogger();
-        _worldStateManager = new OverridableWorldStateManager(dbProvider, worldStateManager.TrieStore, logManager);
+        _worldStateManager = new(dbProvider, worldStateManager.TrieStore, logManager);
     }
 
     public override IDebugRpcModule Create()
     {
-        ReadOnlyTxProcessingEnv txEnv = new(
+        OverridableTxProcessingEnv txEnv = new(
             _worldStateManager,
             _blockTree,
             _specProvider,

@@ -149,7 +149,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
             IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
             OverridableWorldStateManager overridableWorldStateManager = new(DbProvider, WorldStateManager.TrieStore, LogManager);
-            ReadOnlyTxProcessingEnv processingEnv = new(
+            OverridableTxProcessingEnv processingEnv = new(
                 overridableWorldStateManager,
                 roBlockTree,
                 SpecProvider,

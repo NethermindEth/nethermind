@@ -49,7 +49,7 @@ public class TraceRpcModuleTests
             ReceiptsRecovery receiptsRecovery =
                 new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
-            ReadOnlyTxProcessingEnv txProcessingEnv =
+            OverridableTxProcessingEnv txProcessingEnv =
                 new(Blockchain.OverridableWorldStateManager, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 

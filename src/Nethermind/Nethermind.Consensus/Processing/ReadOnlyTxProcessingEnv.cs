@@ -27,11 +27,9 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public IWorldStateManager WorldStateManager { get; }
-
         public IVirtualMachine Machine { get; }
 
-        public OverridableCodeInfoRepository CodeInfoRepository { get; }
+        public ICodeInfoRepository CodeInfoRepository { get; }
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
@@ -50,11 +48,10 @@ namespace Nethermind.Consensus.Processing
             IWorldState? worldStateToWarmUp = null
             ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
         {
-            CodeInfoRepository = new(new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache));
+            CodeInfoRepository = new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache);
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
-            WorldStateManager = worldStateManager;
 
             _logManager = logManager;
         }
@@ -62,11 +59,11 @@ namespace Nethermind.Consensus.Processing
         protected virtual ITransactionProcessor CreateTransactionProcessor() =>
             new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
 
-        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public virtual IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
             Hash256 originalStateRoot = StateProvider.StateRoot;
             StateProvider.StateRoot = stateRoot;
-            return new ReadOnlyTxProcessingScope(CodeInfoRepository, TransactionProcessor, StateProvider, originalStateRoot);
+            return new ReadOnlyTxProcessingScope(TransactionProcessor, StateProvider, originalStateRoot);
         }
     }
 }

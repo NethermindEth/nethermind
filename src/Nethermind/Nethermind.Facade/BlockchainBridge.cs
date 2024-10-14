@@ -41,7 +41,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IReadOnlyTxProcessorSource _processingEnv;
+        private readonly IOverridableTxProcessorSource _processingEnv;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
@@ -55,7 +55,7 @@ namespace Nethermind.Facade
         private readonly IBlocksConfig _blocksConfig;
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
 
-        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+        public BlockchainBridge(OverridableTxProcessingEnv processingEnv,
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
@@ -151,7 +151,7 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
-            using IReadOnlyTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
+            using IOverridableTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
             TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken), scope);
             return new CallOutput
@@ -191,7 +191,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
         {
-            using IReadOnlyTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
+            using IOverridableTxProcessingScope scope = BuildProcessingScope(header, stateOverride);
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(
@@ -237,7 +237,7 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            IReadOnlyTxProcessingScope? scope = null)
+            IOverridableTxProcessingScope? scope = null)
         {
             try
             {
@@ -257,7 +257,7 @@ namespace Nethermind.Facade
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            using IReadOnlyTxProcessingScope scope = _processingEnv.Build(blockHeader.StateRoot!);
+            using IOverridableTxProcessingScope? scope = _processingEnv.Build(blockHeader.StateRoot!);
             return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
         }
 
@@ -266,7 +266,7 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            IReadOnlyTxProcessingScope scope)
+            IOverridableTxProcessingScope scope)
         {
             transaction.SenderAddress ??= Address.SystemUser;
             Hash256? stateRoot = blockHeader.StateRoot!;
@@ -325,9 +325,9 @@ namespace Nethermind.Facade
             return _stateReader.GetNonce(stateRoot, address);
         }
 
-        private IReadOnlyTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
+        private IOverridableTxProcessingScope BuildProcessingScope(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
         {
-            IReadOnlyTxProcessingScope? scope = _processingEnv.Build(header.StateRoot!);
+            IOverridableTxProcessingScope scope = _processingEnv.Build(header.StateRoot!);
 
             if (stateOverride != null)
             {
