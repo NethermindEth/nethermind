@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -22,6 +21,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -290,11 +290,13 @@ public class StartBlockProducerAuRa
         {
             IList<IRandomContract> GetRandomContracts(
                 IDictionary<long, Address> randomnessContractAddressPerBlock,
+                ISpecProvider specProvider,
                 IAbiEncoder abiEncoder,
                 IReadOnlyTxProcessorSource txProcessorSource,
                 ISigner signerLocal) =>
                 randomnessContractAddressPerBlock
                     .Select(kvp => new RandomContract(
+                        specProvider,
                         abiEncoder,
                         kvp.Value,
                         txProcessorSource,
@@ -305,7 +307,9 @@ public class StartBlockProducerAuRa
             if (randomnessContractAddress?.Any() == true)
             {
                 RandomContractTxSource randomContractTxSource = new RandomContractTxSource(
-                    GetRandomContracts(randomnessContractAddress, _api.AbiEncoder,
+                    GetRandomContracts(randomnessContractAddress,
+                        _api.SpecProvider,
+                        _api.AbiEncoder,
                         _api.CreateReadOnlyTransactionProcessorSource(),
                         signer),
                     new EciesCipher(_api.CryptoRandom),
@@ -365,6 +369,7 @@ public class StartBlockProducerAuRa
             AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                             new BlockGasLimitContract(
+                                api.SpecProvider,
                                 api.AbiEncoder,
                                 blockGasLimitContractTransition.Value,
                                 blockGasLimitContractTransition.Key,

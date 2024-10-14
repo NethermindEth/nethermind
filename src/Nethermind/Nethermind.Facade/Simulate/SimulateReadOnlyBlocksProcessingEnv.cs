@@ -10,7 +10,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -26,9 +25,10 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateBlockValidationTransactionsExecutor(
     ITransactionProcessor transactionProcessor,
     IWorldState stateProvider,
+    ISpecProvider specProvider,
     bool validate,
     UInt256? blobBaseFeeOverride)
-    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
+    : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, specProvider)
 {
     protected override BlockExecutionContext CreateBlockExecutionContext(Block block) =>
         blobBaseFeeOverride is not null ? new BlockExecutionContext(block.Header, blobBaseFeeOverride.Value) : base.CreateBlockExecutionContext(block);
@@ -111,7 +111,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, validate, blobBaseFeeOverride),
+            new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider, SpecProvider, validate, blobBaseFeeOverride),
             StateProvider,
             NullReceiptStorage.Instance,
             _transactionProcessor,

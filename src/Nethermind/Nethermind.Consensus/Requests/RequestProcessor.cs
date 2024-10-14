@@ -40,7 +40,7 @@ public abstract class RequestProcessor<T>(ITransactionProcessor transactionProce
         };
         transaction.Hash = transaction.CalculateHash();
 
-        transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
+        transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
         var result = tracer.ReturnValue;
         if (result == null || result.Length == 0)
             return Enumerable.Empty<T>();

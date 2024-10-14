@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
-            RpcBlockTransactionsExecutor traceExecutor = new(scope.TransactionProcessor, scope.WorldState);
+            RpcBlockTransactionsExecutor traceExecutor = new(scope.TransactionProcessor, scope.WorldState, _specProvider);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 scope,

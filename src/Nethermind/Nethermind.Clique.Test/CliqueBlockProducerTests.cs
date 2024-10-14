@@ -136,7 +136,7 @@ public class CliqueBlockProducerTests
                 goerliSpecProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, GnosisSpecProvider.Instance),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 transactionProcessor,

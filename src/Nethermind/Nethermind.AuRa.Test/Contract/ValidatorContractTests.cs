@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -48,6 +49,7 @@ namespace Nethermind.AuRa.Test.Contract
             Action action =
                 () => new ValidatorContract(
                     _transactionProcessor,
+                    GnosisSpecProvider.Instance,
                     AbiEncoder.Instance,
                     null,
                     _stateProvider,
@@ -74,6 +76,7 @@ namespace Nethermind.AuRa.Test.Contract
 
             ValidatorContract contract = new(
                 _transactionProcessor,
+                GnosisSpecProvider.Instance,
                 AbiEncoder.Instance,
                 _contractAddress,
                 _stateProvider,

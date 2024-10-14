@@ -29,9 +29,9 @@ public static class BlobGasCalculator
         return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee)
+    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee, IReleaseSpec releaseSpec)
     {
-        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out UInt256 feePerBlobGas))
+        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out UInt256 feePerBlobGas, releaseSpec))
         {
             blobBaseFee = UInt256.MaxValue;
             return false;
@@ -39,14 +39,14 @@ public static class BlobGasCalculator
         return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), feePerBlobGas, out blobBaseFee);
     }
 
-    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas)
+    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas, IReleaseSpec spec)
     {
         feePerBlobGas = UInt256.MaxValue;
         return header.ExcessBlobGas is not null
-            && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out feePerBlobGas);
+            && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out feePerBlobGas, spec);
     }
 
-    public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, out UInt256 feePerBlobGas)
+    public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, out UInt256 feePerBlobGas, IReleaseSpec spec)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {
@@ -85,7 +85,7 @@ public static class BlobGasCalculator
             return false;
         }
 
-        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out feePerBlobGas);
+        return !FakeExponentialOverflow(Eip4844Constants.GetMinBlobGasPrice(spec), excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
     public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)

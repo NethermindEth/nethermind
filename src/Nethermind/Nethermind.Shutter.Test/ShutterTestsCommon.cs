@@ -74,7 +74,8 @@ class ShutterTestsCommon
             Threshold,
             InitialSlot,
             AbiEncoder,
-            new(Cfg.SequencerContractAddress!)
+            new(Cfg.SequencerContractAddress!),
+            SpecProvider
         );
 
     public static Timestamper InitTimestamper(ulong slotTimestamp, ulong offsetMs)

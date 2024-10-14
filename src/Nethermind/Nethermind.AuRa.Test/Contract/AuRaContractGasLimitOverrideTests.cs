@@ -82,7 +82,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override BlockProcessor CreateBlockProcessor()
         {
             KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+            BlockGasLimitContract gasLimitContract = new(SpecProvider, AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
                     WorldStateManager,
                     BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
@@ -94,7 +94,7 @@ public class AuRaContractGasLimitOverrideTests
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State, SpecProvider),
                 State,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor),

@@ -55,9 +55,10 @@ public class TraceRpcModuleTests
 
             IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(scope.TransactionProcessor);
 
-            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
+            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState, Blockchain.SpecProvider);
             BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor,
-                scope.WorldState);
+                scope.WorldState,
+                Blockchain.SpecProvider);
 
             ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor) => new(
                 scope,

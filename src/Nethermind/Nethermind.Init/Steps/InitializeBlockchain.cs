@@ -234,7 +234,7 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState, _api.SpecProvider),
                 worldState,
                 _api.ReceiptStorage,
                 _api.TransactionProcessor,

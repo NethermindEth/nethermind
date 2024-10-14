@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Blockchain;
 using Nethermind.Core.Collections;
 using Nethermind.Shutter.Config;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter;
 
@@ -30,9 +31,9 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly Dictionary<ulong, byte[]> _validatorsInfo;
     private readonly ILogManager _logManager;
     private readonly IAbiEncoder _abiEncoder;
+    private readonly ISpecProvider _specProvider;
     private readonly IBlockTree _blockTree;
     private readonly ReadOnlyBlockTree _readOnlyBlockTree;
-    private readonly ulong _chainId;
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _slotLength;
     private readonly TimeSpan _blockWaitCutoff;
@@ -44,7 +45,6 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly object _syncObject = new();
 
     public ShutterBlockHandler(
-        ulong chainId,
         IShutterConfig cfg,
         ReadOnlyTxProcessingEnvFactory envFactory,
         IBlockTree blockTree,
@@ -56,9 +56,9 @@ public class ShutterBlockHandler : IShutterBlockHandler
         ShutterTime time,
         ILogManager logManager,
         TimeSpan slotLength,
-        TimeSpan blockWaitCutoff)
+        TimeSpan blockWaitCutoff,
+        ISpecProvider specProvider)
     {
-        _chainId = chainId;
         _cfg = cfg;
         _logger = logManager.GetClassLogger();
         _time = time;
@@ -70,6 +70,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
+        _specProvider = specProvider;
         _envFactory = envFactory;
         _slotLength = slotLength;
         _blockWaitCutoff = blockWaitCutoff;
@@ -200,7 +201,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         IReadOnlyTxProcessingScope scope = _envFactory.Create().Build(parent.StateRoot!);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
-        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _chainId, _cfg.ValidatorRegistryMessageVersion!);
+        ValidatorRegistryContract validatorRegistryContract = new(processor, _abiEncoder, new(_cfg.ValidatorRegistryContractAddress!), _logManager, _specProvider, _cfg.ValidatorRegistryMessageVersion!);
         if (validatorRegistryContract.IsRegistered(parent, validatorsInfo, out HashSet<ulong> unregistered))
         {
             if (_logger.IsInfo) _logger.Info($"All Shutter validator keys are registered.");

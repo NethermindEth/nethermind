@@ -62,7 +62,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, header, NullTxTracer.Instance);
+            processor.Execute(transaction, new(header, spec), NullTxTracer.Instance);
         }
     }
 }

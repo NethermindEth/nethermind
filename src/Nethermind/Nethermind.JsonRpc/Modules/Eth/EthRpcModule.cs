@@ -106,12 +106,14 @@ public partial class EthRpcModule(
 
     public ResultWrapper<UInt256?> eth_blobBaseFee()
     {
-        if (_blockFinder.Head?.Header?.ExcessBlobGas is null)
+        BlockHeader? header = _blockFinder.Head?.Header;
+        if (header is null || header.ExcessBlobGas is null)
         {
             return ResultWrapper<UInt256?>.Success(UInt256.Zero);
         }
-        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
-            out UInt256 feePerBlobGas))
+        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(header,
+            out UInt256 feePerBlobGas,
+            _specProvider.GetSpec(header!)))
         {
             return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
         }

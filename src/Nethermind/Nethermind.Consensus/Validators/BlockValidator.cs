@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
@@ -15,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 
@@ -385,7 +381,7 @@ public class BlockValidator(
 
             if (feePerBlobGas.IsZero)
             {
-                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas))
+                if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, out feePerBlobGas, spec))
                 {
                     error = BlockErrorMessages.BlobGasPriceOverflow;
                     if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");

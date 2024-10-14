@@ -157,5 +157,6 @@ internal class ChainSpecParamsJson
     public Address Eip7251ContractAddress { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
+    public ulong? Eip7762TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
 }

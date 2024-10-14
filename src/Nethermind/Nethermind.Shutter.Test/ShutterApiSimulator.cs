@@ -124,7 +124,7 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected override ShutterTime InitTime(ITimestamper timestamper)
     {
         return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }

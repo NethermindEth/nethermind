@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core;
@@ -10,6 +11,9 @@ namespace Nethermind.Core;
 /// </summary>
 public class Eip4844Constants
 {
+    private static UInt256? OveriddenMinBlobGasPrice;
+    private static readonly UInt256 Eip7762MinBlobGasPrice = new(2 ^ 25);
+
     public const int MinBlobsPerTransaction = 1;
 
     /// <summary>
@@ -45,8 +49,18 @@ public class Eip4844Constants
     /// <summary>
     /// Gets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei.
     /// </summary>
-    /// <remarks>Defaults to 1.</remarks>
-    public static UInt256 MinBlobGasPrice { get; private set; } = 1;
+    /// <remarks>Defaults to 1, or 2^25 after Eip7762.</remarks>
+    public static UInt256 GetMinBlobGasPrice(IReleaseSpec releaseSpec)
+    {
+        if (OveriddenMinBlobGasPrice.HasValue)
+        {
+            return OveriddenMinBlobGasPrice.Value;
+        }
+        else
+        {
+            return releaseSpec.IsEip7762Enabled ? Eip7762MinBlobGasPrice : 1;
+        }
+    }
 
 
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
@@ -63,7 +77,7 @@ public class Eip4844Constants
             MaxBlobGasPerBlock = maxBlobGasPerBlock.Value;
 
         if (minBlobGasPrice.HasValue)
-            MinBlobGasPrice = minBlobGasPrice.Value;
+            OveriddenMinBlobGasPrice = minBlobGasPrice.Value;
 
         if (targetBlobGasPerBlock.HasValue)
             TargetBlobGasPerBlock = targetBlobGasPerBlock.Value;

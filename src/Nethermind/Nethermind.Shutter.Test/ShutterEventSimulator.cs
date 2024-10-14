@@ -19,6 +19,7 @@ using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 using EncryptedMessage = Nethermind.Shutter.ShutterCrypto.EncryptedMessage;
 using Nethermind.Shutter.Contracts;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Shutter.Test;
 
@@ -45,7 +46,8 @@ public class ShutterEventSimulator
         ulong threshold,
         ulong slot,
         IAbiEncoder abiEncoder,
-        Address sequencerContractAddress
+        Address sequencerContractAddress,
+        ISpecProvider specProvider
     )
     {
         _rnd = rnd;
@@ -56,7 +58,7 @@ public class ShutterEventSimulator
         _threshold = threshold;
         _abiEncoder = abiEncoder;
         _sequencerContractAddress = sequencerContractAddress;
-        _transactionSubmittedAbi = new SequencerContract(sequencerContractAddress).TransactionSubmittedAbi;
+        _transactionSubmittedAbi = new SequencerContract(specProvider, sequencerContractAddress).TransactionSubmittedAbi;
         _defaultMaxKeyCount = (int)Math.Floor((decimal)ShutterTestsCommon.Cfg.EncryptedGasLimit / DefaultGasLimit);
 
         _eventSource = EmitEvents();

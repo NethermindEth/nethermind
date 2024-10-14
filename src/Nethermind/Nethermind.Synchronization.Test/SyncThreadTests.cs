@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.Test
                 specProvider,
                 blockValidator,
                 rewardCalculator,
-                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider, specProvider),
                 stateProvider,
                 receiptStorage,
                 txProcessor,

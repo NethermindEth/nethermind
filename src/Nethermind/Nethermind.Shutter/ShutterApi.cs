@@ -41,6 +41,7 @@ public class ShutterApi : IShutterApi
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
+    private readonly ISpecProvider _specProvider;
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _blockWaitCutoff;
 
@@ -64,17 +65,17 @@ public class ShutterApi : IShutterApi
         _readOnlyBlockTree = blockTree.AsReadOnly();
         _abiEncoder = abiEncoder;
         _logManager = logManager;
+        _specProvider = specProvider;
         _slotLength = slotLength;
         _blockUpToDateCutoff = slotLength;
         _blockWaitCutoff = _slotLength / 3;
 
         _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
 
-        Time = InitTime(specProvider, timestamper);
+        Time = InitTime(timestamper);
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
-            specProvider.ChainId,
             _cfg,
             _txProcessingEnvFactory,
             blockTree,
@@ -86,7 +87,8 @@ public class ShutterApi : IShutterApi
             Time,
             logManager,
             _slotLength,
-            BlockWaitCutoff);
+            BlockWaitCutoff,
+            specProvider);
 
         TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
 
@@ -144,10 +146,10 @@ public class ShutterApi : IShutterApi
     }
 
     protected virtual IShutterEon InitEon()
-        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
+        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager, _specProvider);
 
-    protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
+    protected virtual ShutterTime InitTime(ITimestamper timestamper)
     {
-        return new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
+        return new(_specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
     }
 }

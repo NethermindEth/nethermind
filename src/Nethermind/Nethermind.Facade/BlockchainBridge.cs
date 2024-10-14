@@ -128,8 +128,7 @@ namespace Nethermind.Facade
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
                 int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
-                bool is1559Enabled = _specProvider.GetSpecFor1559(block.Number).IsEip1559Enabled;
-                return (txReceipt, tx.GetGasInfo(is1559Enabled, block.Header), logIndexStart);
+                return (txReceipt, tx.GetGasInfo(block.Header, _specProvider.GetSpec(block.Header)), logIndexStart);
             }
 
             return (null, null, 0);
@@ -295,7 +294,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
+            return scope.TransactionProcessor.CallAndRestore(transaction, new(callHeader, releaseSpec), tracer);
         }
 
         public ulong GetChainId()

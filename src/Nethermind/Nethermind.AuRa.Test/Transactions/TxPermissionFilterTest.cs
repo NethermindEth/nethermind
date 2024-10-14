@@ -293,7 +293,7 @@ public class TxPermissionFilterTest
                 SpecProvider,
                 Always.Valid,
                 new RewardCalculator(SpecProvider),
-                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State, SpecProvider),
                 State,
                 ReceiptStorage,
                 new BeaconBlockRootHandler(TxProcessor),

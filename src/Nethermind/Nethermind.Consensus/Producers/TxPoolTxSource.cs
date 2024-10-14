@@ -196,7 +196,7 @@ namespace Nethermind.Consensus.Producers
                 return false;
             }
 
-            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas))
+            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas, spec))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
                 feePerBlobGas = UInt256.Zero;
