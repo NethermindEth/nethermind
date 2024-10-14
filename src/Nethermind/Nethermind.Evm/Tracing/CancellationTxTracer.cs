@@ -451,6 +451,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    public void ReportTransaction(Transaction transaction)
+    {
+        token.ThrowIfCancellationRequested();
+        innerTracer.ReportTransaction(transaction);
+    }
+
     public void Dispose()
     {
         innerTracer.Dispose();

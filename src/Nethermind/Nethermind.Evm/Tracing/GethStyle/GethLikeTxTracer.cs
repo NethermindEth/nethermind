@@ -40,6 +40,11 @@ public abstract class GethLikeTxTracer : TxTracer
         Trace.ReturnValue = output ?? Array.Empty<byte>();
     }
 
+    public override void ReportTransaction(Transaction tx)
+    {
+        Trace.TxHash = tx.Hash!;
+    }
+
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)
     {
         return evmExceptionType switch

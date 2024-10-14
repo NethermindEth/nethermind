@@ -20,18 +20,18 @@ namespace Nethermind.Serialization.Json
         private readonly int? _maxDepth;
         private readonly JsonSerializerOptions _jsonOptions;
 
-        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int? maxDepth = null)
+        public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int? maxDepth = null, bool longAsHex = true)
         {
             _maxDepth = maxDepth;
             _jsonOptions = maxDepth.HasValue
-                ? CreateOptions(indented: false, maxDepth: maxDepth.Value, converters: converters)
-                : CreateOptions(indented: false, converters: converters);
+                ? CreateOptions(indented: false, maxDepth: maxDepth.Value, converters: converters, longAsHex: longAsHex)
+                : CreateOptions(indented: false, converters: converters, longAsHex: longAsHex);
         }
 
-        public EthereumJsonSerializer(int? maxDepth = null)
+        public EthereumJsonSerializer(int? maxDepth = null, bool longAsHex = true)
         {
             _maxDepth = maxDepth;
-            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
+            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value, longAsHex: longAsHex) : JsonOptions;
         }
 
         public T Deserialize<T>(Stream stream)
@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
+        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64, bool longAsHex =true)
         {
             var options = new JsonSerializerOptions
             {
@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Json
                 MaxDepth = maxDepth,
                 Converters =
                 {
-                    // new LongConverter(), // cause of issue, now refactor so specific tracers don't use this! then update tests!
+                    longAsHex ? new LongConverter() : null,
                     new UInt256Converter(),
                     new ULongConverter(),
                     new IntConverter(),
