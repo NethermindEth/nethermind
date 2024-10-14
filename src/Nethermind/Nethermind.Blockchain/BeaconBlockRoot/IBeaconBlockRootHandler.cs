@@ -4,10 +4,11 @@
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true);
-    void StoreBeaconRoot(Block block, IReleaseSpec spec);
+    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, IWorldState stateProvider, bool includeStorageCells = true);
+    void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState stateProvider);
 }

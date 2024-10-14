@@ -154,7 +154,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV4.TryGetBlock(out Block? block);
 
             var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor);
-            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header));
+            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header), chain.WorldStateManager.GlobalWorldState);
             Snapshot before = chain.State.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
