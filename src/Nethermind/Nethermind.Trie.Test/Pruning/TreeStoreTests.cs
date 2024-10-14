@@ -215,6 +215,32 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Memory_with_concurrent_commits_is_correct()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            PatriciaTree tree = new PatriciaTree(trieStore, LimboLogs.Instance);
+
+            Random rand = new Random(0);
+
+            Span<byte> key = stackalloc byte[32];
+            Span<byte> value = stackalloc byte[32];
+            for (int i = 0; i < 1000; i++)
+            {
+                rand.NextBytes(key);
+                rand.NextBytes(value);
+
+                tree.Set(key, value.ToArray());
+            }
+
+            tree.Commit(0);
+
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 591672L : 661820L);
+            fullTrieStore.CommittedNodesCount.Should().Be(1349);
+        }
+
+        [Test]
         public void Memory_with_two_times_two_nodes_is_correct()
         {
             TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
