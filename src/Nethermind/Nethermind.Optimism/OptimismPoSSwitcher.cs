@@ -31,8 +31,5 @@ public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNu
 
     public bool IsPostMerge(BlockHeader header) => GetBlockConsensusInfo(header).IsPostMerge;
 
-    public bool TryUpdateTerminalBlock(BlockHeader header)
-    {
-        throw new NotImplementedException("Should never be called in OP Stack chains");
-    }
+    public bool TryUpdateTerminalBlock(BlockHeader header) => false;
 }
