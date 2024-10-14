@@ -144,7 +144,7 @@ public class RegisterRpcModules : IStep
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
 
-        TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.LogManager);
+        TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.SpecProvider);
         rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.SyncServer);

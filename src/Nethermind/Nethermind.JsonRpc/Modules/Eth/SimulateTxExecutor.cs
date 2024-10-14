@@ -10,7 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 
@@ -42,14 +42,15 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     StateOverrides = blockStateCall.StateOverrides,
                     Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        UpdateTxType(callTransactionModel);
+                        callTransactionModel = UpdateTxType(callTransactionModel);
+                        LegacyTransactionForRpc asLegacy = callTransactionModel as LegacyTransactionForRpc;
+                        bool hadGasLimitInRequest = asLegacy?.Gas is not null;
+                        bool hadNonceInRequest = asLegacy?.Nonce is not null;
+                        asLegacy!.EnsureDefaults(_gasCapBudget);
+                        _gasCapBudget -= asLegacy.Gas!.Value;
 
-                        bool hadGasLimitInRequest = callTransactionModel.Gas.HasValue;
-                        bool hadNonceInRequest = callTransactionModel.Nonce.HasValue;
-                        callTransactionModel.EnsureDefaults(_gasCapBudget);
-                        _gasCapBudget -= callTransactionModel.Gas!.Value;
-
-                        Transaction tx = callTransactionModel.ToTransaction(_blockchainBridge.GetChainId());
+                        Transaction tx = callTransactionModel.ToTransaction();
+                        tx.ChainId = _blockchainBridge.GetChainId();
 
                         TransactionWithSourceDetails? result = new()
                         {
@@ -67,17 +68,28 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
         return result;
     }
 
-    private static void UpdateTxType(TransactionForRpc callTransactionModel)
+    private static TransactionForRpc UpdateTxType(TransactionForRpc rpcTransaction)
     {
-        if (callTransactionModel.Type == TxType.Legacy)
+        // TODO: This is a bit messy since we're changing the transaction type
+        if (rpcTransaction is LegacyTransactionForRpc legacy)
         {
-            callTransactionModel.Type = TxType.EIP1559;
+            rpcTransaction = new EIP1559TransactionForRpc
+            {
+                Nonce = legacy.Nonce,
+                To = legacy.To,
+                From = legacy.From,
+                Gas = legacy.Gas,
+                Value = legacy.Value,
+                Input = legacy.Input,
+                GasPrice = legacy.GasPrice,
+                ChainId = legacy.ChainId,
+                V = legacy.V,
+                R = legacy.R,
+                S = legacy.S,
+            };
         }
 
-        if (callTransactionModel.BlobVersionedHashes is not null)
-        {
-            callTransactionModel.Type = TxType.Blob;
-        }
+        return rpcTransaction;
     }
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
@@ -187,7 +199,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                     {
                         BlockOverrides = new BlockOverride { Number = (ulong)blockNumber },
                         StateOverrides = null,
-                        Calls = Array.Empty<TransactionForRpc>()
+                        Calls = []
                     });
                 }
             }

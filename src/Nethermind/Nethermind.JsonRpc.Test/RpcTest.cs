@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -16,34 +14,34 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
-    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[] parameters) where T : class, IRpcModule
+    public static async Task<JsonRpcResponse> TestRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
-        JsonRpcRequest request = GetJsonRequest(method, parameters);
+        JsonRpcRequest request = BuildJsonRequest(method, parameters);
         return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
-    public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[] parameters) where T : class, IRpcModule
+    public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         IJsonRpcService service = BuildRpcService(module);
-        JsonRpcRequest request = GetJsonRequest(method, parameters);
+        JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule ?
-            contextAwareModule.Context :
-            new JsonRpcContext(RpcEndpoint.Http);
-        using JsonRpcResponse response = await service.SendRequestAsync(request, context);
+        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
+            ? contextAwareModule.Context
+            : new JsonRpcContext(RpcEndpoint.Http);
+        using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
         EthereumJsonSerializer serializer = new();
 
         Stream stream = new MemoryStream();
-        long size = await serializer.SerializeAsync(stream, response);
+        long size = await serializer.SerializeAsync(stream, response).ConfigureAwait(false);
 
         // for coverage (and to prove that it does not throw
         Stream indentedStream = new MemoryStream();
-        await serializer.SerializeAsync(indentedStream, response, true);
+        await serializer.SerializeAsync(indentedStream, response, true).ConfigureAwait(false);
 
         stream.Seek(0, SeekOrigin.Begin);
-        string serialized = await new StreamReader(stream).ReadToEndAsync();
+        string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
 
         size.Should().Be(serialized.Length);
 
@@ -59,28 +57,21 @@ public static class RpcTest
         return service;
     }
 
-    // Parameters from tests are provided as either already serialized object, raw string, or raw object.
-    // We need to handle all these cases, while preventing double serialization.
-    private static string GetSerializedParameter(object? parameter)
+    public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {
-        if (parameter is string serialized and (['[', ..] or ['{', ..] or ['"', ..]))
-            return serialized; // Already serialized
+        // TODO: Eventually we would like to support injecting a custom serializer
+        var serializer = new EthereumJsonSerializer();
+        parameters ??= [];
 
-        return JsonSerializer.Serialize(parameter, EthereumJsonSerializer.JsonOptions);
-    }
+        var jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));
 
-    public static JsonRpcRequest GetJsonRequest(string method, params object?[]? parameters)
-    {
-        var doc = JsonDocument.Parse($"[{string.Join(",", parameters?.Select(GetSerializedParameter) ?? [])}]");
-        var request = new JsonRpcRequest()
+        return new JsonRpcRequest
         {
             JsonRpc = "2.0",
             Method = method,
-            Params = doc.RootElement,
+            Params = jsonParameters,
             Id = 67
         };
-
-        return request;
     }
 
     private class TestSingletonFactory<T>(T module) : SingletonFactory<T>(module)
