@@ -32,8 +32,8 @@ public class TaikoTransactionProcessor(
         => base.BuyGas(tx, header, spec, tracer, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, in effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
 
     protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice)
-        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, substate, unspentGas, gasPrice);
+        in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds)
+        => base.Refund(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, substate, unspentGas, gasPrice, codeInsertRefunds);
 
     protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
     {
