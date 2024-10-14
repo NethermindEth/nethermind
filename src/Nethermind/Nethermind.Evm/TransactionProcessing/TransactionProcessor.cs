@@ -689,27 +689,6 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, tx.Value, spec);
         }
 
-        private void WarmUp(Transaction tx, BlockHeader header, IReleaseSpec spec, EvmState state, IEnumerable<Address> accessedAddresses)
-        {
-            if (spec.UseTxAccessLists)
-            {
-                state.WarmUp(tx.AccessList); // eip-2930
-            }
-
-            if (spec.UseHotAndColdStorage) // eip-2929
-            {
-                foreach (Address accessed in accessedAddresses)
-                {
-                    state.WarmUp(accessed);
-                }
-            }
-
-            if (spec.AddCoinbaseToTxAccessList)
-            {
-                state.WarmUp(header.GasBeneficiary!);
-            }
-        }
-
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, in byte statusCode)
         {
             bool gasBeneficiaryNotDestroyed = substate?.DestroyList.Contains(header.GasBeneficiary) != true;
