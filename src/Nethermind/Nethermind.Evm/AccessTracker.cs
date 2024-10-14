@@ -12,11 +12,16 @@ namespace Nethermind.Evm
 {
     public sealed class AccessTracker
     {
-        public JournalSet<Address> AccessedAddresses { get; }
-        public JournalSet<StorageCell> AccessedStorageCells { get; }
-        public JournalCollection<LogEntry> Logs { get; }
-        public JournalSet<Address> DestroyList { get; }
-        public HashSet<AddressAsKey> CreateList { get; }
+        public IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
+        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
+        public ICollection<LogEntry> Logs => _logs;
+        public IReadOnlySet<Address> DestroyList => _destroyList;
+        public IReadOnlySet<AddressAsKey> CreateList => _createList; 
+        private JournalSet<Address> _accessedAddresses { get; }
+        private JournalSet<StorageCell> _accessedStorageCells { get; }
+        private JournalCollection<LogEntry> _logs { get; }
+        private JournalSet<Address> _destroyList { get; }
+        private HashSet<AddressAsKey> _createList { get; }
 
         private int _addressesSnapshots;
         private int _storageKeysSnapshots;
@@ -26,64 +31,69 @@ namespace Nethermind.Evm
         {
             if (accessTracker is not null)
             {
-                AccessedAddresses = accessTracker.AccessedAddresses;
-                AccessedStorageCells = accessTracker.AccessedStorageCells;
-                Logs = accessTracker.Logs;
-                DestroyList = accessTracker.DestroyList;
-                CreateList = accessTracker.CreateList;
+                _accessedAddresses = accessTracker._accessedAddresses;
+                _accessedStorageCells = accessTracker._accessedStorageCells;
+                _logs = accessTracker._logs;
+                _destroyList = accessTracker._destroyList;
+                _createList = accessTracker._createList;
             }
             else
             {
-                AccessedAddresses = new();
-                AccessedStorageCells = new();
-                Logs = new();
-                DestroyList = new();
-                CreateList = new();
+                _accessedAddresses = new();
+                _accessedStorageCells = new();
+                _logs = new();
+                _destroyList = new();
+                _createList = new();
             }
         }
         public bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
 
-        public bool IsCold(in StorageCell storageCell) => !AccessedStorageCells.Contains(storageCell);
+        public bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
-        public void Add(Address address)
+        public void WarmUp(Address address)
         {
-            AccessedAddresses.Add(address);
+            _accessedAddresses.Add(address);
         }
 
-        public void Add(StorageCell storageCell)
+        public void WarmUp(StorageCell storageCell)
         {
-            AccessedStorageCells.Add(storageCell);
+            _accessedStorageCells.Add(storageCell);
         }
 
-        public void Add(AccessList? accessList)
+        public void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
-                    AccessedAddresses.Add(address);
+                    _accessedAddresses.Add(address);
                     foreach (UInt256 storage in storages)
                     {
-                        AccessedStorageCells.Add(new StorageCell(address, storage));
+                        _accessedStorageCells.Add(new StorageCell(address, storage));
                     }
                 }
             }
         }
 
+        public void ToBeDestroyed(Address address)
+        {
+            _destroyList.Add(address);
+        }
+
         public void TakeSnapshot()
         {
-            _addressesSnapshots = AccessedAddresses.TakeSnapshot();
-            _storageKeysSnapshots = AccessedStorageCells.TakeSnapshot();
-            _destroyListSnapshots = DestroyList.TakeSnapshot();
-            _logsSnapshots = Logs.TakeSnapshot();
+            _addressesSnapshots = _accessedAddresses.TakeSnapshot();
+            _storageKeysSnapshots = _accessedStorageCells.TakeSnapshot();
+            _destroyListSnapshots = _destroyList.TakeSnapshot();
+            _logsSnapshots = _logs.TakeSnapshot();
         }
 
         public void Restore()
         {
-            Logs.Restore(_logsSnapshots);
-            DestroyList.Restore(_destroyListSnapshots);
-            AccessedAddresses.Restore(_addressesSnapshots);
-            AccessedStorageCells.Restore(_storageKeysSnapshots);
+            _logs.Restore(_logsSnapshots);
+            _destroyList.Restore(_destroyListSnapshots);
+            _accessedAddresses.Restore(_addressesSnapshots);
+            _accessedStorageCells.Restore(_storageKeysSnapshots);
         }
     }
 }

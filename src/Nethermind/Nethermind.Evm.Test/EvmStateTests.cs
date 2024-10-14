@@ -144,11 +144,11 @@ namespace Nethermind.Evm.Test
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.Logs.Add(logEntry);
+                evmState.AccessTracker.Logs.Add(logEntry);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.Logs.Contains(logEntry).Should().BeTrue();
+            parentEvmState.AccessTracker.Logs.Contains(logEntry).Should().BeTrue();
         }
 
         [Test]
@@ -158,10 +158,10 @@ namespace Nethermind.Evm.Test
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.Logs.Add(logEntry);
+                evmState.AccessTracker.Logs.Add(logEntry);
             }
 
-            parentEvmState.Logs.Contains(logEntry).Should().BeFalse();
+            parentEvmState.AccessTracker.Logs.Contains(logEntry).Should().BeFalse();
         }
 
         [Test]
@@ -170,11 +170,11 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.DestroyList.Add(Address.Zero);
+                evmState.AccessTracker.WarmUp(Address.Zero);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.DestroyList.Contains(Address.Zero).Should().BeTrue();
+            parentEvmState.AccessTracker.DestroyList.Contains(Address.Zero).Should().BeTrue();
         }
 
         [Test]
@@ -183,10 +183,10 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.DestroyList.Add(Address.Zero);
+                evmState.AccessTracker.ToBeDestroyed(Address.Zero);
             }
 
-            parentEvmState.DestroyList.Contains(Address.Zero).Should().BeFalse();
+            parentEvmState.AccessTracker.DestroyList.Contains(Address.Zero).Should().BeFalse();
         }
 
         [Test]

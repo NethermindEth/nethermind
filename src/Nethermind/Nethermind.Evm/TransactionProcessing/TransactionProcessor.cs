@@ -160,7 +160,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
             AccessTracker accessTracker = new();
-            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker.AccessedAddresses);
+            int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
 
@@ -214,7 +214,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, ICollection<Address> accessedAddresses)
+        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, AccessTracker accessTracker)
         {
             int refunds = 0;
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
@@ -223,7 +223,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple);
 
-                    if (!IsValidForExecution(authTuple, accessedAddresses, out _))
+                    if (!IsValidForExecution(authTuple, accessTracker, out _))
                     {
                         if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid");
                     }
@@ -249,7 +249,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool IsValidForExecution(
                 AuthorizationTuple authorizationTuple,
-                ICollection<Address> accessedAddresses,
+                AccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
                 if (authorizationTuple.Authority is null)
@@ -263,7 +263,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return false;
                 }
 
-                accessedAddresses.Add(authorizationTuple.Authority);
+                accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
                 {
@@ -516,7 +516,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
-            AccessTracker accessedAddresses)
+            AccessTracker accessTracker)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
@@ -530,22 +530,22 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (spec.UseHotAndColdStorage)
             {
-                accessedAddresses.Add(recipient);
-                accessedAddresses.Add(tx.SenderAddress!);
+                accessTracker.WarmUp(recipient);
+                accessTracker.WarmUp(tx.SenderAddress!);
 
                 if (spec.UseTxAccessLists)
                 {
-                    accessedAddresses.Add(tx.AccessList); // eip-2930
+                    accessTracker.WarmUp(tx.AccessList); // eip-2930
                 }
 
                 if (spec.AddCoinbaseToTxAccessList)
                 {
-                    accessedAddresses.Add(blCtx.Header.GasBeneficiary!);
+                    accessTracker.WarmUp(blCtx.Header.GasBeneficiary!);
                 }
 
                 //We assume eip-7702 must be active if it is a delegation 
                 if (delegationAddress is not null)
-                    accessedAddresses.Add(delegationAddress);
+                    accessTracker.WarmUp(delegationAddress);
             }
 
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data ?? default : default;
@@ -618,7 +618,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                     if (tracer.IsTracingAccess)
                     {
-                        tracer.ReportAccess(state.AccessedAddresses, state.AccessedStorageCells);
+                        tracer.ReportAccess(state.AccessTracker.AccessedAddresses, state.AccessTracker.AccessedStorageCells);
                     }
                 }
 

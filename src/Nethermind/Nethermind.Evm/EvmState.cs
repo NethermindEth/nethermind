@@ -74,23 +74,6 @@ namespace Nethermind.Evm
 
         public int[]? ReturnStack;
 
-        /// <summary>
-        /// EIP-2929 accessed addresses
-        /// </summary>
-        public IReadOnlySet<Address> AccessedAddresses => _accessTracker.AccessedAddresses;
-
-        /// <summary>
-        /// EIP-2929 accessed storage keys
-        /// </summary>
-        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessTracker.AccessedStorageCells;
-
-        // As we can add here from VM, we need it as ICollection
-        public ICollection<Address> DestroyList => _accessTracker.DestroyList;
-        // As we can add here from VM, we need it as ICollection
-        public ICollection<AddressAsKey> CreateList => _accessTracker.CreateList;
-        // As we can add here from VM, we need it as ICollection
-        public ICollection<LogEntry> Logs => _accessTracker.Logs;
-
         public AccessTracker AccessTracker => _accessTracker;
 
         private readonly AccessTracker _accessTracker;
@@ -183,7 +166,7 @@ namespace Nethermind.Evm
             }
             if (executionType.IsAnyCreate())
             {
-                _accessTracker.CreateList.Add(env.ExecutingAccount);
+                _accessTracker.WarmUp(env.ExecutingAccount);
             }
             _accessTracker.TakeSnapshot();
         }
@@ -255,9 +238,9 @@ namespace Nethermind.Evm
 
         public bool IsCold(in StorageCell storageCell) => !_accessTracker.AccessedStorageCells.Contains(storageCell);
 
-        public void WarmUp(Address address) => _accessTracker.Add(address);
+        public void WarmUp(Address address) => _accessTracker.WarmUp(address);
 
-        public void WarmUp(in StorageCell storageCell) => _accessTracker.Add(storageCell);
+        public void WarmUp(in StorageCell storageCell) => _accessTracker.WarmUp(storageCell);
 
         public void CommitToParent(EvmState parentState)
         {
