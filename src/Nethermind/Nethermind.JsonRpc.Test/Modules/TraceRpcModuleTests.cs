@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -974,8 +975,11 @@ public class TraceRpcModuleTests
         """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0x0000000000000000000000000000000000123456", "code": "0x"}}""",
         """{"jsonrpc":"2.0","result":{"output":"0x000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099","stateDiff":null,"trace":[{"action":{"callType":"call","from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","gas":"0x5f58878","input":"0xb6e16d27ac5ab427a7f68900ac5559ce272dc6c37c82b3e052246c82244c50e4000000000000000000000000000000000000000000000000000000000000001c7b8b1991eb44757bc688016d27940df8fb971d7c87f77a6bc4e938e3202c44037e9267b0aeaa82fa765361918f2d8abd9cdd86e64aa6f2b81d3c4e0b69a7b055","to":"0x0000000000000000000000000000000000123456","value":"0x0"},"result":{"gasUsed":"0xbb8","output":"0x000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099"},"subtraces":0,"traceAddress":[],"type":"call"}],"vmTrace":null},"id":67}"""
     )]
-    public async Task Trace_call_with_state_override(string name, string transaction, string traceType, string stateOverride, string expectedResult)
+    public async Task Trace_call_with_state_override(string name, string transactionJson, string traceType, string stateOverrideJson, string expectedResult)
     {
+        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
         string serialized = await RpcTest.TestSerializedRequest(
@@ -995,8 +999,11 @@ public class TraceRpcModuleTests
         "trace",
         """{"0xc200000000000000000000000000000000000000":{"code":"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033"}}"""
     )]
-    public async Task Trace_call_with_state_override_does_not_affect_other_calls(string transaction, string traceType, string stateOverride)
+    public async Task Trace_call_with_state_override_does_not_affect_other_calls(string transactionJson, string traceType, string stateOverrideJson)
     {
+        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+
         Context context = new();
         await context.Build();
 

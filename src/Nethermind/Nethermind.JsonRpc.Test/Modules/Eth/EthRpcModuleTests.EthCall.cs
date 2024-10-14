@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -319,8 +320,11 @@ public partial class EthRpcModuleTests
         """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}""",
         """{"jsonrpc":"2.0","result":"0x000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099","id":67}"""
     )]
-    public async Task Eth_call_with_state_override(string name, string transaction, string stateOverride, string expectedResult)
+    public async Task Eth_call_with_state_override(string name, string transactionJson, string stateOverrideJson, string expectedResult)
     {
+        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+
         using Context ctx = await Context.Create();
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
@@ -343,8 +347,11 @@ public partial class EthRpcModuleTests
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"}""",
         """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}"""
     )]
-    public async Task Eth_call_with_state_override_does_not_affect_other_calls(string name, string transaction, string stateOverride)
+    public async Task Eth_call_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
+        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+
         using Context ctx = await Context.Create();
 
         var resultOverrideBefore = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
