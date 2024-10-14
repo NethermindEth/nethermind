@@ -117,6 +117,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        public void IncrementMemoryUsedByDirtyCache(long nodeMemoryUsage)
+        {
+            Metrics.MemoryUsedByCache = Interlocked.Add(ref _memoryUsedByDirtyCache, nodeMemoryUsage);
+        }
+
         public int CommittedNodesCount
         {
             get => _committedNodesCount;
@@ -127,6 +132,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        private void IncrementCommittedNodesCount()
+        {
+            Metrics.CommittedNodesCount = Interlocked.Increment(ref _committedNodesCount);
+        }
+
         public int PersistedNodesCount
         {
             get => _persistedNodesCount;
@@ -135,6 +145,11 @@ namespace Nethermind.Trie.Pruning
                 Metrics.PersistedNodeCount = value;
                 _persistedNodesCount = value;
             }
+        }
+
+        private void IncrementPersistedNodesCount()
+        {
+            Metrics.PersistedNodeCount = Interlocked.Increment(ref _persistedNodesCount);
         }
 
         public int CachedNodesCount
@@ -167,7 +182,7 @@ namespace Nethermind.Trie.Pruning
                 node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen);
 
-                CommittedNodesCount++;
+                IncrementCommittedNodesCount();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -874,6 +889,7 @@ namespace Nethermind.Trie.Pruning
                 writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 PersistedNodesCount++;
+                IncrementPersistedNodesCount();
             }
             else
             {
