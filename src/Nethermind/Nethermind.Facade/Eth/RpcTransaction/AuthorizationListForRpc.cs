@@ -30,16 +30,14 @@ public class AuthorizationListForRpc
         public UInt256 ChainId { get; set; }
         public ulong Nonce { get; set; }
         public Address Address { get; set; }
-
-        // TODO: Are these fields actually nullable
-        public UInt256? YParity { get; set; }
-        public UInt256? S { get; set; }
-        public UInt256? R { get; set; }
+        public UInt256 YParity { get; set; }
+        public UInt256 S { get; set; }
+        public UInt256 R { get; set; }
 
         [JsonConstructor]
         public Tuple() { }
 
-        public Tuple(UInt256 chainId, ulong nonce, Address address, UInt256? yParity, UInt256? s, UInt256? r)
+        public Tuple(UInt256 chainId, ulong nonce, Address address, UInt256 yParity, UInt256 s, UInt256 r)
         {
             ChainId = chainId;
             Nonce = nonce;
@@ -66,8 +64,7 @@ public class AuthorizationListForRpc
             (ulong)tuple.ChainId,
             tuple.Address,
             tuple.Nonce,
-            // TODO: This might be wrong
-            new Signature(tuple.R ?? 0, tuple.S ?? 0, (ulong)(tuple.YParity ?? 0)))
+            new Signature(tuple.R, tuple.S, (ulong)tuple.YParity))
         ).ToArray();
 
     public class JsonConverter : JsonConverter<AuthorizationListForRpc>
