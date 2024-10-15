@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
+        protected bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
         {
             if (parent is null)
             {

@@ -51,8 +51,14 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
     protected override IHeaderValidator CreateHeaderValidator()
     {
         if (api.InvalidChainTracker is null) throw new StepDependencyException(nameof(api.InvalidChainTracker));
+        if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
+        if (api.SealValidator is null) throw new StepDependencyException(nameof(api.SealValidator));
+        if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
+        if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
+        if (api.LogManager is null) throw new StepDependencyException(nameof(api.LogManager));
 
         OptimismHeaderValidator opHeaderValidator = new(
+            api.PoSSwitcher,
             api.BlockTree,
             api.SealValidator,
             api.SpecProvider,
