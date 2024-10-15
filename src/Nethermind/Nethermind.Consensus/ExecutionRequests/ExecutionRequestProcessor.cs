@@ -57,13 +57,15 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     private ExecutionRequest DecodeDepositRequest(LogEntry log)
     {
         object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, _depositEventABI, log.Data);
-        List<byte> flattenedResult = new List<byte>();
+        byte[] flattenedResult = new byte[depositRequestsBytesSize];
+        int offset = 0;
 
         foreach (var item in result)
         {
             if (item is byte[] byteArray)
             {
-                flattenedResult.AddRange(byteArray);
+                Array.Copy(byteArray, 0, flattenedResult, offset, byteArray.Length);
+                offset += byteArray.Length;
             }
             else
             {
@@ -72,15 +74,15 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         }
 
         // make sure the flattened result is of the correct size
-        if (flattenedResult.Count != depositRequestsBytesSize)
+        if (offset != depositRequestsBytesSize)
         {
-            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {depositRequestsBytesSize} bytes, got {flattenedResult.Count} bytes.");
+            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {depositRequestsBytesSize} bytes, got {offset} bytes.");
         }
 
         return new ExecutionRequest
         {
             RequestType = (byte)ExecutionRequestType.Deposit,
-            RequestData = flattenedResult.ToArray()
+            RequestData = flattenedResult
         };
     }
 
@@ -131,7 +133,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
     public Hash256 CalculateRequestsHash(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec, out ArrayPoolList<ExecutionRequest> requests)
     {
-        ArrayPoolList<ExecutionRequest> requestsList = new ArrayPoolList<ExecutionRequest>(0);
+        ArrayPoolList<ExecutionRequest> requestsList = new ArrayPoolList<ExecutionRequest>(receipts.Length * 2);
         using (SHA256 sha256 = SHA256.Create())
         {
             using (SHA256 sha256Inner = SHA256.Create())
