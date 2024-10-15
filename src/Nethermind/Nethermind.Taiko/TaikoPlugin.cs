@@ -365,12 +365,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public IBlockProducerRunner CreateBlockProducerRunner()
     {
-        throw new NotImplementedException();
+        throw new NotSupportedException();
     }
 
     public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
     {
-        throw new NotImplementedException();
+        throw new NotSupportedException();
     }
 
     public string SealEngineType => Core.SealEngineType.Taiko;
