@@ -1129,12 +1129,11 @@ namespace Nethermind.Trie.Pruning
 
             public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
             {
-                if (address == null) StateRoot = root;
-                if (trieStore._pruningStrategy.PruningEnabled)
-                    return new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
-                else
-                    return new NonPruningTrieStoreCommitter(trieStore, commitSet.BlockNumber, address,
-                        trieStore._nodeStorage.StartWriteBatch(), writeFlags);
+                if (address is null) StateRoot = root;
+                return trieStore._pruningStrategy.PruningEnabled
+                    ? new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root)
+                    : new NonPruningTrieStoreCommitter(trieStore, commitSet.BlockNumber, address, trieStore._nodeStorage.StartWriteBatch(), writeFlags);
+
             }
 
             public bool TryRequestConcurrencyQuota()
