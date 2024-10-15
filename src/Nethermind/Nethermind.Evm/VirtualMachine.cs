@@ -786,6 +786,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = chunkExecutionResult.Value.ExceptionType;
                     switch (exceptionType)
                     {
+                        case EvmExceptionType.StackOverflow:
+                            goto StackOverflow;
                         case EvmExceptionType.StackUnderflow:
                             goto StackUnderflow;
                         case EvmExceptionType.InvalidJumpDestination:
@@ -2132,6 +2134,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
         goto ReturnFailure;
+    StackOverflow:
+        exceptionType = EvmExceptionType.StackOverflow;
+        goto ReturnFailure;
     InvalidJumpDestination:
         exceptionType = EvmExceptionType.InvalidJumpDestination;
         goto ReturnFailure;
@@ -2535,7 +2540,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
-        CodeInfo codeInfo = new(initCode);
+        CodeInfo codeInfo = new(initCode, env.ExecutingAccount);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         ExecutionEnvironment callEnv = new

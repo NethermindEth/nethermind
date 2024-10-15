@@ -11,12 +11,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.Config;
 using Nethermind.Logging;
 using ILMode = int;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
     {
-        public Hash256 CodeHash { get; init; }
+        public Address? Address { get; init; } 
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
 
@@ -46,18 +47,18 @@ namespace Nethermind.Evm.CodeAnalysis
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-        public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>(), Keccak.OfAnEmptyString);
+        public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>(), null);
 
-        public CodeInfo(byte[] code, Hash256 codeHash = null)
+        public CodeInfo(byte[] code, Address source = null)
         {
-            CodeHash = codeHash ?? Keccak.Compute(code.AsSpan());
+            Address = source;
             MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
-        public CodeInfo(ReadOnlyMemory<byte> code, Hash256 codeHash = null)
+        public CodeInfo(ReadOnlyMemory<byte> code, Address source = null)
         {
-            CodeHash = codeHash ?? Keccak.Compute(code.Span);
+            Address = source;
             MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
@@ -70,12 +71,12 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         internal IlInfo? IlInfo { get; set; } = IlInfo.Empty;
 
-        public CodeInfo(IPrecompile precompile)
+        public CodeInfo(IPrecompile precompile, Address source)
         {
+            Address = source;
             Precompile = precompile;
             MachineCode = Array.Empty<byte>();
             _analyzer = _emptyAnalyzer;
-            CodeHash = Keccak.OfAnEmptyString;
         }
 
         public bool ValidateJump(int destination)

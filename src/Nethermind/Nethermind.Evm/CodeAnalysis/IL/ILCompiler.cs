@@ -35,6 +35,7 @@ internal class ILCompiler
         public string Name => PrecompiledSegment.Method.Name;
         public ExecuteSegment PrecompiledSegment;
         public byte[][] Data;
+        public ushort[] JumpDestinations;
     }
     public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data)
     {
@@ -44,24 +45,26 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
+        ushort[] jumpdests = Array.Empty<ushort>();
         if (code.Length == 0)
         {
             method.Return();
         }
         else
         {
-            EmitSegmentBody(method, code);
+            jumpdests = EmitSegmentBody(method, code);
         }
 
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
             PrecompiledSegment = dynEmitedDelegate,
-            Data = data
+            Data = data,
+            JumpDestinations = jumpdests
         };
     }
 
-    private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
+    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -139,7 +142,7 @@ internal class ILCompiler
         method.CompareEqual();
         method.BranchIfFalse(isContinuation);
 
-        Dictionary<int, Label> jumpDestinations = new();
+        Dictionary<ushort, Label> jumpDestinations = new();
 
         var costs = BuildCostLookup(code);
 
@@ -2001,7 +2004,7 @@ internal class ILCompiler
         {
             method.MarkLabel(jumps[i]);
             // for each destination matching the bit mask emit check for the equality
-            foreach (int dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
+            foreach (ushort dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
             {
                 method.LoadLocal(jmpDestination);
                 method.LoadConstant(dest);
@@ -2025,6 +2028,8 @@ internal class ILCompiler
         // return
         method.MarkLabel(exit);
         method.Return();
+
+        return jumpDestinations.Keys.ToArray();
     }
 
     private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)

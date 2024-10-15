@@ -65,7 +65,7 @@ public static class IlAnalyzer
     {
         Metrics.IlvmContractsAnalyzed++;
 
-        if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.CodeHash}");
+        if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.Address}");
         return Task.Run(() => Analysis(codeInfo, mode, vmConfig, logger));
     }
 
@@ -105,7 +105,7 @@ public static class IlAnalyzer
                 return;
             }
 
-            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.CodeHash.ToShortString()})[{segmentRange.Start}..{segmentRange.End}]";
+            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address.ToString()})[{segmentRange.Start}..{segmentRange.End}]";
 
             int[] statefulOpcodeindex = new int[1 + (codeData.Item1.Length / 5)];
 
@@ -119,7 +119,7 @@ public static class IlAnalyzer
             }
 
             long segmentAvgSize = 0;
-            for (int i = -1; i <= j; i++)
+            for (int i = -1; i < j; i++)
             {
                 int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
                 int end = i == j - 1 || i + 1 == statefulOpcodeindex.Length ? codeData.Item1.Length : statefulOpcodeindex[i + 1];
@@ -142,17 +142,10 @@ public static class IlAnalyzer
                 var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2);
                 if (vmConfig.AggressiveJitMode)
                 {
-                    List<ushort> pcKeys = [segment[0].ProgramCounter];
-                    for (int k = 0; k < segment.Length; k++)
+                    ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
+                    for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
                     {
-                        if (segment[k].Operation == Instruction.JUMPDEST)
-                        {
-                            pcKeys.Add(segment[k].ProgramCounter);
-                        }
-                    }
-                    foreach (ushort pc in pcKeys)
-                    {
-                        ilinfo.Segments.GetOrAdd(pc, segmentExecutionCtx);
+                        ilinfo.Segments.GetOrAdd(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
                     }
                 }
                 else
@@ -193,11 +186,11 @@ public static class IlAnalyzer
         switch (mode)
         {
             case IlInfo.ILMode.PAT_MODE:
-                if (logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.CodeHash}");
+                if (logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.Address}");
                 CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
             case IlInfo.ILMode.JIT_MODE:
-                if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.CodeHash}");
+                if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.Address}");
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
                 break;
         }

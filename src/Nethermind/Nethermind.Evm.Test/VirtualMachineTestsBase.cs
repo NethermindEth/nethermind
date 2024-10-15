@@ -26,10 +26,10 @@ namespace Nethermind.Evm.Test;
 
 public class VirtualMachineTestsBase
 {
-    protected const string SampleHexData1 = "a01234";
-    protected const string SampleHexData2 = "b15678";
-    protected const string HexZero = "00";
-    protected const long DefaultBlockGasLimit = 8000000;
+    public const string SampleHexData1 = "a01234";
+    public const string SampleHexData2 = "b15678";
+    public const string HexZero = "00";
+    public const long DefaultBlockGasLimit = 8000000;
 
     protected IEthereumEcdsa _ethereumEcdsa;
     protected IBlockhashProvider _blockhashProvider;
