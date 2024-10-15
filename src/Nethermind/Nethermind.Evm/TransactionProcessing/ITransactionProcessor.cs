@@ -28,4 +28,10 @@ public interface ITransactionProcessor
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
     TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+
+    /// <summary>
+    /// Call transaction, no validations, don't commit state
+    /// Will NOT charge gas from sender account
+    /// </summary>
+    TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 }

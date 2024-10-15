@@ -11,10 +11,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Optimism.Rpc;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -27,6 +30,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override async Task InitBlockchain()
     {
+        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+
         api.SpecHelper = new(_chainSpecParameters);
         api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
 
@@ -106,4 +111,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
         new ManualHealthHintService(_blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint);
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
+
+    protected override ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
+        api.Config<IOptimismConfig>().SequencerUrl is not null ? NullTxPool.Instance : base.CreateTxPool(codeInfoRepository);
 }
