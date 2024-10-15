@@ -7,9 +7,9 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Taiko.Rpc;
 
-public sealed class PreBuiltTxList(LegacyTransactionForRpc[] transactions, ulong estimatedGasUsed, ulong bytesLength)
+public sealed class PreBuiltTxList(TransactionForRpc[] transactions, ulong estimatedGasUsed, ulong bytesLength)
 {
-    public LegacyTransactionForRpc[] TxList { get; } = transactions;
+    public TransactionForRpc[] TxList { get; } = transactions;
 
     [JsonConverter(typeof(LongRawJsonConverter))]
     public ulong EstimatedGasUsed { get; } = estimatedGasUsed;

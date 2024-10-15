@@ -105,7 +105,7 @@ public class TaikoBlockValidator(
             ?? throw new InvalidOperationException("Couldn't recover sender address for Anchor Transaction");
         if (!tx.SenderAddress!.Equals(GoldenTouchAccount))
         {
-           errorMessage = "Anchor transaction must be sent by the golden touch account";
+            errorMessage = "Anchor transaction must be sent by the golden touch account";
             return false;
         }
 

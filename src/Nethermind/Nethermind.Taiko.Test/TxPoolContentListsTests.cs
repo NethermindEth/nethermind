@@ -21,6 +21,7 @@ using System.Linq;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Taiko.Test;
 
@@ -97,7 +98,7 @@ public class TxPoolContentListsTests
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
 
-        return result.Data.Select(list => list.TxList.Select(tx => (int)tx.Input![0]).ToArray()).ToArray();
+        return result.Data.Select(list => list.TxList.OfType<EIP1559TransactionForRpc>().Select(tx => (int)tx.Input![0]).ToArray()).ToArray();
     }
 
     public static IEnumerable FinalizingTests
@@ -109,8 +110,8 @@ public class TxPoolContentListsTests
                 return [
                     txs.ToDictionary(
                         kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
-                        kv => kv.Value.Select(v =>
-                            Build.A.Transaction.WithType(TxType.Legacy).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)v]).SignedAndResolved().TestObject
+                        kv => kv.Value.Select(txId =>
+                            Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
                         ).ToArray()),
                     localAccounts.Select(a => Build.An.Address.FromNumber(a).TestObject).ToArray(),
                     blockGasLimit,
