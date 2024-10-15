@@ -271,7 +271,7 @@ public class P2PProtocolHandler(
         if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
         Send(PingMessage.Instance);
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
 
         CancellationTokenSource delayCancellation = new();
         try
@@ -286,7 +286,7 @@ public class P2PProtocolHandler(
                 return false;
             }
 
-            long latency = stopwatch.ElapsedMilliseconds;
+            long latency = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
             _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
             return true;
         }

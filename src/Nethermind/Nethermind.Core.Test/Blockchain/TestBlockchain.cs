@@ -38,6 +38,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -185,15 +186,16 @@ public class TestBlockchain : IDisposable
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
-        TxPool = CreateTxPool();
+        CodeInfoRepository codeInfoRepository = new();
+        TxPool = CreateTxPool(codeInfoRepository);
 
         IChainHeadInfoProvider chainHeadInfoProvider =
-            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader);
+            new ChainHeadInfoProvider(SpecProvider, BlockTree, StateReader, codeInfoRepository);
 
-        NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
+        NonceManager = new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider);
 
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
-        CodeInfoRepository codeInfoRepository = new();
+
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
@@ -321,12 +323,12 @@ public class TestBlockchain : IDisposable
 
     public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
 
-    protected virtual TxPool.TxPool CreateTxPool() =>
+    protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
         new(
             EthereumEcdsa,
             new BlobTxStorage(),
-            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
+            new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState, codeInfoRepository),
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());
@@ -368,8 +370,11 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
         }
 
-        if (SpecProvider.GenesisSpec.ConsensusRequestsEnabled)
+        if (SpecProvider.GenesisSpec.RequestsEnabled)
+        {
             genesisBlockBuilder.WithConsensusRequests(0);
+        }
+
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
