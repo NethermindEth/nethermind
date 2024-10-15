@@ -304,11 +304,18 @@ namespace Nethermind.Trie.Pruning
             if (_pruningStrategy.PruningEnabled)
             {
                 if (_currentBlockCommitter is null) throw new InvalidOperationException($"With pruning triestore, {nameof(BeginBlockCommit)} must be called.");
+            }
 
-                return _currentBlockCommitter.CreateCommitterForBlock(address, root);
+            if (_currentBlockCommitter != null)
+            {
+                // Note, archive node still use this path. This is because it need the block commit set to handle
+                // reorg announcement.
+                return _currentBlockCommitter.GetTrieCommitter(address, root, writeFlags);
             }
             else
             {
+                // This happens when there are no block involved, such as during snap sync or just calculating
+                // patricia root.
                 return new NonPruningTrieStoreCommitter(this, address, _nodeStorage.StartWriteBatch(), writeFlags);
             }
         }
@@ -323,14 +330,15 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 Monitor.Enter(_dirtyNodesLock);
-                var committer = new PruningBlockCommitter(this, CreateCommitSet(blockNumber));
-                _currentBlockCommitter = committer;
-                return committer;
+
+                _currentBlockCommitter = new PruningBlockCommitter(this, CreateCommitSet(blockNumber));
             }
             else
             {
-                return new NoopBlockStoreCommittter();
+                _currentBlockCommitter = new NonPruningTrieStoreBlockCommitter(this, CreateCommitSet(blockNumber));
             }
+
+            return _currentBlockCommitter;
         }
 
         private BlockCommitSet CreateCommitSet(long blockNumber)
@@ -344,13 +352,15 @@ namespace Nethermind.Trie.Pruning
             BlockCommitSet commitSet = new(blockNumber);
             (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue)).Enqueue(commitSet);
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
+            // Why are we announcing **before** committing next block??
+            // Should it be after commit?
             AnnounceReorgBoundaries();
             DequeueOldCommitSets();
 
             return commitSet;
         }
 
-        private void FinishBlockCommit(BlockCommitSet set, Hash256? address, TrieNode? root)
+        private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
         {
             Debug.Assert(_pruningStrategy.PruningEnabled);
 
@@ -363,7 +373,7 @@ namespace Nethermind.Trie.Pruning
                 INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
                 try
                 {
-                    PersistBlockCommitSet(address, set, currentBatch);
+                    PersistBlockCommitSet(set, currentBatch);
                     PruneCommitSet(set);
                 }
                 finally
@@ -379,7 +389,9 @@ namespace Nethermind.Trie.Pruning
             }
 
             _currentBlockCommitter = null;
-            Monitor.Exit(_dirtyNodesLock);
+
+            if (_pruningStrategy.PruningEnabled)
+                Monitor.Exit(_dirtyNodesLock);
 
             Prune();
         }
@@ -722,7 +734,7 @@ namespace Nethermind.Trie.Pruning
 
         private long _latestPersistedBlockNumber;
 
-        private PruningBlockCommitter? _currentBlockCommitter = null;
+        private IBlockCommitter? _currentBlockCommitter = null;
 
 
         private long LatestCommittedBlockNumber { get; set; }
@@ -747,7 +759,6 @@ namespace Nethermind.Trie.Pruning
         /// <param name="persistedHashes">Track persisted hashes in this dictionary if not null</param>
         /// <param name="writeFlags"></param>
         private void PersistBlockCommitSet(
-            Hash256? address,
             BlockCommitSet commitSet,
             INodeStorage.WriteBatch writeBatch,
             Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
@@ -764,7 +775,7 @@ namespace Nethermind.Trie.Pruning
 
             long start = Stopwatch.GetTimestamp();
             TreePath path = TreePath.Empty;
-            commitSet.Root?.CallRecursively(PersistNode, address, ref path, GetTrieStore(null), true, _logger);
+            commitSet.Root?.CallRecursively(PersistNode, null, ref path, GetTrieStore(null), true, _logger);
             long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
 
@@ -996,7 +1007,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-                    PersistBlockCommitSet(null, blockCommitSet, writeBatch);
+                    PersistBlockCommitSet(blockCommitSet, writeBatch);
                 }
                 writeBatch.Dispose();
 
@@ -1035,7 +1046,7 @@ namespace Nethermind.Trie.Pruning
 
                         commitSetCount++;
                         using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
-                        PersistBlockCommitSet(null, commitSet, writeBatch);
+                        PersistBlockCommitSet(commitSet, writeBatch);
                     }
                 }
 
@@ -1171,14 +1182,14 @@ namespace Nethermind.Trie.Pruning
             internal TrieNode? StateRoot = null;
             private int _concurrency = Environment.ProcessorCount;
 
-            public ICommitter CreateCommitterForBlock(Hash256? address, TrieNode? root)
-            {
-                return new TrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
-            }
-
             public void Dispose()
             {
-                trieStore.FinishBlockCommit(commitSet, null, StateRoot);
+                trieStore.FinishBlockCommit(commitSet, StateRoot);
+            }
+
+            public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+            {
+                return new TrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
             }
 
             public bool TryRequestConcurrencyQuota()
@@ -1199,7 +1210,7 @@ namespace Nethermind.Trie.Pruning
             TrieStore trieStore,
             Hash256? address,
             INodeStorage.WriteBatch writeBatch,
-            WriteFlags writeFlags
+            WriteFlags writeFlags = WriteFlags.None
         ) : ICommitter
         {
             public void Dispose()
@@ -1207,19 +1218,31 @@ namespace Nethermind.Trie.Pruning
                 writeBatch.Dispose();
             }
 
-            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
+            {
                 trieStore.CommitNodeAndPersist(address, ref path, nodeCommitInfo, writeFlags: writeFlags, writeBatch: writeBatch);
+            }
 
             public bool TryRequestConcurrentQuota() => false;
 
             public void ReturnConcurrencyQuota() {}
         }
 
-        private class NoopBlockStoreCommittter() : IBlockCommitter
+        /// So even in archive mode, it still need to call FinishBlockCommit
+        private class NonPruningTrieStoreBlockCommitter(TrieStore trieStore, BlockCommitSet commitSet) : IBlockCommitter
         {
             public void Dispose()
             {
+                trieStore.FinishBlockCommit(commitSet, StateRoot);
             }
+
+            public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+            {
+                if (address == null) StateRoot = root;
+                return new NonPruningTrieStoreCommitter(trieStore, address, trieStore._nodeStorage.StartWriteBatch(), writeFlags: writeFlags);
+            }
+
+            private TrieNode? StateRoot { get; set; }
         }
 
         internal static class HashHelpers

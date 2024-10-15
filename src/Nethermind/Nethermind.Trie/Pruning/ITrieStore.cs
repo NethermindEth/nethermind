@@ -44,6 +44,7 @@ namespace Nethermind.Trie.Pruning
 
     public interface IBlockCommitter : IDisposable
     {
+        ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
         bool TryRequestConcurrencyQuota() => false;
         void ReturnConcurrencyQuota() { }
     }

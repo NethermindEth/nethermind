@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -36,8 +37,7 @@ namespace Nethermind.Trie.Pruning
             public void Dispose() { }
 
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
-            public ICommitter GetCommitterFor(Hash256? address) => this;
-            public void Finish(TrieNode? stateRoot) { }
+            public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => this;
         }
     }
 }
