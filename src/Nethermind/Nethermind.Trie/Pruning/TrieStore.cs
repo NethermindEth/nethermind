@@ -72,7 +72,6 @@ namespace Nethermind.Trie.Pruning
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
-            _publicStore = new TrieKeyValueStore(this);
             _persistedNodeRecorder = PersistedNodeRecorder;
 
             if (pruningStrategy.PruningEnabled)
@@ -672,8 +671,6 @@ namespace Nethermind.Trie.Pruning
 
         protected readonly INodeStorage _nodeStorage;
 
-        private readonly TrieKeyValueStore _publicStore;
-
         private readonly IPruningStrategy _pruningStrategy;
 
         private readonly IPersistenceStrategy _persistenceStrategy;
@@ -1085,37 +1082,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        // Used to serve node by hash
-        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            Hash256 asHash = new Hash256(key);
-            return _pruningStrategy.PruningEnabled
-                   && DirtyNodesTryGetValue(new TrieStoreDirtyNodesCache.Key(null, TreePath.Empty, asHash), out TrieNode? trieNode)
-                   && trieNode is not null
-                   && trieNode.NodeType != NodeType.Unknown
-                   && trieNode.FullRlp.IsNotNull
-                ? trieNode.FullRlp.ToArray()
-                : _nodeStorage.Get(null, TreePath.Empty, asHash, flags);
-        }
-
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
         public bool IsCurrentlyFullPruning => _persistenceStrategy.IsFullPruning;
 
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
         {
             _nodeStorage.Set(address, path, keccak, rlp);
-        }
-
-        private class TrieKeyValueStore : IReadOnlyKeyValueStore
-        {
-            private readonly TrieStore _trieStore;
-
-            public TrieKeyValueStore(TrieStore trieStore)
-            {
-                _trieStore = trieStore;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
         }
 
         public bool HasRoot(Hash256 stateRoot)
