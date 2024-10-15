@@ -43,15 +43,14 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         if (await _locker.WaitAsync(_timeout))
         {
-            Stopwatch watch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             try
             {
                 return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
             }
             finally
             {
-                watch.Stop();
-                Metrics.ForkchoiceUpdedExecutionTime = watch.ElapsedMilliseconds;
+                Metrics.ForkchoiceUpdedExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
                 _locker.Release();
             }
         }
@@ -85,7 +84,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (await _locker.WaitAsync(_timeout))
         {
-            Stopwatch watch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             try
             {
                 using IDisposable region = _gcKeeper.TryStartNoGCRegion();
@@ -98,8 +97,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             finally
             {
-                watch.Stop();
-                Metrics.NewPayloadExecutionTime = watch.ElapsedMilliseconds;
+                Metrics.NewPayloadExecutionTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
                 _locker.Release();
             }
         }

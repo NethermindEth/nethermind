@@ -99,6 +99,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
 
+    public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
+
     private void TimerOnElapsed(object sender, ElapsedEventArgs e)
     {
         try

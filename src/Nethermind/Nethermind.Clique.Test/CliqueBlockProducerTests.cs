@@ -424,9 +424,8 @@ public class CliqueBlockProducerTests
         {
             if (_logger.IsInfo) _logger.Info($"WAITING ON {nodeKey.Address} FOR BLOCK {number}");
             SpinWait spinWait = new();
-            Stopwatch stopwatch = new();
-            stopwatch.Start();
-            while (stopwatch.ElapsedMilliseconds < _timeout)
+            long startTime = Stopwatch.GetTimestamp();
+            while (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < _timeout)
             {
                 spinWait.SpinOnce();
                 if (_blockTrees[nodeKey].Head.Number >= number)
