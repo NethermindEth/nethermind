@@ -162,8 +162,10 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private void CommitNode(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None, INodeStorage.WriteBatch? writeBatch = null)
+        private void CommitAndInsertToDirtyNodes(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo)
         {
+            Debug.Assert(_pruningStrategy.PruningEnabled);
+
             if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
@@ -179,17 +181,8 @@ namespace Nethermind.Trie.Pruning
                     ThrowNodeHasBeenSeen(blockNumber, node);
                 }
 
-                if (_pruningStrategy.PruningEnabled)
-                {
-                    node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
-                }
-
+                node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen);
-
-                if (!_pruningStrategy.PruningEnabled)
-                {
-                    PersistNode(address, path, node, blockNumber, writeBatch!, writeFlags);
-                }
 
                 IncrementCommittedNodesCount();
             }
@@ -207,6 +200,29 @@ namespace Nethermind.Trie.Pruning
             [DoesNotReturn]
             [StackTraceHidden]
             static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
+        }
+
+        private void CommitAndPersistNode(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags, INodeStorage.WriteBatch? writeBatch)
+        {
+            Debug.Assert(!_pruningStrategy.PruningEnabled);
+
+            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            {
+                TrieNode node = nodeCommitInfo.Node;
+
+                if (node.Keccak is null)
+                {
+                    ThrowUnknownHash(node);
+                }
+
+                PersistNode(address, path, node, writeBatch!, writeFlags);
+
+                IncrementCommittedNodesCount();
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
         }
 
         private int GetNodeShardIdx(in TreePath path, Hash256 hash) =>
@@ -298,7 +314,7 @@ namespace Nethermind.Trie.Pruning
                 // Note, archive node still use this path. This is because it needs the block commit set to handle reorg announcement.
                 ? _currentBlockCommitter.GetTrieCommitter(address, root, writeFlags)
                 // This happens when there are no block involved, such as during snap sync or just calculating patricia root.
-                : new NonPruningTrieStoreCommitter(this, 0, address, _nodeStorage.StartWriteBatch(), writeFlags);
+                : new NonPruningTrieStoreCommitter(this, address, _nodeStorage.StartWriteBatch(), writeFlags);
         }
 
         public IBlockCommitter BeginBlockCommit(long blockNumber)
@@ -718,7 +734,7 @@ namespace Nethermind.Trie.Pruning
             void PersistNode(TrieNode tn, Hash256? address2, TreePath path)
             {
                 persistedNodeRecorder?.Invoke(path, address2, tn);
-                this.PersistNode(address2, path, tn, commitSet.BlockNumber, writeBatch, writeFlags);
+                this.PersistNode(address2, path, tn, writeBatch, writeFlags);
             }
 
             if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
@@ -751,7 +767,7 @@ namespace Nethermind.Trie.Pruning
                 if (path.Length < parallelBoundaryPathLength)
                 {
                     persistedNodeRecorder?.Invoke(path, address2, tn);
-                    PersistNode(address2, path, tn, commitSet.BlockNumber, topLevelWriteBatch, writeFlags);
+                    PersistNode(address2, path, tn, topLevelWriteBatch, writeFlags);
                 }
                 else
                 {
@@ -789,7 +805,7 @@ namespace Nethermind.Trie.Pruning
             Task.WaitAll(parallelStartNodes.Select(entry => Task.Run(() =>
             {
                 (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
-                PersistNodeStartingFrom(trieNode, address2, path2, commitSet, persistedNodeRecorder, writeFlags, disposeQueue);
+                PersistNodeStartingFrom(trieNode, address2, path2, persistedNodeRecorder, writeFlags, disposeQueue);
             })).ToArray());
 
             disposeQueue.CompleteAdding();
@@ -806,7 +822,7 @@ namespace Nethermind.Trie.Pruning
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
 
-        private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path, BlockCommitSet commitSet,
+        private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
             Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
             WriteFlags writeFlags, BlockingCollection<INodeStorage.WriteBatch> disposeQueue)
         {
@@ -816,7 +832,7 @@ namespace Nethermind.Trie.Pruning
             void DoPersist(TrieNode node, Hash256? address3, TreePath path2)
             {
                 persistedNodeRecorder?.Invoke(path2, address3, node);
-                PersistNode(address3, path2, node, commitSet.BlockNumber, writeBatch, writeFlags);
+                PersistNode(address3, path2, node, writeBatch, writeFlags);
 
                 persistedNodeCount++;
                 if (persistedNodeCount % 512 == 0)
@@ -830,22 +846,20 @@ namespace Nethermind.Trie.Pruning
             disposeQueue.Add(writeBatch);
         }
 
-        private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
+        private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
         {
             ArgumentNullException.ThrowIfNull(currentNode);
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen >= 0, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
                 // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
+                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
                 writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen);
                 IncrementPersistedNodesCount();
             }
             else
@@ -1107,8 +1121,7 @@ namespace Nethermind.Trie.Pruning
                 if (address is null) StateRoot = root;
                 return trieStore._pruningStrategy.PruningEnabled
                     ? new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root)
-                    : new NonPruningTrieStoreCommitter(trieStore, commitSet.BlockNumber, address, trieStore._nodeStorage.StartWriteBatch(), writeFlags);
-
+                    : new NonPruningTrieStoreCommitter(trieStore, address, trieStore._nodeStorage.StartWriteBatch(), writeFlags);
             }
 
             public bool TryRequestConcurrencyQuota()
@@ -1147,7 +1160,7 @@ namespace Nethermind.Trie.Pruning
             }
 
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
-                trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo);
+                trieStore.CommitAndInsertToDirtyNodes(blockNumber, address, ref path, nodeCommitInfo);
 
             public bool TryRequestConcurrentQuota() => blockCommitter.TryRequestConcurrencyQuota();
 
@@ -1156,7 +1169,6 @@ namespace Nethermind.Trie.Pruning
 
         private class NonPruningTrieStoreCommitter(
             TrieStore trieStore,
-            long blockNumber,
             Hash256? address,
             INodeStorage.WriteBatch writeBatch,
             WriteFlags writeFlags = WriteFlags.None
@@ -1169,7 +1181,7 @@ namespace Nethermind.Trie.Pruning
 
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
             {
-                trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags, writeBatch: writeBatch);
+                trieStore.CommitAndPersistNode(address, ref path, nodeCommitInfo, writeFlags: writeFlags, writeBatch: writeBatch);
             }
 
             public bool TryRequestConcurrentQuota() => false;
