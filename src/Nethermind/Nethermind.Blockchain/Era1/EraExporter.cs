@@ -146,6 +146,4 @@ public class EraExporter : IEraExporter
         if (_logger.IsInfo)
             _logger.Info($"Export progress: {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.BlockProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} Blk/s  |  {args.TxProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} tx/s");
     }
-
-
 }

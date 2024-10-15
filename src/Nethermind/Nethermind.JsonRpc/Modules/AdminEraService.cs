@@ -200,7 +200,6 @@ public class AdminEraService : IAdminEraService
     {
         try
         {
-            _eraImporter.VerificationProgress += LogVerificationProgress;
             if (_logger.IsInfo) _logger.Info($"Starting history verification in '{eraSource}'");
             await _eraImporter.VerifyEraFiles(eraSource, accumulatorFile, _processExit.Token);
             if (_logger.IsInfo) _logger.Info($"Succesfully verified all {_eraExporter.NetworkName} archives in '{eraSource}'");
@@ -218,15 +217,5 @@ public class AdminEraService : IAdminEraService
             _logger.Error("History verification failed.", e);
             throw;
         }
-        finally
-        {
-            _eraImporter.VerificationProgress -= LogVerificationProgress;
-        }
-    }
-
-    private void LogVerificationProgress(object sender, VerificationProgressArgs args)
-    {
-        if (_logger.IsInfo)
-            _logger.Info($"Verification progress: {args.Processed,10}/{args.TotalToProcess} archives  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.Processed / args.Elapsed.TotalSeconds,10:0.00} archives/s");
     }
 }

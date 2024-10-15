@@ -36,8 +36,6 @@ public class EraImporter : IEraImporter
 
     public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(10);
 
-    public event EventHandler<VerificationProgressArgs> VerificationProgress;
-
     public EraImporter(
         IFileSystem fileSystem,
         IBlockTree blockTree,
@@ -201,7 +199,7 @@ public class EraImporter : IEraImporter
 
         string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
         var accumulators = lines.Select(s => new ValueHash256(s)).ToHashSet();
-        await eraStore.VerifyAll(_specProvider, cancellation, accumulators, arg => VerificationProgress?.Invoke(this, arg));
+        await eraStore.VerifyAll(_specProvider, cancellation, accumulators, LogVerificationProgress);
     }
 
     private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
@@ -212,5 +210,11 @@ public class EraImporter : IEraImporter
         {
             throw new EraImportException($"Wrong receipts root in Era1 archive for block {block.ToString(Block.Format.Short)}.");
         }
+    }
+
+    private void LogVerificationProgress(VerificationProgressArgs args)
+    {
+        if (_logger.IsInfo)
+            _logger.Info($"Verification progress: {args.Processed,10}/{args.TotalToProcess} archives  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.Processed / args.Elapsed.TotalSeconds,10:0.00} archives/s");
     }
 }
