@@ -20,7 +20,8 @@ public class CompositeNodeSource : INodeSource
     {
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
 
-        Task[] feedTasks = _nodeSources.Select(async (innerSource) =>
+        // TODO: .Net 9 stackalloc
+        Task[] feedTasks = _nodeSources.Select(async innerSource =>
         {
             await foreach (Node node in innerSource.DiscoverNodes(cancellationToken))
             {
