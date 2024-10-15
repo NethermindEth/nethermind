@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -174,22 +174,31 @@ public class DebugModuleTests
         var resultOverrideBefore = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             stateOverrides = stateOverride,
-            enableMemory = false, disableStorage = true, disableStack = true,
-            tracer = "callTracer", tracerConfig = new { withLog = false }
+            enableMemory = false,
+            disableStorage = true,
+            disableStack = true,
+            tracer = "callTracer",
+            tracerConfig = new { withLog = false }
         });
 
         var resultNoOverride = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             // configuration to minimize number of fields being compared
-            enableMemory = false, disableStorage = true, disableStack = true,
-            tracer = "callTracer", tracerConfig = new { withLog = false }
+            enableMemory = false,
+            disableStorage = true,
+            disableStack = true,
+            tracer = "callTracer",
+            tracerConfig = new { withLog = false }
         });
 
         var resultOverrideAfter = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
         {
             stateOverrides = stateOverride,
-            enableMemory = false, disableStorage = true, disableStack = true,
-            tracer = "callTracer", tracerConfig = new { withLog = false }
+            enableMemory = false,
+            disableStorage = true,
+            disableStack = true,
+            tracer = "callTracer",
+            tracerConfig = new { withLog = false }
         });
 
         Assert.Multiple(() =>
