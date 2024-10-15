@@ -26,6 +26,6 @@ public interface ICommitter : IDisposable
 {
     void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
 
-    bool CanSpawnTask() => false;
+    bool TryRequestConcurrentQuota() => false;
     void ReturnConcurrencyQuota() { }
 }

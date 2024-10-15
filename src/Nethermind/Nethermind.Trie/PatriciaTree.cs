@@ -140,8 +140,9 @@ namespace Nethermind.Trie
 
             int maxLevelForConcurrentCommit = _writeBeforeCommit switch
             {
-                > 64 * 16 => 1, // we separate at two top levels
-                > 64 => 0, // we separate at top level
+                > 4 * 16 * 16 => 2, // we separate at three top levels
+                > 4 * 16 => 1, // we separate at two top levels
+                > 4 => 0, // we separate at top level
                 _ => -1
             };
 
@@ -206,7 +207,7 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            if (i < 15 && committer.CanSpawnTask())
+                            if (i < 15 && committer.TryRequestConcurrentQuota())
                             {
                                 childTasks ??= new ArrayPoolList<Task>(15);
                                 TreePath childPath = path.Append(i);

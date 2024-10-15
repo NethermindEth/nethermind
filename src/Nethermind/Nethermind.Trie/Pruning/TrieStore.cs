@@ -1158,7 +1158,7 @@ namespace Nethermind.Trie.Pruning
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
                 trieStore.CommitNodeToDirtyCache(blockNumber, address, ref path, nodeCommitInfo);
 
-            public bool CanSpawnTask() => pruningBlockCommitter.CanSpawnTask();
+            public bool TryRequestConcurrentQuota() => pruningBlockCommitter.TryRequestConcurrencyQuota();
 
             public void ReturnConcurrencyQuota() => pruningBlockCommitter.ReturnConcurrencyQuota();
         }
@@ -1181,7 +1181,7 @@ namespace Nethermind.Trie.Pruning
                 trieStore.FinishBlockCommit(commitSet, null, StateRoot);
             }
 
-            public bool CanSpawnTask()
+            public bool TryRequestConcurrencyQuota()
             {
                 if (Interlocked.Decrement(ref _concurrency) >= 0)
                 {
@@ -1210,7 +1210,7 @@ namespace Nethermind.Trie.Pruning
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
                 trieStore.CommitNodeAndPersist(address, ref path, nodeCommitInfo, writeFlags: writeFlags, writeBatch: writeBatch);
 
-            public bool CanSpawnTask() => false;
+            public bool TryRequestConcurrentQuota() => false;
 
             public void ReturnConcurrencyQuota() {}
         }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -318,16 +319,35 @@ namespace Nethermind.State
         /// Commit persistent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
-        public void CommitTrees()
+        public void CommitTrees(IBlockCommitter blockCommitter)
         {
+            // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
+            // may make it works. Always check on mainnet.
+
+            using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 if (!_toUpdateRoots.Contains(storage.Key))
                 {
                     continue;
                 }
-                storage.Value.Commit();
+
+                if (blockCommitter.TryRequestConcurrencyQuota())
+                {
+                    commitTask.Add(Task.Factory.StartNew((ctx) =>
+                    {
+                        StorageTree st = (StorageTree)ctx;
+                        st.Commit();
+                        blockCommitter.ReturnConcurrencyQuota();
+                    }, storage.Value));
+                }
+                else
+                {
+                    storage.Value.Commit();
+                }
             }
+
+            Task.WaitAll(commitTask.ToArray());
 
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise

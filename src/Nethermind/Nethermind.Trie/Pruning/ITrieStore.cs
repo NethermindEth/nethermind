@@ -44,7 +44,7 @@ namespace Nethermind.Trie.Pruning
 
     public interface IBlockCommitter : IDisposable
     {
-        bool CanSpawnTask() => false;
+        bool TryRequestConcurrencyQuota() => false;
         void ReturnConcurrencyQuota() { }
     }
 }
