@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
@@ -323,7 +324,7 @@ public class Era1ModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(true);
-        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
+        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
         await exporter.Export("test", 0, ChainLength - 1);
 
         BlockTree importTree = Build.A.BlockTree()
@@ -336,6 +337,7 @@ public class Era1ModuleTests
             blockValidator,
             receiptStorage,
             specProvider,
+            LimboLogs.Instance,
             "abc");
         await importer.ImportAsArchiveSync("test", CancellationToken.None);
 
@@ -354,7 +356,13 @@ public class Era1ModuleTests
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
+        EraExporter exporter = new(
+            fileSystem,
+            exportTree,
+            receiptStorage,
+            specProvider,
+            LimboLogs.Instance,
+            "abc");
         await exporter.Export("test", 0, ChainLength - 1);
 
         BlockTree importTree = Build.A.BlockTree()
@@ -369,6 +377,7 @@ public class Era1ModuleTests
             blockValidator,
             receiptStorage,
             specProvider,
+            LimboLogs.Instance,
             "abc");
         await importer.Import("test", 0, exportTree.Head!.Number, Path.Combine("test", "accumulators.txt"));
 
@@ -387,7 +396,13 @@ public class Era1ModuleTests
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
+        EraExporter exporter = new(
+            fileSystem,
+            exportTree,
+            receiptStorage,
+            specProvider,
+            LimboLogs.Instance,
+            "abc");
         await exporter.Export("test", 0, ChainLength - 1);
 
         BlockTree importTree = Build.A.BlockTree()
@@ -399,6 +414,7 @@ public class Era1ModuleTests
             blockValidator,
             receiptStorage,
             specProvider,
+            LimboLogs.Instance,
             "abc");
 
         await importer.Import("test", 0, exportTree.Head!.Number, Path.Combine("test", "accumulators.txt"));

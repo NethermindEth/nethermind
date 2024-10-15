@@ -138,12 +138,14 @@ public class RegisterRpcModules : IStep
             _api.BlockValidator,
             _api.ReceiptStorage,
             _api.SpecProvider,
+            _api.LogManager,
             BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
         IEraExporter eraExporter = new EraExporter(
            _api.FileSystem,
            _api.BlockTree,
            _api.ReceiptStorage,
            _api.SpecProvider,
+            _api.LogManager,
            BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
         IAdminEraService eraService = new AdminEraService(
             _api.BlockTree,

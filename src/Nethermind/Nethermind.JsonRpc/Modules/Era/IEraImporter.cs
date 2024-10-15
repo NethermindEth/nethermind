@@ -10,8 +10,6 @@ namespace Nethermind.JsonRpc.Modules;
 
 public interface IEraImporter
 {
-    event EventHandler<ImportProgressChangedArgs> ImportProgressChanged;
-
     event EventHandler<VerificationProgressArgs> VerificationProgress;
 
     Task Import(string src, long start, long end, string? accumulatorFile = null, CancellationToken cancellation = default);

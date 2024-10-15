@@ -13,10 +13,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
+using Nethermind.Blockchain.Era1;
 using Nethermind.Era1;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules;
 public class EraImporter : IEraImporter
@@ -30,10 +32,10 @@ public class EraImporter : IEraImporter
     private readonly int _epochSize;
     private readonly string _networkName;
     private readonly ReceiptMessageDecoder _receiptDecoder;
+    private readonly ILogger _logger;
 
     public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(10);
 
-    public event EventHandler<ImportProgressChangedArgs> ImportProgressChanged;
     public event EventHandler<VerificationProgressArgs> VerificationProgress;
 
     public EraImporter(
@@ -42,6 +44,7 @@ public class EraImporter : IEraImporter
         IBlockValidator blockValidator,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
+        ILogManager logManager,
         string networkName,
         int epochSize = EraWriter.MaxEra1Size)
     {
@@ -51,6 +54,7 @@ public class EraImporter : IEraImporter
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _receiptDecoder = new();
+        _logger = logManager.GetClassLogger<EraImporter>();
         this._epochSize = epochSize;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
@@ -58,11 +62,16 @@ public class EraImporter : IEraImporter
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
     {
+        // TODO: End not handled missing
+
+        if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
         if (!string.IsNullOrEmpty(accumulatorFile))
         {
             await VerifyEraFiles(src, accumulatorFile, cancellation);
         }
         await ImportInternal(src, start, false, cancellation);
+
+        if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
     }
 
     public Task ImportAsArchiveSync(string src, CancellationToken cancellation)
@@ -125,13 +134,19 @@ public class EraImporter : IEraImporter
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                 if (elapsed > ProgressInterval)
                 {
-                    ImportProgressChanged?.Invoke(this, new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
+                    LogImportProgress(new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
                     lastProgress = DateTime.Now;
                 }
             }
             epochProcessed++;
         }
-        ImportProgressChanged?.Invoke(this, new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
+        LogImportProgress(new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
+    }
+
+    private void LogImportProgress(ImportProgressChangedArgs args)
+    {
+        if (_logger.IsInfo)
+            _logger.Info($"Import progress: | {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  {args.EpochProcessed}/{args.TotalEpochs} epochs  |  elapsed {args.Elapsed:hh\\:mm\\:ss}");
     }
 
     private void InsertBlockAndReceipts(Block b, TxReceipt[] r)

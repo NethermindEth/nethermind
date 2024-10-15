@@ -13,7 +13,5 @@ public interface IEraExporter
 {
     string NetworkName { get; }
 
-    event EventHandler<ExportProgressArgs> ExportProgress;
-
     Task Export(string destinationPath, long start, long end, int size = EraWriter.MaxEra1Size, bool createAccumulator = true, CancellationToken cancellation = default);
 }

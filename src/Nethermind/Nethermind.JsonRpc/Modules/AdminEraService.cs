@@ -123,8 +123,6 @@ public class AdminEraService : IAdminEraService
     {
         try
         {
-            _eraExporter.ExportProgress += LogExportProgress;
-
             if (_logger.IsInfo) _logger.Info($"Starting history export from {from} to {to}");
             await _eraExporter.Export(
                 destination,
@@ -147,26 +145,17 @@ public class AdminEraService : IAdminEraService
             _logger.Error("Export error", e);
             throw;
         }
-        finally
-        {
-            _eraExporter.ExportProgress -= LogExportProgress;
-        }
     }
 
     private async Task StartImportTask(string source, string accumulatorFile, long from, long to)
     {
-        try
-        {
-            _eraImporter.ImportProgressChanged += LogImportProgress;
-
-            if (_logger.IsInfo) _logger.Info($"Starting history import from {from} to {to}");
+        try {
             await _eraImporter.Import(
                 source,
                 from,
                 to,
                 accumulatorFile,
                 _processExit.Token);
-            if (_logger.IsInfo) _logger.Info($"Finished history import from {from} to {to}");
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
@@ -180,10 +169,6 @@ public class AdminEraService : IAdminEraService
         {
             _logger.Error("Import error", e);
             throw;
-        }
-        finally
-        {
-            _eraImporter.ImportProgressChanged -= LogImportProgress;
         }
     }
 
@@ -237,17 +222,6 @@ public class AdminEraService : IAdminEraService
         {
             _eraImporter.VerificationProgress -= LogVerificationProgress;
         }
-    }
-
-    private void LogImportProgress(object sender, ImportProgressChangedArgs args)
-    {
-        if (_logger.IsInfo)
-            _logger.Info($"Import progress: | {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  {args.EpochProcessed}/{args.TotalEpochs} epochs  |  elapsed {args.Elapsed:hh\\:mm\\:ss}");
-    }
-    private void LogExportProgress(object sender, ExportProgressArgs args)
-    {
-        if (_logger.IsInfo)
-            _logger.Info($"Export progress: {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.BlockProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} Blk/s  |  {args.TxProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} tx/s");
     }
 
     private void LogVerificationProgress(object sender, VerificationProgressArgs args)

@@ -289,12 +289,13 @@ public class InitializeNetwork : IStep
         }
 
         EraImporter eraImport = new(
-         api.FileSystem,
-         api.BlockTree,
-         api.BlockValidator,
-         api.ReceiptStorage,
-         api.SpecProvider,
-         networkName);
+            api.FileSystem,
+            api.BlockTree,
+            api.BlockValidator,
+            api.ReceiptStorage,
+            api.SpecProvider,
+            api.LogManager,
+            networkName);
 
         try
         {
@@ -304,10 +305,6 @@ public class InitializeNetwork : IStep
             }
             else
             {
-                eraImport.ImportProgressChanged += (s, args) =>
-                {
-                    _logger.Info($"Era1 import | {args.EpochProcessed,5}/{args.TotalEpochs} archives | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.TotalBlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
-                };
                 //Import as a full archive
                 _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
                 await eraImport.ImportAsArchiveSync(syncConfig.ImportDirectory, cancellation);

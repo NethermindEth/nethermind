@@ -14,6 +14,7 @@ using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
 using Nethermind.Blockchain.Era1;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Era1.Test;
@@ -28,7 +29,7 @@ public class EraExporterTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "test");
+        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "test");
 
         Assert.That(() => sut.Export("", 0, 0, size), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
@@ -44,7 +45,7 @@ public class EraExporterTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(chainlength).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "abc");
+        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
 
         await sut.Export("test", 0, chainlength - 1, size, createAccumulator: false);
         Assert.That(fileSystem.AllFiles.Count, Is.EqualTo(expectedNumberOfFiles));
@@ -60,7 +61,7 @@ public class EraExporterTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "abc");
+        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
 
         Assert.That(() => sut.Export("test", 0, to), Throws.TypeOf<EraException>());
     }
@@ -73,7 +74,7 @@ public class EraExporterTests
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         receiptStorage.Get(Arg.Any<Block>()).ReturnsNull();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "abc");
+        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
 
         Assert.That(() => sut.Export("test", 0, 1), Throws.TypeOf<EraException>());
     }

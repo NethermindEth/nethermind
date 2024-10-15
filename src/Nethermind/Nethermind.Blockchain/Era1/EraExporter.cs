@@ -16,6 +16,7 @@ using System.Linq;
 using Nethermind.Blockchain.Era1;
 using System.Collections.Generic;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain;
 public class EraExporter : IEraExporter
@@ -26,8 +27,7 @@ public class EraExporter : IEraExporter
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
     private readonly string _networkName;
-
-    public event EventHandler<ExportProgressArgs> ExportProgress;
+    private readonly ILogger _logger;
 
     public string NetworkName => _networkName;
 
@@ -38,6 +38,7 @@ public class EraExporter : IEraExporter
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
+        ILogManager logManager,
         string networkName)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -45,6 +46,7 @@ public class EraExporter : IEraExporter
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
+        _logger = logManager.GetClassLogger<EraExporter>();
         _networkName = networkName.Trim().ToLower();
     }
 
@@ -118,7 +120,7 @@ public class EraExporter : IEraExporter
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                 if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
                 {
-                    ExportProgress?.Invoke(this, new ExportProgressArgs(
+                    LogExportProgress(new ExportProgressArgs(
                         end - start,
                         totalProcessed,
                         processedSinceLast,
@@ -138,5 +140,12 @@ public class EraExporter : IEraExporter
             await new EraStore(destinationPath, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
         }
     }
+
+    private void LogExportProgress(ExportProgressArgs args)
+    {
+        if (_logger.IsInfo)
+            _logger.Info($"Export progress: {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.BlockProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} Blk/s  |  {args.TxProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} tx/s");
+    }
+
 
 }
