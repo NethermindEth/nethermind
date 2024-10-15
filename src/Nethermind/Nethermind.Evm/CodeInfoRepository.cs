@@ -30,31 +30,26 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         return new Dictionary<AddressAsKey, CodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
-
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
-
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
-
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
-            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
-            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
-            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
-
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
-
-            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance, EcRecoverPrecompile.Address),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance, Sha256Precompile.Address),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance, Ripemd160Precompile.Address),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance, IdentityPrecompile.Address),
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance, Bn254AddPrecompile.Address),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance, Bn254MulPrecompile.Address),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance, Bn254PairingPrecompile.Address),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance, ModExpPrecompile.Address),
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance, Blake2FPrecompile.Address),
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance, G1AddPrecompile.Address),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance, G1MulPrecompile.Address),
+            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance, G1MSMPrecompile.Address),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance, G2AddPrecompile.Address),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance, G2MulPrecompile.Address),
+            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance, G2MSMPrecompile.Address),
+            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance, PairingCheckPrecompile.Address),
+            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance, MapFpToG1Precompile.Address),
+            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance, MapFp2ToG2Precompile.Address),
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance, PointEvaluationPrecompile.Address),
+            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance, Secp256r1Precompile.Address),
         }.ToFrozenDictionary();
     }
 
@@ -102,7 +97,7 @@ public class CodeInfoRepository : ICodeInfoRepository
                 MissingCode(codeSource, codeHash);
             }
 
-            cachedCodeInfo = new CodeInfo(code, codeHash);
+            cachedCodeInfo = new CodeInfo(code, codeSource);
             cachedCodeInfo.AnalyseInBackgroundIfRequired();
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
@@ -123,7 +118,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        CodeInfo codeInfo = new(code);
+        CodeInfo codeInfo = new(code, codeOwner);
         codeInfo.AnalyseInBackgroundIfRequired();
 
         ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
@@ -138,7 +133,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);
         ValueHash256 codeHash = ValueKeccak.Compute(authorizedBuffer);
         state.InsertCode(authority, codeHash, authorizedBuffer.AsMemory(), spec);
-        _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+        _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer, codeSource));
     }
 
     /// <summary>
@@ -181,10 +176,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     private CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
         ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, (ReadOnlyMemory<byte>, bool)> cache) =>
-        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache));
+        new(new CachedPrecompile(originalPrecompile.Key.Value, originalPrecompile.Value.Precompile!, cache), originalPrecompile.Key.Value);
 
     public bool TryGetDelegation(IReadOnlyStateProvider worldState, Address address, [NotNullWhen(true)] out Address? delegatedAddress) =>
         TryGetDelegatedAddress(InternalGetCachedCode(worldState, address).MachineCode.Span, out delegatedAddress);
+
+    public static void ClearCache()
+    {
+        _codeCache.Clear();
+    }
 
     private class CachedPrecompile(
         Address address,
@@ -246,6 +246,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             codeInfo = Get(codeHash);
             return codeInfo is not null;
+        }
+
+        public void Clear()
+        {
+            foreach (ClockCache<ValueHash256, CodeInfo> cache in _caches)
+            {
+                cache.Clear();
+            }
         }
     }
 }

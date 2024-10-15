@@ -108,6 +108,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public override void Setup()
         {
             base.Setup();
+
             ILogManager logManager = GetLogManager();
 
             _blockhashProvider = new TestBlockhashProvider(SpecProvider);
@@ -132,10 +133,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<AbortDestinationPattern>();
         }
 
-        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null)
+        public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000)
             where T : ITxTracer
         {
-            Execute<T>(tracer, bytecode, fork, 1_000_000);
+            Execute<T>(tracer, bytecode, fork, gasAvailable);
         }
 
         public Address InsertCode(byte[] bytecode)
@@ -161,6 +162,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     }
 
     [TestFixture]
+    [NonParallelizable]
     internal class IlEvmTests : TestBlockChain
     {
         private const string AnalyzerField = "_analyzer";
@@ -169,6 +171,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [SetUp]
         public override void Setup()
         {
+            base.Setup();
+
             base.config = new VMConfig()
             {
                 IsJitEnabled = true,
@@ -179,7 +183,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 JittingThreshold = 256,
             };
 
-            base.Setup();
+            CodeInfoRepository.ClearCache();
         }
         public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
         {
@@ -760,7 +764,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ADD()
                     .Done;
 
-            CodeInfo codeInfo = new CodeInfo(bytecode);
+            CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
             await IlAnalyzer.StartAnalysis(codeInfo, ILMode.PAT_MODE, NullLogger.Instance, config);
 
@@ -789,7 +793,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            CodeInfo codeInfo = new CodeInfo(bytecode);
+            CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
             await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, NullLogger.Instance, config);
 
@@ -799,7 +803,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Execution_Swap_Happens_When_Pattern_Occurs()
         {
-            int repeatCount = 32;
+            int repeatCount = 128;
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
@@ -844,7 +848,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(address, bytecode, spec);
             */
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i < config.PatternMatchingThreshold * 2; i++)
+            for (int i = 0; i < repeatCount * 2; i++)
             {
                 var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
@@ -985,13 +989,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 PatternMatchingThreshold = repeatCount + 1,
-                IsPatternMatchingEnabled = true,
-                JittingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+                JittingThreshold = repeatCount + 1,
                 IsJitEnabled = true,
                 AggressiveJitMode = true
             });
 
-            var address = InsertCode(Prepare.EvmCode
+            var address = enhancedChain.InsertCode(Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
                 .ADD()
@@ -1003,10 +1007,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(1000)
                     .GAS()
                     .LT()
-                    .JUMPI(58)
+                    .JUMPI(59)
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
+                    .POP()
                     .Call(address, 100)
                     .POP()
                     .PushSingle(42)
@@ -1019,7 +1024,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= config.JittingThreshold * 2; i++)
+            for (int i = 0; i <= repeatCount * 32; i++)
             {
                 var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute(bytecode, tracer);
@@ -1038,11 +1043,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string[] desiredTracePattern = new[]
             {
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
-                "ILEVM_PRECOMPILED_(0x3dff15...1db9a1)[0..5]",
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
+                "ILEVM_PRECOMPILED_(0x4df55fd3a4afecd4a0b4550f05b7cca2aa1db9a1)[0..5]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
             };
 
             string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
@@ -1057,14 +1062,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = repeatCount + 1,
+                PatternMatchingThreshold = repeatCount * 2 + 1,
                 IsPatternMatchingEnabled = true,
-                JittingThreshold = int.MaxValue,
+                JittingThreshold = repeatCount + 1,
                 IsJitEnabled = true,
                 AggressiveJitMode = false
             });
 
-            var address = InsertCode(Prepare.EvmCode
+            var address = enhancedChain.InsertCode(Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
                 .ADD()
@@ -1076,10 +1081,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(1000)
                     .GAS()
                     .LT()
-                    .JUMPI(58)
+                    .JUMPI(59)
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
+                    .POP()
                     .Call(address, 100)
                     .POP()
                     .PushSingle(42)
@@ -1092,7 +1098,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= config.JittingThreshold * 2; i++)
+            for (int i = 0; i <= repeatCount * 2; i++)
             {
                 var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute(bytecode, tracer);
@@ -1111,10 +1117,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             string[] desiredTracePattern = new[]
             {
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
-                "ILEVM_PRECOMPILED_(0x3dff15...1db9a1)[0..5]",
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[48..59]",
-                "ILEVM_PRECOMPILED_(0x401dfc...0f4912)[0..46]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
+                "ILEVM_PRECOMPILED_(0x4df55fd3a4afecd4a0b4550f05b7cca2aa1db9a1)[0..5]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
+                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
                 "AbortDestinationPattern",
             };
 
@@ -1154,7 +1160,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 accumulatedTraces.AddRange(traces.Failed);
             }
 
-            Assert.That(accumulatedTraces.All(status => status is false), Is.True);
+            Assert.That(accumulatedTraces.All(status => status), Is.True);
         }
 
         [Test]
@@ -1164,9 +1170,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
-                PatternMatchingThreshold = repeatCount + 1,
-                IsPatternMatchingEnabled = true,
-                JittingThreshold = int.MaxValue,
+                PatternMatchingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+                JittingThreshold = repeatCount + 1,
                 IsJitEnabled = true,
                 AggressiveJitMode = false
             });
@@ -1194,7 +1200,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= config.JittingThreshold * 32; i++)
+            for (int i = 0; i <= repeatCount * 32; i++)
             {
                 var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute(bytecode, tracer);
@@ -1250,9 +1256,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GeJitBytecodesSamples))]
         public void Ensure_Evm_ILvm_Compatibility((Instruction? opcode, byte[] bytecode, EvmExceptionType exceptionType) testcase)
         {
+            var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
             var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
-            var envExCtx = new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
+            var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
             var stack = new byte[1024 * 32];
             var inputBuffer = envExCtx.InputData;
             var returnBuffer =
@@ -1264,7 +1271,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var state = new EvmState(
                 1_000_000,
-                new ExecutionEnvironment(new CodeInfo(testcase.bytecode), Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
                 isTopLevel: false,
                 Snapshot.Empty,

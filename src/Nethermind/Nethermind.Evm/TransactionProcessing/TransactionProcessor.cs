@@ -518,7 +518,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, codeInfoRepository);
             Address? delegationAddress = null;
             CodeInfo codeInfo = tx.IsContractCreation
-                ? new(tx.Data ?? Memory<byte>.Empty)
+                ? new(tx.Data ?? Memory<byte>.Empty, tx.SenderAddress)
                 : codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec, out delegationAddress);
 
             if (delegationAddress is not null)
