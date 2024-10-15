@@ -892,14 +892,8 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak is not null)
             {
-                // Note that the LastSeen value here can be 'in the future' (greater than block number
-                // if we replaced a newly added node with an older copy and updated the LastSeen value.
-                // Here we reach it from the old root so it appears to be out of place but it is correct as we need
-                // to prevent it from being removed from cache and also want to have it persisted.
-
                 writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
-                PersistedNodesCount++;
                 IncrementPersistedNodesCount();
             }
             else
