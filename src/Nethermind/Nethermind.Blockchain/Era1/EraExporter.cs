@@ -120,13 +120,13 @@ public class EraExporter : IEraExporter
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                 if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
                 {
-                    LogExportProgress(new ExportProgressArgs(
+                    LogExportProgress(
                         end - start,
                         totalProcessed,
                         processedSinceLast,
                         txProcessedSinceLast,
                         elapsed,
-                        DateTime.Now.Subtract(startTime)));
+                        DateTime.Now.Subtract(startTime));
                     lastProgress = DateTime.Now;
                     processedSinceLast = 0;
                     txProcessedSinceLast = 0;
@@ -141,9 +141,15 @@ public class EraExporter : IEraExporter
         }
     }
 
-    private void LogExportProgress(ExportProgressArgs args)
+    private void LogExportProgress(
+        long totalBlocks,
+        long totalBlocksProcessed,
+        long blocksProcessedSinceLast,
+        long txProcessedSinceLast,
+        TimeSpan sinceLast,
+        TimeSpan elapsed)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Export progress: {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.BlockProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} Blk/s  |  {args.TxProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} tx/s");
+            _logger.Info($"Export progress: {totalBlocksProcessed,10}/{totalBlocks} blocks  |  elapsed {elapsed:hh\\:mm\\:ss}  |  {blocksProcessedSinceLast / sinceLast.TotalSeconds,10:0.00} Blk/s  |  {txProcessedSinceLast / sinceLast.TotalSeconds,10:0.00} tx/s");
     }
 }

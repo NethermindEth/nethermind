@@ -132,19 +132,25 @@ public class EraImporter : IEraImporter
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                 if (elapsed > ProgressInterval)
                 {
-                    LogImportProgress(new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
+                    LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
                     lastProgress = DateTime.Now;
                 }
             }
             epochProcessed++;
         }
-        LogImportProgress(new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
+        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
     }
 
-    private void LogImportProgress(ImportProgressChangedArgs args)
+    private void LogImportProgress(
+        TimeSpan elapsed,
+        long totalBlocksProcessed,
+        long txProcessed,
+        long totalBlocks,
+        long epochProcessed,
+        long totalEpochs)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Import progress: | {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  {args.EpochProcessed}/{args.TotalEpochs} epochs  |  elapsed {args.Elapsed:hh\\:mm\\:ss}");
+            _logger.Info($"Import progress: | {totalBlocksProcessed,10}/{totalBlocks} blocks  |  {epochProcessed}/{totalEpochs} epochs  |  elapsed {elapsed:hh\\:mm\\:ss}");
     }
 
     private void InsertBlockAndReceipts(Block b, TxReceipt[] r)
