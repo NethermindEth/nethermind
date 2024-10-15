@@ -59,4 +59,10 @@ public interface ITaikoEngineRpcModule : IEngineRpcModule
         IsSharable = true,
         IsImplemented = true)]
     ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContent(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists);
+
+    [JsonRpcMethod(
+        Description = "Retrieves the transaction pool content with the given upper limits including minimum tip.",
+        IsSharable = true,
+        IsImplemented = true)]
+    ResultWrapper<PreBuiltTxList[]?> taikoAuth_txPoolContentWithMinTip(Address beneficiary, UInt256 baseFee, ulong blockMaxGasLimit, ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip);
 }

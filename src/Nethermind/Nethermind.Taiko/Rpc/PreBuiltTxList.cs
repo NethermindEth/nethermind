@@ -11,9 +11,9 @@ public sealed class PreBuiltTxList(TransactionForRpc[] transactions, ulong estim
 {
     public TransactionForRpc[] TxList { get; } = transactions;
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
+    [JsonConverter(typeof(ULongRawJsonConverter))]
     public ulong EstimatedGasUsed { get; } = estimatedGasUsed;
 
-    [JsonConverter(typeof(LongRawJsonConverter))]
+    [JsonConverter(typeof(ULongRawJsonConverter))]
     public ulong BytesLength { get; } = bytesLength;
 }

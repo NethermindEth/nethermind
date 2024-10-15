@@ -37,7 +37,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error)
     {
-        if (header.Difficulty != 0 || header.TotalDifficulty != 0)
+        if (header.Difficulty != 0 || header.TotalDifficulty != 0 && header.TotalDifficulty != null)
         {
             error = BlockErrorMessages.InvalidTotalDifficulty;
             if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - incorrect difficulty or total difficulty");
