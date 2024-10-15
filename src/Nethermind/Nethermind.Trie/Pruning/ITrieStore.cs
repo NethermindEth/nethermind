@@ -20,9 +20,6 @@ namespace Nethermind.Trie.Pruning
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
-        // Used by healing
-        void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
-
         bool HasRoot(Hash256 stateRoot);
 
         IScopedTrieStore GetTrieStore(Hash256? address);
@@ -34,10 +31,12 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// These methods are to be used by ScopedTrieStore.
     /// It should be considered internal to TrieStore.
-    /// It should be used directly, nor intercepted.
+    /// It should not be used directly, nor intercepted.
     /// </summary>
     public interface ITrieStoreInternal
     {
+        // Used by healing
+        void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
