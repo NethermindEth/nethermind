@@ -344,7 +344,7 @@ namespace Nethermind.Trie.Pruning
                 // For safety we prefer to commit half of the batch rather than not commit at all.
                 // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
                 using INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
-                PersistBlockCommitSet(set, currentBatch);
+                ParallelPersistBlockCommitSet(set);
             }
 
             set.Prune();
@@ -549,7 +549,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-                    ParallelPersistBlockCommitSet(null, blockCommitSet, persistedNodeRecorder);
+                    ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
                 }
 
                 Task deleteTask = shouldDeletePersistedNode ? RemovePastKeys() : Task.CompletedTask;
@@ -719,39 +719,10 @@ namespace Nethermind.Trie.Pruning
         /// Already persisted nodes are skipped. After this action we are sure that the full state is available
         /// for the block represented by this commit set.
         /// </summary>
-        /// <param name="address"></param>
         /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
-        /// <param name="writeBatch">The write batch to write to</param>
-        /// <param name="persistedHashes">Track persisted hashes in this dictionary if not null</param>
+        /// <param name="persistedNodeRecorder">Special action to be called on each persist. Used to track which node to remove.</param>
         /// <param name="writeFlags"></param>
-        private void PersistBlockCommitSet(
-            BlockCommitSet commitSet,
-            INodeStorage.WriteBatch writeBatch,
-            Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
-            WriteFlags writeFlags = WriteFlags.None
-        )
-        {
-            void PersistNode(TrieNode tn, Hash256? address2, TreePath path)
-            {
-                persistedNodeRecorder?.Invoke(path, address2, tn);
-                this.PersistNode(address2, path, tn, writeBatch, writeFlags);
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
-
-            long start = Stopwatch.GetTimestamp();
-            TreePath path = TreePath.Empty;
-            commitSet.Root?.CallRecursively(PersistNode, null, ref path, GetTrieStore(null), true, _logger);
-            long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
-
-            if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
-
-            LastPersistedBlockNumber = commitSet.BlockNumber;
-        }
-
         private void ParallelPersistBlockCommitSet(
-            Hash256? address,
             BlockCommitSet commitSet,
             Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
             WriteFlags writeFlags = WriteFlags.None
@@ -781,7 +752,7 @@ namespace Nethermind.Trie.Pruning
 
             // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
             TreePath path = TreePath.Empty;
-            commitSet.Root?.CallRecursively(TopLevelPersist, address, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+            commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
             // The amount of change in the subtrees are not balanced at all. So their writes ares buffered here
             // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -967,7 +938,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-                    PersistBlockCommitSet(blockCommitSet, writeBatch);
+                    ParallelPersistBlockCommitSet(blockCommitSet);
                 }
                 writeBatch.Dispose();
 
@@ -1005,8 +976,7 @@ namespace Nethermind.Trie.Pruning
                         }
 
                         commitSetCount++;
-                        using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
-                        PersistBlockCommitSet(commitSet, writeBatch);
+                        ParallelPersistBlockCommitSet(commitSet);
                     }
                 }
 
