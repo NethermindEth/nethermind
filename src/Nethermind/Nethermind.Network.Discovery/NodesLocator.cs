@@ -3,7 +3,9 @@
 
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -128,8 +130,8 @@ public class NodesLocator : INodesLocator
                 int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                 IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
 
-                IEnumerable<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes);
-                Result?[] results = await Task.WhenAll(sendFindNodeTasks);
+                using ArrayPoolList<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes).ToPooledList(count);
+                Result[] results = await Task.WhenAll<Result>(sendFindNodeTasks.AsSpan());
 
                 if (results.Length == 0)
                 {

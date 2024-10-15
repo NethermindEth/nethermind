@@ -207,7 +207,6 @@ namespace Nethermind.Trie
                         committer.ReturnConcurrencyQuota();
                     });
 
-                    // TODO: .Net 9 stackalloc
                     ArrayPoolList<Task>? childTasks = null;
 
                     for (int i = 0; i < 16; i++)
@@ -240,7 +239,7 @@ namespace Nethermind.Trie
 
                     if (childTasks is not null)
                     {
-                        Task.WaitAll(childTasks.ToArray());
+                        Task.WaitAll(childTasks.AsSpan());
                         childTasks.Dispose();
                     }
                 }
