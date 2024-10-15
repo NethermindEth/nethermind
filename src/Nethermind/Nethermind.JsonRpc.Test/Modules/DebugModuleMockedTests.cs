@@ -31,8 +31,9 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
+// Tests with mocked IDebugBridge
 [Parallelizable(ParallelScope.Self)]
-public class DebugModuleTests
+public class DebugModuleMockedTests
 {
     private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
