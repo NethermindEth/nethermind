@@ -301,9 +301,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                     : currentState.GasAvailable,
                                 callResult.Output.Bytes);
                         }
-                        else
+                        else if (currentState.ExecutionType.IsAnyCreate())
                         {
-                            if (currentState.ExecutionType.IsAnyCreate() && currentState.GasAvailable < codeDepositGasCost)
+                            if (currentState.GasAvailable < codeDepositGasCost)
                             {
                                 if (spec.ChargeForTopLevelCreate)
                                 {
@@ -315,21 +315,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 }
                             }
                             // Reject code starting with 0xEF if EIP-3541 is enabled.
-                            else if (currentState.ExecutionType.IsAnyCreate() && CodeDepositHandler.CodeIsInvalid(spec, callResult.Output.Bytes, callResult.FromVersion))
+                            else if (CodeDepositHandler.CodeIsInvalid(spec, callResult.Output.Bytes, callResult.FromVersion))
                             {
                                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
                             }
                             else
                             {
-                                if (currentState.ExecutionType.IsAnyCreate())
-                                {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
-                                }
-                                else
-                                {
-                                    _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
-                                }
+                                _txTracer.ReportActionEnd(currentState.GasAvailable - codeDepositGasCost, currentState.To, callResult.Output.Bytes);
                             }
+                        }
+                        else
+                        {
+                            _txTracer.ReportActionEnd(currentState.GasAvailable, _returnDataBuffer);
                         }
                     }
 
@@ -2111,21 +2108,46 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, true, spec)) goto OutOfGas;
 
-                        if (_state.AccountExists(address)
-                            && !_state.IsDeadAccount(address)
-                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, spec, out Address delegatedAddress) || _state.AccountExists(delegatedAddress)))
+                        if (_state.IsDeadAccount(address))
                         {
-                            stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address, spec).BytesAsSpan);
+                            stack.PushZero();
                         }
                         else
                         {
-                            Memory<byte> account = _state.GetCode(address);
-                            if (spec.IsEofEnabled && IsEof(account, out _))
+                            if (env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, spec, out Address delegatedAddress))
                             {
-                                stack.PushBytes(EofHash256);
+                                if (!_state.AccountExists(delegatedAddress))
+                                {
+                                    stack.PushZero();
+                                }
+                                else
+                                {
+                                    if (spec.IsEofEnabled)
+                                    {
+                                        ICodeInfo codeInfo = env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(_state, address, spec);
+
+                                        if (IsEof(codeInfo.MachineCode, out _))
+                                        {
+                                            stack.PushBytes(EofHash256);
+                                            break;
+                                        }
+                                    }
+
+                                    stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address, spec).BytesAsSpan);
+                                }
                             }
                             else
                             {
+                                if (spec.IsEofEnabled)
+                                {
+                                    Memory<byte> code = _state.GetCode(address);
+                                    if (IsEof(code, out _))
+                                    {
+                                        stack.PushBytes(EofHash256);
+                                        break;
+                                    }
+                                }
+
                                 stack.PushBytes(_state.GetCodeHash(address).Bytes);
                             }
                         }
