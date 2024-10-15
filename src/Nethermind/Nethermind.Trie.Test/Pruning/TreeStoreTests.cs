@@ -69,7 +69,6 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero); // 56B
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, null))
             {
@@ -88,7 +87,6 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode3 = new(NodeType.Branch, TestItem.KeccakB);
 
             using TrieStore fullTrieStore = CreateTrieStore();
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode))
             {
@@ -134,7 +132,6 @@ namespace Nethermind.Trie.Test.Pruning
 
             long reorgBoundaryCount = 0L;
             using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance);
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             fullTrieStore.ReorgBoundaryReached += (_, e) => reorgBoundaryCount += e.BlockNumber;
             fullTrieStore.BeginStateBlockCommit(1, trieNode).Dispose();
             reorgBoundaryCount.Should().Be(0);
@@ -200,7 +197,6 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, null))
             {
@@ -250,7 +246,6 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode4 = new(NodeType.Leaf, TestItem.KeccakB);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode2))
             {
@@ -287,7 +282,6 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, ref emptyPath, true);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(640));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode2))
             {
@@ -326,7 +320,6 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, ref emptyPath, true);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(512));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, trieNode2))
             {
@@ -351,7 +344,6 @@ namespace Nethermind.Trie.Test.Pruning
         public void Dispatcher_will_always_try_to_clear_memory()
         {
             TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(512));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
             for (int i = 0; i < 1024; i++)
             {
@@ -385,7 +377,6 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningStrategy: new MemoryLimit(16.MB()),
                 kvStore: memDb,
                 persistenceStrategy: new ConstantInterval(4));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
@@ -411,7 +402,6 @@ namespace Nethermind.Trie.Test.Pruning
             NodeStorage storage = new NodeStorage(memDb);
 
             using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB()));
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
@@ -452,7 +442,6 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningStrategy: new MemoryLimit(16.MB()),
                 persistenceStrategy: new ConstantInterval(4)
             );
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, a))
@@ -488,8 +477,6 @@ namespace Nethermind.Trie.Test.Pruning
                 kvStore: memDb,
                 pruningStrategy: new MemoryLimit(16.MB()),
                 persistenceStrategy: new ConstantInterval(4));
-
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, a))
@@ -527,8 +514,6 @@ namespace Nethermind.Trie.Test.Pruning
                 kvStore: memDb,
                 pruningStrategy: new MemoryLimit(16.MB()),
                 persistenceStrategy: new ConstantInterval(4));
-
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1, a))
@@ -1039,31 +1024,6 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(4);
-        }
-    }
-
-    internal static class IFullTrieStoreExtensions
-    {
-        // Small utility to not having to double wrap
-        public static ICommitter BeginStateBlockCommit(this ITrieStore trieStore, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
-        {
-            IBlockCommitter blockCommitter = trieStore.BeginBlockCommit(blockNumber);
-            ICommitter stateTreeCommitter = trieStore.GetTrieStore(null).BeginCommit(root, writeFlags: writeFlags);
-            return new CommitterWithBlockCommitter(blockCommitter, stateTreeCommitter);
-        }
-
-        private class CommitterWithBlockCommitter(IBlockCommitter blockCommitter, ICommitter baseCommitter) : ICommitter
-        {
-            public void Dispose()
-            {
-                baseCommitter.Dispose();
-                blockCommitter.Dispose();
-            }
-
-            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
-            {
-                baseCommitter.CommitNode(ref path, nodeCommitInfo);
-            }
         }
     }
 }
