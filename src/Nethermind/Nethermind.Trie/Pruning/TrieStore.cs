@@ -329,12 +329,9 @@ namespace Nethermind.Trie.Pruning
                 // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
                 using INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
                 PersistBlockCommitSet(set, currentBatch);
-                PruneCommitSet(set);
             }
-            else
-            {
-                PruneCommitSet(set);
-            }
+
+            set.Prune();
 
             _currentBlockCommitter = null;
 
@@ -592,23 +589,6 @@ namespace Nethermind.Trie.Pruning
         }
 
         /// <summary>
-        /// Prunes persisted branches of the current commit set root.
-        /// </summary>
-        private void PruneCommitSet(BlockCommitSet set)
-        {
-            long start = Stopwatch.GetTimestamp();
-
-            // We assume that the most recent package very likely resolved many persisted nodes and only replaced
-            // some top level branches. Any of these persisted nodes are held in cache now so we just prune them here
-            // to avoid the references still being held after we prune the cache.
-            // We prune them here but just up to two levels deep which makes it a very lightweight operation.
-            // Note that currently the TrieNode ResolveChild un-resolves any persisted child immediately which
-            // may make this call unnecessary.
-            set?.Root?.PrunePersistedRecursively(2);
-            Metrics.DeepPruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-        }
-
-        /// <summary>
         /// This method is responsible for reviewing the nodes that are directly in the cache and
         /// removing ones that are either no longer referenced or already persisted.
         /// </summary>
@@ -674,6 +654,9 @@ namespace Nethermind.Trie.Pruning
 
         private ConcurrentQueue<BlockCommitSet> _commitSetQueue;
 
+        private ConcurrentQueue<BlockCommitSet> CommitSetQueue =>
+            (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue));
+
         private long _memoryUsedByDirtyCache;
 
         private int _committedNodesCount;
@@ -701,11 +684,11 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
             // TODO: this throws on reorgs, does it not? let us recreate it in test
-            Debug.Assert(!(_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue)).TryDequeue(out BlockCommitSet lastSet) || blockNumber == lastSet.BlockNumber + 1, $"Newly begun block is not a successor of the last one.");
-            Debug.Assert(!(_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue)).TryDequeue(out lastSet) || lastSet.IsSealed, "Not sealed when beginning new block");
+            Debug.Assert(!CommitSetQueue.TryPeek(out BlockCommitSet lastSet) || blockNumber == lastSet.BlockNumber + 1, $"Newly begun block is not a successor of the last one.");
+            Debug.Assert(!CommitSetQueue.TryPeek(out lastSet) || lastSet.IsSealed, "Not sealed when beginning new block");
 
             BlockCommitSet commitSet = new(blockNumber);
-            (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue)).Enqueue(commitSet);
+            CommitSetQueue.Enqueue(commitSet);
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
             // Why are we announcing **before** committing next block??
             // Should it be after commit?
