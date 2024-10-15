@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data.SqlTypes;
 using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.Abi;
@@ -45,7 +44,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
                 for (var j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
-                    if (log.LoggersAddress == spec.DepositContractAddress)
+                    if (log.Address == spec.DepositContractAddress)
                     {
                         yield return DecodeDepositRequest(log);
                     }
