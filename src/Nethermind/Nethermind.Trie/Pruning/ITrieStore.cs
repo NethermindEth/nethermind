@@ -25,6 +25,12 @@ namespace Nethermind.Trie.Pruning
         IScopedTrieStore GetTrieStore(Hash256? address);
         INodeStorage.KeyScheme Scheme { get; }
 
+        /// <summary>
+        /// Begin a block commit for this block number. This call may be blocked if a memory pruning is currently happening.
+        /// This call is required during block processing for memory pruning and reorg boundary to function.
+        /// </summary>
+        /// <param name="blockNumber"></param>
+        /// <returns></returns>
         IBlockCommitter BeginBlockCommit(long blockNumber);
     }
 
@@ -49,9 +55,13 @@ namespace Nethermind.Trie.Pruning
         public void PersistCache(CancellationToken cancellationToken);
     }
 
+    /// <summary>
+    /// A block committer identifies the scope at which a commit for a block should happen.
+    /// The commit started via <see cref="IScopedTrieStore.BeginCommit"/> which is called by <see cref="PatriciaTree.Commit"/>
+    /// Depending on <see cref="TryRequestConcurrencyQuota"/>, multiple patricia trie commit may run at the same time.
+    /// </summary>
     public interface IBlockCommitter : IDisposable
     {
-        ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
         bool TryRequestConcurrencyQuota() => false;
         void ReturnConcurrencyQuota() { }
     }
