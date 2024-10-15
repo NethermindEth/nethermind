@@ -8,6 +8,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto;
 
+using G1 = Bls.P1;
+
 [TestFixture]
 public class BlsTests
 {
@@ -27,7 +29,9 @@ public class BlsTests
     {
         Bls.SecretKey sk = new(SkBytes, Bls.ByteOrder.LittleEndian);
         BlsSigner.Signature s = BlsSigner.Sign(sk, MsgBytes);
-        Assert.That(BlsSigner.Verify(BlsSigner.GetPublicKey(sk).ToAffine(), s, MsgBytes));
+        G1 publicKey = new();
+        publicKey.FromSk(sk);
+        Assert.That(BlsSigner.Verify(publicKey.ToAffine(), s, MsgBytes));
     }
 
     [Test]
@@ -40,13 +44,19 @@ public class BlsTests
         bytes[34] += 1;
         BlsSigner.Signature bad = new(bytes);
 
-        Assert.That(BlsSigner.Verify(BlsSigner.GetPublicKey(sk).ToAffine(), bad, MsgBytes), Is.False);
+        G1 publicKey = new();
+        publicKey.FromSk(sk);
+        Assert.That(BlsSigner.Verify(publicKey.ToAffine(), bad, MsgBytes), Is.False);
     }
 
     [Test]
     public void Public_key_from_private_key()
     {
         byte[] expected = [0x95, 0x39, 0x27, 0x35, 0x0c, 0x35, 0x31, 0xb0, 0xbc, 0x58, 0x64, 0xcd, 0x9c, 0x5f, 0xe1, 0x34, 0x74, 0xca, 0x0c, 0x9b, 0x59, 0x99, 0x51, 0xa7, 0x76, 0xc4, 0xb9, 0x8d, 0xf6, 0x6a, 0x0e, 0x62, 0x07, 0xa8, 0x5c, 0x7f, 0x7a, 0x85, 0x1a, 0x0c, 0x02, 0x2a, 0x87, 0xc0, 0x29, 0xc3, 0x65, 0x61];
-        Assert.That(BlsSigner.GetPublicKey(new(SkBytes, Bls.ByteOrder.LittleEndian)).Compress(), Is.EqualTo(expected));
+
+        G1 publicKey = new();
+        publicKey.FromSk(new(SkBytes, Bls.ByteOrder.LittleEndian));
+
+        Assert.That(publicKey.Compress(), Is.EqualTo(expected));
     }
 }
