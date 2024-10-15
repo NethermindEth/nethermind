@@ -1137,7 +1137,7 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        private class TrieStoreCommitter(
+        private class PruningTrieStoreCommitter(
             PruningBlockCommitter pruningBlockCommitter,
             TrieStore trieStore,
             long blockNumber,
@@ -1146,7 +1146,6 @@ namespace Nethermind.Trie.Pruning
         ) : ICommitter
         {
             private readonly bool _needToResetRoot = root is not null && root.IsDirty;
-            private TrieNode? _root = root;
 
             public void Dispose()
             {
@@ -1154,10 +1153,9 @@ namespace Nethermind.Trie.Pruning
                 {
                     // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
                     // This ensure that the root that we use here is the same.
-                    _root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, _root?.Keccak);
+                    // This is only needed for state tree as the root need to be put in the block commit set.
+                    if (address == null) pruningBlockCommitter.StateRoot = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root?.Keccak);
                 }
-
-                if (address == null) pruningBlockCommitter.StateRoot = _root;
             }
 
             public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
@@ -1183,7 +1181,7 @@ namespace Nethermind.Trie.Pruning
 
             public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
             {
-                return new TrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
+                return new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
             }
 
             public bool TryRequestConcurrencyQuota()

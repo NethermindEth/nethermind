@@ -322,7 +322,7 @@ namespace Nethermind.State
         public void CommitTrees(IBlockCommitter blockCommitter)
         {
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-            // may make it works. Always check on mainnet.
+            // may make it worst. Always check on mainnet.
 
             using ArrayPoolList<Task> commitTask = new ArrayPoolList<Task>(_storages.Count);
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
