@@ -332,17 +332,11 @@ namespace Nethermind.Trie.Pruning
             bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
             if (shouldPersistSnapshot)
             {
-                INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
-                try
-                {
-                    PersistBlockCommitSet(set, currentBatch);
-                    PruneCommitSet(set);
-                }
-                finally
-                {
-                    // For safety we prefer to commit half of the batch rather than not commit at all.
-                    // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                    currentBatch?.Dispose();
+                // For safety we prefer to commit half of the batch rather than not commit at all.
+                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
+                using INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
+                PersistBlockCommitSet(set, currentBatch);
+                PruneCommitSet(set);
                 }
             }
             else
