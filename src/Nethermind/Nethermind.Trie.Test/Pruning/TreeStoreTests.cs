@@ -232,7 +232,7 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Set(key, value.ToArray());
             }
 
-            using(fullTrieStore.BeginBlockCommit(0))
+            using (fullTrieStore.BeginBlockCommit(0))
             {
                 tree.Commit();
             }
@@ -1052,7 +1052,7 @@ namespace Nethermind.Trie.Test.Pruning
             return new CommitterWithBlockCommitter(blockCommitter, stateTreeCommitter);
         }
 
-        private class CommitterWithBlockCommitter(IBlockCommitter blockCommitter, ICommitter baseCommitter): ICommitter
+        private class CommitterWithBlockCommitter(IBlockCommitter blockCommitter, ICommitter baseCommitter) : ICommitter
         {
             public void Dispose()
             {

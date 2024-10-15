@@ -1206,7 +1206,7 @@ namespace Nethermind.Trie.Pruning
 
             public bool TryRequestConcurrentQuota() => false;
 
-            public void ReturnConcurrencyQuota() {}
+            public void ReturnConcurrencyQuota() { }
         }
 
         internal static class HashHelpers

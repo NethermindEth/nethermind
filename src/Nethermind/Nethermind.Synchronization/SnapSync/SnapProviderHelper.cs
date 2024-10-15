@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(skipRoot: true,  writeFlags: WriteFlags.DisableWAL);
+            tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
