@@ -3,7 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
-using Nethermind.Trie;
+using System.ComponentModel;
 
 namespace Nethermind.Api;
 
@@ -96,23 +96,24 @@ public interface IInitConfig : IConfig
 
 public enum DiagnosticMode
 {
+    [Description("None.")]
     None,
 
-    [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB")]
+    [Description("Uses an in-memory DB.")]
     MemDb,
 
-    [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
+    [Description("Uses a remote DB.")]
     RpcDb,
 
-    [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
+    [Description("Uses a read-only DB.")]
     ReadOnlyDb,
 
-    [ConfigItem(Description = "Just scan rewards for blocks + genesis")]
+    [Description("Scans rewards for blocks and genesis.")]
     VerifyRewards,
 
-    [ConfigItem(Description = "Just scan and sum supply on all accounts")]
+    [Description("Scans and sums supply on all accounts.")]
     VerifySupply,
 
-    [ConfigItem(Description = "Verifies if full state is stored")]
+    [Description("Verifies if full state trie is stored.")]
     VerifyTrie
 }

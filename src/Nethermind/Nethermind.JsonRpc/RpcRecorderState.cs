@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.ComponentModel;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc;
+
+[Flags]
+public enum RpcRecorderState
 {
-    [Flags]
-    public enum RpcRecorderState
-    {
-        None = 0,
-        Request = 1,
-        Response = 2,
-        All = Request | Response
-    }
+    [Description]
+    None = 0,
+    [Description]
+    Request = 1,
+    [Description]
+    Response = 2,
+    [Description]
+    All = Request | Response
 }
