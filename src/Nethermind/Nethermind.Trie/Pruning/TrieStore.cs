@@ -294,18 +294,11 @@ namespace Nethermind.Trie.Pruning
                 if (_currentBlockCommitter is null) throw new InvalidOperationException($"With pruning triestore, {nameof(BeginBlockCommit)} must be called.");
             }
 
-            if (_currentBlockCommitter != null)
-            {
-                // Note, archive node still use this path. This is because it need the block commit set to handle
-                // reorg announcement.
-                return _currentBlockCommitter.GetTrieCommitter(address, root, writeFlags);
-            }
-            else
-            {
-                // This happens when there are no block involved, such as during snap sync or just calculating
-                // patricia root.
-                return new NonPruningTrieStoreCommitter(this, 0, address, _nodeStorage.StartWriteBatch(), writeFlags);
-            }
+            return _currentBlockCommitter is not null 
+                // Note, archive node still use this path. This is because it needs the block commit set to handle reorg announcement.
+                ? _currentBlockCommitter.GetTrieCommitter(address, root, writeFlags)  
+                // This happens when there are no block involved, such as during snap sync or just calculating patricia root.
+                : new NonPruningTrieStoreCommitter(this, 0, address, _nodeStorage.StartWriteBatch(), writeFlags);
         }
 
         public IBlockCommitter BeginBlockCommit(long blockNumber)
