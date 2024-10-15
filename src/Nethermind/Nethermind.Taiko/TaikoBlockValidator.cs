@@ -51,7 +51,7 @@ public class TaikoBlockValidator(
         {
             if (block.Transactions.Length is 0)
             {
-                errorMessage = "Missing required Anchor Transaction.";
+                errorMessage = "Missing required anchor transaction";
                 return false;
             }
 
@@ -67,37 +67,37 @@ public class TaikoBlockValidator(
     {
         if (tx.Type != TxType.EIP1559)
         {
-            errorMessage = "Anchor Transaction must be of type EIP1559.";
+            errorMessage = "Anchor transaction must be of type EIP-1559";
             return false;
         }
 
         if (tx.To != TaikoL2Address)
         {
-            errorMessage = "Anchor Transaction must target taiko L2 address.";
+            errorMessage = "Anchor transaction must target Taiko L2 address";
             return false;
         }
 
         if (tx.Data is null || (!Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorSelector) && !Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorV2Selector)))
         {
-            errorMessage = "Anchor Transaction must have the correct selector.";
+            errorMessage = "Anchor transaction must have valid selector";
             return false;
         }
 
         if (!tx.Value.IsZero)
         {
-            errorMessage = "Anchor Transaction must have 0 value.";
+            errorMessage = "Anchor transaction must have value of 0";
             return false;
         }
 
         if (tx.GasLimit != AnchorGasLimit)
         {
-            errorMessage = "Anchor Transaction must have the correct gas limit.";
+            errorMessage = "Anchor transaction must have correct gas limit";
             return false;
         }
 
         if (tx.MaxFeePerGas != block.BaseFeePerGas)
         {
-            errorMessage = "Anchor Transaction must have the correct max fee per gas.";
+            errorMessage = "Anchor transaction must have correct max fee per gas";
             return false;
         }
 
@@ -105,7 +105,7 @@ public class TaikoBlockValidator(
             ?? throw new InvalidOperationException("Couldn't recover sender address for Anchor Transaction");
         if (!tx.SenderAddress!.Equals(GoldenTouchAccount))
         {
-            errorMessage = "Anchor Transaction must be sent by the Golden Touch account.";
+           errorMessage = "Anchor transaction must be sent by the golden touch account";
             return false;
         }
 
