@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -165,6 +166,7 @@ public class ChainSpecLoaderTests
     [Test]
     public void Can_load_mainnet()
     {
+        new EthashChainSpecEngineParameters();
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 

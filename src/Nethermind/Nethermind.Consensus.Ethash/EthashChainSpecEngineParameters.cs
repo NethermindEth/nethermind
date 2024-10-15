@@ -32,7 +32,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     public SortedDictionary<long, UInt256> BlockReward { get; set; }
 
     // TODO: write converter
-    public IDictionary<string, long> DifficultyBombDelays { get; set; }
+    public IDictionary<string, long>? DifficultyBombDelays { get; set; }
 
     public string? SealEngineType => "Ethash";
 
@@ -64,7 +64,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
         SetDifficultyBombDelays(spec, startBlock);
 
         spec.IsEip2Enabled = HomesteadTransition <= startBlock;
-        spec.IsEip7Enabled = spec.IsEip7Enabled || HomesteadTransition <= startBlock;
+        spec.IsEip7Enabled = HomesteadTransition <= startBlock;
         spec.IsEip100Enabled = (Eip100bTransition ?? 0) <= startBlock;
         spec.DifficultyBoundDivisor = DifficultyBoundDivisor;
         spec.FixedDifficulty = FixedDifficulty;
@@ -97,7 +97,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void ApplyToChainSpec(ChainSpec chainSpec)
     {
-        IEnumerable<long?> difficultyBombDelaysBlockNumbers = DifficultyBombDelays
+        IEnumerable<long?>? difficultyBombDelaysBlockNumbers = DifficultyBombDelays?
             .Keys.Select(key => key.StartsWith("0x") ? long.Parse(key.AsSpan(2), NumberStyles.HexNumber) : long.Parse(key))
             .Cast<long?>()
             .ToArray();
@@ -105,6 +105,8 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
         chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
         chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
         chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
+        chainSpec.HomesteadBlockNumber = HomesteadTransition;
+        chainSpec.DaoForkBlockNumber = DaoHardforkTransition;
     }
 }
 

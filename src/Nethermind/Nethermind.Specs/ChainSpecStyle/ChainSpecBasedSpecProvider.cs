@@ -168,9 +168,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.MaxCodeSize = releaseSpec.IsEip170Enabled ? (chainSpec.Parameters.MaxCodeSize ?? long.MaxValue) : long.MaxValue;
-            // releaseSpec.IsEip2Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip7Enabled = (chainSpec.Parameters.Eip7Transition ?? long.MaxValue) <= releaseStartBlock;
-            // releaseSpec.IsEip100Enabled = (chainSpec.Ethash?.Eip100bTransition ?? 0) <= releaseStartBlock;
+            releaseSpec.IsEip2Enabled = true;
+            releaseSpec.IsEip100Enabled = true;
+            releaseSpec.IsEip7Enabled = (chainSpec.Parameters.Eip7Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip140Enabled = (chainSpec.Parameters.Eip140Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip145Enabled = (chainSpec.Parameters.Eip145Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip150Enabled = (chainSpec.Parameters.Eip150Transition ?? 0) <= releaseStartBlock;

@@ -209,15 +209,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        if (chainSpecJson.Engine?.Ethash is not null)
-        {
-            chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
-            chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
-        }
-        else
-        {
-            chainSpec.HomesteadBlockNumber = 0;
-        }
+        chainSpec.HomesteadBlockNumber = 0;
 
         // IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
         //     .Keys
@@ -246,6 +238,16 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPoWBlockNumber;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
+
+
+        if (chainSpec.EngineChainSpecParametersProvider is not null)
+        {
+            foreach (IChainSpecEngineParameters chainSpecEngineParameters in chainSpec.EngineChainSpecParametersProvider
+                         .AllChainSpecParameters)
+            {
+                chainSpecEngineParameters.ApplyToChainSpec(chainSpec);
+            }
+        }
     }
 
     private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -301,7 +303,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 WithdrawalContractAddress = chainSpecJson.Engine.AuthorityRound.WithdrawalContractAddress,
             };
         }
-        else if (chainSpecJson.Engine?.Ethash is not null)
+        // else if (chainSpecJson.Engine?.Ethash is not null)
         {
             chainSpec.SealEngineType = SealEngineType.Ethash;
 
@@ -343,10 +345,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             }
 
             chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
-            foreach (IChainSpecEngineParameters chainSpecEngineParameters in chainSpec.EngineChainSpecParametersProvider.AllChainSpecParameters)
-            {
-                chainSpecEngineParameters.ApplyToChainSpec(chainSpec);
-            }
             if (string.IsNullOrEmpty(chainSpec.SealEngineType))
             {
                 chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;

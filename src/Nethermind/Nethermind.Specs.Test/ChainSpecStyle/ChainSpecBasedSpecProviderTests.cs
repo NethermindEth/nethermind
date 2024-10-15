@@ -225,21 +225,34 @@ public class ChainSpecBasedSpecProviderTests
         {
             yield return new TestCaseData((ForkActivation)0) { TestName = "Genesis" };
             yield return new TestCaseData((ForkActivation)1) { TestName = "Genesis + 1" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - 1)) { TestName = "Before Constantinopole" };
-            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber) { TestName = "Constantinopole" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber - 1)) { TestName = "Before ConstantinopoleFix" };
-            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopoleFixBlockNumber) { TestName = "ConstantinopoleFix" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber - 1)) { TestName = "Before Istanbul" };
-            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.IstanbulBlockNumber) { TestName = "Istanbul" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.BerlinBlockNumber - 1)) { TestName = "Before Berlin" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopoleBlockNumber - 1))
+                { TestName = "Before Constantinopole" };
+            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopoleBlockNumber)
+                { TestName = "Constantinopole" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.ConstantinopoleFixBlockNumber - 1))
+                { TestName = "Before ConstantinopoleFix" };
+            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.ConstantinopoleFixBlockNumber)
+                { TestName = "ConstantinopoleFix" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.IstanbulBlockNumber - 1))
+                { TestName = "Before Istanbul" };
+            yield return new TestCaseData((ForkActivation)GnosisSpecProvider.IstanbulBlockNumber)
+                { TestName = "Istanbul" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.BerlinBlockNumber - 1))
+                { TestName = "Before Berlin" };
             yield return new TestCaseData((ForkActivation)GnosisSpecProvider.BerlinBlockNumber) { TestName = "Berlin" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber - 1)) { TestName = "Before London" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber - 1))
+                { TestName = "Before London" };
             yield return new TestCaseData((ForkActivation)GnosisSpecProvider.LondonBlockNumber) { TestName = "London" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 1, GnosisSpecProvider.ShanghaiTimestamp - 1)) { TestName = "Before Shanghai" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 1, GnosisSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
-            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2, GnosisSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 1,
+                GnosisSpecProvider.ShanghaiTimestamp - 1)) { TestName = "Before Shanghai" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 1,
+                GnosisSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2,
+                GnosisSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2,
+                GnosisSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
+            yield return new TestCaseData((ForkActivation)(GnosisSpecProvider.LondonBlockNumber + 2,
+                GnosisSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -494,7 +507,7 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Difficulty_bomb_delays_loaded_correctly()
     {
-         // TODO: fix test
+        // TODO: fix test
         // ChainSpec chainSpec = new()
         // {
         //     Parameters = new ChainParameters(),

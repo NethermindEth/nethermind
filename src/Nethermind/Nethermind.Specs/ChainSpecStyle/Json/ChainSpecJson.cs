@@ -155,7 +155,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         internal class EngineJson
         {
-            public EthashEngineJson Ethash { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
 
             [JsonExtensionData]
