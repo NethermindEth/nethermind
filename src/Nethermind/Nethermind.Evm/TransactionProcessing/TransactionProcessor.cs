@@ -791,6 +791,6 @@ namespace Nethermind.Evm.TransactionProcessing
         public static implicit operator bool(TransactionResult result) => result.Success;
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
 
-        public const string BlockGasLimitExceeded = "block gas limit exceeded";
+        public const string BlockGasLimitExceeded = "Block gas limit exceeded";
     }
 }
