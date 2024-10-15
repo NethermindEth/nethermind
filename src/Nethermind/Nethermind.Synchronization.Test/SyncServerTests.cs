@@ -92,7 +92,6 @@ public class SyncServerTests
         IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
         ctx.SyncServer = new SyncServer(
             new MemDb(),
-            new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
             blockValidator,
@@ -133,7 +132,6 @@ public class SyncServerTests
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
         ctx.SyncServer = new SyncServer(
-            new MemDb(),
             new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
@@ -181,7 +179,6 @@ public class SyncServerTests
         }
 
         ctx.SyncServer = new SyncServer(
-            new MemDb(),
             new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
@@ -249,7 +246,6 @@ public class SyncServerTests
             LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
-            new MemDb(),
             new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
@@ -473,7 +469,6 @@ public class SyncServerTests
 
         ctx.SyncServer = new SyncServer(
             new MemDb(),
-            new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
             blockValidator,
@@ -513,7 +508,6 @@ public class SyncServerTests
 
         ctx.SyncServer = new SyncServer(
             new MemDb(),
-            new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
             blockValidator,
@@ -545,7 +539,6 @@ public class SyncServerTests
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
         ctx.SyncServer = new SyncServer(
             new MemDb(),
-            new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
             Always.Valid,
@@ -571,7 +564,6 @@ public class SyncServerTests
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
         ctx.SyncServer = new SyncServer(
-            new MemDb(),
             new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
@@ -607,7 +599,6 @@ public class SyncServerTests
         Context ctx = new();
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
         ctx.SyncServer = new SyncServer(
-            new MemDb(),
             new MemDb(),
             blockTree,
             NullReceiptStorage.Instance,
@@ -649,7 +640,6 @@ public class SyncServerTests
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
         ctx.SyncServer = new SyncServer(
             new MemDb(),
-            new MemDb(),
             localBlockTree,
             NullReceiptStorage.Instance,
             Always.Valid,
@@ -677,41 +667,6 @@ public class SyncServerTests
         await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
     }
 
-    [Test]
-    public void GetNodeData_returns_cached_trie_nodes()
-    {
-        Context ctx = new();
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
-        ISealValidator sealValidator = Substitute.For<ISealValidator>();
-        MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
-        ctx.SyncServer = new SyncServer(
-            trieStore.TrieNodeRlpStore,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            sealValidator,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new SyncConfig(),
-            Policy.FullGossip,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
-
-        Hash256 nodeKey = TestItem.KeccakA;
-        TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
-        IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
-        using (ICommitter committer = scopedTrieStore.BeginCommit(TrieType.State, 1, node))
-        {
-            TreePath path = TreePath.Empty;
-            committer.CommitNode(ref path, new NodeCommitInfo(node));
-        }
-
-        stateDb.KeyExists(nodeKey).Should().BeFalse();
-        ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
-    }
-
     private class Context
     {
         public Context()
@@ -723,7 +678,6 @@ public class SyncServerTests
             BlockTree = Substitute.For<IBlockTree>();
             StaticSelector selector = StaticSelector.Full;
             SyncServer = new SyncServer(
-                new MemDb(),
                 new MemDb(),
                 BlockTree,
                 NullReceiptStorage.Instance,

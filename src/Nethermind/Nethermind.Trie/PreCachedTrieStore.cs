@@ -55,8 +55,6 @@ public class PreCachedTrieStore : ITrieStore
         remove => _inner.ReorgBoundaryReached -= value;
     }
 
-    public IReadOnlyKeyValueStore TrieNodeRlpStore => _inner.TrieNodeRlpStore;
-
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {
         _preBlockCache[new(address, in path, in keccak)] = rlp;

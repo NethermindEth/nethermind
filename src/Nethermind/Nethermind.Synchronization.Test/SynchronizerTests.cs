@@ -402,7 +402,6 @@ public class SynchronizerTests
             }
 
             SyncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
                 codeDb,
                 BlockTree,
                 NullReceiptStorage.Instance,

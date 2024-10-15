@@ -87,7 +87,6 @@ namespace Nethermind.Synchronization.Test
                 stateReader,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
                 _codeDb,
                 _blockTree,
                 _receiptStorage,
@@ -374,18 +373,6 @@ namespace Nethermind.Synchronization.Test
             resetEvent.WaitOne(_standardTimeoutUnit);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default);
-        }
-
-        [Test]
-        public void Can_retrieve_node_values()
-        {
-            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            IOwnedReadOnlyList<byte[]?> data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
-
-            Assert.That(data, Is.Not.Null);
-            Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0], Is.EqualTo(TestItem.RandomDataA), "data[0]");
-            Assert.That(data[1], Is.EqualTo(null), "data[1]");
         }
 
         [Test]

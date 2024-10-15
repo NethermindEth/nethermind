@@ -84,8 +84,6 @@ public class HealingTreeTests
             k => new TrieNode(NodeType.Leaf) { Key = path });
         trieStore.GetTrieStore(Arg.Any<Hash256?>())
             .Returns((callInfo) => new ScopedTrieStore(trieStore, (Hash256?)callInfo[0]));
-        TestMemDb db = new();
-        trieStore.TrieNodeRlpStore.Returns(db);
 
         ITrieNodeRecovery<GetTrieNodesRequest> recovery = Substitute.For<ITrieNodeRecovery<GetTrieNodesRequest>>();
         recovery.CanRecover.Returns(isMainThread);

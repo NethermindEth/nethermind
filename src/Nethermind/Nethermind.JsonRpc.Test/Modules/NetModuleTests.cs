@@ -49,7 +49,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
                 Substitute.For<IReadOnlyKeyValueStore>(),
-                Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
                 Substitute.For<IReceiptFinder>(),
                 Substitute.For<IBlockValidator>(),

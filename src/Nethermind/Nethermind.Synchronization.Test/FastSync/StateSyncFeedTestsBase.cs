@@ -228,7 +228,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             public string Name => "Mock";
 
             private readonly IDb _codeDb;
-            private readonly IReadOnlyKeyValueStore _stateDb;
             private readonly ISnapServer _snapServer;
 
             private Hash256[]? _filter;
@@ -253,7 +252,6 @@ namespace Nethermind.Synchronization.Test.FastSync
                 alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
                 IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
-                _stateDb = trieStore.TrieNodeRlpStore;
                 _snapServer = new SnapServer(
                     trieStore,
                     codeDb,
@@ -292,7 +290,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                     if (_filter is null || _filter.Contains(item))
                     {
-                        responses[i] = _codeDb[item.Bytes] ?? _stateDb[item.Bytes]!;
+                        responses[i] = _codeDb[item.Bytes]!;
                     }
 
                     i++;
