@@ -11,8 +11,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -65,6 +69,43 @@ public class DebugModuleTests
         }
 
         public void Dispose() => Blockchain.Dispose();
+    }
+
+    [Test]
+    public async Task Debug_traceCall_fails_when_not_enough_balance()
+    {
+        using Context ctx = await Context.Create();
+
+        Address address = Build.An.Address.TestObject;
+        UInt256 balance = 100.Ether(), send = balance / 2;
+
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
+        );
+
+        response.Should().BeOfType<JsonRpcErrorResponse>()
+            .Which.Error?.Message?.Should().Contain("insufficient funds");
+    }
+
+    [Test]
+    public async Task Debug_traceCall_runs_on_top_of_specified_block()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain blockchain = ctx.Blockchain;
+
+        Address address = Build.An.Address.TestObject;
+        UInt256 balance = 100.Ether();
+
+        await blockchain.AddFunds(address, balance / 2);
+        await blockchain.AddFunds(address, balance / 2);
+        Hash256 lastBlockHash = blockchain.BlockTree.Head!.Hash!;
+
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = $"{address}", to = $"{TestItem.AddressC}", value = balance.ToString("X") },
+            $"{lastBlockHash}"
+        );
+
+        response.Should().BeOfType<JsonRpcSuccessResponse>();
     }
 
     [TestCase(
