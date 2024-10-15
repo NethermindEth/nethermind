@@ -2759,10 +2759,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
+        _state.IncrementNonce(env.ExecutingAccount);
+
         // for the collision check, we need on check the existence of the account and no need to write to it
         if (!env.Witness.AccessForContractCreationCheck(contractAddress, ref callGas))
         {
-            return (EvmExceptionType.OutOfGas, null);
+            return (EvmExceptionType.None, null);
         }
 
         if (spec.UseHotAndColdStorage)
@@ -2770,8 +2772,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
             vmState.WarmUp(contractAddress);
         }
-
-        _state.IncrementNonce(env.ExecutingAccount);
 
         Snapshot snapshot = _worldState.TakeSnapshot();
 
@@ -2786,18 +2786,21 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (accountExists)
+        if (!spec.IsVerkleTreeEipEnabled)
         {
-            if (!spec.IsVerkleTreeEipEnabled) _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
-        }
-        else if (_state.IsDeadAccount(contractAddress))
-        {
-            if (!spec.IsVerkleTreeEipEnabled) _state.ClearStorage(contractAddress);
+            if (accountExists)
+            {
+                _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+            }
+            else if (_state.IsDeadAccount(contractAddress))
+            {
+                _state.ClearStorage(contractAddress);
+            }
         }
 
         if (!env.Witness.AccessForContractCreationInit(contractAddress, ref callGas))
         {
-            return (EvmExceptionType.OutOfGas, null);
+            return (EvmExceptionType.None, null);
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);

@@ -364,11 +364,14 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             }
 
             if (requiredGas > gasAvailable) return false;
-            gasAvailable -= requiredGas;
         }
 
         if (!isWrite)
         {
+            if (TGasCharge.ChargeGas)
+            {
+                gasAvailable -= requiredGas;
+            }
             _accessedLeaves.Add(key);
             _accessedSubtrees.Add(subTreeStem);
             return true;
@@ -378,7 +381,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         // write check
         if (TGasCharge.ChargeGas)
         {
-            requiredGas = 0;
             // if `wasPreviouslyNotAccessed = true`, this implies that _modifiedLeaves.Contains(key) = false
             if (wasPreviouslyNotAccessed || !_modifiedLeaves.Contains(key))
             {
