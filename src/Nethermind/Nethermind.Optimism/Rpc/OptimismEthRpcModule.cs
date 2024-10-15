@@ -12,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -108,17 +109,13 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
-        Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
+        Transaction tx = rpcTx.ToTransaction();
+        tx.ChainId = _blockchainBridge.GetChainId();
         tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
 
         if (tx.SenderAddress is null)
         {
             return ResultWrapper<Hash256>.Fail("Failed to recover sender");
-        }
-
-        if (rpcTx.Nonce is null)
-        {
-            tx.Nonce = _accountStateProvider.GetNonce(tx.SenderAddress);
         }
 
         await _sealer.Seal(tx, TxHandlingOptions.None);
@@ -165,20 +162,19 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
 
     public new ResultWrapper<OptimismTransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
-        (TxReceipt? receipt, Transaction? transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
+        (TxReceipt? receipt, Transaction? transaction, _) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: true);
         if (transaction is null)
         {
             return ResultWrapper<OptimismTransactionForRpc?>.Success(null);
         }
 
         RecoverTxSenderIfNeeded(transaction);
-        OptimismTransactionForRpc transactionModel = new(receipt?.BlockHash, receipt as OptimismTxReceipt, transaction, baseFee);
+        OptimismTransactionForRpc transactionModel = new OptimismTransactionForRpc(transaction, blockHash: receipt?.BlockHash, receipt: receipt as OptimismTxReceipt);
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
         return ResultWrapper<OptimismTransactionForRpc?>.Success(transactionModel);
     }
 
-    public new ResultWrapper<OptimismTransactionForRpc?> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
-        UInt256 positionIndex)
+    public new ResultWrapper<OptimismTransactionForRpc?> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError || searchResult.Object is null)
@@ -196,7 +192,10 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        OptimismTransactionForRpc transactionModel = new(block.Hash, receipts.FirstOrDefault(r => r.TxHash == transaction.Hash), transaction, block.BaseFeePerGas);
+        OptimismTransactionForRpc transactionModel = new OptimismTransactionForRpc(
+            transaction,
+            blockHash: block.Hash,
+            receipt: receipts.FirstOrDefault(r => r.TxHash == transaction.Hash));
 
         return ResultWrapper<OptimismTransactionForRpc?>.Success(transactionModel);
     }
@@ -222,7 +221,10 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         Transaction transaction = block.Transactions[(int)positionIndex];
         RecoverTxSenderIfNeeded(transaction);
 
-        OptimismTransactionForRpc transactionModel = new(block.Hash, receipts.FirstOrDefault(r => r.TxHash == transaction.Hash), transaction, block.BaseFeePerGas);
+        OptimismTransactionForRpc transactionModel = new OptimismTransactionForRpc(
+                transaction,
+                blockHash: block.Hash,
+                receipt: receipts.FirstOrDefault(r => r.TxHash == transaction.Hash));
 
         if (_logger.IsDebug)
             _logger.Debug(
@@ -252,7 +254,12 @@ public class OptimismEthRpcModule : EthRpcModule, IOptimismEthRpcModule
         if (returnFullTransactionObjects)
         {
             _blockchainBridge.RecoverTxSenders(block);
-            result.Transactions = result.Transactions.Select((hash, index) => new OptimismTransactionForRpc(block.Hash, receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false), block.Transactions[index], block.BaseFeePerGas));
+            result.Transactions = result.Transactions.Select((hash, index) => new OptimismTransactionForRpc(
+                transaction: block.Transactions[index],
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: index,
+                receipt: receipts.FirstOrDefault(r => r.TxHash?.Equals(hash) ?? false)));
         }
 
         return ResultWrapper<BlockForRpc?>.Success(result);
