@@ -326,8 +326,6 @@ namespace Nethermind.Trie.Pruning
 
         private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
         {
-            Debug.Assert(_pruningStrategy.PruningEnabled);
-
             if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
             set.Seal(root);
 
