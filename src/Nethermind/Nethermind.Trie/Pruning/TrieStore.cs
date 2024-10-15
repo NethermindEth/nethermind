@@ -681,7 +681,7 @@ namespace Nethermind.Trie.Pruning
 
         private long _latestPersistedBlockNumber;
 
-        private IBlockCommitter? _currentBlockCommitter = null;
+        private BlockCommitter? _currentBlockCommitter = null;
 
 
         private long LatestCommittedBlockNumber { get; set; }
