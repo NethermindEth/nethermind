@@ -21,7 +21,7 @@ public static class BlsExtensions
             return false;
         }
 
-        p.Point.Clear();
+        p.Zero();
 
         ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
         ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..];
@@ -41,20 +41,6 @@ public static class BlsExtensions
         return true;
     }
 
-    public static ReadOnlyMemory<byte> EncodeRaw(this G1 p)
-    {
-        if (p.IsInf())
-        {
-            return BlsConst.G1Inf;
-        }
-
-        byte[] raw = new byte[BlsConst.LenG1];
-        ReadOnlySpan<byte> trimmed = p.Serialize();
-        trimmed[..BlsConst.LenFpTrimmed].CopyTo(raw.AsSpan()[BlsConst.LenFpPad..BlsConst.LenFp]);
-        trimmed[BlsConst.LenFpTrimmed..].CopyTo(raw.AsSpan()[(BlsConst.LenFp + BlsConst.LenFpPad)..]);
-        return raw;
-    }
-
     public static bool TryDecodeRaw(this G2 p, ReadOnlySpan<byte> raw)
     {
         if (raw.Length != BlsConst.LenG2)
@@ -70,7 +56,7 @@ public static class BlsExtensions
             return false;
         }
 
-        p.Point.Clear();
+        p.Zero();
 
         ReadOnlySpan<byte> fp0 = raw[BlsConst.LenFpPad..BlsConst.LenFp];
         ReadOnlySpan<byte> fp1 = raw[(BlsConst.LenFp + BlsConst.LenFpPad)..(2 * BlsConst.LenFp)];
@@ -94,6 +80,20 @@ public static class BlsExtensions
         }
 
         return true;
+    }
+
+    public static ReadOnlyMemory<byte> EncodeRaw(this G1 p)
+    {
+        if (p.IsInf())
+        {
+            return BlsConst.G1Inf;
+        }
+
+        byte[] raw = new byte[BlsConst.LenG1];
+        ReadOnlySpan<byte> trimmed = p.Serialize();
+        trimmed[..BlsConst.LenFpTrimmed].CopyTo(raw.AsSpan()[BlsConst.LenFpPad..BlsConst.LenFp]);
+        trimmed[BlsConst.LenFpTrimmed..].CopyTo(raw.AsSpan()[(BlsConst.LenFp + BlsConst.LenFpPad)..]);
+        return raw;
     }
 
     public static ReadOnlyMemory<byte> EncodeRaw(this G2 p)
@@ -127,5 +127,53 @@ public static class BlsExtensions
 
         // check that fp < base field order
         return fp[BlsConst.LenFpPad..].SequenceCompareTo(BlsConst.BaseFieldOrder.AsSpan()) < 0;
+    }
+
+    public static bool TryDecodeG1ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
+        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG1, G1MSMPrecompile.ItemSize, DecodeAndCheckG1);
+
+    public static bool TryDecodeG2ToBuffer(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, int dest, int index)
+        => TryDecodePointToBuffer(inputData, pointBuffer, scalarBuffer, dest, index, BlsConst.LenG2, G2MSMPrecompile.ItemSize, DecodeAndCheckG2);
+
+    private static bool DecodeAndCheckG1(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
+    {
+        G1 p = new(pointBuffer.Span[(dest * G1.Sz)..]);
+        return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
+    }
+
+    private static bool DecodeAndCheckG2(ReadOnlyMemory<byte> rawPoint, Memory<long> pointBuffer, int dest)
+    {
+        G2 p = new(pointBuffer.Span[(dest * G2.Sz)..]);
+        return p.TryDecodeRaw(rawPoint.Span) && (BlsConst.DisableSubgroupChecks || p.InGroup());
+    }
+
+    private static bool TryDecodePointToBuffer(
+        ReadOnlyMemory<byte> inputData,
+        Memory<long> pointBuffer,
+        Memory<byte> scalarBuffer,
+        int dest,
+        int index,
+        int pointLen,
+        int itemSize,
+        Func<ReadOnlyMemory<byte>, Memory<long>, int, bool> decodeAndCheckPoint)
+    {
+        if (dest == -1)
+        {
+            return true;
+        }
+
+        int offset = index * itemSize;
+        ReadOnlyMemory<byte> rawPoint = inputData[offset..(offset + pointLen)];
+        ReadOnlyMemory<byte> reversedScalar = inputData[(offset + pointLen)..(offset + itemSize)];
+
+        if (!decodeAndCheckPoint(rawPoint, pointBuffer, dest))
+        {
+            return false;
+        }
+
+        int destOffset = dest * 32;
+        reversedScalar.CopyTo(scalarBuffer[destOffset..]);
+        scalarBuffer[destOffset..(destOffset + 32)].Span.Reverse();
+        return true;
     }
 }

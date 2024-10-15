@@ -69,11 +69,9 @@ namespace Nethermind.Cli
                 }
                 else
                 {
-                    Stopwatch stopwatch = new();
-                    stopwatch.Start();
+                    long startTime = Stopwatch.GetTimestamp();
                     object? result = await _currentClient.Post<object>(method, parameters);
-                    stopwatch.Stop();
-                    decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                    decimal totalMicroseconds = (decimal)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                     Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
 
                     if (result is bool boolResult)
@@ -121,11 +119,9 @@ namespace Nethermind.Cli
                 }
                 else
                 {
-                    Stopwatch stopwatch = new();
-                    stopwatch.Start();
+                    long starting = Stopwatch.GetTimestamp();
                     result = await _currentClient.Post<T>(method, parameters);
-                    stopwatch.Stop();
-                    decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                    decimal totalMicroseconds = (decimal)Stopwatch.GetElapsedTime(starting).TotalMicroseconds;
                     Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                 }
             }

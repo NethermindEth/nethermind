@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -19,6 +20,7 @@ namespace Nethermind.Core
 {
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
+    [DebuggerDisplay("{ToString()}")]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
         public const int Size = 20;
@@ -26,6 +28,8 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(new byte[Size]);
+        public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
+
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
         public static Address SystemUser { get; } = new(SystemUserHex);
 

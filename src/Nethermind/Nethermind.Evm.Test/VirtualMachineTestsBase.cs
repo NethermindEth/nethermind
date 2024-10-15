@@ -26,10 +26,10 @@ namespace Nethermind.Evm.Test;
 
 public class VirtualMachineTestsBase
 {
-    protected const string SampleHexData1 = "a01234";
-    protected const string SampleHexData2 = "b15678";
-    protected const string HexZero = "00";
-    protected const long DefaultBlockGasLimit = 8000000;
+    public const string SampleHexData1 = "a01234";
+    public const string SampleHexData2 = "b15678";
+    public const string HexZero = "00";
+    public const long DefaultBlockGasLimit = 8000000;
 
     protected IEthereumEcdsa _ethereumEcdsa;
     protected IBlockhashProvider _blockhashProvider;
@@ -126,9 +126,21 @@ public class VirtualMachineTestsBase
         return tracer;
     }
 
+    protected TestAllTracerWithOutput Execute(ForkActivation activation, Transaction tx)
+    {
+        (Block block, _) = PrepareTx(activation, 100000, null);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(tx, block.Header, tracer);
+        return tracer;
+    }
+
     protected TestAllTracerWithOutput Execute(params byte[] code)
     {
         return Execute(Activation, code);
+    }
+    protected TestAllTracerWithOutput Execute(Transaction tx)
+    {
+        return Execute(Activation, tx);
     }
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
@@ -199,7 +211,8 @@ public class VirtualMachineTestsBase
         int value = 1,
         long blockGasLimit = DefaultBlockGasLimit,
         byte[][]? blobVersionedHashes = null,
-        ulong excessBlobGas = 0)
+        ulong excessBlobGas = 0,
+        Transaction transaction = null)
     {
         senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
 
@@ -229,7 +242,7 @@ public class VirtualMachineTestsBase
         TestState.CommitTree(0);
         GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
-        Transaction transaction = Build.A.Transaction
+        transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)
             .WithGasPrice(1)
             .WithValue(value)

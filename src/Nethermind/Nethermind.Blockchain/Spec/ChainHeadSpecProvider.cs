@@ -34,6 +34,8 @@ namespace Nethermind.Blockchain.Spec
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
+
         public ulong NetworkId => _specProvider.NetworkId;
 
         public ulong ChainId => _specProvider.ChainId;

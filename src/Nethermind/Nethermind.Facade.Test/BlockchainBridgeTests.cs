@@ -29,6 +29,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Evm;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.State;
 

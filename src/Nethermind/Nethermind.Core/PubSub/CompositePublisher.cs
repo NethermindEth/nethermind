@@ -16,6 +16,7 @@ namespace Nethermind.Core.PubSub
 
         public async Task PublishAsync<T>(T data) where T : class
         {
+            // TODO: .Net 9 stackalloc
             Task[] tasks = new Task[_publishers.Length];
             for (int i = 0; i < _publishers.Length; i++)
             {

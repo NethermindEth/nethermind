@@ -73,79 +73,56 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue || Mode == ILMode.NO_ILVM)
             return false;
 
-        long initialGas = gasAvailable;
-        try
+        var executionResult = new ILChunkExecutionResult();
+        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
+            Metrics.IlvmPrecompiledSegmentsExecutions++;
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
+            if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
 
-            var executionResult = new ILChunkExecutionResult();
-            if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
-            {
-                Metrics.IlvmPrecompiledSegmentsExecutions++;
-                if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter} in address {vmState.Env.CodeSource}");
+            vmState.DataStackHead = stack.Head;
+            var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-                vmState.DataStackHead = stack.Head;
-                var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
+            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer, ctx.Data);
 
-                ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer, ctx.Data);
+            gasAvailable = ilvmState.GasAvailable;
+            programCounter = ilvmState.ProgramCounter;
 
-                gasAvailable = ilvmState.GasAvailable;
-                programCounter = ilvmState.ProgramCounter;
+            executionResult.ShouldReturn = ilvmState.ShouldReturn;
+            executionResult.ShouldRevert = ilvmState.ShouldRevert;
+            executionResult.ShouldStop = ilvmState.ShouldStop;
+            executionResult.ShouldJump = ilvmState.ShouldJump;
+            executionResult.ExceptionType = ilvmState.EvmException;
+            executionResult.ReturnData = ilvmState.ReturnBuffer;
 
-                executionResult.ShouldReturn = ilvmState.ShouldReturn;
-                executionResult.ShouldRevert = ilvmState.ShouldRevert;
-                executionResult.ShouldStop = ilvmState.ShouldStop;
-                executionResult.ShouldJump = ilvmState.ShouldJump;
-                executionResult.ExceptionType = ilvmState.EvmException;
-                executionResult.ReturnData = ilvmState.ReturnBuffer;
+            stack.Head = ilvmState.StackHead;
 
-                stack.Head = ilvmState.StackHead;
-            }
-            else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
-            {
-                Metrics.IlvmPredefinedPatternsExecutions++;
-
-                if (typeof(TTracingInstructions) == typeof(IsTracing))
-                    StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
-                if (logger.IsInfo) logger.Info($"Executing pattern {chunk.Name} at {programCounter} in address {vmState.Env.CodeSource}");
-
-                chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
-
-                if (typeof(TTracingInstructions) == typeof(IsTracing))
-                    EndTracingSegment(tracer, initialGas, gasAvailable);
-            }
-            else
-            {
-                return false;
-            }
-            result = executionResult;
-            return true;
-        } catch (Exception e)
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportOperationRemainingGas(gasAvailable);
+        }
+        else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
-            logger.Error($"Error while executing IL-EVM segment at {programCounter} on code {vmState.Env.CodeInfo.CodeHash}", e);
-            EvmExceptionType? exceptionType = e switch
-            {
-                EvmException evmException => evmException.ExceptionType,
-                _ => null
-            };
+            Metrics.IlvmPredefinedPatternsExecutions++;
 
-            if(exceptionType is not null)
-            {
-                EndInstructionTraceError(tracer, gasAvailable, exceptionType.Value);
-            }
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
+            if (logger.IsInfo) logger.Info($"Executing segment {chunk.Name} at {programCounter}");
+
+            chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
+
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportOperationRemainingGas(gasAvailable);
+        }
+        else
+        {
             return false;
         }
+
+        result = executionResult;
+        return true;
     }
 
-    private static void EndTracingSegment(ITxTracer tracer, long initialGas, long gasAvailable)
-    {
-        tracer.ReportGasUpdateForVmTrace(0, initialGas - gasAvailable);
-        tracer.ReportOperationRemainingGas(gasAvailable);
-    }
-    private void EndInstructionTraceError(ITxTracer tracer, long gasAvailable, EvmExceptionType evmExceptionType)
-    {
-        tracer.ReportOperationRemainingGas(gasAvailable);
-        tracer.ReportOperationError(evmExceptionType);
-    }
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {

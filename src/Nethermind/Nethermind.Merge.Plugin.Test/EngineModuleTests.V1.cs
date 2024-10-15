@@ -1086,9 +1086,10 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
+    protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null)
+        int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null,
+        ulong slotLength = 12)
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
@@ -1101,7 +1102,7 @@ public partial class EngineModuleTests
         for (int i = 0; i < count; i++)
         {
             ExecutionPayload? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
-                parentBlock.Timestamp + 12,
+                parentBlock.Timestamp + slotLength,
                 random ?? TestItem.KeccakA, Address.Zero);
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
@@ -1232,7 +1233,7 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    private async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
+    protected async Task<ExecutionPayload> BuildAndGetPayloadOnBranch(
         IEngineRpcModule rpc, MergeTestBlockchain chain, BlockHeader parentHeader,
         ulong timestamp, Hash256 random, Address feeRecipient)
     {

@@ -39,6 +39,13 @@ namespace Nethermind.Core.Test.Builders
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
                 ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
+
+            byte[] r = new byte[32];
+            byte[] s = new byte[32];
+            r[1] = 1;
+            s[2] = 2;
+            RandomSignatureA = new Signature(r, s, 27);
+            RandomSignatureB = new Signature(r, s, 28);
         }
 
         public static Hash256 KeccakFromNumber(int i)
@@ -93,6 +100,9 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
 
+        public static readonly Signature RandomSignatureA;
+        public static readonly Signature RandomSignatureB;
+
         public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
         public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
         public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGwei = 3_000_000_000 };
@@ -114,6 +124,13 @@ namespace Nethermind.Core.Test.Builders
         public static WithdrawalRequest WithdrawalRequestD = new() { SourceAddress = AddressD, ValidatorPubkey = PublicKeyD.Bytes };
         public static WithdrawalRequest WithdrawalRequestE = new() { SourceAddress = AddressE, ValidatorPubkey = PublicKeyE.Bytes };
         public static WithdrawalRequest WithdrawalRequestF = new() { SourceAddress = AddressF, ValidatorPubkey = PublicKeyF.Bytes };
+
+        public static ConsolidationRequest ConsolidationRequestA = new() { SourceAddress = AddressA, SourcePubkey = PublicKeyA.Bytes, TargetPubkey = PublicKeyB.Bytes };
+        public static ConsolidationRequest ConsolidationRequestB = new() { SourceAddress = AddressB, SourcePubkey = PublicKeyB.Bytes, TargetPubkey = PublicKeyC.Bytes };
+        public static ConsolidationRequest ConsolidationRequestC = new() { SourceAddress = AddressC, SourcePubkey = PublicKeyC.Bytes, TargetPubkey = PublicKeyD.Bytes };
+        public static ConsolidationRequest ConsolidationRequestD = new() { SourceAddress = AddressD, SourcePubkey = PublicKeyD.Bytes, TargetPubkey = PublicKeyE.Bytes };
+        public static ConsolidationRequest ConsolidationRequestE = new() { SourceAddress = AddressE, SourcePubkey = PublicKeyE.Bytes, TargetPubkey = PublicKeyF.Bytes };
+        public static ConsolidationRequest ConsolidationRequestF = new() { SourceAddress = AddressF, SourcePubkey = PublicKeyF.Bytes, TargetPubkey = PublicKeyA.Bytes };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

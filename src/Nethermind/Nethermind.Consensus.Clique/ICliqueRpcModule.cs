@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -43,5 +44,8 @@ namespace Nethermind.Consensus.Clique
 
         [JsonRpcMethod(Description = "Forces Clique block producer to produce a new block", IsImplemented = true)]
         ResultWrapper<bool> clique_produceBlock(Hash256 parentHash);
+
+        [JsonRpcMethod(Description = "Retrieves the current proposals the node is voting on.", IsImplemented = true)]
+        ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals();
     }
 }

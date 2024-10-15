@@ -116,6 +116,7 @@ public class MetricsTests
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),
             typeof(Trie.Pruning.Metrics),
+            typeof(Shutter.Metrics)
         };
         MetricsController metricsController = new(metricsConfig);
         MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);

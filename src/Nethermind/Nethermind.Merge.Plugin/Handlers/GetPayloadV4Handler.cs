@@ -7,6 +7,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 

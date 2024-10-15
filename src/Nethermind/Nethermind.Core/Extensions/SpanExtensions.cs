@@ -55,7 +55,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        private unsafe static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        private static unsafe string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             if (withEip55Checksum)
             {
@@ -82,7 +82,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        unsafe readonly struct StringParams(byte* input, int inputLength, int leadingZeros, bool withZeroX)
+        readonly unsafe struct StringParams(byte* input, int inputLength, int leadingZeros, bool withZeroX)
         {
             private readonly byte* _input = input;
             public readonly int InputLength = inputLength;

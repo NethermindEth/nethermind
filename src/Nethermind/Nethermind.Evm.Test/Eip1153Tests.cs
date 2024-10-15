@@ -80,7 +80,6 @@ internal class Eip1153Tests : VirtualMachineTestsBase
     [Test]
     public void transient_storage_performance_test()
     {
-        Stopwatch stopwatch = new Stopwatch();
         long blockGasLimit = 30000000;
         long numOfOps = (long)(blockGasLimit * .95) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
         Prepare prepare = Prepare.EvmCode;
@@ -93,11 +92,10 @@ internal class Eip1153Tests : VirtualMachineTestsBase
 
         byte[] code = prepare.Done;
 
-        stopwatch.Start();
+        long startTime = Stopwatch.GetTimestamp();
         TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), blockGasLimit, code, blockGasLimit);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        stopwatch.Stop();
-        Assert.That(stopwatch.ElapsedMilliseconds < 5000, Is.True);
+        Assert.That(Stopwatch.GetElapsedTime(startTime).TotalMilliseconds < 5000, Is.True);
     }
 
     /// <summary>

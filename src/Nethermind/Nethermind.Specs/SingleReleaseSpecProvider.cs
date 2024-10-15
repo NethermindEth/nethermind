@@ -45,6 +45,7 @@ namespace Nethermind.Specs
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => _releaseSpec;
 
         public long? DaoBlockNumber { get; }
+        public ulong? BeaconChainGenesisTimestamp { get; }
 
         public string SealEngine { get; set; } = SealEngineType.Ethash;
     }

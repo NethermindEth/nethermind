@@ -41,15 +41,15 @@ jobs:
           global-json-file: n/global.json
       - name: Build DocGen
         working-directory: n
-        run: dotnet build tools/docgen/DocGen.csproj -c release -o docgen
+        run: dotnet build tools/DocGen/DocGen.csproj -c release -o DocGen
       - name: Generate docs
-        run: n/docgen/DocGen $GITHUB_WORKSPACE/d --config --jsonrpc --metrics
+        run: n/DocGen/DocGen $GITHUB_WORKSPACE/d --config --jsonrpc --metrics
       - name: Tag a new version
         if: github.event_name == 'release' && !github.event.release.prerelease
         working-directory: d
         run: |
           npm i
-          npm run docusaurus docs:version v${{ github.event.release.tag_name }}
+          npm run docusaurus docs:version ${{ github.event.release.tag_name }}
       - name: Create a pull request
         working-directory: d
         env:

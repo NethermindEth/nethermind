@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class JsonRpcUrlTests
 {
     [TestCase("http://127.0.0.1:1234|http|eth;web3;net", "http", "127.0.0.1", 1234, RpcEndpoint.Http, new string[] { "eth", "web3", "net" })]

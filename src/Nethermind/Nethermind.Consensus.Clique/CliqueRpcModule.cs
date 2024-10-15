@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -11,50 +12,46 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliqueRpcModule : ICliqueRpcModule
+    public class CliqueRpcModule(
+        ICliqueBlockProducerRunner? cliqueBlockProducer,
+        ISnapshotManager snapshotManager,
+        IBlockFinder blockTree)
+        : ICliqueRpcModule
     {
         private const string CannotVoteOnNonValidatorMessage = "Not a signer node - cannot vote";
 
-        private readonly ICliqueBlockProducerRunner? _cliqueBlockProducer;
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly IBlockFinder _blockTree;
-
-        public CliqueRpcModule(ICliqueBlockProducerRunner? cliqueBlockProducer, ISnapshotManager snapshotManager, IBlockFinder blockTree)
-        {
-            _cliqueBlockProducer = cliqueBlockProducer;
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        }
+        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+        private readonly IBlockFinder _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public bool ProduceBlock(Hash256 parentHash)
         {
-            if (_cliqueBlockProducer is null)
+            if (cliqueBlockProducer is null)
             {
                 return false;
             }
 
-            _cliqueBlockProducer?.ProduceOnTopOf(parentHash);
+            cliqueBlockProducer?.ProduceOnTopOf(parentHash);
             return true;
         }
 
         public void CastVote(Address signer, bool vote)
         {
-            if (_cliqueBlockProducer is null)
+            if (cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            _cliqueBlockProducer.CastVote(signer, vote);
+            cliqueBlockProducer.CastVote(signer, vote);
         }
 
         public void UncastVote(Address signer)
         {
-            if (_cliqueBlockProducer is null)
+            if (cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
 
-            _cliqueBlockProducer.UncastVote(signer);
+            cliqueBlockProducer.UncastVote(signer);
         }
 
         public Snapshot GetSnapshot()
@@ -103,45 +100,24 @@ namespace Nethermind.Consensus.Clique
                 .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash)
-        {
-            return ResultWrapper<bool>.Success(ProduceBlock(parentHash));
-        }
+        public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash) => ResultWrapper<bool>.Success(ProduceBlock(parentHash));
 
-        public ResultWrapper<Snapshot> clique_getSnapshot()
-        {
-            return ResultWrapper<Snapshot>.Success(GetSnapshot());
-        }
+        public ResultWrapper<IReadOnlyDictionary<Address, bool>> clique_proposals() =>
+            ResultWrapper<IReadOnlyDictionary<Address, bool>>.Success(cliqueBlockProducer?.GetProposals() ?? new Dictionary<Address, bool>());
 
-        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash)
-        {
-            return ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
-        }
+        public ResultWrapper<Snapshot> clique_getSnapshot() => ResultWrapper<Snapshot>.Success(GetSnapshot());
 
-        public ResultWrapper<Address[]> clique_getSigners()
-        {
-            return ResultWrapper<Address[]>.Success(GetSigners().ToArray());
-        }
+        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash) => ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
 
-        public ResultWrapper<Address[]> clique_getSignersAtHash(Hash256 hash)
-        {
-            return ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
-        }
+        public ResultWrapper<Address[]> clique_getSigners() => ResultWrapper<Address[]>.Success(GetSigners().ToArray());
 
-        public ResultWrapper<Address[]> clique_getSignersAtNumber(long number)
-        {
-            return ResultWrapper<Address[]>.Success(GetSigners(number).ToArray());
-        }
+        public ResultWrapper<Address[]> clique_getSignersAtHash(Hash256 hash) => ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
 
-        public ResultWrapper<string[]> clique_getSignersAnnotated()
-        {
-            return ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
-        }
+        public ResultWrapper<Address[]> clique_getSignersAtNumber(long number) => ResultWrapper<Address[]>.Success(GetSigners(number).ToArray());
 
-        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Hash256 hash)
-        {
-            return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
-        }
+        public ResultWrapper<string[]> clique_getSignersAnnotated() => ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
+
+        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Hash256 hash) => ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
 
         public ResultWrapper<Address?> clique_getBlockSigner(Hash256? hash)
         {

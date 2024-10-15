@@ -31,5 +31,15 @@ public interface IVMConfig : IConfig
         DefaultValue = "32")]
     public int PatternMatchingThreshold { get; set; }
 
+    [ConfigItem(
+        Description = "Activates or Deactivates aggressive JIT optimizations",
+        DefaultValue = "false")]
+    public bool AggressiveJitMode { get; set; }
+
+    [ConfigItem(
+        Description = "Activates or Deactivates traces in JIT optimizations",
+        DefaultValue = "false")]
+    public bool BakeInTracingInJitMode { get; set; }
+
     public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsJitEnabled;
 }

@@ -83,7 +83,7 @@ internal class FundsDistributor
 
         List<string> txHash = new List<string>();
 
-        TxDecoder txDecoder = new();
+        TxDecoder txDecoder = TxDecoder.Instance;
         StreamWriter? keyWriter = null;
 
         if (!string.IsNullOrWhiteSpace(_keyFilePath))
@@ -147,7 +147,7 @@ internal class FundsDistributor
 
         ILogger log = _logManager.GetClassLogger();
         List<string> txHashes = new List<string>();
-        TxDecoder txDecoder = new();
+        TxDecoder txDecoder = TxDecoder.Instance;
 
         foreach (var signer in privateSigners)
         {

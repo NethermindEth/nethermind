@@ -4,12 +4,15 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Crypto
 {
     public class NullEthereumEcdsa : IEthereumEcdsa
     {
         public static NullEthereumEcdsa Instance { get; } = new();
+
+        public ulong ChainId => 0;
 
         private NullEthereumEcdsa()
         {
@@ -26,11 +29,6 @@ namespace Nethermind.Crypto
         }
 
         public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Hash256 message)
-        {
-            throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
-        }
-
-        public void Sign(PrivateKey privateKey, Transaction tx, bool _)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

@@ -14,7 +14,7 @@ namespace Nethermind.State.Proofs;
 public class RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
     : PatriciaTrie<ConsensusRequest>(requests, canBuildProof, bufferPool)
 {
-    private static readonly ConsensusRequestDecoder _codec = new();
+    private static readonly ConsensusRequestDecoder _codec = ConsensusRequestDecoder.Instance;
 
     protected override void Initialize(ConsensusRequest[] requests)
     {

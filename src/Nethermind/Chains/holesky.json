@@ -35,6 +35,7 @@
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
+    "beaconChainGenesisTimestamp": "0x65156994",
     "eip3651TransitionTimestamp": "0x6516eac0",
     "eip3855TransitionTimestamp": "0x6516eac0",
     "eip3860TransitionTimestamp": "0x6516eac0",

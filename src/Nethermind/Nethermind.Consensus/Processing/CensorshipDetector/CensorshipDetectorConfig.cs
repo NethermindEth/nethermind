@@ -5,7 +5,7 @@ namespace Nethermind.Consensus.Processing.CensorshipDetector;
 
 public class CensorshipDetectorConfig : ICensorshipDetectorConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public uint BlockCensorshipThreshold { get; set; } = 2;
     public string[]? AddressesForCensorshipDetection { get; set; } = null;
 }

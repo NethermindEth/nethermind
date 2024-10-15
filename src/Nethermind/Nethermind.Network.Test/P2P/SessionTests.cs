@@ -15,7 +15,6 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P;
@@ -452,9 +451,11 @@ public class SessionTests
         session.AddProtocolHandler(bbb);
         session.AddProtocolHandler(ccc);
 
-        _packetSender.Enqueue(PingMessage.Instance).Returns(10);
-        session.DeliverMessage(PingMessage.Instance);
-        _packetSender.Received().Enqueue(PingMessage.Instance);
+        var message = new TestMessage();
+        _packetSender.Enqueue(message).Returns(10);
+        session.DeliverMessage(message);
+        _packetSender.Received().Enqueue(message);
+        message.WasDisposed.Should().BeTrue();
 
         Metrics.P2PBytesSent.Should().Be(10);
     }
@@ -462,10 +463,12 @@ public class SessionTests
     [Test]
     public void Cannot_deliver_before_initialized()
     {
+        var message = new TestMessage();
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(PingMessage.Instance));
+        Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
         session.Handshake(TestItem.PublicKeyA);
-        Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(PingMessage.Instance));
+        Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
+        message.WasDisposed.Should().BeTrue();
         session.Init(5, _channelHandlerContext, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
@@ -494,8 +497,10 @@ public class SessionTests
 
         session.InitiateDisconnect(DisconnectReason.Other);
 
-        session.DeliverMessage(PingMessage.Instance);
-        _packetSender.DidNotReceive().Enqueue(Arg.Any<PingMessage>());
+        var message = new TestMessage();
+        session.DeliverMessage(message);
+        _packetSender.DidNotReceive().Enqueue(Arg.Any<TestMessage>());
+        message.WasDisposed.Should().BeTrue();
     }
 
     [Test]
@@ -538,10 +543,11 @@ public class SessionTests
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
+        var message = new TestMessage();
         p2p.When(it => it.DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
             .Do((_) =>
             {
-                session.DeliverMessage(PingMessage.Instance);
+                session.DeliverMessage(message);
             });
 
         session.Init(5, _channelHandlerContext, _packetSender);
@@ -549,7 +555,9 @@ public class SessionTests
 
         _packetSender
             .Received()
-            .Enqueue(PingMessage.Instance);
+            .Enqueue(message);
+
+        message.WasDisposed.Should().BeTrue();
     }
 
     [Test, Retry(3)]
@@ -618,5 +626,18 @@ public class SessionTests
         afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
         Assert.That(afterLocal, Is.EqualTo(beforeLocal));
         Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
+    }
+
+    private class TestMessage : P2PMessage
+    {
+        public override int PacketType => P2PMessageCode.Ping;
+        public override string Protocol => "p2p";
+
+        public bool WasDisposed { get; set; }
+        public override void Dispose()
+        {
+            base.Dispose();
+            WasDisposed = true;
+        }
     }
 }

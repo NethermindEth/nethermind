@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -26,8 +27,11 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
+    [SkipLocalsInit]
     public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.BlsG2MulPrecompile++;
+
         const int expectedInputLength = BlsConst.LenG2 + BlsConst.LenFr;
 
         if (inputData.Length != expectedInputLength)
@@ -36,7 +40,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         }
 
         G2 x = new(stackalloc long[G2.Sz]);
-        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !x.InGroup())
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
         {
             return IPrecompile.Failure;
         }

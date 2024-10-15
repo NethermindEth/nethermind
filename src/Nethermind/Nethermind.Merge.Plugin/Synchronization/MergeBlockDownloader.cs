@@ -179,7 +179,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 
-                Stopwatch sw = Stopwatch.StartNew();
+                long startTime = Stopwatch.GetTimestamp();
                 await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
@@ -189,7 +189,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
-                AdjustSyncBatchSize(sw.Elapsed);
+                AdjustSyncBatchSize(Stopwatch.GetElapsedTime(startTime));
 
                 blocks = context.Blocks;
                 receipts = context.ReceiptsForBlocks;

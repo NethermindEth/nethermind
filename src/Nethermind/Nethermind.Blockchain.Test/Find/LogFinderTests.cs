@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Find;
 using NSubstitute;
 using NUnit.Framework;
 

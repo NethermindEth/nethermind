@@ -15,7 +15,6 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Facade.Eth;
@@ -174,10 +173,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return this;
         }
 
-        public Task<string> TestEthRpc(string method, params string[] parameters) =>
+        public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
             RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
-
-        public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
-            RpcTest.TestSerializedRequest(module, method, parameters);
     }
 }
