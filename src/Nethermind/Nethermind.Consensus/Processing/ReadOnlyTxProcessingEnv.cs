@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Processing
         protected virtual ITransactionProcessor CreateTransactionProcessor() =>
             new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, _logManager);
 
-        public virtual IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
+        public IReadOnlyTxProcessingScope Build(Hash256 stateRoot)
         {
             Hash256 originalStateRoot = StateProvider.StateRoot;
             StateProvider.StateRoot = stateRoot;

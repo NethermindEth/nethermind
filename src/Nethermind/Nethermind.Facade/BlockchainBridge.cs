@@ -148,7 +148,7 @@ namespace Nethermind.Facade
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
@@ -189,7 +189,7 @@ namespace Nethermind.Facade
             return result;
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride> stateOverride, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
@@ -286,7 +286,6 @@ namespace Nethermind.Facade
                     blockHeader.ExtraData);
 
             IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
-
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
                 ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
                 : blockHeader.BaseFeePerGas;

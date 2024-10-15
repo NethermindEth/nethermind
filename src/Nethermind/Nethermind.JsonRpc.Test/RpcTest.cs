@@ -4,7 +4,9 @@
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+
 using FluentAssertions;
+
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;

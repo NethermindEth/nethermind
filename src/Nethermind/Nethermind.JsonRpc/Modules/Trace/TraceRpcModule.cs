@@ -16,7 +16,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -301,7 +300,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-
             _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
