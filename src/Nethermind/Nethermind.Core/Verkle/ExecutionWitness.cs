@@ -79,13 +79,28 @@ public struct StateDiff
     public List<StemStateDiff> SuffixDiffs { get; set; }
 }
 
-public struct StemStateDiff
+public struct StemStateDiff: IEquatable<StemStateDiff>
 {
     public Stem Stem { get; set; }
     public List<SuffixStateDiff> SuffixDiffs { get; set; }
+
+    public bool Equals(StemStateDiff other)
+    {
+        return Stem.Equals(other.Stem) && SuffixDiffs.SequenceEqual(other.SuffixDiffs);
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is StemStateDiff other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Stem, SuffixDiffs);
+    }
 }
 
-public struct SuffixStateDiff
+public struct SuffixStateDiff: IEquatable<SuffixStateDiff>
 {
     public byte Suffix { get; set; }
     // add null if the values are not there - part of the spec
@@ -93,4 +108,26 @@ public struct SuffixStateDiff
     public byte[]? CurrentValue { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? NewValue { get; set; }
+
+    public bool Equals(SuffixStateDiff other)
+    {
+        if (Suffix != other.Suffix)
+            return false;
+
+        if (CurrentValue is null)
+            return other.CurrentValue is null;
+
+        return other.CurrentValue is not null &&
+               Extensions.Bytes.AreEqual(CurrentValue, other.CurrentValue);
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is SuffixStateDiff other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Suffix, CurrentValue);
+    }
 }
