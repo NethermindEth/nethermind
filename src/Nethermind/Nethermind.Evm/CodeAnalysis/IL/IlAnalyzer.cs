@@ -139,7 +139,7 @@ public static class IlAnalyzer
 
                 segmentAvgSize += segment.Length;
 
-                var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2);
+                var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2, vmConfig);
                 if (vmConfig.AggressiveJitMode)
                 {
                     ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);

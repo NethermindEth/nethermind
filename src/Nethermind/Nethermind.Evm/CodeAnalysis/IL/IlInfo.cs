@@ -84,7 +84,7 @@ internal class IlInfo
             vmState.DataStackHead = stack.Head;
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
+            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer, ctx.Data);
 
             gasAvailable = ilvmState.GasAvailable;
             programCounter = ilvmState.ProgramCounter;

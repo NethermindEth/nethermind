@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Config;
 using Nethermind.Evm.IL;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -21,14 +22,15 @@ using Label = Sigil.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace, byte[][] immediatesData);
 
     private const int VMSTATE_INDEX = 0;
     private const int BLOCKHASH_PROVIDER_INDEX = 1;
     private const int WORLD_STATE_INDEX = 2;
     private const int CODE_INFO_REPOSITORY_INDEX = 3;
     private const int SPEC_INDEX = 4;
-    private const int IMMEDIATES_DATA_INDEX = 5;
+    private const int TXTRACER_INDEX = 5;
+    private const int IMMEDIATES_DATA_INDEX = 6;
 
     public class SegmentExecutionCtx
     {
@@ -37,7 +39,7 @@ internal class ILCompiler
         public byte[][] Data;
         public ushort[] JumpDestinations;
     }
-    public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data)
+    public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
@@ -52,7 +54,7 @@ internal class ILCompiler
         }
         else
         {
-            jumpdests = EmitSegmentBody(method, code);
+            jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
         }
 
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
@@ -64,7 +66,7 @@ internal class ILCompiler
         };
     }
 
-    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code)
+    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -159,22 +161,39 @@ internal class ILCompiler
                 method.StoreLocal(programCounter);
             }
 
+
+            if (bakeInTracerCalls)
+            {
+                EmitCallToStartInstructionTrace(method, gasAvailable, head, op);
+            }
+
             // check if opcode is activated in current spec
             method.LoadArgument(SPEC_INDEX);
             method.LoadConstant((byte)op.Operation);
             method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
             method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
 
-            if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
+            if (!bakeInTracerCalls) {
+                if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
+                {
+                    method.LoadLocal(gasAvailable);
+                    method.LoadConstant(costs[op.ProgramCounter]);
+                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadConstant(costs[op.ProgramCounter]);
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+                }
+            } else
             {
                 method.LoadLocal(gasAvailable);
-                method.LoadConstant(costs[op.ProgramCounter]);
-                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
-
-                method.LoadLocal(gasAvailable);
-                method.LoadConstant(costs[op.ProgramCounter]);
+                method.LoadConstant(op.Metadata.GasCost);
                 method.Subtract();
+                method.Duplicate();
                 method.StoreLocal(gasAvailable);
+                method.LoadConstant((long)0);
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
             }
 
             if (i == code.Length - 1)
@@ -242,6 +261,10 @@ internal class ILCompiler
                 case Instruction.JUMP:
                     {
                         // we jump into the jump table
+                        if (bakeInTracerCalls)
+                        {
+                            EmitCallToEndInstructionTrace(method, gasAvailable);
+                        }
                         method.FakeBranch(jumpTable);
                     }
                     break;
@@ -258,6 +281,11 @@ internal class ILCompiler
                         method.StoreLocal(consumeJumpCondition);
 
                         // we jump into the jump table
+
+                        if (bakeInTracerCalls)
+                        {
+                            EmitCallToEndInstructionTrace(method, gasAvailable);
+                        }
                         method.Branch(jumpTable);
 
                         method.MarkLabel(noJump);
@@ -1878,6 +1906,11 @@ internal class ILCompiler
                     }
                     break;
             }
+
+            if (bakeInTracerCalls)
+            {
+                EmitCallToEndInstructionTrace(method, gasAvailable);
+            }
         }
 
         Label skipProgramCounterSetting = method.DefineLabel();
@@ -2019,7 +2052,12 @@ internal class ILCompiler
         foreach (var kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
-            method.LoadArgument(VMSTATE_INDEX); ;
+            if(bakeInTracerCalls)
+            {
+                EmitCallToErrorTrace(method, gasAvailable, kvp);
+            }
+
+            method.LoadArgument(VMSTATE_INDEX);
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
             method.Branch(exit);
@@ -2030,6 +2068,37 @@ internal class ILCompiler
         method.Return();
 
         return jumpDestinations.Keys.ToArray();
+    }
+
+    private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
+    {
+        method.LoadArgument(TXTRACER_INDEX);
+        method.LoadLocal(gasAvailable);
+        method.LoadConstant((int)kvp.Key);
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
+    }
+
+    private static void EmitCallToEndInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable)
+    {
+        method.LoadArgument(TXTRACER_INDEX);
+        method.LoadLocal(gasAvailable);
+        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+        method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+    }
+
+
+    private static void EmitCallToStartInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, Local head, OpcodeInfo op)
+    {
+        method.LoadArgument(TXTRACER_INDEX);
+        method.LoadConstant((int)op.Operation);
+        method.LoadArgument(0);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadLocal(gasAvailable);
+        method.LoadConstant(op.ProgramCounter);
+        method.LoadLocal(head);
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
     }
 
     private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
