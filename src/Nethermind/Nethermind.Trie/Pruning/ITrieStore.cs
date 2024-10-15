@@ -11,10 +11,8 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Full traditional trie store.
     /// </summary>
-    public interface ITrieStore : IDisposable
+    public interface ITrieStore : IDisposable, ITrieStoreInternal
     {
-        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
-
         IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -28,13 +26,23 @@ namespace Nethermind.Trie.Pruning
         bool HasRoot(Hash256 stateRoot);
 
         IScopedTrieStore GetTrieStore(Hash256? address);
+        INodeStorage.KeyScheme Scheme { get; }
 
+        IBlockCommitter BeginBlockCommit(long blockNumber);
+    }
+
+    /// <summary>
+    /// These methods are to be used by ScopedTrieStore.
+    /// It should be considered internal to TrieStore.
+    /// It should be used directly, nor intercepted.
+    /// </summary>
+    public interface ITrieStoreInternal
+    {
+        ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        INodeStorage.KeyScheme Scheme { get; }
-        ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
-        IBlockCommitter BeginBlockCommit(long blockNumber);
+        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
     }
 
     public interface IPruningTrieStore
