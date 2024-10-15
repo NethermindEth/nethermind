@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
@@ -25,10 +25,10 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.Facade.Eth;
 using Nethermind.TxPool;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Taiko.Rpc;
 
@@ -153,7 +153,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         void CommitAndDisposeBatch(Batch batch)
         {
-            Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new TransactionForRpc(tx)).ToArray(),
+            Batches.Add(new PreBuiltTxList(batch.Transactions.Select(tx => new LegacyTransactionForRpc(tx)).ToArray(),
                                             (ulong)blockHeader.GasUsed,
                                             batch.GetCompressedTxsLength()));
             blockHeader.GasUsed = 0;
