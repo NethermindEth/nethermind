@@ -137,29 +137,23 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         {
             using (SHA256 sha256Inner = SHA256.Create())
             {
-                foreach (ExecutionRequest request in ProcessDeposits(receipts, spec))
+                void ProcessAndHashRequests(IEnumerable<ExecutionRequest> executionRequests)
                 {
-                    requestsList.AddRange(request);
-                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
+                    foreach (ExecutionRequest request in executionRequests)
+                    {
+                        requestsList.AddRange(request);
+                        var internalBuffer = new byte[request.RequestData.Length + 1];
+                        request.FlatEncode(internalBuffer);
+                        byte[] requestHash = sha256Inner.ComputeHash(internalBuffer);
 
-                    // Update the outer hash with the result of each inner hash
-                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
-                }
-                foreach (ExecutionRequest request in ReadRequests(block, state, spec, spec.Eip7002ContractAddress))
-                {
-                    requestsList.AddRange(request);
-                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
-
-                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+                        // Update the outer hash with the result of each inner hash
+                        sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+                    }
                 }
 
-                foreach (ExecutionRequest request in ReadRequests(block, state, spec, spec.Eip7251ContractAddress))
-                {
-                    requestsList.AddRange(request);
-                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
-
-                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
-                }
+                ProcessAndHashRequests(ProcessDeposits(receipts, spec));
+                ProcessAndHashRequests(ReadRequests(block, state, spec, spec.Eip7002ContractAddress));
+                ProcessAndHashRequests(ReadRequests(block, state, spec, spec.Eip7251ContractAddress));
 
                 // Complete the final hash computation
                 sha256.TransformFinalBlock(new byte[0], 0, 0);

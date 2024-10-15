@@ -4,9 +4,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data.SqlTypes;
 using System.Security.Cryptography;
-using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -24,61 +22,89 @@ public class ExecutionRequest
     public byte RequestType { get; set; }
     public byte[]? RequestData { get; set; }
 
-    public byte[] FlatEncode()
+    public void FlatEncode(Span<byte> buffer)
     {
-        byte[] encoded = new byte[RequestData!.Length + 1];
-        encoded[0] = RequestType;
-        RequestData.CopyTo(encoded, 1);
-        return encoded;
+        if (buffer.Length < RequestData!.Length + 1)
+            throw new ArgumentException("Buffer too small");
+
+        buffer[0] = RequestType;
+        RequestData.CopyTo(buffer.Slice(1));
     }
 
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => @$"{indentation}{nameof(ExecutionRequest)}
             {{{nameof(RequestType)}: {RequestType},
-            {nameof(RequestData)}: {RequestData?.ToHexString()}}}";
+            {nameof(RequestData)}: {RequestData!.ToHexString()}}}";
 }
 
 public static class ExecutionRequestExtensions
 {
-    public static byte[] FlatEncode(this ExecutionRequest[] requests)
+    public static int GetRequestsByteSize(this ExecutionRequest[] requests)
     {
-        List<byte> encoded = new();
+        int size = 0;
         foreach (ExecutionRequest request in requests)
         {
-            encoded.AddRange(request.FlatEncode());
+            size += request.RequestData!.Length + 1;
         }
-        return encoded.ToArray();
+        return size;
     }
 
-    public static byte[] FlatEncodeWithoutType(this ExecutionRequest[] requests)
+    public static void FlatEncode(this ExecutionRequest[] requests, Span<byte> buffer)
     {
-        List<byte> encoded = new();
+        int currentPosition = 0;
+
         foreach (ExecutionRequest request in requests)
         {
-            encoded.AddRange(request.RequestData!);
-        }
-        return encoded.ToArray();
-    }
+            Span<byte> internalBuffer = new byte[request.RequestData!.Length + 1];
+            request.FlatEncode(internalBuffer);
 
-    public static Hash256 CalculateHash(this ExecutionRequest[] requests)
-    {
-        using (SHA256 sha256 = SHA256.Create())
-        {
-            using (SHA256 sha256Inner = SHA256.Create())
+            // Ensure the buffer has enough space to accommodate the new data
+            if (currentPosition + internalBuffer.Length > buffer.Length)
             {
-                foreach (ExecutionRequest request in requests)
-                {
-                    byte[] requestHash = sha256Inner.ComputeHash(request.FlatEncode());
-
-                    // Update the outer hash with the result of each inner hash
-                    sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
-                }
-                // Complete the final hash computation
-                sha256.TransformFinalBlock(new byte[0], 0, 0);
-                return new Hash256(sha256.Hash!);
+                throw new InvalidOperationException("Buffer is not large enough to hold all data of requests");
             }
+
+            // Copy the internalBuffer to the buffer at the current position
+            internalBuffer.CopyTo(buffer.Slice(currentPosition, internalBuffer.Length));
+            currentPosition += internalBuffer.Length;
         }
+    }
+
+    public static void FlatEncodeWithoutType(this ExecutionRequest[] requests, Span<byte> buffer)
+    {
+        int currentPosition = 0;
+
+        foreach (ExecutionRequest request in requests)
+        {
+            // Ensure the buffer has enough space to accommodate the new data
+            if (currentPosition + request.RequestData!.Length > buffer.Length)
+            {
+                throw new InvalidOperationException("Buffer is not large enough to hold all data of requests");
+            }
+
+            // Copy the RequestData to the buffer at the current position
+            request.RequestData.CopyTo(buffer.Slice(currentPosition, request.RequestData.Length));
+            currentPosition += request.RequestData.Length;
+        }
+    }
+
+    public static Hash256 CalculateHash(this IEnumerable<ExecutionRequest> requests)
+    {
+        using var sha256 = SHA256.Create();
+        using var sha256Inner = SHA256.Create();
+        foreach (ExecutionRequest request in requests)
+        {
+            var internalBuffer = new byte[request.RequestData!.Length + 1];
+            request.FlatEncode(internalBuffer);
+            byte[] requestHash = sha256Inner.ComputeHash(internalBuffer);
+
+            // Update the outer hash with the result of each inner hash
+            sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+        }
+        // Complete the final hash computation
+        sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        return new Hash256(sha256.Hash!);
     }
 
     public static bool IsSortedByType(this ExecutionRequest[] requests)

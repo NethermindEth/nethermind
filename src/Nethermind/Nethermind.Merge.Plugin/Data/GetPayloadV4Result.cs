@@ -12,5 +12,5 @@ public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 bl
     public ExecutionRequest[]? ExecutionRequests { get; } = ExecutionRequests;
 
     public override string ToString() =>
-        $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests : {ExecutionRequests?.FlatEncode()}}}";
+        $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
 }
