@@ -48,11 +48,14 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnly
         return new(CodeInfoRepository, TransactionProcessor, StateProvider, originalStateRoot);
     }
 
-    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride> stateOverride)
+    IOverridableTxProcessingScope IOverridableTxProcessorSource.BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride)
     {
         OverridableTxProcessingScope scope = Build(header.StateRoot ?? throw new ArgumentException($"Block {header.Hash} state root is null", nameof(header)));
-        scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);
-        header.StateRoot = scope.WorldState.StateRoot;
+        if (stateOverride != null)
+        {
+            scope.WorldState.ApplyStateOverrides(scope.CodeInfoRepository, stateOverride, SpecProvider.GetSpec(header), header.Number);
+            header.StateRoot = scope.WorldState.StateRoot;
+        }
         return scope;
     }
 }
