@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Verkle.Curve;
@@ -55,7 +56,7 @@ public partial class BlockProcessor : IBlockProcessor
 
     // these two are test flags that can be used to test witness generation and verification
     public bool ShouldVerifyIncomingWitness { get; set; } = false;
-    public bool ShouldGenerateWitness { get; set; } = true;
+    public bool ShouldGenerateWitness { get; set; } = false;
 
     /// <summary>
     /// We use a single execution tracer for all blocks. Internally execution tracer forwards most of the calls
@@ -82,7 +83,7 @@ public partial class BlockProcessor : IBlockProcessor
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
-        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
+        _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
@@ -336,22 +337,44 @@ public partial class BlockProcessor : IBlockProcessor
 
 
         ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, ExecutionTracer, spec);
+        _withdrawalProcessor.ProcessWithdrawals(block, ExecutionTracer, spec, worldState);
         ExecutionTracer.EndBlockTrace();
 
         // generate and add execution witness to the block
-        if (!block.IsGenesis && options.ContainsFlag(ProcessingOptions.ProducingBlock) && spec.IsVerkleTreeEipEnabled)
+        bool isProducingBlocks = options.ContainsFlag(ProcessingOptions.ProducingBlock);
+        if (!block.IsGenesis && spec.IsVerkleTreeEipEnabled && (isProducingBlocks || ShouldGenerateWitness))
         {
+            // generate the verkle proof before commiting the changes
             Hash256[] witnessKeys = ExecutionTracer.WitnessKeys.ToArray();
             var verkleWorldState = worldState as VerkleWorldState;
             ExecutionWitness witness = witnessKeys.Length == 0
                 ? new ExecutionWitness()
                 : verkleWorldState?.GenerateExecutionWitness(witnessKeys, out _);
 
+            // commit the new changes
             worldState.Commit(spec);
 
+            // now the state is commited, use the witness with post state values
             verkleWorldState?.UpdateWithPostStateValues(witness);
-            block.Body.ExecutionWitness = witness;
+
+            // now there are two reason we generate the witness
+            // 1. When we are producing the block
+            // 2. when we want to properly verify the incoming witness (this mode is mostly for hive tests)
+
+            if (isProducingBlocks)
+            {
+                block.Body.ExecutionWitness = witness;
+            }
+            else if (ShouldVerifyIncomingWitness)
+            {
+                // this can be moved to hive tests as well, but we will need to modify the block store
+                // to store execution witness as well
+                ExecutionWitness incomingWit = block.Body.ExecutionWitness;
+                if (!incomingWit!.StateDiff.SequenceEqual(witness!.StateDiff))
+                {
+                    throw new Exception($"Different Execution Witness");
+                }
+            }
         }
         else
         {

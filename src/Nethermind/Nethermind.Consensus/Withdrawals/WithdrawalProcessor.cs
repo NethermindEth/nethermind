@@ -15,17 +15,15 @@ namespace Nethermind.Consensus.Withdrawals;
 public class WithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly ILogger _logger;
-    private readonly IWorldState _stateProvider;
 
-    public WithdrawalProcessor(IWorldState stateProvider, ILogManager logManager)
+    public WithdrawalProcessor(ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 
-    public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec)
+    public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec, IWorldState worldState)
     {
         if (!spec.WithdrawalsEnabled)
             return;
@@ -33,7 +31,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
         IExecutionWitness witness = blockTracer.IsTracingAccessWitness
-            ? new VerkleExecWitness(NullLogManager.Instance, _stateProvider as VerkleWorldState)
+            ? new VerkleExecWitness(NullLogManager.Instance, worldState as VerkleWorldState)
             : new NoExecWitness();
 
         if (block.Withdrawals is not null)
@@ -45,13 +43,13 @@ public class WithdrawalProcessor : IWithdrawalProcessor
                 witness.AccessAccountForWithdrawal(withdrawal.Address);
 
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
-                if (_stateProvider.AccountExists(withdrawal.Address))
+                if (worldState.AccountExists(withdrawal.Address))
                 {
-                    _stateProvider.AddToBalance(withdrawal.Address, withdrawal.AmountInWei, spec);
+                    worldState.AddToBalance(withdrawal.Address, withdrawal.AmountInWei, spec);
                 }
                 else
                 {
-                    _stateProvider.CreateAccount(withdrawal.Address, withdrawal.AmountInWei);
+                    worldState.CreateAccount(withdrawal.Address, withdrawal.AmountInWei);
                 }
             }
         }
