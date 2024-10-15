@@ -76,10 +76,11 @@ public class Era1ModuleTests
         Assert.That(td1, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
     }
 
-    [Test]
-    public async Task ImportAndExportGethFiles()
+    [TestCase("holesky")]
+    [TestCase("mainnet")]
+    public async Task ImportAndExportGethFiles(string network)
     {
-        var eraFiles = EraPathUtils.GetAllEraFiles("testdata/holesky", "holesky");
+        var eraFiles = EraPathUtils.GetAllEraFiles($"testdata/{network}", network);
 
         Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 

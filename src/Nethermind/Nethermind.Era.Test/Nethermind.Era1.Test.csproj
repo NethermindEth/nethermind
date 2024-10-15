@@ -41,6 +41,15 @@
     <None Update="testdata\holesky\holesky-00002-5a3ecb1a.era1">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="testdata\mainnet\mainnet-00000-5ec1ffb8.era1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="testdata\mainnet\mainnet-00001-a5364e9a.era1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="testdata\mainnet\mainnet-00002-98cbd8a9.era1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
