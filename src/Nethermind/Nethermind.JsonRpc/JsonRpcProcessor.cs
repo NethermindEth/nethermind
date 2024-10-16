@@ -373,19 +373,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         Utf8JsonReader reader = new(buffer);
 
-        jsonDocument = null!;
-
-        try
+        if (JsonDocument.TryParseValue(ref reader, out jsonDocument))
         {
-            if (JsonDocument.TryParseValue(ref reader, out jsonDocument))
-            {
-                buffer = buffer.Slice(reader.BytesConsumed);
-                return true;
-            }
-        }
-        catch (JsonException)
-        {
-            return false;
+            buffer = buffer.Slice(reader.BytesConsumed);
+            return true;
         }
 
         return false;
