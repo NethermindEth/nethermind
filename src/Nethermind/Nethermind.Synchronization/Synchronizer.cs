@@ -319,27 +319,26 @@ namespace Nethermind.Synchronization
 
         private void StartFastBlocksComponents()
         {
-            FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-            SyncDispatcher<HeadersSyncBatch> headersDispatcher = CreateDispatcher(
-                HeadersSyncFeed,
-                new HeadersSyncDownloader(_logManager),
-                fastFactory
-            );
-
-            Task headersTask = headersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Fast blocks headers downloader failed", t.Exception);
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("Fast blocks headers task completed.");
-                }
-            });
-
             if (_syncConfig.DownloadHeadersInFastSync)
             {
+                FastBlocksPeerAllocationStrategyFactory fastFactory = new();
+                SyncDispatcher<HeadersSyncBatch> headersDispatcher = CreateDispatcher(
+                    HeadersSyncFeed,
+                    new HeadersSyncDownloader(_logManager),
+                    fastFactory
+                );
+
+                Task headersTask = headersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Fast blocks headers downloader failed", t.Exception);
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info("Fast blocks headers task completed.");
+                    }
+                });
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
 
