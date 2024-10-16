@@ -28,8 +28,7 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Ethereum.Test.Base.T8NUtils;
-using Microsoft.IdentityModel.Tokens;
-using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -42,7 +41,6 @@ namespace Ethereum.Test.Base
         private static ILogManager _logManager = LimboLogs.Instance;
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
-        private readonly BeaconBlockRootHandler _beaconBlockRootHandler = new();
 
         [SetUp]
         public void Setup()
@@ -159,9 +157,10 @@ namespace Ethereum.Test.Base
             }
             blockReceiptsTracer.StartNewBlockTrace(block);
 
+            BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor);
             if (!test.IsStateTest && test.ParentBeaconBlockRoot != null)
             {
-                _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, stateProvider, storageTxTracer);
+                beaconBlockRootHandler.StoreBeaconRoot(block, spec);
             }
 
             int txIndex = 0;
@@ -169,8 +168,8 @@ namespace Ethereum.Test.Base
 
             foreach (var tx in test.Transactions)
             {
-                bool isValid = _txValidator.IsWellFormed(tx, spec, out string error) && IsValidBlock(block, specProvider);
-                if (isValid)
+                ValidationResult txIsValid = _txValidator.IsWellFormed(tx, spec);
+                if (txIsValid)
                 {
                     blockReceiptsTracer.StartNewTxTrace(tx);
                     TransactionResult transactionResult = transactionProcessor
@@ -194,9 +193,9 @@ namespace Ethereum.Test.Base
                     }
                     txIndex++;
                 }
-                else if (error != null)
+                else if (txIsValid.Error != null)
                 {
-                    transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(error)));
+                    transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(txIsValid.Error)));
                 }
             }
             blockReceiptsTracer.EndBlockTrace();
