@@ -66,6 +66,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool? SnapServingEnabled { get; set; } = null;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public bool TrieHealing { get; set; } = true;
+        public int MaxFinalityDistance { get; set; } = 128;
 
         public override string ToString()
         {
