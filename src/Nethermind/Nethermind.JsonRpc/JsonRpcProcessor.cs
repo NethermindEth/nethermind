@@ -10,6 +10,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -125,9 +126,18 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         // Handles general exceptions during parsing and validation.
         // Sends an error response and stops the stopwatch.
-        JsonRpcResult GetParsingError(string error, Exception? exception = null)
+        JsonRpcResult GetParsingError(ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
         {
             Metrics.JsonRpcRequestDeserializationFailures++;
+
+            const int sliceSize = 100;
+            if (Encoding.UTF8.TryGetString(buffer.FirstSpan, sliceSize, out string data, out bool fullyRead))
+            {
+                error = fullyRead
+                    ? $"{error} Data:\n{data}\n"
+                    : $"{error} Data (first {sliceSize} char):\n{data}\n";
+            }
+
             if (_logger.IsError) _logger.Error(error, exception);
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
             TraceResult(response);
@@ -156,7 +166,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     // Tries to parse the JSON from the buffer.
                     if (!TryParseJson(ref buffer, out jsonDocument))
                     {
-                        deserializationFailureResult = GetParsingError("Error during parsing/validation.");
+                        deserializationFailureResult = GetParsingError(buffer, "Error during parsing/validation.");
                     }
                     else
                     {
@@ -179,7 +189,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 }
                 catch (Exception ex)
                 {
-                    deserializationFailureResult = GetParsingError("Error during parsing/validation.", ex);
+                    deserializationFailureResult = GetParsingError(buffer, "Error during parsing/validation.", ex);
                 }
 
                 // Checks for deserialization failure and yields the result.
@@ -252,7 +262,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             {
                 if (buffer.Length > 0 && HasNonWhitespace(buffer))
                 {
-                    yield return GetParsingError("Error during parsing/validation. Incomplete request");
+                    yield return GetParsingError(buffer, "Error during parsing/validation: incomplete request.");
                 }
             }
         }
