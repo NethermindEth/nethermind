@@ -1,11 +1,5 @@
 using System.CommandLine;
 using Evm.JsonTypes;
-using Evm.T8NTool;
-using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 
 namespace Evm
 {
