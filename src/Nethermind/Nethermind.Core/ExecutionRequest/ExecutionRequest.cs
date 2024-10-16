@@ -94,7 +94,7 @@ public static class ExecutionRequestExtensions
     {
         using (SHA256 sha256 = SHA256.Create())
         {
-            Span<byte> concatenatedHashes = new byte[32*requests.Count()];
+            Span<byte> concatenatedHashes = new byte[32 * requests.Count()];
             int currentPosition = 0;
             // Compute sha256 for each request and concatenate them
             foreach (ExecutionRequest request in requests)
