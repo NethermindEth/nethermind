@@ -2072,25 +2072,44 @@ internal class ILCompiler
 
     private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
     {
+        Label skipTracing = method.DefineLabel();
+        method.LoadArgument(TXTRACER_INDEX);
+        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+        method.BranchIfFalse(skipTracing);
+
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadLocal(gasAvailable);
         method.LoadConstant((int)kvp.Key);
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
+
+        method.MarkLabel(skipTracing);
     }
 
     private static void EmitCallToEndInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable)
     {
+        Label skipTracing = method.DefineLabel();
+        method.LoadArgument(TXTRACER_INDEX);
+        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+        method.BranchIfFalse(skipTracing);
+
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadLocal(gasAvailable);
         method.LoadArgument(VMSTATE_INDEX);
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+
+        method.MarkLabel(skipTracing);
     }
 
 
     private static void EmitCallToStartInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, Local head, OpcodeInfo op)
     {
+        Label skipTracing = method.DefineLabel();
+        method.LoadArgument(TXTRACER_INDEX);
+        method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+        method.BranchIfFalse(skipTracing);
+
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadConstant((int)op.Operation);
         method.LoadArgument(0);
@@ -2099,6 +2118,8 @@ internal class ILCompiler
         method.LoadConstant(op.ProgramCounter);
         method.LoadLocal(head);
         method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+
+        method.MarkLabel(skipTracing);
     }
 
     private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
