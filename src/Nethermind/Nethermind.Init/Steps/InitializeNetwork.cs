@@ -135,7 +135,6 @@ public class InitializeNetwork : IStep
         IStaticNodesManager staticNodesManager = container.Resolve<IStaticNodesManager>();
         Func<NodeSourceToDiscV4Feeder> nodeSourceToDiscV4Feeder = container.Resolve<Func<NodeSourceToDiscV4Feeder>>();
         IProtocolsManager protocolsManager = container.Resolve<IProtocolsManager>();
-        EnrDiscovery enrDiscover = container.Resolve<EnrDiscovery>();
         SnapCapabilitySwitcher snapCapabilitySwitcher = container.Resolve<SnapCapabilitySwitcher>();
         ISyncPeerPool syncPeerPool = container.Resolve<ISyncPeerPool>();
         ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
@@ -152,7 +151,6 @@ public class InitializeNetwork : IStep
             healingWorldState.InitializeNetwork(container.Resolve<SnapTrieNodeRecovery>());
         }
 
-        InitDiscovery(discoveryApp);
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -250,11 +248,6 @@ public class InitializeNetwork : IStep
         peerManager.Start();
         sessionMonitor.Start();
         if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
-    }
-
-    private void InitDiscovery(IDiscoveryApp discoveryApp)
-    {
-        discoveryApp.Initialize(_api.NodeKey!.PublicKey);
     }
 
     private Task StartSync(ISyncPeerPool syncPeerPool, ISynchronizer synchronizer)
