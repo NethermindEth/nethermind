@@ -15,9 +15,11 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
     private readonly ConsensusRequestDecoder _requestsDecoder = ConsensusRequestDecoder.Instance;
 
-    public static BlockBodyDecoder Instance = new BlockBodyDecoder();
+    private static BlockBodyDecoder? _instance = null;
+    public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    private BlockBodyDecoder()
+    // Cant set to private because of `Rlp.RegisterDecoder`.
+    public BlockBodyDecoder()
     {
     }
 

@@ -28,9 +28,10 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<byte> contentSpan = rlpStream.PeekNextItem();
-
             Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(contentSpan);
-            return Decode(ref ctx, rlpBehaviors);
+            Block? decoded = Decode(ref ctx, rlpBehaviors);
+            rlpStream.Position += contentSpan.Length;
+            return decoded;
         }
 
         private (int Total, int Txs, int Uncles, int? Withdrawals, int? Requests) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
