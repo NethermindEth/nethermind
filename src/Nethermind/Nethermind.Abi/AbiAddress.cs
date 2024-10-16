@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -28,9 +30,16 @@ namespace Nethermind.Abi
                 {
                     case Address input:
                         {
-                            NettyAbiStream abiStream = new NettyAbiStream(PooledByteBufferAllocator.Default.Buffer(1));
-                            IReadOnlySpan<byte> bytesToWrite = 
-                            return packed ? abiStream.AsSpan().ToArray() : abiStream.AsSpan().ToArray().PadLeft(UInt256.LengthInBytes);
+                            NettyAbiStream abiStream = new NettyAbiStream(PooledByteBufferAllocator.Default.Buffer(input.Bytes.Length));
+                            if (packed)
+                            {
+                                abiStream.Write(input.Bytes.ToList());
+                            }
+                            else
+                            {
+                                abiStrem.Write(input.Bytes.)
+                            }
+                            return packed ? abiStream.AsSpan().ToArray() : abiStream.AsSpan().ToArray().;
                         }
                     case string stringInput:
                         {
