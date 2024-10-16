@@ -925,7 +925,8 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        IScopedTrieStore trieStore = new TrieStore(new MemDb(), NullLogManager.Instance).GetTrieStore(null);
+        ITrieStore fullTrieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
+        IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
         leaf1.Key = Bytes.FromHexString("abc");
@@ -933,15 +934,23 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         leaf1.ResolveKey(trieStore, ref emptyPath, false);
         leaf1.Seal();
-        trieStore.CommitNode(0, new NodeCommitInfo(leaf1, TreePath.Empty));
 
         TrieNode leaf2 = new(NodeType.Leaf);
         leaf2.Key = Bytes.FromHexString("abd");
         leaf2.Value = new byte[222];
         leaf2.ResolveKey(trieStore, ref emptyPath, false);
         leaf2.Seal();
-        trieStore.CommitNode(0, new NodeCommitInfo(leaf2, TreePath.Empty));
-        trieStore.FinishBlockCommit(TrieType.State, 0, leaf2);
+
+        TreePath path = TreePath.Empty;
+
+        using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
+        {
+            using (ICommitter? committer = trieStore.BeginCommit(leaf2))
+            {
+                committer.CommitNode(ref path, new NodeCommitInfo(leaf1));
+                committer.CommitNode(ref path, new NodeCommitInfo(leaf2));
+            }
+        }
 
         TrieNode trieNode = new(NodeType.Branch);
         trieNode.SetChild(1, leaf1);

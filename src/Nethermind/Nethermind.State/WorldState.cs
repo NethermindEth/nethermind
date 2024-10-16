@@ -143,7 +143,7 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
@@ -174,8 +174,11 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            _persistentStorageProvider.CommitTrees(blockNumber);
-            _stateProvider.CommitTree(blockNumber);
+            using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
+            {
+                _persistentStorageProvider.CommitTrees(committer);
+                _stateProvider.CommitTree();
+            }
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 

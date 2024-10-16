@@ -26,7 +26,7 @@ jobs:
           echo "Import GPG owner trust"
           echo ${{ secrets.GPG_OWNERTRUST }} | base64 --decode | gpg --import-ownertrust
       - name: Install PPA dependencies
-        run: sudo apt-get update && sudo apt-get install debhelper devscripts -y
+        run: sudo apt-get update && sudo apt-get install build-essential debhelper devscripts -y
       - name: Submit package
         env:
           PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
