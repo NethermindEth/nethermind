@@ -16,7 +16,7 @@ namespace Evm.T8NTool;
 public class InputProcessor
 {
     private static readonly EthereumJsonSerializer EthereumJsonSerializer = new();
-    private static readonly TxDecoder TxDecoder = new();
+    private static readonly TxDecoder TxDecoder = TxDecoder.Instance;
 
     public static GeneralStateTest ConvertToGeneralStateTest(string inputAlloc,
         string inputEnv,

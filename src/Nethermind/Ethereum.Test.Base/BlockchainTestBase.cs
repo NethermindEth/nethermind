@@ -316,18 +316,18 @@ public abstract class BlockchainTestBase
         return correctRlp;
     }
 
-        private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    {
+        foreach (KeyValuePair<Address, AccountState> accountState in
+            ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in
-                ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
+            if (accountState.Value.Storage is not null)
             {
-                if (accountState.Value.Storage is not null)
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
-                    {
-                        stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
-                    }
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
                 }
+            }
 
             stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
