@@ -65,6 +65,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
+      - name: Set up Python
+        uses: actions/setup-python@v5
       - name: Install launchpadlib
         run: pip install launchpadlib --upgrade
       - name: Copy to other series
