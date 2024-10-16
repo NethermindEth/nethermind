@@ -40,7 +40,7 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
-        private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
+        private TxValidator? _txValidator;
 
         [SetUp]
         public void Setup()
@@ -56,27 +56,43 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test)
+        protected EthereumTestResult RunTest(GeneralStateTest test, bool isGnosis = false)
         {
-            return RunTest(test, NullTxTracer.Instance);
+            return RunTest(test, NullTxTracer.Instance, isGnosis);
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer, bool isGnosis = false)
         {
             TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
+            _txValidator = new TxValidator(test.StateChainId);
+
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
-
-            ISpecProvider specProvider = new CustomSpecProvider(
-                ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Fork));
+            ISpecProvider specProvider;
+            if (isGnosis)
+            {
+                specProvider = new CustomSpecProvider(
+                    ((ForkActivation)0,
+                        GnosisSpecProvider.Instance
+                            .GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Fork));
+            }
+            else
+            {
+                specProvider = new CustomSpecProvider(
+                    ((ForkActivation)0,
+                        Frontier
+                            .Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    ((ForkActivation)1, test.Fork));
+            }
 
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
+
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             BlockHeader header = test.GetBlockHeader();
@@ -86,6 +102,7 @@ namespace Ethereum.Test.Base
             {
                 test.CurrentBaseFee = header.BaseFeePerGas = CalculateBaseFeePerGas(test, parentHeader);
             }
+
             if (parentHeader != null)
             {
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
@@ -150,11 +167,14 @@ namespace Ethereum.Test.Base
                 compositeBlockTracer.Add(storageTxTracer);
                 if (test.IsTraceEnabled)
                 {
-                    GethLikeBlockFileTracer gethLikeBlockFileTracer = new(block, test.GethTraceOptions, new FileSystem());
+                    GethLikeBlockFileTracer gethLikeBlockFileTracer =
+                        new(block, test.GethTraceOptions, new FileSystem());
                     compositeBlockTracer.Add(gethLikeBlockFileTracer);
                 }
+
                 blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
             }
+
             blockReceiptsTracer.StartNewBlockTrace(block);
 
             BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor);
@@ -173,7 +193,8 @@ namespace Ethereum.Test.Base
                 {
                     blockReceiptsTracer.StartNewTxTrace(tx);
                     TransactionResult transactionResult = transactionProcessor
-                        .Execute(tx, new BlockExecutionContext(header), test.IsT8NTest ? blockReceiptsTracer : txTracer);
+                        .Execute(tx, new BlockExecutionContext(header),
+                            test.IsT8NTest ? blockReceiptsTracer : txTracer);
                     blockReceiptsTracer.EndTxTrace();
 
                     if (!test.IsT8NTest) continue;
@@ -188,9 +209,12 @@ namespace Ethereum.Test.Base
                     }
                     else if (transactionResult.Error != null)
                     {
-                        transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(transactionResult.Error, tx.SenderAddress.ToString(true), tx.Nonce, stateProvider.GetNonce(tx.SenderAddress))));
+                        transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex,
+                            GethErrorMappings.GetErrorMapping(transactionResult.Error, tx.SenderAddress.ToString(true),
+                                tx.Nonce, stateProvider.GetNonce(tx.SenderAddress))));
                         stateProvider.Reset();
                     }
+
                     txIndex++;
                 }
                 else if (txIsValid.Error != null)
@@ -198,6 +222,7 @@ namespace Ethereum.Test.Base
                     transactionExecutionReport.RejectedTransactionReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(txIsValid.Error)));
                 }
             }
+
             blockReceiptsTracer.EndBlockTrace();
 
             stopwatch.Stop();
@@ -222,18 +247,21 @@ namespace Ethereum.Test.Base
 
             if (test.IsT8NTest)
             {
-                testResult.T8NResult = T8NResult.ConstructT8NResult(stateProvider, block, test, storageTxTracer, blockReceiptsTracer, specProvider, header, transactionExecutionReport);
+                testResult.T8NResult = T8NResult.ConstructT8NResult(stateProvider, block, test, storageTxTracer,
+                    blockReceiptsTracer, specProvider, header, transactionExecutionReport);
             }
 
             return testResult;
         }
 
-        private static IBlockhashProvider GetBlockHashProvider(GeneralStateTest test, BlockHeader header, BlockHeader? parent)
+        private static IBlockhashProvider GetBlockHashProvider(GeneralStateTest test, BlockHeader header,
+            BlockHeader? parent)
         {
             if (!test.IsT8NTest)
             {
                 return new TestBlockhashProvider();
             }
+
             var t8NBlockHashProvider = new T8NBlockHashProvider();
 
             if (header.Hash != null) t8NBlockHashProvider.Insert(header.Hash, header.Number);
@@ -242,6 +270,7 @@ namespace Ethereum.Test.Base
             {
                 t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
             }
+
             return t8NBlockHashProvider;
         }
 
@@ -251,7 +280,8 @@ namespace Ethereum.Test.Base
             return test.IsT8NTest ? BaseFeeCalculator.Calculate(parentHeader, test.Fork) : _defaultBaseFeeForStateTest;
         }
 
-        private static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider, ISpecProvider specProvider)
+        private static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider,
+            ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in pre)
             {
@@ -284,15 +314,18 @@ namespace Ethereum.Test.Base
                 .TestObject;
 
             var difficultyCalculator = new EthashDifficultyCalculator(specProvider);
-            var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default);
+            var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(),
+                new Ethash(_logManager), Timestamper.Default);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
-            IBlockValidator blockValidator = new BlockValidator(_txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+            IBlockValidator blockValidator = new BlockValidator(_txValidator, headerValidator, unclesValidator,
+                specProvider, _logManager);
 
             return blockValidator.ValidateOrphanedBlock(block, out _);
         }
 
-        private static void CalculateReward(string? stateReward, bool isStateTest, Block block, WorldState stateProvider, IReleaseSpec spec)
+        private static void CalculateReward(string? stateReward, bool isStateTest, Block block,
+            WorldState stateProvider, IReleaseSpec spec)
         {
             if (stateReward == null || isStateTest) return;
 
