@@ -23,6 +23,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger;
 
+        public bool CanInitBeaconHeaders { get; set; } = false;
+
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
@@ -50,10 +52,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = true;
         }
 
-        public void InitBeaconHeaderSync(BlockHeader blockHeader)
+        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader)
         {
+            if (!CanInitBeaconHeaders) return false;
+
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
+            return true;
         }
 
         public void StopBeaconModeControl()
@@ -130,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void StopSyncing();
 
-        void InitBeaconHeaderSync(BlockHeader blockHeader);
+        bool TryInitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
     }

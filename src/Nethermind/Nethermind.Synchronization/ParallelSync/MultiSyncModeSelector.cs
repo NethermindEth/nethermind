@@ -344,6 +344,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool result = shouldBeInBeaconHeaders &&
                           shouldBeNotInUpdatingPivot;
 
+            _beaconSyncStrategy.CanInitBeaconHeaders = shouldBeNotInUpdatingPivot;
+
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("BEACON HEADERS",
