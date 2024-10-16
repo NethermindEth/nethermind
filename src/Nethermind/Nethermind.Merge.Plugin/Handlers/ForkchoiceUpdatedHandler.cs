@@ -127,7 +127,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             if (headBlockHeader is not null)
             {
-                if (_logger.IsInfo) _logger.Error($"here we are");
                 StartNewBeaconHeaderSync(forkchoiceState, headBlockHeader, simpleRequestStr);
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
