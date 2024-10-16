@@ -13,7 +13,8 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public interface IScopedTrieStore : ITrieNodeResolver
 {
-    ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+    // Begins a commit to update the trie store. The `ICommitter` provide `CommitNode` to add node into.
+    ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
     // Only used by snap provider, so ValueHash instead of Hash
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
@@ -26,6 +27,6 @@ public interface ICommitter : IDisposable
 {
     void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
 
-    bool CanSpawnTask() => false;
+    bool TryRequestConcurrentQuota() => false;
     void ReturnConcurrencyQuota() { }
 }
