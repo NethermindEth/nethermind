@@ -22,6 +22,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private bool _disposedValue;
     private long _currentBlockNumber;
     private ReceiptMessageDecoder _receiptDecoder = new();
+    private BlockBodyDecoder _blockBodyDecoder = new();
     private E2StoreStream _storeStream;
     private IByteBufferAllocator _byteBufferAllocator;
     private readonly bool _isDescendingOrder;
@@ -179,11 +180,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash, EntryTypes.CompressedHeader, cancellationToken);
 
         BlockBody body = await _storeStream.ReadSnappyCompressedEntryAndDecode(
-            (buffer) => Rlp.Decode<BlockBody>(new NettyRlpStream(buffer)),
+            DecodeBody,
             EntryTypes.CompressedBody, cancellationToken);
 
         TxReceipt[] receipts  = await _storeStream.ReadSnappyCompressedEntryAndDecode(
-            (buffer) => DecodeReceipts(buffer),
+            DecodeReceipts,
             EntryTypes.CompressedReceipts, cancellationToken);
 
         UInt256 currentTotalDiffulty = await _storeStream.ReadEntryAndDecode(
@@ -193,6 +194,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         Block block = new Block(header, body);
 
         return new EntryReadResult(block, receipts, currentTotalDiffulty, currentComputedHeaderHash);
+    }
+
+    private BlockBody DecodeBody(IByteBuffer buffer)
+    {
+        var ctx = new Rlp.ValueDecoderContext(buffer.AsSpan());
+        return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
     (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderAndHash(IByteBuffer buffer)

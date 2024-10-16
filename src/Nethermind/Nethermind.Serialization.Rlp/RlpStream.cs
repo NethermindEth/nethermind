@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(BlockBody value)
         {
-            _blockBodyDecoder.Encode(this, value);
+            _blockBodyDecoder.Serialize(this, value);
         }
 
         public void Encode(BlockHeader value)
