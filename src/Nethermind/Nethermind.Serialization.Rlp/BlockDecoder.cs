@@ -43,7 +43,7 @@ namespace Nethermind.Serialization.Rlp
                 headerLength +
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
-                (withdrawals is not null  ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
+                (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
                 (requests is not null ? Rlp.LengthOfSequence(requests.Value) : 0);
 
             return (contentLength, txs, uncles, withdrawals, requests);
