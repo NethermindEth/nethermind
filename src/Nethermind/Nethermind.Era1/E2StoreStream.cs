@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.Rlp;
 using Snappier;
 namespace Nethermind.Era1;
 
@@ -154,11 +155,14 @@ internal class E2StoreStream : IDisposable
     {
         if (_stream.Position + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
 
+        using ArrayPoolList<byte> inBuffer = new ArrayPoolList<byte>((int)e.Length, (int)e.Length);
+        await _stream.ReadAsync(inBuffer.AsMemory());
+
         IByteBuffer buffer = _bufferAllocator.Buffer((int)(e.Length * 4));
         buffer.EnsureWritable((int)e.Length * 4, true);
 
-        using StreamSegment streamSegment = new(_stream, _stream.Position, e.Length);
-        using SnappyStream decompressor = new(streamSegment, CompressionMode.Decompress, true);
+        // TODO: No ToArray()
+        using SnappyStream decompressor = new(new MemoryStream(inBuffer.AsMemory().ToArray()), CompressionMode.Decompress, true);
 
         int read;
         do
