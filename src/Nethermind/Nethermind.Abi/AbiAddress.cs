@@ -3,9 +3,10 @@
 
 using System;
 using System.Text.Json;
-
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Abi
 {
@@ -27,8 +28,9 @@ namespace Nethermind.Abi
                 {
                     case Address input:
                         {
-                            byte[] bytes = input.Bytes;
-                            return packed ? bytes : bytes.PadLeft(UInt256.LengthInBytes);
+                            NettyAbiStream abiStream = new NettyAbiStream(PooledByteBufferAllocator.Default.Buffer(1));
+                            IReadOnlySpan<byte> bytesToWrite = 
+                            return packed ? abiStream.AsSpan().ToArray() : abiStream.AsSpan().ToArray().PadLeft(UInt256.LengthInBytes);
                         }
                     case string stringInput:
                         {
