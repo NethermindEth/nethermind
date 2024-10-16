@@ -31,11 +31,7 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
         if (block.IsGenesis)
             return;
 
-        block.ExecutionRequests = new ArrayPoolList<ExecutionRequest>(Requests.Length);
-        foreach (var request in Requests)
-        {
-            block.ExecutionRequests.Add(request);
-        }
+        block.ExecutionRequests = Requests;
         block.Header.RequestsHash = Requests.CalculateHash();
     }
 }

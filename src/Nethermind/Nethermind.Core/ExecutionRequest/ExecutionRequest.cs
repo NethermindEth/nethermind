@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -40,7 +41,7 @@ public class ExecutionRequest
 
 public static class ExecutionRequestExtensions
 {
-    public static int GetRequestsByteSize(this ExecutionRequest[] requests)
+    public static int GetRequestsByteSize(this IEnumerable<ExecutionRequest> requests)
     {
         int size = 0;
         foreach (ExecutionRequest request in requests)
@@ -91,20 +92,22 @@ public static class ExecutionRequestExtensions
 
     public static Hash256 CalculateHash(this IEnumerable<ExecutionRequest> requests)
     {
-        using var sha256 = SHA256.Create();
-        using var sha256Inner = SHA256.Create();
-        foreach (ExecutionRequest request in requests)
+        using (SHA256 sha256 = SHA256.Create())
         {
-            var internalBuffer = new byte[request.RequestData!.Length + 1];
-            request.FlatEncode(internalBuffer);
-            byte[] requestHash = sha256Inner.ComputeHash(internalBuffer);
+            Span<byte> concatenatedHashes = new byte[32*requests.Count()];
+            int currentPosition = 0;
+            // Compute sha256 for each request and concatenate them
+            foreach (ExecutionRequest request in requests)
+            {
+                Span<byte> requestBuffer = new byte[request.RequestData!.Length + 1];
+                request.FlatEncode(requestBuffer);
+                sha256.ComputeHash(requestBuffer.ToArray()).CopyTo(concatenatedHashes.Slice(currentPosition, 32));
+                currentPosition += 32;
+            }
 
-            // Update the outer hash with the result of each inner hash
-            sha256.TransformBlock(requestHash, 0, requestHash.Length, null, 0);
+            // Compute sha256 of the concatenated hashes
+            return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
         }
-        // Complete the final hash computation
-        sha256.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-        return new Hash256(sha256.Hash!);
     }
 
     public static bool IsSortedByType(this ExecutionRequest[] requests)

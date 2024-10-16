@@ -118,7 +118,7 @@ public class Block
     public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
 
     [JsonIgnore]
-    public ArrayPoolList<ExecutionRequest.ExecutionRequest>? ExecutionRequests { get; set; }
+    public ExecutionRequest.ExecutionRequest[]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
