@@ -36,7 +36,7 @@ public class StateTreeTests
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.ReadsCount, Is.EqualTo(0), "reads");
     }
 
@@ -48,7 +48,7 @@ public class StateTreeTests
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(5), "writes"); // branch, branch, two leaves (one is stored as RLP)
     }
 
@@ -60,7 +60,7 @@ public class StateTreeTests
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(7), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
         Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(7), "hashes");
         Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(7), "encodings");
@@ -75,7 +75,7 @@ public class StateTreeTests
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(4), "writes"); // extension, branch, 2x leaf
         Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(4), "hashes");
         Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(4), "encodings");
@@ -91,7 +91,7 @@ public class StateTreeTests
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(1), "writes"); // extension, branch, 2x leaf
         Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(1), "hashes");
         Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(1), "encodings");
@@ -108,7 +108,7 @@ public class StateTreeTests
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(0), "writes"); // extension, branch, 2x leaf
         Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(0), "hashes");
         Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(0), "encodings");
@@ -127,7 +127,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
     }
 
@@ -143,7 +143,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
     }
 
@@ -158,7 +158,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x543c960143a2a06b685d6b92f0c37000273e616bc23888521e7edf15ad06da46"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x543c960143a2a06b685d6b92f0c37000273e616bc23888521e7edf15ad06da46"));
     }
 
@@ -174,7 +174,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
     }
 
@@ -191,7 +191,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x0918112fc898173562441709a2c1cbedb80d1aaecaeadf2f3e9492eeaa568c67"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x0918112fc898173562441709a2c1cbedb80d1aaecaeadf2f3e9492eeaa568c67"));
     }
 
@@ -205,7 +205,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xaa5c248d4b4b8c27a654296a8e0cc51131eb9011d9166fa0fca56a966489e169"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xaa5c248d4b4b8c27a654296a8e0cc51131eb9011d9166fa0fca56a966489e169"));
     }
 
@@ -219,7 +219,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
     }
 
@@ -233,7 +233,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"));
     }
 
@@ -247,7 +247,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
     }
 
@@ -261,7 +261,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x215a4bab4cf2d5ebbaa59c82ae94c9707fcf4cc0ca1fe7e18f918e46db428ef9"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x215a4bab4cf2d5ebbaa59c82ae94c9707fcf4cc0ca1fe7e18f918e46db428ef9"));
     }
 
@@ -276,7 +276,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
     }
 
@@ -291,7 +291,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
     }
 
@@ -306,7 +306,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xc063af0bd3dd88320bc852ff8452049c42fbc06d1a69661567bd427572824cbf"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0xc063af0bd3dd88320bc852ff8452049c42fbc06d1a69661567bd427572824cbf"));
     }
 
@@ -322,7 +322,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
     }
 
@@ -337,7 +337,7 @@ public class StateTreeTests
         tree.UpdateRootHash();
         Hash256 rootHash = tree.RootHash;
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
     }
 
@@ -349,7 +349,7 @@ public class StateTreeTests
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(5), "hashes"); // branch, branch, three leaves
     }
 
@@ -361,7 +361,7 @@ public class StateTreeTests
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(5), "encodings"); // branch, branch, three leaves
     }
 
@@ -373,7 +373,7 @@ public class StateTreeTests
         tree.Set(TestItem.AddressA, _account0);
         tree.Set(TestItem.AddressB, _account0);
         tree.Set(TestItem.AddressC, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(Trie.Metrics.TreeNodeRlpDecodings, Is.EqualTo(0), "decodings");
     }
 
@@ -386,7 +386,7 @@ public class StateTreeTests
         tree.Set(TestItem.AddressA, _account1);
         tree.Set(TestItem.AddressA, _account2);
         tree.Set(TestItem.AddressA, _account3);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(1), "writes"); // extension, branch, two leaves
     }
 
@@ -397,11 +397,11 @@ public class StateTreeTests
         MemDb db = new();
         StateTree tree = new(new TrieStore(db, LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
         tree.Set(TestItem.AddressA, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(1), "writes before"); // extension, branch, two leaves
         tree.Set(TestItem.AddressA, _account1);
         tree.Set(TestItem.AddressA, _account0);
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(db.WritesCount, Is.EqualTo(1), "writes after"); // extension, branch, two leaves
     }
 
@@ -447,7 +447,7 @@ public class StateTreeTests
         tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
         tree.UpdateRootHash();
         Assert.That(tree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
-        tree.Commit(0);
+        tree.Commit();
         Assert.That(tree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
     }
 
