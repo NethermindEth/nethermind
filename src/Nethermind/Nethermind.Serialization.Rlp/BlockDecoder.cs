@@ -12,9 +12,7 @@ namespace Nethermind.Serialization.Rlp
     public class BlockDecoder : IRlpValueDecoder<Block>, IRlpStreamDecoder<Block>
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-        private readonly WithdrawalDecoder _withdrawalDecoder = new();
-        private readonly ConsensusRequestDecoder _consensusRequestsDecoder = ConsensusRequestDecoder.Instance;
+        private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -29,191 +27,26 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            int sequenceLength = rlpStream.ReadSequenceLength();
-            int blockCheck = rlpStream.Position + sequenceLength;
+            Span<byte> contentSpan = rlpStream.PeekNextItem();
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
-
-            int transactionsSequenceLength = rlpStream.ReadSequenceLength();
-            int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
-            List<Transaction> transactions = new();
-            while (rlpStream.Position < transactionsCheck)
-            {
-                transactions.Add(Rlp.Decode<Transaction>(rlpStream, rlpBehaviors));
-            }
-
-            rlpStream.Check(transactionsCheck);
-
-            int unclesSequenceLength = rlpStream.ReadSequenceLength();
-            int unclesCheck = rlpStream.Position + unclesSequenceLength;
-            List<BlockHeader> uncleHeaders = new();
-            while (rlpStream.Position < unclesCheck)
-            {
-                uncleHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
-            }
-
-            rlpStream.Check(unclesCheck);
-
-            List<Withdrawal>? withdrawals = DecodeWithdrawals(rlpStream, blockCheck);
-            List<ConsensusRequest>? requests = DecodeRequests(rlpStream, blockCheck);
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                rlpStream.Check(blockCheck);
-            }
-
-            return new(header, transactions, uncleHeaders, withdrawals, requests);
+            Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(contentSpan);
+            return Decode(ref ctx, rlpBehaviors);
         }
-
-
-        private List<Withdrawal>? DecodeWithdrawals(RlpStream rlpStream, int blockCheck)
-        {
-            List<Withdrawal>? withdrawals = null;
-            if (rlpStream.Position != blockCheck)
-            {
-                bool lengthWasRead = true;
-                try
-                {
-                    rlpStream.PeekNextRlpLength();
-                }
-                catch
-                {
-                    lengthWasRead = false;
-                }
-
-                if (lengthWasRead)
-                {
-                    int withdrawalsLength = rlpStream.ReadSequenceLength();
-                    int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
-                    withdrawals = new();
-
-                    while (rlpStream.Position < withdrawalsCheck)
-                    {
-                        withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
-                    }
-
-                    rlpStream.Check(withdrawalsCheck);
-                }
-            }
-
-            return withdrawals;
-        }
-
-        private List<ConsensusRequest>? DecodeRequests(RlpStream rlpStream, int blockCheck)
-        {
-            List<ConsensusRequest>? requests = null;
-            if (rlpStream.Position != blockCheck)
-            {
-                bool lengthWasRead = true;
-                try
-                {
-                    rlpStream.PeekNextRlpLength();
-                }
-                catch
-                {
-                    lengthWasRead = false;
-                }
-
-                if (lengthWasRead)
-                {
-                    int requestsLength = rlpStream.ReadSequenceLength();
-                    int requestsCheck = rlpStream.Position + requestsLength;
-                    requests = new();
-
-                    while (rlpStream.Position < requestsCheck)
-                    {
-                        requests.Add(Rlp.Decode<ConsensusRequest>(rlpStream));
-                    }
-
-                    rlpStream.Check(requestsCheck);
-                }
-            }
-
-            return requests;
-        }
-
 
         private (int Total, int Txs, int Uncles, int? Withdrawals, int? Requests) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
-            int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
+            int headerLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
-            int txLength = GetTxLength(item, rlpBehaviors);
-            contentLength += Rlp.LengthOfSequence(txLength);
+            (int txs, int uncles, int? withdrawals, int? requests) = _blockBodyDecoder.GetBodyComponentLength(item.Body);
 
-            int unclesLength = GetUnclesLength(item, rlpBehaviors);
-            contentLength += Rlp.LengthOfSequence(unclesLength);
+            int contentLength =
+                headerLength +
+                Rlp.LengthOfSequence(txs) +
+                Rlp.LengthOfSequence(uncles) +
+                (withdrawals is not null  ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
+                (requests is not null ? Rlp.LengthOfSequence(requests.Value) : 0);
 
-            int? withdrawalsLength = null;
-            if (item.Withdrawals is not null)
-            {
-                withdrawalsLength = GetWithdrawalsLength(item, rlpBehaviors);
-
-                if (withdrawalsLength.HasValue)
-                    contentLength += Rlp.LengthOfSequence(withdrawalsLength.Value);
-            }
-
-            int? consensusRequestsLength = null;
-            if (item.Requests is not null)
-            {
-                consensusRequestsLength = GetConsensusRequestsLength(item, rlpBehaviors);
-
-                if (consensusRequestsLength.HasValue)
-                    contentLength += Rlp.LengthOfSequence(consensusRequestsLength.Value);
-            }
-
-            return (contentLength, txLength, unclesLength, withdrawalsLength, consensusRequestsLength);
-        }
-
-        private int GetUnclesLength(Block item, RlpBehaviors rlpBehaviors)
-        {
-            int unclesLength = 0;
-            for (int i = 0; i < item.Uncles.Length; i++)
-            {
-                unclesLength += _headerDecoder.GetLength(item.Uncles[i], rlpBehaviors);
-            }
-
-            return unclesLength;
-        }
-
-        private int GetTxLength(Block item, RlpBehaviors rlpBehaviors)
-        {
-            int txLength = 0;
-            for (int i = 0; i < item.Transactions.Length; i++)
-            {
-                txLength += _txDecoder.GetLength(item.Transactions[i], rlpBehaviors);
-            }
-
-            return txLength;
-        }
-
-        private int? GetWithdrawalsLength(Block item, RlpBehaviors rlpBehaviors)
-        {
-            if (item.Withdrawals is null)
-                return null;
-
-            var withdrawalLength = 0;
-
-            for (int i = 0, count = item.Withdrawals.Length; i < count; i++)
-            {
-                withdrawalLength += _withdrawalDecoder.GetLength(item.Withdrawals[i], rlpBehaviors);
-            }
-
-            return withdrawalLength;
-        }
-
-        private int? GetConsensusRequestsLength(Block item, RlpBehaviors rlpBehaviors)
-        {
-            if (item.Requests is null)
-                return null;
-
-            var consensusRequestsLength = 0;
-
-            for (int i = 0, count = item.Requests.Length; i < count; i++)
-            {
-                consensusRequestsLength += _consensusRequestsDecoder.GetLength(item.Requests[i], rlpBehaviors);
-            }
-
-            return consensusRequestsLength;
+            return (contentLength, txs, uncles, withdrawals, requests);
         }
 
         public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
@@ -238,78 +71,8 @@ namespace Nethermind.Serialization.Rlp
             int blockCheck = decoderContext.Position + sequenceLength;
 
             BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
-
-            int transactionsSequenceLength = decoderContext.ReadSequenceLength();
-            int transactionsCheck = decoderContext.Position + transactionsSequenceLength;
-            List<Transaction> transactions = new();
-            while (decoderContext.Position < transactionsCheck)
-            {
-                transactions.Add(Rlp.Decode<Transaction>(ref decoderContext, rlpBehaviors));
-            }
-
-            decoderContext.Check(transactionsCheck);
-
-            int unclesSequenceLength = decoderContext.ReadSequenceLength();
-            int unclesCheck = decoderContext.Position + unclesSequenceLength;
-            List<BlockHeader> uncleHeaders = new();
-            while (decoderContext.Position < unclesCheck)
-            {
-                uncleHeaders.Add(Rlp.Decode<BlockHeader>(ref decoderContext, rlpBehaviors));
-            }
-
-            decoderContext.Check(unclesCheck);
-
-            List<Withdrawal>? withdrawals = DecodeWithdrawals(ref decoderContext, blockCheck);
-            List<ConsensusRequest>? requests = DecodeRequests(ref decoderContext, blockCheck);
-
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                decoderContext.Check(blockCheck);
-            }
-
-            return new(header, transactions, uncleHeaders, withdrawals, requests);
-        }
-
-        private List<Withdrawal>? DecodeWithdrawals(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
-        {
-            List<Withdrawal>? withdrawals = null;
-
-            if (decoderContext.Position != blockCheck)
-            {
-                int withdrawalsLength = decoderContext.ReadSequenceLength();
-                int withdrawalsCheck = decoderContext.Position + withdrawalsLength;
-                withdrawals = new();
-
-                while (decoderContext.Position < withdrawalsCheck)
-                {
-                    withdrawals.Add(Rlp.Decode<Withdrawal>(ref decoderContext));
-                }
-
-                decoderContext.Check(withdrawalsCheck);
-            }
-
-            return withdrawals;
-        }
-
-        private List<ConsensusRequest>? DecodeRequests(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
-        {
-            List<ConsensusRequest>? requests = null;
-
-            if (decoderContext.Position != blockCheck)
-            {
-                int requestsLength = decoderContext.ReadSequenceLength();
-                int requestsCheck = decoderContext.Position + requestsLength;
-                requests = new();
-
-                while (decoderContext.Position < requestsCheck)
-                {
-                    requests.Add(Rlp.Decode<ConsensusRequest>(ref decoderContext));
-                }
-
-                decoderContext.Check(requestsCheck);
-            }
-
-            return requests;
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            return new(header, body);
         }
 
         public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
