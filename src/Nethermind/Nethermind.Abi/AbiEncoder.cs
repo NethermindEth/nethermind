@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
+using static Microsoft.FSharp.Core.ByRefKinds;
 
 namespace Nethermind.Abi
 {
@@ -21,6 +23,7 @@ namespace Nethermind.Abi
 
         public byte[] Encode(AbiEncodingStyle encodingStyle, AbiSignature signature, params object[] arguments)
         {
+            
             bool packed = (encodingStyle & AbiEncodingStyle.Packed) == AbiEncodingStyle.Packed;
             bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
 

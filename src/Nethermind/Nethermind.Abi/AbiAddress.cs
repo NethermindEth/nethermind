@@ -24,22 +24,22 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
+            NettyAbiStream nettyAbiStream = new NettyAbiStream(PooledByteBufferAllocator.Default.Buffer(1));
             while (true)
             {
                 switch (arg)
                 {
                     case Address input:
                         {
-                            NettyAbiStream abiStream = new NettyAbiStream(PooledByteBufferAllocator.Default.Buffer(input.Bytes.Length));
                             if (packed)
                             {
-                                abiStream.Write(input.Bytes.ToList());
+                                nettyAbiStream.Write(input.Bytes.ToList());
                             }
                             else
                             {
-                                abiStrem.Write(input.Bytes.)
+                                nettyAbiStream.Write(input.Bytes.PadLeft(UInt256.LengthInBytes).ToList());
                             }
-                            return packed ? abiStream.AsSpan().ToArray() : abiStream.AsSpan().ToArray().;
+                            return nettyAbiStream.AsSpan().ToArray();
                         }
                     case string stringInput:
                         {
