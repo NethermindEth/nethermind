@@ -102,8 +102,8 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_get_node_data()
     {
-        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
-        var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
+        using var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
@@ -113,8 +113,8 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
     {
-        var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
-        var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
+        using var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
@@ -124,8 +124,8 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_handle_eth66_messages_other_than_GetNodeData_and_NodeData() // e.g. GetBlockHeadersMessage
     {
-        var msg62 = new GetBlockHeadersMessage();
-        var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
+        using var msg62 = new GetBlockHeadersMessage();
+        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);

@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -30,16 +31,16 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
-        private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
+        private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
         private readonly HashSet<AddressAsKey> _toUpdateRoots = new();
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+        private readonly Dictionary<StorageCell, byte[]> _originalValues = new();
 
-        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<UInt256, byte[]>> _blockCache = new(4_096);
+        private readonly HashSet<StorageCell> _committedThisRound = new();
+        private readonly Dictionary<AddressAsKey, SelfDestructDictionary<byte[]>> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
@@ -73,7 +74,7 @@ namespace Nethermind.State
         {
             base.Reset();
             _blockCache.Clear();
-            _storages.Reset(resizeCollections);
+            _storages.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
             _toUpdateRoots.Clear();
@@ -105,7 +106,7 @@ namespace Nethermind.State
                 {
                     if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
-                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
+                        return _changes[lastChangeIndexBeforeOriginalSnapshot].Value;
                     }
                 }
             }
@@ -113,7 +114,7 @@ namespace Nethermind.State
             return value;
         }
 
-
+        private HashSet<AddressAsKey>? _tempToUpdateRoots;
         /// <summary>
         /// Called by Commit
         /// Used for persistent storage specific logic
@@ -123,17 +124,17 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
-            if (_changes[_currentPosition] is null)
+            int currentPosition = _changes.Count - 1;
+            if (currentPosition < 0)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
+                return;
+            }
+            if (_changes[currentPosition].IsNull)
+            {
+                throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
             }
 
-            if (_changes[_currentPosition + 1] is not null)
-            {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
-            }
-
-            HashSet<Address> toUpdateRoots = new();
+            HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= new());
 
             bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
@@ -142,9 +143,9 @@ namespace Nethermind.State
                 trace = new Dictionary<StorageCell, ChangeTrace>();
             }
 
-            for (int i = 0; i <= _currentPosition; i++)
+            for (int i = 0; i <= currentPosition; i++)
             {
-                Change change = _changes[_currentPosition - i];
+                Change change = _changes[currentPosition - i];
                 if (!isTracing && change!.ChangeType == ChangeType.JustCache)
                 {
                     continue;
@@ -173,9 +174,9 @@ namespace Nethermind.State
                 }
 
                 int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-                if (forAssertion != _currentPosition - i)
+                if (forAssertion != currentPosition - i)
                 {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
                 switch (change.ChangeType)
@@ -203,7 +204,7 @@ namespace Nethermind.State
                 }
             }
 
-            foreach (Address address in toUpdateRoots)
+            foreach (AddressAsKey address in toUpdateRoots)
             {
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
@@ -216,10 +217,11 @@ namespace Nethermind.State
                     _storages.Remove(address);
                 }
             }
+            toUpdateRoots.Clear();
 
             base.CommitCore(tracer);
-            _originalValues.Reset();
-            _committedThisRound.Reset();
+            _originalValues.Clear();
+            _committedThisRound.Clear();
 
             if (isTracing)
             {
@@ -289,7 +291,7 @@ namespace Nethermind.State
             }
         }
 
-        private void SaveToTree(HashSet<Address> toUpdateRoots, Change change)
+        private void SaveToTree(HashSet<AddressAsKey> toUpdateRoots, Change change)
         {
             if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
                 initialValue.AsSpan().SequenceEqual(change.Value))
@@ -303,10 +305,10 @@ namespace Nethermind.State
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
+            ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, change.StorageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
             }
 
             dict[change.StorageCell.Index] = change.Value;
@@ -329,13 +331,12 @@ namespace Nethermind.State
 
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
-            _storages.Reset();
-            _preBlockCache?.Clear();
+            _storages.Clear();
         }
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
+            ref StorageTree? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
             if (!exists)
             {
                 value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
@@ -361,10 +362,10 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
+            ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell.Address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
             }
 
             ref byte[]? value = ref dict.GetValueRefOrAddDefault(storageCell.Index, out exists);
@@ -422,10 +423,9 @@ namespace Nethermind.State
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
             StackList<int> stack = SetupRegistry(cell);
-            IncrementChangePosition();
-            stack.Push(_currentPosition);
             _originalValues[cell] = value;
-            _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
+            stack.Push(_changes.Count);
+            _changes.Add(new Change(ChangeType.JustCache, cell, value));
         }
 
         private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
@@ -457,10 +457,10 @@ namespace Nethermind.State
         {
             base.ClearStorage(address);
 
-            ref SelfDestructDictionary<UInt256, byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+            ref SelfDestructDictionary<byte[]>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
             if (!exists)
             {
-                dict = new SelfDestructDictionary<UInt256, byte[]>(StorageTree.EmptyBytes);
+                dict = new SelfDestructDictionary<byte[]>(StorageTree.EmptyBytes);
             }
 
             dict.SelfDestruct();
@@ -479,10 +479,10 @@ namespace Nethermind.State
                 => new(trieStore, storageRoot, logManager);
         }
 
-        private class SelfDestructDictionary<TKey, TValue>(TValue destructedValue) where TKey : notnull
+        private sealed class SelfDestructDictionary<TValue>(TValue destructedValue)
         {
             private bool _selfDestruct;
-            private readonly Dictionary<TKey, TValue> _dictionary = new();
+            private readonly Dictionary<UInt256, TValue> _dictionary = new(Comparer.Instance);
 
             public void SelfDestruct()
             {
@@ -490,7 +490,7 @@ namespace Nethermind.State
                 _dictionary.Clear();
             }
 
-            public ref TValue? GetValueRefOrAddDefault(TKey storageCellIndex, out bool exists)
+            public ref TValue? GetValueRefOrAddDefault(UInt256 storageCellIndex, out bool exists)
             {
                 ref TValue value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
                 if (!exists && _selfDestruct)
@@ -501,9 +501,22 @@ namespace Nethermind.State
                 return ref value;
             }
 
-            public TValue? this[TKey key]
+            public TValue? this[UInt256 key]
             {
                 set => _dictionary[key] = value;
+            }
+
+            private sealed class Comparer : IEqualityComparer<UInt256>
+            {
+                public static Comparer Instance { get; } = new();
+
+                private Comparer() { }
+
+                public bool Equals(UInt256 x, UInt256 y)
+                    => Unsafe.As<UInt256, Vector256<byte>>(ref x) == Unsafe.As<UInt256, Vector256<byte>>(ref y);
+
+                public int GetHashCode([DisallowNull] UInt256 obj)
+                    => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
             }
         }
     }

@@ -119,7 +119,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
         reader = await RecordRequest(reader);
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
         CancellationTokenSource timeoutSource = new(_jsonRpcConfig.Timeout);
 
         // Handles general exceptions during parsing and validation.
@@ -130,8 +130,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             if (_logger.IsError) _logger.Error(error, exception);
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
             TraceResult(response);
-            stopwatch.Stop();
-            return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
+            return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false)));
         }
 
         // Initializes a buffer to store the data read from the reader.
@@ -219,9 +218,6 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         yield return deserializationFailureResult.Value;
                         break;
                     }
-
-                    // Stops the stopwatch and yields the batch processing result.
-                    stopwatch.Stop();
                     JsonRpcBatchResult jsonRpcBatchResult = new((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c));
                     jsonRpcBatchResult.AddDisposable(() => collection.Dispose());
                     yield return JsonRpcResult.Collection(jsonRpcBatchResult);
@@ -235,9 +231,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     errorResponse.AddDisposable(() => jsonDocument.Dispose());
 
                     TraceResult(errorResponse);
-                    stopwatch.Stop();
-                    if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                    deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
+                    if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                    deserializationFailureResult = JsonRpcResult.Single(RecordResponse(errorResponse, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds, false)));
                     yield return deserializationFailureResult.Value;
                     break;
                 }
@@ -304,7 +299,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         try
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             int requestIndex = 0;
             for (int index = 0; index < requests.Count; index++)
             {
@@ -325,7 +320,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 yield return RecordResponse(response);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
         finally
         {
@@ -336,7 +331,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     private async Task<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
     {
         Metrics.JsonRpcRequests++;
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
 
         JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(request, context);
         JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
@@ -355,11 +350,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             Metrics.JsonRpcSuccesses++;
         }
 
-        stopwatch.Stop();
 
-        if (_logger.IsDebug) _logger.Debug($"  {request} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        if (_logger.IsDebug) _logger.Debug($"  {request} handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
-        JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, stopwatch.ElapsedMicroseconds(), isSuccess));
+        JsonRpcResult.Entry result = new(response, new RpcReport(request.Method, (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, isSuccess));
         TraceResult(result);
         return result;
     }

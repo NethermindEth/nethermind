@@ -37,10 +37,7 @@ namespace Nethermind.Core.Extensions
                 return AreEqual(x, y);
             }
 
-            public override int GetHashCode(byte[] obj)
-            {
-                return obj.GetSimplifiedHashCode();
-            }
+            public override int GetHashCode(byte[] obj) => new ReadOnlySpan<byte>(obj).FastHash();
         }
 
         private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
@@ -50,17 +47,14 @@ namespace Nethermind.Core.Extensions
                 return AreEqual(x, y);
             }
 
-            public override int GetHashCode(byte[]? obj)
-            {
-                return obj?.GetSimplifiedHashCode() ?? 0;
-            }
+            public override int GetHashCode(byte[]? obj) => new ReadOnlySpan<byte>(obj).FastHash();
         }
 
         private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
         {
             public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
 
-            public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
+            public int GetHashCode(ReadOnlySpan<byte> obj) => obj.FastHash();
         }
 
         public class BytesComparer : Comparer<byte[]>
@@ -274,6 +268,14 @@ namespace Nethermind.Core.Extensions
 
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            return result;
+        }
+
+        public static byte[] Concat(byte[] part1, byte[] part2)
+        {
+            byte[] result = new byte[part1.Length + part2.Length];
+            part1.CopyTo(result, 0);
+            part2.CopyTo(result.AsSpan(part1.Length));
             return result;
         }
 
@@ -1120,32 +1122,6 @@ namespace Nethermind.Core.Extensions
             }
 
             return isSuccess ? result : throw new FormatException("Incorrect hex string");
-        }
-
-        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this byte[] bytes)
-        {
-            const int fnvPrime = 0x01000193;
-
-            if (bytes.Length == 0)
-            {
-                return 0;
-            }
-
-            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
-        }
-
-        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
-        public static int GetSimplifiedHashCode(this ReadOnlySpan<byte> bytes)
-        {
-            const int fnvPrime = 0x01000193;
-
-            if (bytes.Length == 0)
-            {
-                return 0;
-            }
-
-            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
 
         public static void ChangeEndianness8(Span<byte> bytes)

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -268,15 +269,15 @@ namespace Nethermind.Synchronization.Test
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
+            CodeInfoRepository codeInfoRepository = new();
             TxPool.TxPool txPool = new(ecdsa,
                 new BlobTxStorage(),
-                new ChainHeadInfoProvider(specProvider, tree, stateReader),
+                new ChainHeadInfoProvider(specProvider, tree, stateReader, codeInfoRepository),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
-            CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
             Always sealValidator = Always.Valid;
@@ -301,6 +302,8 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
+                txProcessor,
+                new BeaconBlockRootHandler(txProcessor),
                 new BlockhashStore(specProvider, stateProvider),
                 logManager);
 
@@ -323,6 +326,8 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
+                devTxProcessor,
+                new BeaconBlockRootHandler(devTxProcessor),
                 new BlockhashStore(specProvider, devState),
                 logManager);
 

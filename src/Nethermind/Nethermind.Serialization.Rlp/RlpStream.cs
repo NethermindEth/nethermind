@@ -16,6 +16,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -24,8 +25,9 @@ namespace Nethermind.Serialization.Rlp
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
-        private static readonly TxDecoder _txDecoder = new();
+        private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
+        private static readonly ConsensusRequestDecoder _requestsDecoder = ConsensusRequestDecoder.Instance;
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         private readonly CappedArray<byte> _data;
@@ -54,6 +56,23 @@ namespace Nethermind.Serialization.Rlp
             _data = data;
         }
 
+        public void EncodeArray<T>(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (items is null)
+            {
+                WriteByte(Rlp.NullObjectByte);
+                return;
+            }
+            IRlpStreamDecoder<T> decoder = Rlp.GetStreamDecoder<T>();
+            int contentLength = decoder.GetContentLength(items);
+
+            StartSequence(contentLength);
+
+            foreach (var item in items)
+            {
+                decoder.Encode(this, item, rlpBehaviors);
+            }
+        }
         public void Encode(Block value)
         {
             _blockDecoder.Encode(this, value);
@@ -70,6 +89,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
+        public void Encode(ConsensusRequest value) => _requestsDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
         {

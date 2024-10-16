@@ -7,7 +7,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -24,7 +23,7 @@ public class GethLikeNativeTracerFactoryTests
 
         GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!);
 
-        Assert.True(nativeTracer is Native4ByteTracer);
+        Assert.That(nativeTracer is Native4ByteTracer, Is.True);
     }
 
     [Test]
@@ -40,7 +39,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer.FourByteTracer);
 
-        Assert.True(isNativeTracer);
+        Assert.That(isNativeTracer, Is.True);
     }
 
     [Test]
@@ -48,7 +47,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer("nonExistentTracer");
 
-        Assert.False(isNativeTracer);
+        Assert.That(isNativeTracer, Is.False);
     }
 
     [Test]
@@ -56,7 +55,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(string.Empty);
 
-        Assert.False(isNativeTracer);
+        Assert.That(isNativeTracer, Is.False);
     }
 
     [Test]
@@ -64,6 +63,6 @@ public class GethLikeNativeTracerFactoryTests
     {
         var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
 
-        Assert.False(isNativeTracer);
+        Assert.That(isNativeTracer, Is.False);
     }
 }

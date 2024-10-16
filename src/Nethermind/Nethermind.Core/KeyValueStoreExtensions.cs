@@ -69,10 +69,10 @@ namespace Nethermind.Core
 
         public static bool KeyExists(this IReadOnlyKeyValueStore db, long key)
         {
-            return db.KeyExists(key.ToBigEndianByteArrayWithoutLeadingZeros());
+            return db.KeyExists(key.ToBigEndianSpanWithoutLeadingZeros(out _));
         }
 
-        public static byte[]? Get(this IReadOnlyKeyValueStore db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
+        public static byte[]? Get(this IReadOnlyKeyValueStore db, long key) => db[key.ToBigEndianSpanWithoutLeadingZeros(out _)];
 
         /// <summary>
         ///
@@ -80,7 +80,7 @@ namespace Nethermind.Core
         /// <param name="db"></param>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        public static Span<byte> GetSpan(this IReadOnlyKeyValueStore db, long key) => db.GetSpan(key.ToBigEndianByteArrayWithoutLeadingZeros());
+        public static Span<byte> GetSpan(this IReadOnlyKeyValueStore db, long key) => db.GetSpan(key.ToBigEndianSpanWithoutLeadingZeros(out _));
 
         public static MemoryManager<byte>? GetOwnedMemory(this IReadOnlyKeyValueStore db, ReadOnlySpan<byte> key)
         {
@@ -140,7 +140,7 @@ namespace Nethermind.Core
 
         public static void Delete(this IWriteOnlyKeyValueStore db, long key)
         {
-            db.Remove(key.ToBigEndianByteArrayWithoutLeadingZeros());
+            db.Remove(key.ToBigEndianSpanWithoutLeadingZeros(out _));
         }
 
         [SkipLocalsInit]
@@ -153,7 +153,7 @@ namespace Nethermind.Core
 
         public static void Set(this IWriteOnlyKeyValueStore db, long key, byte[] value)
         {
-            db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
+            db[key.ToBigEndianSpanWithoutLeadingZeros(out _)] = value;
         }
 
         #endregion

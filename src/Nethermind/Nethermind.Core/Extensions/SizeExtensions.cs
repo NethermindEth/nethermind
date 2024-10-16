@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Globalization;
+using System;
+using System.Runtime.CompilerServices;
+
 namespace Nethermind.Core.Extensions
 {
     public static class SizeExtensions
@@ -63,6 +67,19 @@ namespace Nethermind.Core.Extensions
         public static long KiB(this int @this)
         {
             return ((long)@this).KiB();
+        }
+
+        public static string SizeToString(this long @this, bool useSi = false, int precision = 1)
+        {
+            string[] suf = useSi ? ["B", "KB", "MB", "GB", "TB"] : ["B", "KiB", "MiB", "GiB", "TiB"];
+            if (@this == 0)
+            {
+                return "0" + suf[0];
+            }
+            long bytes = Math.Abs(@this);
+            int place = Math.Min(suf.Length - 1, Convert.ToInt32(Math.Floor(Math.Log(bytes, useSi ? 1000 : 1024))));
+            double num = Math.Round(bytes / Math.Pow(useSi ? 1000 : 1024, place), precision);
+            return (Math.Sign(@this) * num).ToString() + suf[place];
         }
     }
 }

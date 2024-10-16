@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
@@ -534,12 +535,13 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             const int nodesCount = 5;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
+            ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
+
             foreach (var node in staticNodes)
             {
-                ctx.DiscoveryApp.NodeAdded += Raise.EventWith(new NodeEventArgs(new Node(TestItem.PublicKeyA, node.Host, node.Port)));
+                ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
 
             await Task.Delay(_travisDelay);
@@ -553,7 +555,7 @@ namespace Nethermind.Network.Test
             const int nodesCount = 5;
             var disconnections = 0;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
+            ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
@@ -625,13 +627,14 @@ namespace Nethermind.Network.Test
             public IPeerPool PeerPool { get; }
             public INetworkConfig NetworkConfig { get; }
             public IStaticNodesManager StaticNodesManager { get; }
+            public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = new();
 
             public Context(int parallelism = 0, int maxActivePeers = 25)
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
-                DiscoveryApp.LoadInitialList().Returns(new List<Node>());
+                DiscoveryApp.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
@@ -642,8 +645,9 @@ namespace Nethermind.Network.Test
                 NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
                 NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
-                StaticNodesManager.LoadInitialList().Returns(new List<Node>());
-                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager);
+                StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
+                TestNodeSource = new TestNodeSource();
+                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager, TestNodeSource);
                 PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);
                 CreatePeerManager();
             }
@@ -710,9 +714,7 @@ namespace Nethermind.Network.Test
             {
                 for (int i = 0; i < count; i++)
                 {
-                    DiscoveryApp.NodeAdded +=
-                        Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey,
-                            "1.2.3.4", 1234)));
+                    TestNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "1.2.3.4", 1234));
                 }
             }
 

@@ -86,6 +86,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
+            _syncReport.FastBlocksReceipts.Reset(0);
+            _syncReport.ReceiptsInQueue.Reset(0);
         }
 
         private void ResetSyncStatusList()

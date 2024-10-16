@@ -128,6 +128,7 @@ namespace Ethereum.Test.Base
         {
             Transaction transaction = new();
 
+            transaction.Type = transactionJson.Type;
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
             transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
@@ -157,6 +158,23 @@ namespace Ethereum.Test.Base
 
             if (transaction.BlobVersionedHashes?.Length > 0)
                 transaction.Type = TxType.Blob;
+
+            if (transactionJson.AuthorizationList is not null)
+            {
+                transaction.AuthorizationList =
+                    transactionJson.AuthorizationList
+                    .Select(i => new AuthorizationTuple(
+                        i.ChainId,
+                        i.Address,
+                        i.Nonce,
+                        i.V,
+                        i.R,
+                        i.S)).ToArray();
+                if (transaction.AuthorizationList.Any())
+                {
+                    transaction.Type = TxType.SetCode;
+                }
+            }
 
             return transaction;
         }
@@ -274,9 +292,11 @@ namespace Ethereum.Test.Base
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
+                Console.WriteLine($"Loading {namedTest.Key}\n {namedTest.Value.Post}");
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 

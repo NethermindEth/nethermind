@@ -12,7 +12,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
-[TestFixture]
 public class GethLikeBlockMemoryTracerTests
 {
     [Test]
@@ -20,7 +19,7 @@ public class GethLikeBlockMemoryTracerTests
     {
         Hash256 txHash = TestItem.KeccakA;
         GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default with { TxHash = txHash });
-        Assert.IsNull(blockTracer.BuildResult().SingleOrDefault(), $"starts with trace set to null");
+        Assert.That(blockTracer.BuildResult().SingleOrDefault(), Is.Null, $"starts with trace set to null");
     }
 
     [Test]
@@ -56,9 +55,9 @@ public class GethLikeBlockMemoryTracerTests
         ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject);
         ((IBlockTracer)blockTracer).EndTxTrace();
 
-        Assert.NotNull(blockTracer.BuildResult().First(), "0");
-        Assert.NotNull(blockTracer.BuildResult().Skip(1).First(), "1");
-        Assert.NotNull(blockTracer.BuildResult().Last(), "2");
+        Assert.That(blockTracer.BuildResult().First(), Is.Not.Null, "0");
+        Assert.That(blockTracer.BuildResult().Skip(1).First(), Is.Not.Null, "1");
+        Assert.That(blockTracer.BuildResult().Last(), Is.Not.Null, "2");
     }
 
     [Test]

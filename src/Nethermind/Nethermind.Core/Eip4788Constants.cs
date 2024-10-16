@@ -14,9 +14,4 @@ public static class Eip4788Constants
     /// Gets the <c>BEACON_ROOTS_ADDRESS</c> parameter.
     /// </summary>
     public static readonly Address BeaconRootsAddress = new("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
-
-    /// <summary>
-    /// Gets the <c>HISTORY_BUFFER_LENGTH</c> parameter.
-    /// </summary>
-    public static readonly UInt256 HistoryBufferLength = 8191;
 }

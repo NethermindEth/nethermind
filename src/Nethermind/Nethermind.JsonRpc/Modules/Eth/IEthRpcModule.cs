@@ -7,10 +7,9 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
@@ -171,7 +170,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             EdgeCaseHint = "If your transaction has code executed, then you can generate transaction access list with eth_createAccessList. If you send it with your transaction then it will lower your gas cost on Ethereum",
             IsSharable = false,
             ExampleResponse = "{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"storageKeys\":[]}],\"gasUsed\":\"0xf71b\"}")]
-        ResultWrapper<AccessListForRpc?> eth_createAccessList(
+        ResultWrapper<AccessListResultForRpc?> eth_createAccessList(
             [JsonRpcParameter(Description = "Transaction's details", ExampleValue = "[\"{\"type\":\"0x1\"]")]
             TransactionForRpc transactionCall,
             [JsonRpcParameter(Description = "(optional)")]
@@ -195,8 +194,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Retrieves a transaction by hash",
             IsSharable = true,
             ExampleResponse = "{\"hash\":\"0xabca23910646013d608ec671de099447ab60b2b7159ad8319c3c088e8d9ea0fa\",\"nonce\":\"0x1a\",\"blockHash\":\"0xcb6756f69e0469acd5e5bb77966be580786ec2c11de85c9ddfd75257010e34f8\",\"blockNumber\":\"0x4dfbc7\",\"transactionIndex\":\"0xb\",\"from\":\"0xe1e7ab1c643dbe5b24739fdf2a5c7c193b54dd99\",\"to\":\"0x0b10e304088b2ba2b2acfd2f72573faad31a13a5\",\"value\":\"0x0\",\"gasPrice\":\"0x2540be400\",\"gas\":\"0xb4a4\",\"data\":\"0x095ea7b300000000000000000000000092c1576845703089cf6c0788379ed81f75f45dd500000000000000000000000000000000000000000000000000000002540be400\",\"input\":\"0x095ea7b300000000000000000000000092c1576845703089cf6c0788379ed81f75f45dd500000000000000000000000000000000000000000000000000000002540be400\",\"type\":\"0x0\",\"v\":\"0x2d\",\"s\":\"0x496d72d435ead8a8a9a865b14d6a102c1a9f848681d050dbbf11c522c612235\",\"r\":\"0xc8350e831203fecc8bff41f5cf858ac1d121e4b4d9e59c1137cc9440516ca9fd\"}")]
-        Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(
+        ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(
             [JsonRpcParameter(ExampleValue = "\"0xabca23910646013d608ec671de099447ab60b2b7159ad8319c3c088e8d9ea0fa\"")] Hash256 transactionHash);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a transaction RLP by hash",
+            IsSharable = true)]
+        public ResultWrapper<string?> eth_getRawTransactionByHash(Hash256 transactionHash);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns the pending transactions list",
