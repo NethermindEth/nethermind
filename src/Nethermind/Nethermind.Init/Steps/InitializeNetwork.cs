@@ -61,6 +61,7 @@ public static class NettyMemoryEstimator
     typeof(InitializeNodeStats),
     typeof(ResolveIps),
     typeof(InitializePlugins),
+    typeof(ImportEraStep),
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
@@ -186,8 +187,6 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await CheckAndStartEraImport(_api, cancellationToken);
-
         await InitPeer().ContinueWith(initPeerTask =>
         {
             if (initPeerTask.IsFaulted)
@@ -254,75 +253,6 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
-    }
-
-    private async Task CheckAndStartEraImport(IApiWithNetwork api, CancellationToken cancellation)
-    {
-        if (api.BlockTree is null)
-            throw new StepDependencyException(nameof(_api.BlockTree));
-        if (api.BlockValidator is null)
-            throw new StepDependencyException(nameof(_api.BlockValidator));
-        if (api.ReceiptStorage is null)
-            throw new StepDependencyException(nameof(_api.ReceiptStorage));
-        if (api.SpecProvider is null)
-            throw new StepDependencyException(nameof(_api.SpecProvider));
-
-        ISyncConfig syncConfig = api.Config<ISyncConfig>();
-        if (string.IsNullOrEmpty(syncConfig.ImportDirectory))
-        {
-            return;
-        }
-        if (!api.FileSystem.Directory.Exists(syncConfig.ImportDirectory))
-        {
-            _logger.Warn($"The directory given for import '{syncConfig.ImportDirectory}' does not exist.");
-            return;
-        }
-
-        var networkName = BlockchainIds.GetBlockchainName(api.SpecProvider.NetworkId);
-        _logger.Info($"Checking for unimported blocks '{syncConfig.ImportDirectory}'");
-
-        var eraFiles = EraPathUtils.GetAllEraFiles(syncConfig.ImportDirectory, networkName).ToArray();
-        if (eraFiles.Length == 0)
-        {
-            _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");
-            return;
-        }
-
-        EraImporter eraImport = new(
-            api.FileSystem,
-            api.BlockTree,
-            api.BlockValidator,
-            api.ReceiptStorage,
-            api.SpecProvider,
-            api.LogManager,
-            networkName);
-
-        try
-        {
-            if (_syncConfig.FastSync)
-            {
-                return;
-            }
-            else
-            {
-                //Import as a full archive
-                _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
-                await eraImport.ImportAsArchiveSync(syncConfig.ImportDirectory, cancellation);
-            }
-        }
-        catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
-        {
-            _logger.Warn($"A running import job was cancelled.");
-        }
-        catch (Exception e) when (e is EraException or EraImportException)
-        {
-            _logger.Error($"The import failed with the message: {e.Message}");
-        }
-        catch (Exception e)
-        {
-            _logger.Error("Import error", e);
-            throw;
-        }
     }
 
     private Task StartDiscovery()
