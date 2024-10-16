@@ -29,16 +29,12 @@ public class T8NTool : GeneralStateTestBase
         ulong stateChainId,
         string stateFork,
         string? stateReward,
-        bool isGnosis,
         TraceOptions traceOptions)
     {
         T8NOutput t8NOutput = new();
         try
         {
-            if (isGnosis)
-            {
-                stateChainId = GnosisSpecProvider.Instance.ChainId;
-            }
+            var isGnosis = GnosisSpecProvider.Instance.ChainId == stateChainId;
             var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId,
                 isGnosis, traceOptions);
 
