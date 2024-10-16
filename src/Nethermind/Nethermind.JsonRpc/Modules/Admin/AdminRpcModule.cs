@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics.LinearAlgebra.Factorization;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
@@ -25,6 +31,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
     private NodeInfo _nodeInfo = null!;
+    private readonly IAdminEraService _eraService;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -32,6 +39,7 @@ public class AdminRpcModule : IAdminRpcModule
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
         IEnode enode,
+        IAdminEraService eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger)
     {
@@ -42,7 +50,7 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
-
+        _eraService = eraService;
         BuildNodeInfo();
     }
 
@@ -127,5 +135,16 @@ public class AdminRpcModule : IAdminRpcModule
     public ResultWrapper<PruningStatus> admin_prune()
     {
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
+    }
+
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo)
+    {
+        return _eraService.ExportHistory(destination, epochFrom, epochTo);
+    }
+
+    //TODO maybe move to cli?
+    public Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile)
+    {
+        return _eraService.VerifyHistory(eraSource, accumulatorFile);
     }
 }

@@ -1,0 +1,51 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
+using System.Linq;
+using Nethermind.Era1;
+
+namespace Nethermind.Blockchain.Era1;
+
+public class EraPathUtils
+{
+    private static readonly char[] separator = new char[] { '-' };
+
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
+    {
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+        if (network is null) throw new ArgumentNullException(nameof(network));
+        if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
+
+        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories = false, MatchCasing = MatchCasing.PlatformDefault });
+        if (!entries.Any())
+            yield break;
+
+        uint next = 0;
+        foreach (string file in entries)
+        {
+            // Format: <network>-<epoch>-<hexroot>.era1
+            string[] parts = Path.GetFileName(file).Split(separator);
+            if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            uint epoch;
+            if (!uint.TryParse(parts[1], out epoch))
+                throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
+            //else if (epoch != next)
+            //    throw new EraException($"Epoch {epoch} is missing.");
+
+            next++;
+            yield return file;
+        }
+    }
+
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
+    {
+        return GetAllEraFiles(directoryPath, network, new FileSystem());
+    }
+}
