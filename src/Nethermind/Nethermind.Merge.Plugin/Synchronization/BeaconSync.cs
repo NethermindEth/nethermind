@@ -68,10 +68,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = false;
         }
 
-        public bool ShouldBeInBeaconHeaders(bool canBeInBeaconHeaders = true)
+        public void AllowBeaconHeaderSync()
         {
-            _canInitBeaconHeaderSync = canBeInBeaconHeaders;
+            _canInitBeaconHeaderSync = true;
+        }
 
+        public bool ShouldBeInBeaconHeaders()
+        {
             bool beaconPivotExists = _beaconPivot.BeaconPivotExists();
             bool notInBeaconModeControl = !_isInBeaconModeControl;
             bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
