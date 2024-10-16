@@ -32,7 +32,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;

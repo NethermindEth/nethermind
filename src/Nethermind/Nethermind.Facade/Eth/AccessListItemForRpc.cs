@@ -9,7 +9,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Facade.Eth

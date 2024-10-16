@@ -7,7 +7,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;

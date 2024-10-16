@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -13,8 +12,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-
-using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 

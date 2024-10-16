@@ -17,8 +17,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Tracing;
-using static Nethermind.Core.Extensions.MemoryExtensions;
-
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -174,6 +172,10 @@ namespace Nethermind.Evm.TransactionProcessing
             else if (commit)
             {
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitStorageRoots: !spec.IsEip658Enabled);
+            }
+            else
+            {
+                WorldState.ResetTransient();
             }
 
             if (tracer.IsTracingReceipt)

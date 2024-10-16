@@ -3,7 +3,6 @@
 
 using System.Collections;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;

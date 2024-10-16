@@ -15,7 +15,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;

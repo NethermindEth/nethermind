@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using ResultType = Nethermind.Core.ResultType;

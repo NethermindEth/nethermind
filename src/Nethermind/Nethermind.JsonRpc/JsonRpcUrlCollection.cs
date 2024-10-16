@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Sockets;
-using System.IO;
 
 namespace Nethermind.JsonRpc
 {

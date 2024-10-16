@@ -42,7 +42,6 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;

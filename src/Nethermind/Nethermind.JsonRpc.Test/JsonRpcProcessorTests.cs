@@ -5,14 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.JsonRpc.Modules;
 
 using NSubstitute;

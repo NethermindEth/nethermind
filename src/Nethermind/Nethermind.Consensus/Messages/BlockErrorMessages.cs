@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Messages;
 public static class BlockErrorMessages

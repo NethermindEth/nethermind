@@ -10,7 +10,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;

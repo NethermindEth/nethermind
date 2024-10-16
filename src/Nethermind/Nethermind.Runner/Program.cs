@@ -25,7 +25,6 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;

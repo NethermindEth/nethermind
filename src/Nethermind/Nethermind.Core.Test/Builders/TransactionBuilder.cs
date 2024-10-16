@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Core.Test.Builders
 {

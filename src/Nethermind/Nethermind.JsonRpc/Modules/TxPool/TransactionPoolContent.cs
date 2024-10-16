@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
 using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.TxPool

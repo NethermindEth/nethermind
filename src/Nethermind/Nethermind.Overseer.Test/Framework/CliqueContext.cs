@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Overseer.Test.JsonRpc;
 
 namespace Nethermind.Overseer.Test.Framework

@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -16,7 +14,6 @@ using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Test.Validators

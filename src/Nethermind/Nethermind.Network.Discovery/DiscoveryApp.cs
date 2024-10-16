@@ -4,7 +4,6 @@
 using System.Net.NetworkInformation;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;

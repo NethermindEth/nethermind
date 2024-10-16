@@ -3,14 +3,10 @@
 
 using System;
 using System.IO;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using System.Runtime.Intrinsics;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;

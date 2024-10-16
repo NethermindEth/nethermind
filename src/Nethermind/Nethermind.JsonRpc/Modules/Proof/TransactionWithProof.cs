@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {

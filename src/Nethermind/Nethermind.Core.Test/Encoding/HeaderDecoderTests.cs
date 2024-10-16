@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;

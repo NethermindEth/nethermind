@@ -7,10 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
 {

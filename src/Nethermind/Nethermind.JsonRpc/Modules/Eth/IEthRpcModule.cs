@@ -9,8 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;

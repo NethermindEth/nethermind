@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
-
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
