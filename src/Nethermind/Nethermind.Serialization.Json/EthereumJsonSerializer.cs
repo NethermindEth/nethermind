@@ -34,6 +34,11 @@ namespace Nethermind.Serialization.Json
             _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
         }
 
+        public object Deserialize(string json, Type type)
+        {
+            return JsonSerializer.Deserialize(json, type, _jsonOptions);
+        }
+
         public T Deserialize<T>(Stream stream)
         {
             return JsonSerializer.Deserialize<T>(stream, _jsonOptions);

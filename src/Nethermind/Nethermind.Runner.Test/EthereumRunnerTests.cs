@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Clique;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
@@ -23,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Db.Blooms;
+using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -44,6 +46,9 @@ public class EthereumRunnerTests
 
     private static ICollection InitOnce()
     {
+        // TODO: we need this to discover OptimismChainSpecEngineParameters and CliqueChainSpecEngineParameters
+        new CliqueConfig();
+        new OptimismConfig();
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>

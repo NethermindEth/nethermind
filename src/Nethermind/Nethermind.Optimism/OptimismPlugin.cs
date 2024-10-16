@@ -55,7 +55,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     #region IConsensusPlugin
 
-    public string SealEngineType => Core.SealEngineType.Optimism;
+    public string SealEngineType => OptimismConstants.SealEngineType;
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 

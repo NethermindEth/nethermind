@@ -29,6 +29,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -39,7 +40,7 @@ public class TraceRpcModuleTests
         public async Task Build(ISpecProvider? specProvider = null, bool isAura = false)
         {
             JsonRpcConfig = new JsonRpcConfig();
-            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+            Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : TestSealEngineType.NethDev).Build(specProvider);
             await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());

@@ -27,6 +27,8 @@
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring.Test\Nethermind.Monitoring.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+    <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\AuRaTest.json</Link>
     </Content>

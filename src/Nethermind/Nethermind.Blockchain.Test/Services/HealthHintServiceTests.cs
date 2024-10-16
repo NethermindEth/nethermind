@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Services;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Services;
@@ -39,7 +40,7 @@ public class HealthHintServiceTests
         {
             yield return new BlockProcessorIntervalHint
             {
-                ChainSpec = new ChainSpec { SealEngineType = SealEngineType.NethDev, }
+                ChainSpec = new ChainSpec { SealEngineType = TestSealEngineType.NethDev, }
             };
             yield return new BlockProcessorIntervalHint
             {

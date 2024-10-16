@@ -209,20 +209,12 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        if (chainSpecJson.Engine?.Ethash is not null)
-        {
-            chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
-            chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
-        }
-        else
-        {
-            chainSpec.HomesteadBlockNumber = 0;
-        }
+        chainSpec.HomesteadBlockNumber = 0;
 
-        IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
-            .Keys
-            .Cast<long?>()
-            .ToArray();
+        // IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
+        //     .Keys
+        //     .Cast<long?>()
+        //     .ToArray();
 
         chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
@@ -234,11 +226,11 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.ConstantinopleFixBlockNumber =
             chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
         chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
-        chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
         chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
         chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
-        chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
-        chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
+        // chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
+        // chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
+        // chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
 
@@ -246,9 +238,19 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         chainSpec.TerminalPoWBlockNumber = chainSpec.Parameters.TerminalPoWBlockNumber;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
+
+
+        if (chainSpec.EngineChainSpecParametersProvider is not null)
+        {
+            foreach (IChainSpecEngineParameters chainSpecEngineParameters in chainSpec.EngineChainSpecParametersProvider
+                         .AllChainSpecParameters)
+            {
+                chainSpecEngineParameters.ApplyToChainSpec(chainSpec);
+            }
+        }
     }
 
-    private static void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+    private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
         static AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
         {
@@ -301,68 +303,22 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 WithdrawalContractAddress = chainSpecJson.Engine.AuthorityRound.WithdrawalContractAddress,
             };
         }
-        else if (chainSpecJson.Engine?.Clique is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Clique;
-            chainSpec.Clique = new CliqueParameters
-            {
-                Epoch = chainSpecJson.Engine.Clique.Epoch,
-                Period = chainSpecJson.Engine.Clique.Period,
-                Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero
-            };
-        }
-        else if (chainSpecJson.Engine?.Ethash is not null)
+        // else if (chainSpecJson.Engine?.Ethash is not null)
         {
             chainSpec.SealEngineType = SealEngineType.Ethash;
-            chainSpec.Ethash = new EthashParameters
-            {
-                MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L,
-                DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? 0x0800L,
-                DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L,
-                HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0,
-                DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition,
-                DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
-                DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
-                Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
-                FixedDifficulty = chainSpecJson.Engine.Ethash.FixedDifficulty,
-                BlockRewards = chainSpecJson.Engine.Ethash.BlockReward
-            };
 
-            chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-            if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
-            {
-                foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
-                {
-                    long key = reward.Key.StartsWith("0x") ?
-                        long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
-                        long.Parse(reward.Key);
-
-                    chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
-                }
-            }
-        }
-        else if (chainSpecJson.Engine?.Optimism is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Optimism;
-            chainSpec.Optimism = new OptimismParameters
-            {
-                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
-                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
-                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
-                EcotoneTimestamp = chainSpecJson.Engine.Optimism.EcotoneTimestamp,
-                FjordTimestamp = chainSpecJson.Engine.Optimism.FjordTimestamp,
-                GraniteTimestamp = chainSpecJson.Engine.Optimism.GraniteTimestamp,
-
-                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
-                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
-                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
-            };
-        }
-        else if (chainSpecJson.Engine?.NethDev is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.NethDev;
+            // chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
+            // if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
+            // {
+            //     foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
+            //     {
+            //         long key = reward.Key.StartsWith("0x") ?
+            //             long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
+            //             long.Parse(reward.Key);
+            //
+            //         chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
+            //     }
+            // }
         }
 
         var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
@@ -370,6 +326,29 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (!string.IsNullOrEmpty(customEngineType))
         {
             chainSpec.SealEngineType = customEngineType;
+        }
+
+        Dictionary<string, JsonElement> engineParameters = new();
+        // TODO remove null check
+        if (chainSpecJson.Engine.CustomEngineData is not null)
+        {
+            foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
+            {
+                if (engine.Value.TryGetProperty("params", out JsonElement value))
+                {
+                    engineParameters.Add(engine.Key, value);
+                }
+                else
+                {
+                    engineParameters.Add(engine.Key, engine.Value);
+                }
+            }
+
+            chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
+            if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+            {
+                chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
+            }
         }
 
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))

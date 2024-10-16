@@ -33,17 +33,19 @@ namespace Nethermind.Specs.ChainSpecStyle
             SortedSet<ulong> transitionTimestamps = new();
             transitionBlockNumbers.Add(0L);
 
-            if (_chainSpec.Ethash?.BlockRewards is not null)
+            // TODO remove null check
+            if (_chainSpec.EngineChainSpecParametersProvider is not null)
             {
-                foreach ((long blockNumber, _) in _chainSpec.Ethash.BlockRewards)
+                foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
+                             .AllChainSpecParameters)
                 {
-                    transitionBlockNumbers.Add(blockNumber);
+                    item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
                 }
             }
 
             AddTransitions(transitionBlockNumbers, _chainSpec, n => n.EndsWith("BlockNumber") && n != "TerminalPoWBlockNumber");
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
-            AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
+            // AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
@@ -87,10 +89,10 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
-            foreach (KeyValuePair<long, long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
-            {
-                transitionBlockNumbers.Add(bombDelay.Key);
-            }
+            // foreach (KeyValuePair<long, long> bombDelay in _chainSpec.Ethash?.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
+            // {
+            //     transitionBlockNumbers.Add(bombDelay.Key);
+            // }
 
 
             (ForkActivation Activation, IReleaseSpec Spec)[] allTransitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
@@ -107,7 +109,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private static (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
+        private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
             SortedSet<long> transitionBlockNumbers,
             SortedSet<ulong> transitionTimestamps)
@@ -153,7 +155,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             return transitionActivations;
         }
 
-        private static ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+        private ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
             ReleaseSpec releaseSpec = new();
             releaseSpec.MaximumUncleCount = (int)(releaseStartBlock >= (chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) ? chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2);
@@ -161,15 +163,14 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
             releaseSpec.MinGasLimit = chainSpec.Parameters.MinGasLimit;
             releaseSpec.GasLimitBoundDivisor = chainSpec.Parameters.GasLimitBoundDivisor;
-            releaseSpec.DifficultyBoundDivisor = chainSpec.Ethash?.DifficultyBoundDivisor ?? 1;
-            releaseSpec.FixedDifficulty = chainSpec.Ethash?.FixedDifficulty;
+            // releaseSpec.DifficultyBoundDivisor = chainSpec.Ethash?.DifficultyBoundDivisor ?? 1;
+            // releaseSpec.FixedDifficulty = chainSpec.Ethash?.FixedDifficulty;
             releaseSpec.IsEip170Enabled = (chainSpec.Parameters.MaxCodeSizeTransition ?? long.MaxValue) <= releaseStartBlock ||
                                           (chainSpec.Parameters.MaxCodeSizeTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.MaxCodeSize = releaseSpec.IsEip170Enabled ? (chainSpec.Parameters.MaxCodeSize ?? long.MaxValue) : long.MaxValue;
-            releaseSpec.IsEip2Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock;
-            releaseSpec.IsEip7Enabled = (chainSpec.Ethash?.HomesteadTransition ?? 0) <= releaseStartBlock ||
-                                        (chainSpec.Parameters.Eip7Transition ?? long.MaxValue) <= releaseStartBlock;
-            releaseSpec.IsEip100Enabled = (chainSpec.Ethash?.Eip100bTransition ?? 0) <= releaseStartBlock;
+            releaseSpec.IsEip2Enabled = true;
+            releaseSpec.IsEip100Enabled = true;
+            releaseSpec.IsEip7Enabled = (chainSpec.Parameters.Eip7Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip140Enabled = (chainSpec.Parameters.Eip140Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip145Enabled = (chainSpec.Parameters.Eip145Transition ?? 0) <= releaseStartBlock;
             releaseSpec.IsEip150Enabled = (chainSpec.Parameters.Eip150Transition ?? 0) <= releaseStartBlock;
@@ -216,30 +217,26 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
             releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator ?? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
 
-            if (chainSpec.Optimism?.CanyonTimestamp <= releaseStartTimestamp)
-            {
-                releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Optimism.CanyonBaseFeeChangeDenominator;
-            }
 
 
-            if (chainSpec.Ethash is not null)
-            {
-                foreach (KeyValuePair<long, UInt256> blockReward in chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
-                {
-                    if (blockReward.Key <= releaseStartBlock)
-                    {
-                        releaseSpec.BlockReward = blockReward.Value;
-                    }
-                }
-
-                foreach (KeyValuePair<long, long> bombDelay in chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
-                {
-                    if (bombDelay.Key <= releaseStartBlock)
-                    {
-                        releaseSpec.DifficultyBombDelay += bombDelay.Value;
-                    }
-                }
-            }
+            // if (chainSpec.Ethash is not null)
+            // {
+                // foreach (KeyValuePair<long, UInt256> blockReward in chainSpec.Ethash.BlockRewards ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
+                // {
+                //     if (blockReward.Key <= releaseStartBlock)
+                //     {
+                //         releaseSpec.BlockReward = blockReward.Value;
+                //     }
+                // }
+                //
+                // foreach (KeyValuePair<long, long> bombDelay in chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
+                // {
+                //     if (bombDelay.Key <= releaseStartBlock)
+                //     {
+                //         releaseSpec.DifficultyBombDelay += bombDelay.Value;
+                //     }
+                // }
+            // }
 
             releaseSpec.IsEip1153Enabled = (chainSpec.Parameters.Eip1153TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip3651Enabled = (chainSpec.Parameters.Eip3651TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -269,6 +266,16 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.IsEip7251Enabled = (chainSpec.Parameters.Eip7251TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip7251ContractAddress = chainSpec.Parameters.Eip7251ContractAddress;
+
+            // TODO remove null check
+            if (_chainSpec.EngineChainSpecParametersProvider is not null)
+            {
+                foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
+                             .AllChainSpecParameters)
+                {
+                    item.ApplyToReleaseSpec(releaseSpec, releaseStartBlock, releaseStartTimestamp);
+                }
+            }
 
             return releaseSpec;
         }
