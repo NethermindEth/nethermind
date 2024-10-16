@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization
 
     public interface IBeaconSyncStrategy
     {
-        bool ShouldBeInBeaconHeaders(bool canBeInBeaconHeaders = false);
+        bool ShouldBeInBeaconHeaders(bool canBeInBeaconHeaders = true);
         bool ShouldBeInBeaconModeControl();
         bool IsBeaconSyncFinished(BlockHeader? blockHeader);
 
