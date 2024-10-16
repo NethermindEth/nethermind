@@ -52,10 +52,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
+    /// <param name="isWrite"></param>
     /// <returns></returns>
-    public bool AccessCodeHash(Address address, ref long gasAvailable)
+    public bool AccessCodeHash(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessCodeHash<Gas>(address, ref gasAvailable);
+        return AccessCodeHash<Gas>(address, ref gasAvailable, isWrite);
     }
 
 
@@ -147,7 +148,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <returns></returns>
     public bool AccessForAbsentAccount(Address address, ref long gasAvailable)
     {
-        return AccessCompleteAccount<Gas>(address, ref gasAvailable);
+        return AccessCompleteAccount<Gas>(address, ref gasAvailable, true);
     }
 
     /// <summary>
@@ -156,9 +157,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="inheritor"></param>
     /// <param name="balanceIsZero"></param>
     /// <param name="inheritorExist"></param>
+    /// <param name="isPrecompileOrSystemContract"></param>
     /// <param name="gasAvailable"></param>
     /// <returns></returns>
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist,
+        bool isPrecompileOrSystemContract,
         ref long gasAvailable)
     {
         // access the basic data for the contract calling the selfdestruct
@@ -166,7 +169,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
         // TODO: move precompile check to outside
         // if the inheritor is a pre-compile and there is no balance transfer, there is nothing else to do
-        if (inheritor.IsPrecompile(Osaka.Instance) && balanceIsZero) return true;
+        if (isPrecompileOrSystemContract && balanceIsZero) return true;
 
         // now if the contract and inheritor is not the same, then access the inheritor basic data
         // here this is charged because we need gas to check if the inheritor exists or not
@@ -255,7 +258,6 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     public bool AccessForBlockhashInsertionWitness(Address address, UInt256 key)
     {
         long fakeGas = 1_000_000;
-        AccessCompleteAccount<NoGas>(address, ref fakeGas);
         AccessKey<NoGas>(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), ref fakeGas, true);
         return true;
     }
@@ -275,7 +277,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (destinationAddress is null) return true;
 
         return AccessBasicData<NoGas>(destinationAddress, ref fakeGas, isValueTransfer) &&
-               AccessCodeHash<NoGas>(destinationAddress, ref fakeGas);
+               AccessCodeHash<NoGas>(destinationAddress, ref fakeGas, isValueTransfer);
     }
 
     /// <summary>
@@ -363,19 +365,23 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             }
 
             if (requiredGas > gasAvailable) return false;
-            gasAvailable -= requiredGas;
         }
 
-        _accessedLeaves.Add(key);
-        _accessedSubtrees.Add(subTreeStem);
-
-        if (!isWrite) return true;
+        if (!isWrite)
+        {
+            if (TGasCharge.ChargeGas)
+            {
+                gasAvailable -= requiredGas;
+            }
+            _accessedLeaves.Add(key);
+            _accessedSubtrees.Add(subTreeStem);
+            return true;
+        }
 
 
         // write check
         if (TGasCharge.ChargeGas)
         {
-            requiredGas = 0;
             // if `wasPreviouslyNotAccessed = true`, this implies that _modifiedLeaves.Contains(key) = false
             if (wasPreviouslyNotAccessed || !_modifiedLeaves.Contains(key))
             {
@@ -392,6 +398,8 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
             gasAvailable -= requiredGas;
         }
 
+        _accessedLeaves.Add(key);
+        _accessedSubtrees.Add(subTreeStem);
         _modifiedLeaves.Add(key);
         _modifiedSubtrees.Add(subTreeStem);
 

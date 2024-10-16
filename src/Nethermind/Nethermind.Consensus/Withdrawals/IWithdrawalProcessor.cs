@@ -4,10 +4,11 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Withdrawals;
 
 public interface IWithdrawalProcessor
 {
-    void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec);
+    void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec, IWorldState worldState);
 }

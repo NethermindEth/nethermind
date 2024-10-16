@@ -18,6 +18,10 @@ public static class Eip2935Constants
     /// <summary>
     /// Gets the <c>RING_BUFFER_SIZE</c> parameter.
     /// </summary>
-    public static readonly long RingBufferSize = 8192;
+    public const long RingBufferSize = 8192;
 
+    /// <summary>
+    /// Gets the <c>RING_BUFFER_SIZE</c> parameter.
+    /// </summary>
+    public const long OpCodeServeWindow = 256;
 }

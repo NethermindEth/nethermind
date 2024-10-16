@@ -30,13 +30,14 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
         byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
         headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
         byte[]? basicDataLeafVal = Get(headerTreeKey);
-        if (basicDataLeafVal is null) return null;
+        // if (basicDataLeafVal is null) return null;
 
         headerTreeKey[31] = AccountHeader.CodeHash;
-        var codeHashBytes = Get(headerTreeKey);
+        byte[]? codeHashBytes = Get(headerTreeKey);
         Hash256 codeHash = codeHashBytes is null ? Keccak.EmptyTreeHash : new Hash256(codeHashBytes);
+        if (basicDataLeafVal is null && codeHashBytes is null) return null;
 
-        return AccountHeader.BasicDataToAccount(basicDataLeafVal, codeHash);
+        return AccountHeader.BasicDataToAccount(basicDataLeafVal?? new byte[32], codeHash);
     }
 
     public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
@@ -119,7 +120,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
     public void BulkSet(IDictionary<StorageCell, byte[]> values)
     {
         // Put the sets into a list to be sorted
-        using ArrayPoolList<KeyValuePair<StorageCell, byte[]>> theList = new ArrayPoolList<KeyValuePair<StorageCell, byte[]>>(values.Count, values);
+        using var theList = new ArrayPoolList<KeyValuePair<StorageCell, byte[]>>(values.Count, values);
 
         // Sort by address and index.
         theList.AsSpan().Sort((kv1, kv2) =>
@@ -128,7 +129,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
             return addressCompare != 0 ? addressCompare : kv1.Key.Index.CompareTo(kv2.Key.Index);
         });
 
-        ActionBlock<(Hash256, Dictionary<byte, byte[]>)> insertStem =
+        var insertStem =
             new ActionBlock<(Hash256, Dictionary<byte, byte[]>)>((item) =>
             {
                 InsertStemBatch(item.Item1.Bytes[..31], item.Item2.Select(kv => (kv.Key, kv.Value)));
@@ -139,7 +140,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
             });
 
         Hash256 currentStem = Hash256.Zero;
-        Dictionary<byte, byte[]> stemValues = new Dictionary<byte, byte[]>();
+        var stemValues = new Dictionary<byte, byte[]>();
         foreach (KeyValuePair<StorageCell, byte[]> kv in theList)
         {
             // Because of the way the mapping works
