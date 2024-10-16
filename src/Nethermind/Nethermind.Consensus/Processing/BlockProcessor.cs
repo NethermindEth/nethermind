@@ -328,14 +328,6 @@ public partial class BlockProcessor : IBlockProcessor
 
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
-        if (!block.IsGenesis && block.Transactions.Length != 0 && ExecutionTracer.IsTracingAccessWitness)
-        {
-            var gasWitness = new VerkleExecWitness(NullLogManager.Instance, worldState as VerkleWorldState);
-            gasWitness.AccessForGasBeneficiary(block.Header.GasBeneficiary!);
-            ExecutionTracer.ReportAccessWitness(gasWitness);
-        }
-
-
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, ExecutionTracer, spec, worldState);
         ExecutionTracer.EndBlockTrace();

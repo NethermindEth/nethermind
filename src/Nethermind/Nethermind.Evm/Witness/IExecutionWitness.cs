@@ -32,7 +32,7 @@ public interface IExecutionWitness
 
     bool AccessAccountData(Address caller, ref long gasAvailable);
     bool AccessForBalanceOpCode(Address address, ref long gasAvailable);
-    bool AccessCodeHash(Address address, ref long gasAvailable);
+    bool AccessCodeHash(Address address, ref long gasAvailable, bool isWrite = false);
 
     /// <summary>
     ///     When SLOAD and SSTORE opcodes are called with a given address

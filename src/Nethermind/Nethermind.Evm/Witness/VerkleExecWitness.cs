@@ -52,10 +52,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// </summary>
     /// <param name="address"></param>
     /// <param name="gasAvailable"></param>
+    /// <param name="isWrite"></param>
     /// <returns></returns>
-    public bool AccessCodeHash(Address address, ref long gasAvailable)
+    public bool AccessCodeHash(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessCodeHash<Gas>(address, ref gasAvailable);
+        return AccessCodeHash<Gas>(address, ref gasAvailable, isWrite);
     }
 
 
@@ -147,7 +148,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <returns></returns>
     public bool AccessForAbsentAccount(Address address, ref long gasAvailable)
     {
-        return AccessCompleteAccount<Gas>(address, ref gasAvailable);
+        return AccessCompleteAccount<Gas>(address, ref gasAvailable, true);
     }
 
     /// <summary>
@@ -276,7 +277,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (destinationAddress is null) return true;
 
         return AccessBasicData<NoGas>(destinationAddress, ref fakeGas, isValueTransfer) &&
-               AccessCodeHash<NoGas>(destinationAddress, ref fakeGas);
+               AccessCodeHash<NoGas>(destinationAddress, ref fakeGas, isValueTransfer);
     }
 
     /// <summary>

@@ -24,7 +24,7 @@ public class NoExecWitness : IExecutionWitness
 
     public bool AccessForBalanceOpCode(Address address, ref long gasAvailable) => true;
 
-    public bool AccessCodeHash(Address address, ref long gasAvailable) => true;
+    public bool AccessCodeHash(Address address, ref long gasAvailable, bool isWrite = false) => true;
 
     public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable) => true;
     public bool AccessForBlockHashOpCode(Address address, UInt256 key, ref long gasAvailable) => true;
