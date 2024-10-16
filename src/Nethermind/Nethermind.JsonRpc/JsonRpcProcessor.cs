@@ -132,8 +132,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
             if (Encoding.UTF8.TryGetString(buffer, out string data))
             {
-                const int sliceSize = 100;
-                error = $"{error} Data (first {sliceSize} char):\n{data[..sliceSize]}\n";
+                const int sliceSize = 1000;
+                error = $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
             }
 
             if (_logger.IsError) _logger.Error(error, exception);
