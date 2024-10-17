@@ -552,6 +552,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .MUL()
                     .Done, EvmExceptionType.None);
 
+
+            yield return (Instruction.JUMPI | Instruction.JUMPDEST, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(0)
+                    .JUMPI(9)
+                    .PushSingle(3)
+                    .JUMPDEST()
+                    .PushSingle(0)
+                    .MUL()
+                    .Done, EvmExceptionType.None);
+
             yield return (Instruction.JUMP | Instruction.JUMPDEST, Prepare.EvmCode
                     .PushSingle(23)
                     .JUMP(10)
@@ -872,7 +883,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public async Task Pattern_Analyzer_Find_All_Instance_Of_Pattern()
+        public void Pattern_Analyzer_Find_All_Instance_Of_Pattern()
         {
             byte[] bytecode =
                 Prepare.EvmCode
@@ -886,14 +897,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, ILMode.PAT_MODE, NullLogger.Instance, config);
+            IlAnalyzer.StartAnalysis(codeInfo, ILMode.PAT_MODE, config, NullLogger.Instance);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
 
 
         [Test]
-        public async Task JIT_Analyzer_Compiles_stateless_bytecode_chunk()
+        public void JIT_Analyzer_Compiles_stateless_bytecode_chunk()
         {
             byte[] bytecode =
                 Prepare.EvmCode
@@ -915,7 +926,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
-            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, NullLogger.Instance, config);
+            IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, config, NullLogger.Instance);
 
             codeInfo.IlInfo.Segments.Count.Should().Be(2);
         }
@@ -931,7 +942,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPatternMatchingEnabled = true,
                 JittingThreshold = int.MaxValue,
                 IsJitEnabled = false,
-                AggressiveJitMode = false
+                AggressiveJitMode = false,
+                AnalysisQueueMaxSize = 1,
             });
 
             var pattern1 = IlAnalyzer.GetPatternHandler<SomeAfterTwoPush>();
@@ -1001,6 +1013,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
                 JittingThreshold = repeatCount + 1,
+                AnalysisQueueMaxSize = 1,
                 IsJitEnabled = true
             });
             enhancedChain.InsertCode(testcase.bytecode);
@@ -1056,6 +1069,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = repeatCount + 1,
                 IsPatternMatchingEnabled = true,
                 JittingThreshold = int.MaxValue,
+                AnalysisQueueMaxSize = 1,
                 IsJitEnabled = false
             });
             enhancedChain.InsertCode(testcase.bytecode);
@@ -1110,6 +1124,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = repeatCount + 1,
                 IsPatternMatchingEnabled = false,
                 JittingThreshold = repeatCount + 1,
+                AnalysisQueueMaxSize = 1,
                 IsJitEnabled = true,
                 AggressiveJitMode = true
             });
@@ -1182,6 +1197,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 PatternMatchingThreshold = repeatCount * 2 + 1,
+                AnalysisQueueMaxSize = 1,
                 IsPatternMatchingEnabled = true,
                 JittingThreshold = repeatCount + 1,
                 IsJitEnabled = true,
@@ -1259,6 +1275,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPatternMatchingEnabled = true,
                 JittingThreshold = int.MaxValue,
                 IsJitEnabled = true,
+                AnalysisQueueMaxSize = 1,
                 AggressiveJitMode = false
             });
 
@@ -1291,6 +1308,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
+                AnalysisQueueMaxSize = 1,
                 JittingThreshold = repeatCount + 1,
                 IsJitEnabled = true,
                 AggressiveJitMode = false

@@ -8,6 +8,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
+using static Org.BouncyCastle.Crypto.Engines.SM2Engine;
 using ILMode = int;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
@@ -24,6 +26,32 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
+    public class AnalysisWork(CodeInfo codeInfo, ILMode mode)
+    {
+        public CodeInfo CodeInfo = codeInfo;
+        public ILMode Mode = mode;
+    }
+    private static readonly ConcurrentQueue<AnalysisWork> _queue = new();
+
+    public static void Enqueue(CodeInfo codeInfo, ILMode mode, IVMConfig config, ILogger logger)
+    {
+        _queue.Enqueue(new AnalysisWork(codeInfo, mode));
+        if(config.AnalysisQueueMaxSize == _queue.Count)
+        {
+            Task.Run(() => AnalyzeQueue(config, logger));
+        }
+    }
+
+    private static void AnalyzeQueue(IVMConfig config, ILogger logger)
+    {
+        int itemsLeft = config.AnalysisQueueMaxSize;
+        while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
+        {
+            if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {worklet.CodeInfo.Address}");
+            IlAnalyzer.StartAnalysis(worklet.CodeInfo, worklet.Mode, config, logger);
+        }
+    }
+
     private static Dictionary<Type, InstructionChunk> _patterns = new Dictionary<Type, InstructionChunk>();
     internal static void AddPattern(InstructionChunk handler)
     {
@@ -57,18 +85,6 @@ public static class IlAnalyzer
         }
     }
 
-    /// <summary>
-    /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
-    /// </summary> thou
-    /// <param name="codeInfo">The destination output.</param>
-    internal static Task StartAnalysis(CodeInfo codeInfo, ILMode mode, ILogger logger, IVMConfig vmConfig)
-    {
-        Metrics.IlvmContractsAnalyzed++;
-
-        if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {codeInfo.Address}");
-        return Task.Run(() => Analysis(codeInfo, mode, vmConfig, logger));
-    }
-
     public static (OpcodeInfo[], byte[][]) StripByteCode(ReadOnlySpan<byte> machineCode)
     {
         OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
@@ -94,8 +110,9 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static void Analysis(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
+    internal static void StartAnalysis(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
     {
+        Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
         static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)

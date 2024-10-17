@@ -45,7 +45,7 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
         ushort[] jumpdests = Array.Empty<ushort>();
         if (code.Length == 0)
@@ -2565,7 +2565,6 @@ internal class ILCompiler
         {
 
             OpcodeInfo op = code[pc];
-            Debug.WriteLine(op);
             switch (op.Operation)
             {
                 case Instruction.JUMPDEST:
