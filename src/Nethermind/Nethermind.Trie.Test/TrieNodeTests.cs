@@ -925,7 +925,8 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        IScopedTrieStore trieStore = new TrieStore(new MemDb(), NullLogManager.Instance).GetTrieStore(null);
+        ITrieStore fullTrieStore = new TrieStore(new MemDb(), NullLogManager.Instance);
+        IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
         leaf1.Key = Bytes.FromHexString("abc");
@@ -942,10 +943,13 @@ public class TrieNodeTests
 
         TreePath path = TreePath.Empty;
 
-        using (ICommitter? committer = trieStore.BeginCommit(TrieType.State, 0, leaf2))
+        using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
         {
-            committer.CommitNode(ref path, new NodeCommitInfo(leaf1));
-            committer.CommitNode(ref path, new NodeCommitInfo(leaf2));
+            using (ICommitter? committer = trieStore.BeginCommit(leaf2))
+            {
+                committer.CommitNode(ref path, new NodeCommitInfo(leaf1));
+                committer.CommitNode(ref path, new NodeCommitInfo(leaf2));
+            }
         }
 
         TrieNode trieNode = new(NodeType.Branch);
