@@ -253,14 +253,23 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 UInt256 s = new (authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
                 if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN)
+                    || s > Secp256K1Curve.HalfN
+                    || (authorizationTuple.AuthoritySignature.V > 28 && authorizationTuple.AuthoritySignature.V < 37))
                 {
                     error = "Bad signature.";
                     return false;
                 }
-                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
+                if ((authorizationTuple.ChainId != 0
+                    && SpecProvider.ChainId != authorizationTuple.ChainId)
+                    )
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                    return false;
+                }
+
+                if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
+                {
+                    error = "Bad signature.";
                     return false;
                 }
 
