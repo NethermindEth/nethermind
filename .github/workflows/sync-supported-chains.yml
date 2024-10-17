@@ -188,7 +188,7 @@ jobs:
           required_count["Processed"]=20
 
           network="${{ matrix.config.network }}"
-          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" ]]; then
+          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" && "$network" != "linea-mainnet" && "$network" != "linea-sepolia"]]; then
             good_logs["Synced Chain Head"]=0
             required_count["Synced Chain Head"]=20
           fi
@@ -250,7 +250,7 @@ jobs:
           done
           
       - name: Get Consensus Logs
-        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet'
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
