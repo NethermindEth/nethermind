@@ -132,7 +132,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             return;
 
         builder
-            .AddSingleton(_blockCacheService!)
+            .AddSingleton<IBlockCacheService>(_blockCacheService!)
             .AddSingleton<IInvalidChainTracker>(_invalidChainTracker!);
 
         builder
@@ -159,7 +159,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
         _peerRefresher = container.Resolve<PeerRefresher>();
-        _beaconPivot = container.Resolve<BeaconPivot>();
+        _beaconPivot = container.Resolve<IBeaconPivot>();
         _beaconSync = container.Resolve<BeaconSync>();
         _ = container.Resolve<PivotUpdator>();
 
