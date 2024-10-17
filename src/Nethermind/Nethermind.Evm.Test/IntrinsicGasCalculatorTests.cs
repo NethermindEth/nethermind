@@ -33,18 +33,20 @@ namespace Nethermind.Evm.Test
             yield return (new List<object> { Address.Zero, (UInt256)1, Address.Zero, (UInt256)1 }, 8600);
         }
 
-        public static IEnumerable<(byte[] Data, int OldCost, int NewCost)> DataTestCaseSource()
+        public static IEnumerable<(byte[] Data, int OldCost, int NewCost, int FloorCost)> DataTestCaseSource()
         {
-            yield return (new byte[] { 0 }, 4, 4);
-            yield return (new byte[] { 1 }, 68, 16);
-            yield return (new byte[] { 0, 0, 1 }, 76, 24);
-            yield return (new byte[] { 1, 1, 0 }, 140, 36);
-            yield return (new byte[] { 0, 0, 1, 1 }, 144, 40);
+            yield return ([0], 4, 4, 21010);
+            yield return ([1], 68, 16, 21040);
+            yield return ([0, 0, 1], 76, 24, 21060);
+            yield return ([1, 1, 0], 140, 36, 21090);
+            yield return ([0, 0, 1, 1], 144, 40, 21100);
         }
         [TestCaseSource(nameof(TestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
-            IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance).Should().Be(testCase.Cost);
+            var gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
+            gas.IntrinsicGas.Should().Be(testCase.Cost);
+            gas.FloorGas.Should().Be(0);
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -74,7 +76,9 @@ namespace Nethermind.Evm.Test
                 }
                 else
                 {
-                    IntrinsicGasCalculator.Calculate(tx, spec).Should().Be(21000 + testCase.Cost, spec.Name);
+                    var gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                    gas.IntrinsicGas.Should().Be(21000 + testCase.Cost, spec.Name);
+                    gas.FloorGas.Should().Be(0);
                 }
             }
 
@@ -91,31 +95,35 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCaseSource(nameof(DataTestCaseSource))]
-        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost) testCase)
+        public void Intrinsic_cost_of_data_is_calculated_properly((byte[] Data, int OldCost, int NewCost, int FloorCost) testCase)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithData(testCase.Data).TestObject;
 
-            void Test(IReleaseSpec spec, bool isAfterRepricing)
+            void Test(IReleaseSpec spec, bool isAfterRepricing, bool floorCostEnabled)
             {
-                IntrinsicGasCalculator.Calculate(tx, spec).Should()
+                var gas = IntrinsicGasCalculator.Calculate(tx, spec);
+                gas.IntrinsicGas.Should()
                     .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
                         testCase.Data.ToHexString());
+                gas.FloorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
             }
 
-            Test(Homestead.Instance, false);
-            Test(Frontier.Instance, false);
-            Test(SpuriousDragon.Instance, false);
-            Test(TangerineWhistle.Instance, false);
-            Test(Byzantium.Instance, false);
-            Test(Constantinople.Instance, false);
-            Test(ConstantinopleFix.Instance, false);
-            Test(Istanbul.Instance, true);
-            Test(MuirGlacier.Instance, true);
-            Test(Berlin.Instance, true);
-            Test(GrayGlacier.Instance, true);
-            Test(Shanghai.Instance, true);
-            Test(Cancun.Instance, true);
+            Test(Homestead.Instance, false, false);
+            Test(Frontier.Instance, false, false);
+            Test(SpuriousDragon.Instance, false, false);
+            Test(TangerineWhistle.Instance, false, false);
+            Test(Byzantium.Instance, false, false);
+            Test(Constantinople.Instance, false, false);
+            Test(ConstantinopleFix.Instance, false, false);
+            Test(Istanbul.Instance, true, false);
+            Test(MuirGlacier.Instance, true, false);
+            Test(Berlin.Instance, true, false);
+            Test(GrayGlacier.Instance, true, false);
+            Test(Shanghai.Instance, true, false);
+            Test(Cancun.Instance, true, false);
+            Test(Prague.Instance, true, true);
         }
+
         public static IEnumerable<(AuthorizationTuple[] contractCode, long expectedCost)> AuthorizationListTestCaseSource()
         {
             yield return (
@@ -179,8 +187,8 @@ namespace Nethermind.Evm.Test
                 .WithAuthorizationCode(testCase.AuthorizationList)
                 .TestObject;
 
-            IntrinsicGasCalculator.Calculate(tx, Prague.Instance)
-                .Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
+            var gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
+            gas.IntrinsicGas.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
         }
 
         [Test]
