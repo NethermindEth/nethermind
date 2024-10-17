@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Network.Config;
+using Nethermind.Runner.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.Blocks;
@@ -333,11 +334,9 @@ public class SynchronizerTests
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
             ContainerBuilder builder = new ContainerBuilder();
-            dbProvider.ConfigureServiceCollection(builder);
 
             builder
                 .AddInstance(dbProvider)
-                .AddInstance(nodeStorage)
                 .AddInstance<INetworkConfig>(new NetworkConfig())
                 .AddInstance(Substitute.For<ITimerFactory>())
                 .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -355,9 +354,10 @@ public class SynchronizerTests
                 .AddInstance<IBlockValidator>(Always.Valid)
                 .AddInstance<IGossipPolicy>(Policy.FullGossip)
                 .AddInstance<IBlockCacheService>(new BlockCacheService())
-                .AddInstance(_logManager);
-
-            builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
+                .AddInstance(_logManager)
+                .AddModule(new DbModule())
+                .AddModule(new NetworkModule(new NetworkConfig(), syncConfig))
+                .AddInstance(nodeStorage);
 
             if (IsMerge(synchronizerType))
             {

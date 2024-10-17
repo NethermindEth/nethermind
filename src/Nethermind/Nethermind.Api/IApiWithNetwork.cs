@@ -49,13 +49,5 @@ namespace Nethermind.Api
         ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
-
-        IContainer? ApiWithNetworkServiceContainer { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithNetwork(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromApiWithBlockchain(builder)
-                .AddPropertiesFrom<IApiWithNetwork>(this);
-        }
     }
 }

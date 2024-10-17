@@ -102,16 +102,5 @@ namespace Nethermind.Api
         INodeStorageFactory NodeStorageFactory { get; set; }
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
-        {
-            ConfigureContainerBuilderFromApiWithStores(builder)
-                    .AddPropertiesFrom<IApiWithBlockchain>(this)
-                    .AddInstance<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
-
-            if (TrieStore != null) builder.AddInstance<IReadOnlyTrieStore>(TrieStore.AsReadOnly());
-
-            return builder;
-        }
     }
 }

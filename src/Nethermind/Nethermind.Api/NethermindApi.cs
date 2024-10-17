@@ -127,7 +127,7 @@ namespace Nethermind.Api
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
 
-        public IDiscoveryApp? DiscoveryApp => ApiWithNetworkServiceContainer?.ResolveOptional<IDiscoveryApp>();
+        public IDiscoveryApp? DiscoveryApp => BaseContainer.ResolveOptional<IDiscoveryApp>();
         public ISigner? EngineSigner { get; set; }
         public ISignerStore? EngineSignerStore { get; set; }
         public IEnode? Enode { get; set; }
@@ -152,14 +152,14 @@ namespace Nethermind.Api
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
-        public INodeStatsManager? NodeStatsManager => ApiWithNetworkServiceContainer?.ResolveOptional<INodeStatsManager>();
-        public IPeerManager? PeerManager => ApiWithNetworkServiceContainer?.ResolveOptional<IPeerManager>();
-        public IPeerPool? PeerPool => ApiWithNetworkServiceContainer?.ResolveOptional<IPeerPool>();
+        public INodeStatsManager? NodeStatsManager => BaseContainer.ResolveOptional<INodeStatsManager>();
+        public IPeerManager? PeerManager => BaseContainer.ResolveOptional<IPeerManager>();
+        public IPeerPool? PeerPool => BaseContainer.ResolveOptional<IPeerPool>();
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
-        public IRlpxHost? RlpxPeer => ApiWithNetworkServiceContainer?.ResolveOptional<IRlpxHost>();
+        public IRlpxHost? RlpxPeer => BaseContainer.ResolveOptional<IRlpxHost>();
         public IRpcModuleProvider? RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
@@ -180,22 +180,22 @@ namespace Nethermind.Api
             }
         }
 
-        public ISessionMonitor? SessionMonitor => ApiWithNetworkServiceContainer?.ResolveOptional<ISessionMonitor>();
+        public ISessionMonitor? SessionMonitor => BaseContainer.ResolveOptional<ISessionMonitor>();
         public ISpecProvider? SpecProvider => BaseContainer.Resolve<ISpecProvider>();
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.ResolveOptional<ISyncModeSelector>()!;
-        public IBetterPeerStrategy? BetterPeerStrategy => ApiWithNetworkServiceContainer?.ResolveOptional<IBetterPeerStrategy>();
-        public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.ResolveOptional<ISyncPeerPool>();
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.ResolveOptional<IPeerDifficultyRefreshPool>();
-        public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.ResolveOptional<ISynchronizer>();
-        public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.ResolveOptional<ISyncServer>();
+        public ISyncModeSelector SyncModeSelector => BaseContainer.ResolveOptional<ISyncModeSelector>()!;
+        public IBetterPeerStrategy? BetterPeerStrategy => BaseContainer.ResolveOptional<IBetterPeerStrategy>();
+        public ISyncPeerPool? SyncPeerPool => BaseContainer.ResolveOptional<ISyncPeerPool>();
+        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => BaseContainer.ResolveOptional<IPeerDifficultyRefreshPool>();
+        public ISynchronizer? Synchronizer => BaseContainer.ResolveOptional<ISynchronizer>();
+        public ISyncServer? SyncServer => BaseContainer.ResolveOptional<ISyncServer>();
 
         [SkipServiceCollection]
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
         public IStateReader? StateReader { get; set; }
-        public IStaticNodesManager? StaticNodesManager => ApiWithNetworkServiceContainer?.ResolveOptional<IStaticNodesManager>();
+        public IStaticNodesManager? StaticNodesManager => BaseContainer.ResolveOptional<IStaticNodesManager>();
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
@@ -214,7 +214,7 @@ namespace Nethermind.Api
         public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
-        public IEthSyncingInfo? EthSyncingInfo => ApiWithNetworkServiceContainer?.ResolveOptional<IEthSyncingInfo>();
+        public IEthSyncingInfo? EthSyncingInfo => BaseContainer.ResolveOptional<IEthSyncingInfo>();
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
@@ -239,7 +239,5 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit => BaseContainer.Resolve<IProcessExitSource>();
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
-
-        public IContainer? ApiWithNetworkServiceContainer { get; set; }
     }
 }

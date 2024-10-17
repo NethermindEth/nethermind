@@ -399,7 +399,7 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
             .RegisterModule(new MergeNetworkModule());
     }
 
-    public Task InitSynchronization(IContainer container)
+    public Task InitSynchronization()
     {
         if (MergeEnabled)
         {
@@ -438,10 +438,10 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
                 _invalidChainTracker,
                 _api.LogManager);
 
-            _peerRefresher = container.Resolve<PeerRefresher>();
-            _beaconPivot = container.Resolve<IBeaconPivot>();
-            _beaconSync = container.Resolve<BeaconSync>();
-            container.Resolve<PivotUpdator>();
+            _peerRefresher = _api.BaseContainer.Resolve<PeerRefresher>();
+            _beaconPivot = _api.BaseContainer.Resolve<IBeaconPivot>();
+            _beaconSync = _api.BaseContainer.Resolve<BeaconSync>();
+            _api.BaseContainer.Resolve<PivotUpdator>();
         }
 
         return Task.CompletedTask;

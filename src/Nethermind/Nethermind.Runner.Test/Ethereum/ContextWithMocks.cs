@@ -63,7 +63,7 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithoutContainer(Action<ContainerBuilder>? containerConfigurer = null)
+        public static NethermindApi ContextWithMocks(INetworkConfig? networkConfig = null, ISyncConfig? syncConfig = null, Action<ContainerBuilder>? containerConfigurer = null)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
                 .AddInstance(Substitute.For<IConfigProvider>())
@@ -73,6 +73,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 .AddModule(new BaseModule())
                 .AddModule(new CoreModule())
                 .AddModule(new RunnerModule())
+                .AddModule(new NetworkModule(networkConfig ?? new NetworkConfig(), syncConfig ?? new SyncConfig()))
+                .AddModule(new DbModule())
                 .AddInstance(Substitute.For<IProcessExitSource>())
                 .AddInstance(Substitute.For<ISpecProvider>()); // need more complete chainspec to use ISpecProvider
 
@@ -127,62 +129,10 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>();
             api.ReceiptMonitor = Substitute.For<IReceiptMonitor>();
             api.BadBlocksStore = Substitute.For<IBlockStore>();
-
-            api.ApiWithNetworkServiceContainer = new ContainerBuilder()
-                .AddInstance(Substitute.For<ISyncModeSelector>())
-                .AddInstance(Substitute.For<ISyncProgressResolver>())
-                .AddInstance(Substitute.For<ISynchronizer>())
-                .Build();
-
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
 
             return (NethermindApi)api;
-        }
-
-        public static NethermindApi ContextWithMocks()
-        {
-            NethermindApi api = ContextWithoutContainer();
-            api.ApiWithNetworkServiceContainer = new ContainerBuilder()
-                .AddInstance(Substitute.For<IDiscoveryApp>())
-                .AddInstance(Substitute.For<ISyncModeSelector>())
-                .AddInstance(Substitute.For<ISynchronizer>())
-                .AddInstance(Substitute.For<ISyncPeerPool>())
-                .AddInstance(Substitute.For<IPivot>())
-                .AddInstance(Substitute.For<IPeerDifficultyRefreshPool>())
-                .AddInstance(Substitute.For<IBetterPeerStrategy>())
-                .AddInstance(Substitute.For<ISyncServer>())
-                .AddInstance(Substitute.For<IRlpxHost>())
-                .AddInstance(Substitute.For<ISessionMonitor>())
-                .AddInstance(Substitute.For<IEthSyncingInfo>())
-                .AddInstance(Substitute.For<IStaticNodesManager>())
-                .AddInstance(Substitute.For<IProtocolsManager>())
-                .AddInstance(Substitute.For<IPeerManager>())
-                .AddInstance(Substitute.For<IPeerPool>())
-                .Build();
-
-            return api;
-        }
-
-        public static NethermindApi ContextWithMocksWithTestContainer(INetworkConfig? networkConfig = null, ISyncConfig? syncConfig = null)
-        {
-            NethermindApi api = ContextWithoutContainer();
-
-            if (networkConfig == null)
-            {
-                networkConfig = new NetworkConfig();
-            }
-            if (syncConfig == null)
-            {
-                syncConfig = new SyncConfig();
-            }
-
-            var builder = new ContainerBuilder();
-            ((IApiWithNetwork)api).ConfigureContainerBuilderFromApiWithNetwork(builder);
-            builder.RegisterModule(new NetworkModule(networkConfig, syncConfig));
-            api.ApiWithNetworkServiceContainer = builder.Build();
-
-            return api;
         }
     }
 }

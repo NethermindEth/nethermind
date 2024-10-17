@@ -43,6 +43,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.Network.Config;
+using Nethermind.Runner.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie;
 
@@ -369,9 +370,9 @@ namespace Nethermind.Synchronization.Test
                 .AddInstance<IGossipPolicy>(Policy.FullGossip)
                 .AddInstance<IStateReader>(stateReader)
                 .AddInstance<IReceiptStorage>(receiptStorage)
-                .AddInstance<ILogManager>(logManager);
+                .AddInstance<ILogManager>(logManager)
+                .AddModule(new DbModule());
 
-            dbProvider.ConfigureServiceCollection(builder);
             builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
             IContainer container = builder.Build();
             ISynchronizer synchronizer = container.Resolve<ISynchronizer>();

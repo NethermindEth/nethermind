@@ -49,6 +49,7 @@ namespace Nethermind.Api
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
         IProcessExitSource? ProcessExit { get; }
+        ILifetimeScope BaseContainer { get; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
@@ -60,18 +61,5 @@ namespace Nethermind.Api
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
-
-        public ContainerBuilder ConfigureContainerBuilderFromBasicApi(ContainerBuilder builder)
-        {
-            builder
-                .AddPropertiesFrom<IBasicApi>(this)
-                .Bind<IEthereumEcdsa, IEcdsa>();
-
-            builder.RegisterSource(new ConfigRegistrationSource());
-
-            DbProvider!.ConfigureServiceCollection(builder);
-
-            return builder;
-        }
     }
 }

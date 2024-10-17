@@ -35,34 +35,5 @@ namespace Nethermind.Db
         void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
         IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
 
-        void ConfigureServiceCollection(ContainerBuilder sc)
-        {
-            sc.AddInstance(this);
-
-            // TODO: Have hooks that automatically get these
-            string[] dbNames = [
-                DbNames.State,
-                DbNames.Code,
-                DbNames.Metadata,
-                DbNames.Blocks,
-                DbNames.Headers,
-                DbNames.BlockInfos,
-                DbNames.BadBlocks,
-                DbNames.Bloom,
-                DbNames.Metadata,
-            ];
-            foreach (string dbName in dbNames)
-            {
-                var db = GetDb<IDb>(dbName);
-                sc.AddKeyedSingleton<IDb>(dbName, db);
-                sc.AddKeyedSingleton<IDbMeta>(dbName, db);
-                sc.AddKeyedSingleton<ITunableDb>(dbName, db as ITunableDb ?? new NoopTunableDb());
-                sc.AddKeyedSingleton<IReadOnlyKeyValueStore>(dbName, db);
-            }
-
-            IColumnsDb<ReceiptsColumns> receiptColumnDb = GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
-            sc.AddInstance<IColumnsDb<ReceiptsColumns>>(receiptColumnDb);
-            sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, receiptColumnDb as ITunableDb ?? new NoopTunableDb());
-        }
     }
 }

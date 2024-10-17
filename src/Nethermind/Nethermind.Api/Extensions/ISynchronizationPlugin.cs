@@ -9,6 +9,6 @@ namespace Nethermind.Api.Extensions
     public interface ISynchronizationPlugin : INethermindPlugin
     {
         void ConfigureSynchronizationBuilder(ContainerBuilder containerBuilder);
-        Task InitSynchronization(IContainer container);
+        Task InitSynchronization();
     }
 }

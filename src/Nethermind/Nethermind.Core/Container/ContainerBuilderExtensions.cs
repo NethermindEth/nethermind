@@ -13,34 +13,6 @@ namespace Nethermind.Core.Container;
 
 public static class ContainerBuilderExtensions
 {
-    /// <summary>
-    /// Add all properties as singleton. It get them ahead of time instead of lazily to prevent the final service provider
-    /// from disposing it. To prevent a property from being included, use <see cref="SkipServiceCollectionAttribute"/>.
-    /// </summary>
-    /// <param name="configuration"></param>
-    /// <param name="source"></param>
-    /// <typeparam name="T"></typeparam>
-    /// <returns></returns>
-    public static ContainerBuilder AddPropertiesFrom<T>(this ContainerBuilder configuration, T source) where T : class
-    {
-        Type t = typeof(T);
-
-        IEnumerable<PropertyInfo> properties = t
-            .GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
-            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
-
-        foreach (PropertyInfo propertyInfo in properties)
-        {
-            object? val = propertyInfo.GetValue(source);
-            if (val != null)
-            {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
-            }
-        }
-
-        return configuration;
-    }
-
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder) where T : notnull
     {
         builder.RegisterType<T>()

@@ -101,7 +101,6 @@ public class InitializeNetwork : IStep
         Network.Metrics.PeerLimit = maxPeersCount;
 
         ContainerBuilder builder = new ContainerBuilder();
-        _api.ConfigureContainerBuilderFromApiWithNetwork(builder);
         builder.RegisterModule(new NetworkModule(_networkConfig, _syncConfig));
 
         ISynchronizationPlugin[] synchronizationPlugins = _api.GetSynchronizationPlugins().ToArray();
@@ -111,41 +110,37 @@ public class InitializeNetwork : IStep
             plugin.ConfigureSynchronizationBuilder(builder);
         }
 
-        IContainer container = builder.Build();
-        _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Append(container);
-
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
         {
-            await plugin.InitSynchronization(container);
+            await plugin.InitSynchronization();
         }
 
         // TODO: This whole thing can be injected into `InitializeNetwork`, but the container then
         // need to be put at a higher level.
-        SyncedTxGossipPolicy txGossipPolicy = container.Resolve<SyncedTxGossipPolicy>();
-        ISyncServer _ = container.Resolve<ISyncServer>();
-        IDiscoveryApp discoveryApp = container.Resolve<IDiscoveryApp>();
-        IPeerPool peerPool = container.Resolve<IPeerPool>();
-        IPeerManager peerManager = container.Resolve<IPeerManager>();
-        ISessionMonitor sessionMonitor = container.Resolve<ISessionMonitor>();
-        IRlpxHost rlpxHost = container.Resolve<IRlpxHost>();
-        IStaticNodesManager staticNodesManager = container.Resolve<IStaticNodesManager>();
-        Func<NodeSourceToDiscV4Feeder> nodeSourceToDiscV4Feeder = container.Resolve<Func<NodeSourceToDiscV4Feeder>>();
-        IProtocolsManager protocolsManager = container.Resolve<IProtocolsManager>();
-        SnapCapabilitySwitcher snapCapabilitySwitcher = container.Resolve<SnapCapabilitySwitcher>();
-        ISyncPeerPool syncPeerPool = container.Resolve<ISyncPeerPool>();
-        ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
+        SyncedTxGossipPolicy txGossipPolicy = _api.BaseContainer.Resolve<SyncedTxGossipPolicy>();
+        ISyncServer _ = _api.BaseContainer.Resolve<ISyncServer>();
+        IDiscoveryApp discoveryApp = _api.BaseContainer.Resolve<IDiscoveryApp>();
+        IPeerPool peerPool =  _api.BaseContainer.Resolve<IPeerPool>();
+        IPeerManager peerManager =  _api.BaseContainer.Resolve<IPeerManager>();
+        ISessionMonitor sessionMonitor =  _api.BaseContainer.Resolve<ISessionMonitor>();
+        IRlpxHost rlpxHost =  _api.BaseContainer.Resolve<IRlpxHost>();
+        IStaticNodesManager staticNodesManager =  _api.BaseContainer.Resolve<IStaticNodesManager>();
+        Func<NodeSourceToDiscV4Feeder> nodeSourceToDiscV4Feeder =  _api.BaseContainer.Resolve<Func<NodeSourceToDiscV4Feeder>>();
+        IProtocolsManager protocolsManager =  _api.BaseContainer.Resolve<IProtocolsManager>();
+        SnapCapabilitySwitcher snapCapabilitySwitcher =  _api.BaseContainer.Resolve<SnapCapabilitySwitcher>();
+        ISyncPeerPool syncPeerPool =  _api.BaseContainer.Resolve<ISyncPeerPool>();
+        ISynchronizer synchronizer =  _api.BaseContainer.Resolve<ISynchronizer>();
 
         _api.TxGossipPolicy.Policies.Add(txGossipPolicy);
 
         if (_api.TrieStore is HealingTrieStore healingTrieStore)
         {
-            healingTrieStore.InitializeNetwork(container.Resolve<GetNodeDataTrieNodeRecovery>());
+            healingTrieStore.InitializeNetwork(_api.BaseContainer.Resolve<GetNodeDataTrieNodeRecovery>());
         }
 
         if (_api.WorldState is HealingWorldState healingWorldState)
         {
-            healingWorldState.InitializeNetwork(container.Resolve<SnapTrieNodeRecovery>());
+            healingWorldState.InitializeNetwork(_api.BaseContainer.Resolve<SnapTrieNodeRecovery>());
         }
 
         if (cancellationToken.IsCancellationRequested)

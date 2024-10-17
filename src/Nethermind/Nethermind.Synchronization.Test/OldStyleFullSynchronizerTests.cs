@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Runner.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -85,9 +86,10 @@ namespace Nethermind.Synchronization.Test
                 .AddInstance(new ChainSpec())
                 .AddInstance(stateReader)
                 .AddInstance<IGossipPolicy>(Policy.FullGossip)
-                .AddInstance<ILogManager>(LimboLogs.Instance);
-            dbProvider.ConfigureServiceCollection(builder);
-            builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
+                .AddInstance<ILogManager>(LimboLogs.Instance)
+                .AddModule(new DbModule())
+                .AddModule(new NetworkModule(new NetworkConfig(), syncConfig));
+
             IContainer container = builder.Build();
 
             _pool = container.Resolve<ISyncPeerPool>();

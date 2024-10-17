@@ -3,8 +3,14 @@
 
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core.Container;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Module = Autofac.Module;
 
 namespace Nethermind.Runner.Modules;
@@ -20,7 +26,20 @@ public class CoreModule : Module
 
         builder
             .AddSingleton<IGasLimitCalculator, FollowOtherMiners>()
-            .AddSingleton<INethermindApi, NethermindApi>();
+            .AddSingleton<INethermindApi, NethermindApi>()
+            .Bind<IEthereumEcdsa, IEcdsa>()
+            .Bind<IBlockTree, IBlockFinder>();
+
+        builder.Register(ctx =>
+            {
+                var nodeStorageFactory = ctx.Resolve<INodeStorageFactory>();
+                var stateDb = ctx.Resolve<IDbProvider>().StateDb;
+                return nodeStorageFactory.WrapKeyValueStore(stateDb);
+            })
+            .As<INodeStorage>();
+
+        builder.Register(ctx => ctx.Resolve<ITrieStore>().AsReadOnly())
+            .As<IReadOnlyTrieStore>();
 
         builder.RegisterSource(new FallbackToFieldFromApi<INethermindApi>());
     }

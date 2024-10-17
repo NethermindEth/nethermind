@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        public Task InitSynchronization(IContainer container)
+        public Task InitSynchronization()
         {
             return Task.CompletedTask;
         }

@@ -9,12 +9,15 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Modules;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -59,6 +62,8 @@ namespace Nethermind.Runner.Ethereum.Api
             containerBuilder.RegisterModule(new BaseModule());
             containerBuilder.RegisterModule(new CoreModule());
             containerBuilder.RegisterModule(new RunnerModule());
+            containerBuilder.RegisterModule(new NetworkModule(_configProvider.GetConfig<INetworkConfig>(), _configProvider.GetConfig<ISyncConfig>()));
+            containerBuilder.RegisterModule(new DbModule());
             ApplyPluginModule(plugins, chainSpec, containerBuilder);
 
             return containerBuilder.Build();

@@ -135,7 +135,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
             .RegisterModule(new MergeNetworkModule());
     }
 
-    public Task InitSynchronization(IContainer container)
+    public Task InitSynchronization()
     {
         if (_api is null || !Enabled)
             return Task.CompletedTask;
@@ -145,10 +145,10 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _peerRefresher = container.Resolve<PeerRefresher>();
-        _beaconPivot = container.Resolve<IBeaconPivot>();
-        _beaconSync = container.Resolve<BeaconSync>();
-        _ = container.Resolve<PivotUpdator>();
+        _peerRefresher = _api.BaseContainer.Resolve<PeerRefresher>();
+        _beaconPivot = _api.BaseContainer.Resolve<IBeaconPivot>();
+        _beaconSync = _api.BaseContainer.Resolve<BeaconSync>();
+        _ = _api.BaseContainer.Resolve<PivotUpdator>();
 
         return Task.CompletedTask;
     }

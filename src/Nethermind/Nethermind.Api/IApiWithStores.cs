@@ -33,11 +33,5 @@ namespace Nethermind.Api
         IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
         IBlockStore? BadBlocksStore { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithStores(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromBasicApi(builder)
-                .AddPropertiesFrom<IApiWithStores>(this);
-        }
     }
 }
