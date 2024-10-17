@@ -16,10 +16,12 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
       - name: Install dependencies
         run: |
-          pip3 install setuptools --break-system-packages
-          pip3 install emoji --break-system-packages
+          pip install setuptools
+          pip install emoji
       - name: Update config files
         run: python3 scripts/syncSettings.py ${{ secrets.ETHERSCAN_API_KEY }}
       - name: Create GitHub app token
