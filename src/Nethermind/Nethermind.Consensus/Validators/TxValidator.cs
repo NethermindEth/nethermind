@@ -337,6 +337,6 @@ public sealed class AuthorizationListTxValidator : ITxValidator
     {
         UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
 
-        return sValue < Secp256K1Curve.HalfNPlusOne && signature.RecoveryId is 0 or 1;
+        return sValue < Secp256K1Curve.HalfNPlusOne;
     }
 }

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -528,7 +529,7 @@ public class TxValidatorTests
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(TxType.SetCode)
-            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
+            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, 0, 0))
             .WithMaxFeePerGas(100000)
             .WithGasLimit(1000000)
             .WithChainId(TestBlockchainIds.ChainId)
@@ -552,7 +553,7 @@ public class TxValidatorTests
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(TestItem.AddressA)
-            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, [], []))
+            .WithAuthorizationCode(new AuthorizationTuple(0, TestItem.AddressA, 0, 0, 0, 0))
             .WithMaxFeePerGas(100000)
             .WithGasLimit(1000000)
             .WithChainId(TestBlockchainIds.ChainId)
@@ -622,7 +623,6 @@ public class TxValidatorTests
 
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).AsBool, Is.EqualTo(expected));
     }
-
     private static IEnumerable<TxType> NonSetCodeTypes() =>
         Enum.GetValues<TxType>().Where(t => t != TxType.SetCode && t != TxType.DepositTx);
 

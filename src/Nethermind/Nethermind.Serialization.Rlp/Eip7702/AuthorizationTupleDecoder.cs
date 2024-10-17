@@ -22,9 +22,9 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         ulong chainId = stream.DecodeULong();
         Address? codeAddress = stream.DecodeAddress();
         ulong nonce = stream.DecodeULong();
-        ulong yParity = stream.DecodeULong();
-        byte[] r = stream.DecodeByteArray();
-        byte[] s = stream.DecodeByteArray();
+        byte yParity = stream.DecodeByte();
+        UInt256 r = stream.DecodeUInt256();
+        UInt256 s = stream.DecodeUInt256();
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -46,9 +46,9 @@ public class AuthorizationTupleDecoder : IRlpStreamDecoder<AuthorizationTuple>, 
         ulong chainId = decoderContext.DecodeULong();
         Address? codeAddress = decoderContext.DecodeAddress();
         ulong nonce = decoderContext.DecodeULong();
-        ulong yParity = decoderContext.DecodeULong();
-        byte[] r = decoderContext.DecodeByteArray();
-        byte[] s = decoderContext.DecodeByteArray();
+        byte yParity = decoderContext.DecodeByte();
+        UInt256 r = decoderContext.DecodeUInt256();
+        UInt256 s = decoderContext.DecodeUInt256();
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
