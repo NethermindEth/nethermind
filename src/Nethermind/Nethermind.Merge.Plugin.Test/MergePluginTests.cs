@@ -110,6 +110,7 @@ public class MergePluginTests
         ContainerBuilder builder = CreateContainerBuilder();
         _plugin.ConfigureSynchronizationBuilder(builder);
         IContainer container = builder.Build();
+        _context.ApiWithNetworkServiceContainer = container;
 
         Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization(container));
         Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
@@ -126,6 +127,7 @@ public class MergePluginTests
         ContainerBuilder builder = CreateContainerBuilder();
         _plugin.ConfigureSynchronizationBuilder(builder);
         IContainer container = builder.Build();
+        _context.ApiWithNetworkServiceContainer = container;
 
         await _plugin.InitSynchronization(container);
         await _plugin.InitNetworkProtocol();
