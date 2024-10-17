@@ -395,9 +395,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         if (!MergeEnabled) return;
 
         builder
-            .AddSingleton(_poSSwitcher)
             .AddSingleton(_blockCacheService)
-            .AddSingleton(_mergeConfig)
             .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
         builder

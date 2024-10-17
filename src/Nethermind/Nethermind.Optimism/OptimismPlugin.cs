@@ -133,22 +133,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         builder
             .AddSingleton(_blockCacheService!)
-            .AddSingleton(_mergeConfig)
-            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker!)
-            .AddSingleton<PeerRefresher>()
-            .AddSingleton<PivotUpdator>()
-            .AddSingleton<BeaconSync, IBeaconSyncStrategy>();
+            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker!);
 
         builder
-            .RegisterType<BeaconPivot>()
-            .As<IBeaconPivot>()
-            .As<IPivot>()
-            .SingleInstance();
-
-        builder
-            .RegisterDecorator<MergeBetterPeerStrategy, IBetterPeerStrategy>();
-
-        builder.RegisterModule(new MergeSynchronizerModule());
+            .RegisterModule(new MergeNetworkModule());
     }
 
     public Task InitSynchronization(IContainer container)
