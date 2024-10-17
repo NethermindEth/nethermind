@@ -73,11 +73,11 @@ public static class ExecutionRequestExtensions
     )
     {
         ArrayPoolList<byte[]> requests = new(3);
-        using ArrayPoolList<byte> depositBuffer = new (depositRequestsBytesSize);
-        using ArrayPoolList<byte> withdrawalBuffer = new (withdrawalRequestsBytesSize);
-        using ArrayPoolList<byte> consolidationBuffer = new (consolidationRequestsBytesSize);
+        using ArrayPoolList<byte> depositBuffer = new(depositRequestsBytesSize);
+        using ArrayPoolList<byte> withdrawalBuffer = new(withdrawalRequestsBytesSize);
+        using ArrayPoolList<byte> consolidationBuffer = new(consolidationRequestsBytesSize);
 
-        
+
         foreach (ExecutionRequest request in depositRequests)
         {
             depositBuffer.AddRange(request.RequestData!);
