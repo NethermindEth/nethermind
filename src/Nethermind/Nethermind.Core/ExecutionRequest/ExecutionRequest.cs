@@ -73,13 +73,25 @@ public static class ExecutionRequestExtensions
     )
     {
         ArrayPoolList<byte[]> requests = new(3);
-        Span<byte> depositBuffer = new byte[depositRequests.Count() * depositRequestsBytesSize];
-        Span<byte> withdrawalBuffer = new byte[withdrawalRequests.Count() * withdrawalRequestsBytesSize];
-        Span<byte> consolidationBuffer = new byte[consolidationRequests.Count() * consolidationRequestsBytesSize];
+        using ArrayPoolList<byte> depositBuffer = new (depositRequestsBytesSize);
+        using ArrayPoolList<byte> withdrawalBuffer = new (withdrawalRequestsBytesSize);
+        using ArrayPoolList<byte> consolidationBuffer = new (consolidationRequestsBytesSize);
 
-        depositRequests.FlatEncodeWithoutType(depositBuffer);
-        withdrawalRequests.FlatEncodeWithoutType(withdrawalBuffer);
-        consolidationRequests.FlatEncodeWithoutType(consolidationBuffer);
+        
+        foreach (ExecutionRequest request in depositRequests)
+        {
+            depositBuffer.AddRange(request.RequestData!);
+        }
+
+        foreach (ExecutionRequest request in withdrawalRequests)
+        {
+            withdrawalBuffer.AddRange(request.RequestData!);
+        }
+
+        foreach (ExecutionRequest request in consolidationRequests)
+        {
+            consolidationBuffer.AddRange(request.RequestData!);
+        }
 
         requests.AddRange(depositBuffer.ToArray());
         requests.AddRange(withdrawalBuffer.ToArray());
