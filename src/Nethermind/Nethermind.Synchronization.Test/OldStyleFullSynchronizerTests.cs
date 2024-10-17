@@ -140,7 +140,6 @@ namespace Nethermind.Synchronization.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
-            Stopwatch sw = Stopwatch.StartNew();
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);

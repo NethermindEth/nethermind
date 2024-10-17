@@ -62,8 +62,10 @@ namespace Nethermind.Api
 
         public ContainerBuilder ConfigureContainerBuilderFromBasicApi(ContainerBuilder builder)
         {
-            builder.AddPropertiesFrom<IBasicApi>(this);
-            builder.Register<IEthereumEcdsa, IEcdsa>(ecdsa => ecdsa);
+            builder
+                .AddPropertiesFrom<IBasicApi>(this)
+                .Bind<IEthereumEcdsa, IEcdsa>();
+
             builder.RegisterSource(new ConfigRegistrationSource());
 
             DbProvider!.ConfigureServiceCollection(builder);
