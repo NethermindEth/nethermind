@@ -66,7 +66,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]
     DiagnosticMode DiagnosticMode { get; set; }
 
-    [ConfigItem(Description = "Auto-dump on bad blocks for diagnostics. `Default` combines `Receipts` and `Rlp`.", DefaultValue = "Default")]
+    [ConfigItem(Description = "Auto-dump on bad blocks for diagnostics.", DefaultValue = nameof(DumpOptions.Default))]
     DumpOptions AutoDump { get; set; }
 
     [ConfigItem(Description = $"The URL of the remote node used as a database source when `{nameof(DiagnosticMode)}` is set to `RpcDb`.", DefaultValue = "")]

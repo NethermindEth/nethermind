@@ -9,12 +9,12 @@ namespace Nethermind.JsonRpc;
 [Flags]
 public enum RpcRecorderState
 {
-    [Description]
+    [Description("None.")]
     None = 0,
-    [Description]
+    [Description("Records requests.")]
     Request = 1,
-    [Description]
+    [Description("Records responses.")]
     Response = 2,
-    [Description]
+    [Description("Records both requests and responses.")]
     All = Request | Response
 }

@@ -9,16 +9,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle;
 [Flags]
 public enum ParityTraceTypes
 {
-    [Description]
+    [Description("None.")]
     None = 0,
-    [Description]
+    [Description("Traces EVM data.")]
     VmTrace = 1,
-    [Description]
+    [Description("Traces the state and storage.")]
     StateDiff = 2,
-    [Description]
+    [Description("Traces actions and block receipts.")]
     Trace = 4,
-    [Description]
+    [Description("Traces block rewards.")]
     Rewards = 8,
-    [Description]
-    All = 15,
+    [Description($"Combines the `{nameof(Rewards)}` `{nameof(StateDiff)}` `{nameof(Trace)}` `{nameof(VmTrace)}` options.")]
+    All = VmTrace | StateDiff | Trace | Rewards,
 }
