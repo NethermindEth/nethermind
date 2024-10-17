@@ -23,9 +23,6 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 {
     private readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
-    private const int depositRequestsBytesSize = 48 + 32 + 8 + 96 + 8;
-    private const int withdrawalRequestsBytesSize = 20 + 48 + 8;
-    private const int consolidationRequestsBytesSize = 20 + 48 + 48;
 
     private const long GasLimit = 30_000_000L;
 
@@ -54,7 +51,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     private ExecutionRequest DecodeDepositRequest(LogEntry log)
     {
         object[] result = _abiEncoder.Decode(AbiEncodingStyle.None, _depositEventABI, log.Data);
-        byte[] flattenedResult = new byte[depositRequestsBytesSize];
+        byte[] flattenedResult = new byte[ExecutionRequestExtensions.depositRequestsBytesSize];
         int offset = 0;
 
         foreach (var item in result)
@@ -71,9 +68,9 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         }
 
         // make sure the flattened result is of the correct size
-        if (offset != depositRequestsBytesSize)
+        if (offset != ExecutionRequestExtensions.depositRequestsBytesSize)
         {
-            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {depositRequestsBytesSize} bytes, got {offset} bytes.");
+            throw new InvalidOperationException($"Decoded ABI result has incorrect size. Expected {ExecutionRequestExtensions.depositRequestsBytesSize} bytes, got {offset} bytes.");
         }
 
         return new ExecutionRequest
@@ -88,7 +85,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     {
         bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
 
-        int requestBytesSize = isWithdrawalRequests ? withdrawalRequestsBytesSize : consolidationRequestsBytesSize;
+        int requestBytesSize = isWithdrawalRequests ? ExecutionRequestExtensions.withdrawalRequestsBytesSize : ExecutionRequestExtensions.consolidationRequestsBytesSize;
 
         if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
             yield break;
@@ -132,10 +129,11 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
     {
         if (!spec.RequestsEnabled)
             return;
-        IEnumerable<ExecutionRequest> requests = ProcessDeposits(receipts, spec)
-            .Concat(ReadRequests(block, state, spec, spec.Eip7002ContractAddress))
-            .Concat(ReadRequests(block, state, spec, spec.Eip7251ContractAddress));
-        block.Header.RequestsHash = requests.CalculateHash();
+        IEnumerable<ExecutionRequest> depositRequests = ProcessDeposits(receipts, spec);
+        IEnumerable<ExecutionRequest> withdrawalRequests = ReadRequests(block, state, spec, spec.Eip7002ContractAddress);
+        IEnumerable<ExecutionRequest> consolidationRequests = ReadRequests(block, state, spec, spec.Eip7251ContractAddress);
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHash(depositRequests,withdrawalRequests , consolidationRequests);
+        using ArrayPoolList<byte[]> requests = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
         block.ExecutionRequests = requests.ToArray();
     }
 }

@@ -3,9 +3,11 @@
 
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -23,15 +25,6 @@ public class ExecutionRequest
     public byte RequestType { get; set; }
     public byte[]? RequestData { get; set; }
 
-    public void FlatEncode(Span<byte> buffer)
-    {
-        if (buffer.Length < RequestData!.Length + 1)
-            throw new ArgumentException("Buffer too small");
-
-        buffer[0] = RequestType;
-        RequestData.CopyTo(buffer.Slice(1));
-    }
-
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => @$"{indentation}{nameof(ExecutionRequest)}
@@ -41,6 +34,10 @@ public class ExecutionRequest
 
 public static class ExecutionRequestExtensions
 {
+    public const int depositRequestsBytesSize = 48 + 32 + 8 + 96 + 8;
+    public const int withdrawalRequestsBytesSize = 20 + 48 + 8;
+    public const int consolidationRequestsBytesSize = 20 + 48 + 48;
+
     public static int GetRequestsByteSize(this IEnumerable<ExecutionRequest> requests)
     {
         int size = 0;
@@ -51,28 +48,7 @@ public static class ExecutionRequestExtensions
         return size;
     }
 
-    public static void FlatEncode(this ExecutionRequest[] requests, Span<byte> buffer)
-    {
-        int currentPosition = 0;
-
-        foreach (ExecutionRequest request in requests)
-        {
-            Span<byte> internalBuffer = new byte[request.RequestData!.Length + 1];
-            request.FlatEncode(internalBuffer);
-
-            // Ensure the buffer has enough space to accommodate the new data
-            if (currentPosition + internalBuffer.Length > buffer.Length)
-            {
-                throw new InvalidOperationException("Buffer is not large enough to hold all data of requests");
-            }
-
-            // Copy the internalBuffer to the buffer at the current position
-            internalBuffer.CopyTo(buffer.Slice(currentPosition, internalBuffer.Length));
-            currentPosition += internalBuffer.Length;
-        }
-    }
-
-    public static void FlatEncodeWithoutType(this ExecutionRequest[] requests, Span<byte> buffer)
+    public static void FlatEncodeWithoutType(this IEnumerable<ExecutionRequest> requests, Span<byte> buffer)
     {
         int currentPosition = 0;
 
@@ -90,24 +66,63 @@ public static class ExecutionRequestExtensions
         }
     }
 
-    public static Hash256 CalculateHash(this IEnumerable<ExecutionRequest> requests)
+    public static ArrayPoolList<byte[]> GetFlatEncodedRequests(
+        IEnumerable<ExecutionRequest> depositRequests,
+        IEnumerable<ExecutionRequest> withdrawalRequests,
+        IEnumerable<ExecutionRequest> consolidationRequests
+    ){
+        ArrayPoolList<byte[]> requests = new(3);
+        Span<byte> depositBuffer = new byte[depositRequests.Count()* depositRequestsBytesSize];
+        Span<byte> withdrawalBuffer = new byte[withdrawalRequests.Count()* withdrawalRequestsBytesSize];
+        Span<byte> consolidationBuffer = new byte[consolidationRequests.Count()* consolidationRequestsBytesSize];
+
+        depositRequests.FlatEncodeWithoutType(depositBuffer);
+        withdrawalRequests.FlatEncodeWithoutType(withdrawalBuffer);
+        consolidationRequests.FlatEncodeWithoutType(consolidationBuffer);
+
+        requests.AddRange(depositBuffer.ToArray());
+        requests.AddRange(withdrawalBuffer.ToArray());
+        requests.AddRange(consolidationBuffer.ToArray());
+        return requests;
+    }
+
+    public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
+        // make sure that length is exactly 3
+        if (flatEncodedRequests is null || flatEncodedRequests.Length != 3)
+        {
+            throw new ArgumentException("Flat encoded requests must be an array of 3 elements");
+        }
+
         using (SHA256 sha256 = SHA256.Create())
         {
-            Span<byte> concatenatedHashes = new byte[32 * requests.Count()];
+            Span<byte> concatenatedHashes = new byte[32 * flatEncodedRequests!.Length];
             int currentPosition = 0;
+            byte type = 0;
             // Compute sha256 for each request and concatenate them
-            foreach (ExecutionRequest request in requests)
+            foreach (byte[] request in flatEncodedRequests)
             {
-                Span<byte> requestBuffer = new byte[request.RequestData!.Length + 1];
-                request.FlatEncode(requestBuffer);
+                if(type > 2) break;
+                Span<byte> requestBuffer = new byte[request.Length + 1];
+                requestBuffer[0] = type;
+                request.CopyTo(requestBuffer.Slice(1));
                 sha256.ComputeHash(requestBuffer.ToArray()).CopyTo(concatenatedHashes.Slice(currentPosition, 32));
                 currentPosition += 32;
+                type++;
             }
 
             // Compute sha256 of the concatenated hashes
             return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
         }
+    }
+
+    public static Hash256 CalculateHash(
+        IEnumerable<ExecutionRequest> depositRequests,
+        IEnumerable<ExecutionRequest> withdrawalRequests,
+        IEnumerable<ExecutionRequest> consolidationRequests
+    ){
+        using ArrayPoolList<byte[]> requests = GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
+        return CalculateHashFromFlatEncodedRequests(requests.ToArray());
     }
 
     public static bool IsSortedByType(this ExecutionRequest[] requests)

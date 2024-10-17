@@ -113,20 +113,10 @@ public class ExecutionProcessorTests
                 ).WithAddress(DepositContractAddress).TestObject
             ).TestObject
         ];
-
-
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, spec);
 
-        foreach (var (processedRequest, expectedRequest) in block.ExecutionRequests.Zip([
-            .. executionDepositRequests,
-            .. executionWithdrawalRequests,
-            .. executionConsolidationRequests
-        ]))
-        {
-            Assert.That(processedRequest.RequestType, Is.EqualTo(expectedRequest.RequestType));
-            Assert.That(processedRequest.RequestData.ToArray(), Is.EqualTo(expectedRequest.RequestData.ToArray()));
-        }
-
-        Assert.That(block.Header.RequestsHash, Is.EqualTo(block.ExecutionRequests.ToArray().CalculateHash()));
+        Assert.That(block.Header.RequestsHash, Is.EqualTo(
+            ExecutionRequestExtensions.CalculateHash(executionDepositRequests, executionWithdrawalRequests, executionConsolidationRequests)
+        ));
     }
 }

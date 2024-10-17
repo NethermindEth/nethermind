@@ -7,9 +7,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, ExecutionRequest[] ExecutionRequests) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle)
+public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle, byte[][] ExecutionRequests) : GetPayloadV3Result<ExecutionPayloadV3>(block, blockFees, blobsBundle)
 {
-    public ExecutionRequest[]? ExecutionRequests { get; } = ExecutionRequests;
+    public byte[][]? ExecutionRequests { get; } = ExecutionRequests;
 
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";

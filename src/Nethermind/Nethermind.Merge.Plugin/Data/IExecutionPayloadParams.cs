@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.Data;
 public interface IExecutionPayloadParams
 {
     ExecutionPayload ExecutionPayload { get; }
-    ExecutionRequest[]? ExecutionRequests { get; set; }
+    byte[][]? ExecutionRequests { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
 }
 
@@ -25,7 +25,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     TVersionedExecutionPayload executionPayload,
     byte[]?[] blobVersionedHashes,
     Hash256? parentBeaconBlockRoot,
-    ExecutionRequest[]? executionRequests = null)
+    byte[][]? executionRequests = null)
     : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
     public TVersionedExecutionPayload ExecutionPayload => executionPayload;
@@ -34,7 +34,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     /// Gets or sets <see cref="ExecutionRequets"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
-    public ExecutionRequest[]? ExecutionRequests { get; set; } = executionRequests;
+    public byte[][]? ExecutionRequests { get; set; } = executionRequests;
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
@@ -48,10 +48,10 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            // Ensures that the execution requests types are in increasing order
-            if (!ExecutionRequests.IsSortedByType())
+            // Ensures that the execution requests has exactly three items
+            if (ExecutionRequests.Length != 3)
             {
-                error = "Execution requests are not in progressive order by type";
+                error = "Execution requests must have exactly three items";
                 return ValidationResult.Fail;
             }
 

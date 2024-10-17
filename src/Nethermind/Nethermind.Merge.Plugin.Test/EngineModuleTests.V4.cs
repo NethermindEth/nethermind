@@ -25,10 +25,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
-        "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
+        "0xd7e58364f16b4a329b959b166f9c32323cb135669335db5dadd0344568f8dc9a",
+        "0xfafb92e8ece12d5fcfa867df9ae6865c5bd8aaf0b277c244552bfe869f61fb26",
         "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x2fc07c25edadc149")]
+        "0x774c6aff527bbc68")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -109,7 +109,7 @@ public partial class EngineModuleTests
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
             withdrawals);
-        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), ExecutionRequests: []);
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), ExecutionRequests: new byte[][] { Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>() });
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -122,7 +122,7 @@ public partial class EngineModuleTests
         }));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
-            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[]");
+            chain.JsonSerializer.Serialize(ExecutionPayloadV3.Create(block)), "[]", Keccak.Zero.ToString(true), "[[],[],[]]");
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -248,7 +248,7 @@ public partial class EngineModuleTests
             ExecutionPayloadV3? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
                 parentBlock.Timestamp + 12,
                 random ?? TestItem.KeccakA, Address.Zero);
-            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, Array.Empty<byte[]>(), Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : [])).Data;
+            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, Array.Empty<byte[]>(), Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests :  new byte[][] { Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>() })).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
             if (setHead)
             {
@@ -285,7 +285,7 @@ public partial class EngineModuleTests
     }
 
 
-    private static IEnumerable<IList<ExecutionRequest>> GetPayloadRequestsTestCases()
+    private static IEnumerable<IList<byte[]>> GetPayloadRequestsTestCases()
     {
         yield return ExecutionRequestsProcessorMock.Requests;
     }

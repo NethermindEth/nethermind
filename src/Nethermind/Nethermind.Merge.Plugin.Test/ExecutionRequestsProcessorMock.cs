@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using DotNetty.Common.Utilities;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -13,18 +15,35 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
 {
-    public static ExecutionRequest[] Requests =
+    public static ExecutionRequest[] depositRequests =
     [
         TestItem.ExecutionRequestA,
         TestItem.ExecutionRequestB,
-        TestItem.ExecutionRequestC,
+        TestItem.ExecutionRequestC
+    ];
+
+    public static ExecutionRequest[] withdrawalRequests =
+    [
         TestItem.ExecutionRequestD,
         TestItem.ExecutionRequestE,
-        TestItem.ExecutionRequestF,
+        TestItem.ExecutionRequestF
+    ];
+
+    public static ExecutionRequest[] consolidationsRequests =
+    [
         TestItem.ExecutionRequestG,
         TestItem.ExecutionRequestH,
         TestItem.ExecutionRequestI
     ];
+
+    public static byte[][] Requests
+    {
+        get
+        {
+            using ArrayPoolList<byte[]> list = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationsRequests);
+            return list.ToArray();
+        }
+    }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
     {
@@ -32,6 +51,6 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
             return;
 
         block.ExecutionRequests = Requests;
-        block.Header.RequestsHash = Requests.CalculateHash();
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(Requests);
     }
 }

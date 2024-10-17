@@ -81,7 +81,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     [JsonIgnore]
-    public virtual ExecutionRequest[]? ExecutionRequests { get; set; }
+    public virtual byte[][]? ExecutionRequests { get; set; }
 
 
     /// <summary>
