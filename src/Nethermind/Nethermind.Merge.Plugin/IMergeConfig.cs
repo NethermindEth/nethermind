@@ -44,20 +44,21 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "Whether to reduce block latency by disabling garbage collection during Engine API calls.", DefaultValue = "true")]
     public bool PrioritizeBlockLatency { get; set; }
 
-    [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = "Gen1")]
+    [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
 
-    [ConfigItem(Description = "The memory compaction mode. When set to `Full`, compacts the large object heap (LOH) if `SweepMemory` is set to `Gen2`.", DefaultValue = "Yes")]
+    [ConfigItem(Description = $"The memory compaction mode. When set to `{nameof(GcCompaction.Full)}`, compacts the large object heap (LOH) if `{nameof(SweepMemory)}` is set to `{nameof(GcLevel.Gen2)}`.",
+        DefaultValue = nameof(GcCompaction.Yes))]
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            Request the garbage collector (GC) to release the process memory.
+            The number of requests to the garbage collector (GC) to release the process memory.
 
             Allowed values:
 
-            - `-1` to disable
-            - `0` to release every time
-            - A positive number to release memory after that many Engine API calls
+            - `-1`: No requests.
+            - `0`: Requests every time.
+            - A positive number: Requests after that many Engine API calls.
 
 
             """, DefaultValue = "25")]
