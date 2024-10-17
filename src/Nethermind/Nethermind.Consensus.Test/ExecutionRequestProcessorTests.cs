@@ -76,11 +76,15 @@ public class ExecutionProcessorTests
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
                 if (transaction.To == eip7002Account)
                 {
-                    tracer.ReturnValue = executionWithdrawalRequests.FlatEncodeWithoutType();
+                    Span<byte> buffer = new byte[executionWithdrawalRequests.GetRequestsByteSize()];
+                    executionWithdrawalRequests.FlatEncodeWithoutType(buffer);
+                    tracer.ReturnValue = buffer.ToArray();
                 }
                 else if (transaction.To == eip7251Account)
                 {
-                    tracer.ReturnValue = executionConsolidationRequests.FlatEncodeWithoutType();
+                    Span<byte> buffer = new byte[executionConsolidationRequests.GetRequestsByteSize()];
+                    executionConsolidationRequests.FlatEncodeWithoutType(buffer);
+                    tracer.ReturnValue = buffer.ToArray();
                 }
                 else
                 {
@@ -120,7 +124,7 @@ public class ExecutionProcessorTests
         ]))
         {
             Assert.That(processedRequest.RequestType, Is.EqualTo(expectedRequest.RequestType));
-            Assert.That(processedRequest.RequestData, Is.EqualTo(expectedRequest.RequestData));
+            Assert.That(processedRequest.RequestData.ToArray(), Is.EqualTo(expectedRequest.RequestData.ToArray()));
         }
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(block.ExecutionRequests.ToArray().CalculateHash()));
