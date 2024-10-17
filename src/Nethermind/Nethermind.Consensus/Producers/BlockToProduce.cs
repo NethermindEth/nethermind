@@ -13,7 +13,7 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Consensus.Producers
 {
-    internal class BlockToProduce : Block
+    public class BlockToProduce : Block
     {
         private IEnumerable<Transaction>? _transactions;
 
@@ -39,5 +39,7 @@ namespace Nethermind.Consensus.Producers
         {
             Transactions = transactions;
         }
+
+        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals, Requests);
     }
 }
