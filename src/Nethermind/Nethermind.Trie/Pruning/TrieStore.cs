@@ -700,7 +700,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
             // TODO: this throws on reorgs, does it not? let us recreate it in test
-            Debug.Assert(!CommitSetQueue.TryPeek(out BlockCommitSet lastSet) || blockNumber == lastSet.BlockNumber + 1, $"Newly begun block is not a successor of the last one.");
+            Debug.Assert(!CommitSetQueue.TryPeek(out BlockCommitSet lastSet) || blockNumber == lastSet.BlockNumber + 1 || lastSet.BlockNumber == 0, $"Newly begun block is not a successor of the last one.");
             Debug.Assert(!CommitSetQueue.TryPeek(out lastSet) || lastSet.IsSealed, "Not sealed when beginning new block");
 
             BlockCommitSet commitSet = new(blockNumber);
