@@ -132,8 +132,8 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         IEnumerable<ExecutionRequest> depositRequests = ProcessDeposits(receipts, spec);
         IEnumerable<ExecutionRequest> withdrawalRequests = ReadRequests(block, state, spec, spec.Eip7002ContractAddress);
         IEnumerable<ExecutionRequest> consolidationRequests = ReadRequests(block, state, spec, spec.Eip7251ContractAddress);
-        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHash(depositRequests, withdrawalRequests, consolidationRequests);
         using ArrayPoolList<byte[]> requests = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requests.ToArray());
         block.ExecutionRequests = requests.ToArray();
     }
 }
