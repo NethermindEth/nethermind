@@ -144,16 +144,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         if (_api is null || !ShouldRunSteps(_api))
             return Task.CompletedTask;
 
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.PeerDifficultyRefreshPool);
-        ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
-        ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
         ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
-        ArgumentNullException.ThrowIfNull(_api.BetterPeerStrategy);
-
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
 
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
