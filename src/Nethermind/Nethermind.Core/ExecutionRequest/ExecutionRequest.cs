@@ -70,11 +70,12 @@ public static class ExecutionRequestExtensions
         IEnumerable<ExecutionRequest> depositRequests,
         IEnumerable<ExecutionRequest> withdrawalRequests,
         IEnumerable<ExecutionRequest> consolidationRequests
-    ){
+    )
+    {
         ArrayPoolList<byte[]> requests = new(3);
-        Span<byte> depositBuffer = new byte[depositRequests.Count()* depositRequestsBytesSize];
-        Span<byte> withdrawalBuffer = new byte[withdrawalRequests.Count()* withdrawalRequestsBytesSize];
-        Span<byte> consolidationBuffer = new byte[consolidationRequests.Count()* consolidationRequestsBytesSize];
+        Span<byte> depositBuffer = new byte[depositRequests.Count() * depositRequestsBytesSize];
+        Span<byte> withdrawalBuffer = new byte[withdrawalRequests.Count() * withdrawalRequestsBytesSize];
+        Span<byte> consolidationBuffer = new byte[consolidationRequests.Count() * consolidationRequestsBytesSize];
 
         depositRequests.FlatEncodeWithoutType(depositBuffer);
         withdrawalRequests.FlatEncodeWithoutType(withdrawalBuffer);
@@ -102,7 +103,7 @@ public static class ExecutionRequestExtensions
             // Compute sha256 for each request and concatenate them
             foreach (byte[] request in flatEncodedRequests)
             {
-                if(type > 2) break;
+                if (type > 2) break;
                 Span<byte> requestBuffer = new byte[request.Length + 1];
                 requestBuffer[0] = type;
                 request.CopyTo(requestBuffer.Slice(1));
@@ -120,7 +121,8 @@ public static class ExecutionRequestExtensions
         IEnumerable<ExecutionRequest> depositRequests,
         IEnumerable<ExecutionRequest> withdrawalRequests,
         IEnumerable<ExecutionRequest> consolidationRequests
-    ){
+    )
+    {
         using ArrayPoolList<byte[]> requests = GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
         return CalculateHashFromFlatEncodedRequests(requests.ToArray());
     }
