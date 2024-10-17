@@ -6,10 +6,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="MathNet.Numerics.FSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.DotNetty.Buffers" />
   </ItemGroup>
 
 </Project>
