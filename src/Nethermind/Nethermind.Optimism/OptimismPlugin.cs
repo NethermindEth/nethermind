@@ -158,7 +158,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             .AddSingleton(_beaconPivot)
             .AddSingleton(_api.PoSSwitcher)
             .AddSingleton(_mergeConfig)
-            .AddSingleton(_invalidChainTracker);
+            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
