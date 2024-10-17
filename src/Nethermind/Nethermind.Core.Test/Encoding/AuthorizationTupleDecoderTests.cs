@@ -59,12 +59,12 @@ public class AuthorizationTupleDecoderTests
     {
         yield return TupleRlpStream(
             //Wrong chain size
-            Enumerable.Range(0, 9).Select(i=> (byte) 0xFF).ToArray(),
+            Enumerable.Range(0, 9).Select(i => (byte)0xFF).ToArray(),
             Address.Zero.Bytes,
-            Enumerable.Range(0, 8).Select(i=> (byte) 0xFF).ToArray(),
-            Enumerable.Range(0, 1).Select(i=> (byte) 0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i=> (byte) 0xFF).ToArray(),
-            Enumerable.Range(0, 32).Select(i=> (byte) 0xFF).ToArray()
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
             );
 
         yield return TupleRlpStream(
