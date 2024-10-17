@@ -25,7 +25,8 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
         Type tApi = typeof(TApi);
 
         IEnumerable<PropertyInfo> properties = tApi
-            .GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public)
+            .GetInterfaces()
+            .SelectMany(i => i.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public))
             .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
 
         Dictionary<Type, PropertyInfo> availableTypes = new Dictionary<Type, PropertyInfo>();
