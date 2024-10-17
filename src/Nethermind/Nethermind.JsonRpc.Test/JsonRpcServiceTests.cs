@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 
 using FluentAssertions;
@@ -13,13 +11,12 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
@@ -56,19 +53,19 @@ public class JsonRpcServiceTests
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
 
-    private JsonRpcResponse TestRequest<T>(T module, string method, params string[]? parameters) where T : IRpcModule
+    private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
     {
         var pool = new SingletonModulePool<T>(new SingletonFactory<T>(module), true);
 
         return TestRequestWithPool(pool, method, parameters);
     }
 
-    private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params string[]? parameters) where T : IRpcModule
+    private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
         RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
-        JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
+        JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
@@ -111,11 +108,9 @@ public class JsonRpcServiceTests
     [Test]
     public void CanHandleOptionalArguments()
     {
-        EthereumJsonSerializer serializer = new();
-        string serialized = serializer.Serialize(new TransactionForRpc());
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(_ => ResultWrapper<string>.Success("0x1"));
-        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
+        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x1"));
     }
 
@@ -175,13 +170,10 @@ public class JsonRpcServiceTests
     [Test]
     public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
     {
-        EthereumJsonSerializer serializer = new();
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
 
-        string serialized = serializer.Serialize(new TransactionForRpc());
-
-        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized) as JsonRpcSuccessResponse;
+        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));
     }
 
@@ -189,13 +181,10 @@ public class JsonRpcServiceTests
     [TestCase(null)]
     public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string? nullValue)
     {
-        EthereumJsonSerializer serializer = new();
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x"));
 
-        string serialized = serializer.Serialize(new TransactionForRpc());
-
-        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized, nullValue!) as JsonRpcSuccessResponse;
+        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc(), nullValue) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));
     }
 
@@ -204,17 +193,13 @@ public class JsonRpcServiceTests
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
 
-        string[] parameters = {
-                """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""
-            };
-        JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters);
+        string[] parameters =
+        [
+            """["0x80757153e93d1b475e203406727b62a501187f63e23b8fa999279e219ee3be71"]"""
+        ];
+        JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_getTransactionReceipt", parameters) as JsonRpcErrorResponse;
 
-        response.Should()
-            .BeAssignableTo<JsonRpcErrorResponse>()
-            .Which
-            .Error.Should().NotBeNull();
-        Error error = (response as JsonRpcErrorResponse)!.Error!;
-        error.Code.Should().Be(ErrorCodes.InvalidParams);
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]
@@ -263,13 +248,10 @@ public class JsonRpcServiceTests
         new[]
         {
             (true, Build.A.Block
-                .WithWithdrawals(new[]
-                {
-                    Build.A.Withdrawal
-                        .WithAmount(1)
-                        .WithRecipient(TestItem.AddressA)
-                        .TestObject
-                })
+                .WithWithdrawals(Build.A.Withdrawal
+                    .WithAmount(1)
+                    .WithRecipient(TestItem.AddressA)
+                    .TestObject)
                 .TestObject
             ),
 

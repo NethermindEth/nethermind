@@ -6,6 +6,8 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI" Version="8.0.1" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.Client" Version="8.0.1" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="8.0.1" />
+    <PackageVersion Include="Autofac" Version="8.1.0" />
+    <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.12" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.13.12" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.4.0" />
@@ -36,6 +38,7 @@
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.4.5" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.5" />
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="4.1.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0-rc.2.24473.5" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.0-rc.2.24473.5" />
