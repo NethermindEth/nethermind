@@ -1073,7 +1073,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
 
-            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
+            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous, IsSyncing()));
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }
@@ -1609,6 +1609,17 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
+        }
+
+        public bool IsSyncing()
+        {
+            long bestSuggestedNumber = FindBestSuggestedHeader()?.Number ?? 0;
+            if (bestSuggestedNumber == 0)
+            {
+                return true;
+            }
+            long headNumberOrZero = Head?.Number ?? 0;
+            return bestSuggestedNumber > headNumberOrZero;
         }
     }
 }
