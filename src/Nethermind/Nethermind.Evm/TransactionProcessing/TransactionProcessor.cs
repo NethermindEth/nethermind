@@ -243,7 +243,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 ISet<Address> accessedAddresses,
                 [NotNullWhen(false)] out string? error)
             {
-                if (authorizationTuple.Authority is null)
+                UInt256 s = new (authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                if (authorizationTuple.Authority is null
+                    || s > Secp256K1Curve.HalfN)
                 {
                     error = "Bad signature.";
                     return false;
