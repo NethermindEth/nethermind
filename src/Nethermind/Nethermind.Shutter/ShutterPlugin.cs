@@ -17,6 +17,7 @@ using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Shutter;
 
@@ -107,6 +108,8 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 _api.SpecProvider,
                 _api.Timestamper,
                 _api.WorldStateManager,
+                _api.FileSystem,
+                _api.Config<IKeyStoreConfig>(),
                 _shutterConfig,
                 validatorsInfo,
                 TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)

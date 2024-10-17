@@ -16,6 +16,10 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
+using Nethermind.Db;
+using System.Text;
+using System.IO.Abstractions;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Shutter;
 
@@ -24,6 +28,7 @@ public class ShutterP2P : IShutterP2P
     private readonly ILogger _logger;
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
+    private static readonly byte[] _peerIdDbKey = Encoding.UTF8.GetBytes("shutterPeerIdPrivateKey");
     private readonly PubsubRouter _router;
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
@@ -35,7 +40,7 @@ public class ShutterP2P : IShutterP2P
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
-    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager)
+    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig)
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
@@ -70,7 +75,9 @@ public class ShutterP2P : IShutterP2P
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
-        _peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
+
+        Identity identity = GetPeerIdentity(fileSystem, keyStoreConfig);
+        _peer = peerFactory.Create(identity, "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");
@@ -129,6 +136,28 @@ public class ShutterP2P : IShutterP2P
         _router?.UnsubscribeAll();
         await (_serviceProvider?.DisposeAsync() ?? default);
         await (_cts?.CancelAsync() ?? Task.CompletedTask);
+    }
+
+    private Identity GetPeerIdentity(IFileSystem fileSystem, IKeyStoreConfig cfg)
+    {
+        string fp = cfg.ShutterKeyFile.GetApplicationResourcePath(cfg.KeyStoreDirectory);
+        Identity identity;
+
+        if (fileSystem.File.Exists(fp))
+        {
+            if (_logger.IsInfo) _logger.Info("Loading Shutter P2P identity from disk.");
+            identity = new(fileSystem.File.ReadAllBytes(fp));
+        }
+        else
+        {
+            if (_logger.IsInfo) _logger.Info("Generating new Shutter P2P identity.");
+            identity = new();
+            string keyStoreDirectory = cfg.KeyStoreDirectory.GetApplicationResourcePath();
+            fileSystem.Directory.CreateDirectory(keyStoreDirectory);
+            fileSystem.File.WriteAllBytes(fp, identity.PrivateKey!.Data.ToByteArray());
+        }
+
+        return identity;
     }
 
     private void ProcessP2PMessage(byte[] msg, Func<Dto.DecryptionKeys, Task> onKeysReceived)
