@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly bool _needToWaitForHeaders;
         private readonly ILogger _logger;
         private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
-
+        private readonly long _initialPivotNumber;
         private long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
@@ -98,6 +98,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
+            _initialPivotNumber = _syncConfig.PivotNumberParsed;
 
             _ = StartAsync(_cancellation.Token);
         }
@@ -672,7 +673,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyDesiredPeerKnown(Snapshot best) => _betterPeerStrategy.IsDesiredPeer(best.Peer, (best.ChainDifficulty, best.Header));
 
-        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
+        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _initialPivotNumber;
 
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {

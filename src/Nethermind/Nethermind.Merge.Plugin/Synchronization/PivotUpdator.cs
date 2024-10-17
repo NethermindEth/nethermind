@@ -228,7 +228,7 @@ public class PivotUpdator
     private bool TryOverwritePivot(Hash256 finalizedBlockHash, long finalizedBlockNumber)
     {
         long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
-        bool isCloseToHead = targetBlock <= finalizedBlockNumber || (targetBlock - finalizedBlockNumber) < Constants.MaxDistanceFromHead;
+        bool isCloseToHead = _syncConfig.MaxFinalityDistance is 0 || targetBlock <= finalizedBlockNumber || (targetBlock - finalizedBlockNumber) < _syncConfig.MaxFinalityDistance;
         bool newPivotHigherThanOld = finalizedBlockNumber > _syncConfig.PivotNumberParsed;
 
         if (isCloseToHead && newPivotHigherThanOld)
@@ -244,7 +244,7 @@ public class PivotUpdator
             return true;
         }
 
-        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {finalizedBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - finalizedBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
+        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {finalizedBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - finalizedBlockNumber} blocks. Max difference allowed: {_syncConfig.MaxFinalityDistance}");
         if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {finalizedBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
     }

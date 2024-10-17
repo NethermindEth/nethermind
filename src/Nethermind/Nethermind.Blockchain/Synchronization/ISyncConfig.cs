@@ -143,4 +143,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "Defines how distant can be head from finalized block. Pass 0 to disable the check", DefaultValue = "128", HiddenFromDocs = true)]
+    public int MaxFinalityDistance { get; set; }
 }
