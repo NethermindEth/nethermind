@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko.Test;
 
@@ -84,7 +85,8 @@ public class TxPoolContentListsTests
             Substitute.For<ILogManager>(),
             txPool,
             blockFinder,
-            readOnlyTxProcessingEnvFactory
+            readOnlyTxProcessingEnvFactory,
+            Substitute.For<IRlpStreamDecoder<Transaction>>()
         );
 
         ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(

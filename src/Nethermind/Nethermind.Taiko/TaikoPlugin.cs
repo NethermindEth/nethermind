@@ -34,6 +34,7 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Core;
 
 namespace Nethermind.Taiko;
 
@@ -120,7 +121,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.TransactionProcessor);
         ArgumentNullException.ThrowIfNull(_api.FinalizationManager);
         ArgumentNullException.ThrowIfNull(_api.WorldStateManager);
-        // ArgumentNullException.ThrowIfNull(_api.BlockProducerEnvFactory);
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.WorldState);
@@ -144,10 +144,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
-
-        TaikoSimplePayloadPreparationService payloadPreparationService = null!;
-
-
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
             new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
@@ -179,12 +175,14 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             scope.WorldState,
             blockchainProcessor);
 
-        payloadPreparationService = new(
+        IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new NullReferenceException("txDecoder");
+
+        TaikoPayloadPreparationService payloadPreparationService = new(
             chainProcessor,
             scope.WorldState,
             l1OriginStore,
-            _api.LogManager);
-
+            _api.LogManager,
+            txDecoder);
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
@@ -240,8 +238,9 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             _api.LogManager,
             _api.TxPool,
             _api.BlockTree.AsReadOnly(),
-            readonlyTxProcessingEnvFactory
-            );
+            readonlyTxProcessingEnvFactory,
+            txDecoder
+        );
 
         _api.RpcModuleProvider.RegisterSingle(engine);
 

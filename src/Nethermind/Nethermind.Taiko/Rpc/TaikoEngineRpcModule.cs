@@ -50,7 +50,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory) :
+        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
+        IRlpStreamDecoder<Transaction> txDecoder) :
             EngineRpcModule(getPayloadHandlerV1,
                 getPayloadHandlerV2,
                 getPayloadHandlerV3,
@@ -68,8 +69,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 gcKeeper,
                 logManager), ITaikoEngineRpcModule
 {
-    private readonly TxDecoder _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
-
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null)
     {
         return base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
@@ -166,7 +165,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         BlockExecutionContext blkCtx = new(blockHeader);
         worldState.StateRoot = blockHeader.StateRoot;
 
-        Batch batch = new(maxBytesPerTxList, _txDecoder);
+        Batch batch = new(maxBytesPerTxList, txDecoder);
 
         try
         {
@@ -197,12 +196,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                         if (executionResult.Error == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                         {
                             CommitAndDisposeBatch(batch);
-                            batch = new(maxBytesPerTxList, _txDecoder);
 
                             if (maxBatchCount == Batches.Count)
                             {
                                 return [.. Batches];
                             }
+
+                            batch = new(maxBytesPerTxList, txDecoder);
 
                             continue;
                         }
@@ -230,12 +230,13 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     else
                     {
                         CommitAndDisposeBatch(batch);
-                        batch = new(maxBytesPerTxList, _txDecoder);
 
                         if (maxBatchCount == Batches.Count)
                         {
                             return [.. Batches];
                         }
+
+                        batch = new(maxBytesPerTxList, txDecoder);
 
                         continue;
                     }
@@ -257,7 +258,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, TxDecoder txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;

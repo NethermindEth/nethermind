@@ -18,31 +18,22 @@ using Nethermind.State;
 
 namespace Nethermind.Taiko;
 
-public class TaikoSimplePayloadPreparationService : IPayloadPreparationService
+public class TaikoPayloadPreparationService(
+    IBlockchainProcessor processor,
+    IWorldState worldState,
+    IL1OriginStore l1OriginStore,
+    ILogManager logManager,
+    IRlpStreamDecoder<Transaction> txDecoder) : IPayloadPreparationService
 {
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
 
-    private readonly ILogger _logger;
-    private readonly IBlockchainProcessor _processor;
-    private readonly IWorldState _worldState;
-    private readonly IL1OriginStore _l1OriginStore;
-    private readonly TxDecoder _txDecoder;
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IBlockchainProcessor _processor = processor;
+    private readonly IWorldState _worldState = worldState;
+    private readonly IL1OriginStore _l1OriginStore = l1OriginStore;
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
-
-    public TaikoSimplePayloadPreparationService(
-        IBlockchainProcessor processor,
-        IWorldState worldState,
-        IL1OriginStore l1OriginStore,
-        ILogManager logManager)
-    {
-        _logger = logManager.GetClassLogger();
-        _processor = processor;
-        _worldState = worldState;
-        _l1OriginStore = l1OriginStore;
-        _txDecoder = Rlp.GetStreamDecoder<Transaction>() as TxDecoder ?? throw new NullReferenceException(nameof(_txDecoder));
-    }
 
     public virtual string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
@@ -138,7 +129,7 @@ public class TaikoSimplePayloadPreparationService : IPayloadPreparationService
 
         while (rlpStream.Position < transactionsCheck)
         {
-            transactions[txIndex++] = _txDecoder.Decode(rlpStream, RlpBehaviors.None)!;
+            transactions[txIndex++] = txDecoder.Decode(rlpStream, RlpBehaviors.None)!;
         }
 
         rlpStream.Check(transactionsCheck);

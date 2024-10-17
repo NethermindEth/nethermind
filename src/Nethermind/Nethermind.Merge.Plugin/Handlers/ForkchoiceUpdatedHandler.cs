@@ -244,10 +244,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!IsNewHeadAlignedWithChain(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+        if (!IsNewHeadAlignedWithChain(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
-            if (_logger.IsWarn) _logger.Warn($"{errorResult.Result.Error} Request: {requestStr}.");
-            return errorResult;
+            return result;
         }
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;

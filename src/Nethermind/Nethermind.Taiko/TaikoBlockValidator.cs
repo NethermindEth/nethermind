@@ -34,7 +34,7 @@ public class TaikoBlockValidator(
 
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
-        // for some reason they don't validate these fields in taiko-geth
+        // No blob transactions are expected, covered by ValidateTransactions also
         error = null;
         return true;
     }
