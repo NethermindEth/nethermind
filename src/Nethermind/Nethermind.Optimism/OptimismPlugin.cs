@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
@@ -59,14 +60,8 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
-
-    public void ConfigureContainer(ContainerBuilder builder)
-    {
-        builder
-            .AddSingleton<INethermindApi, OptimismNethermindApi>()
-            .AddIStepsFromAssembly(GetType().Assembly);
-    }
+    public bool Enabled => chainSpec.SealEngineType == SealEngineType;
+    public IModule? ContainerModule => new OptimismModule();
 
     public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
     {
@@ -84,7 +79,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (PluginEnabled)
+        if (Enabled)
         {
             api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
@@ -93,7 +88,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public Task Init(INethermindApi api)
     {
-        if (!PluginEnabled)
+        if (!Enabled)
             return Task.CompletedTask;
 
         _api = (OptimismNethermindApi)api;
@@ -131,7 +126,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public Task InitSynchronization()
     {
-        if (_api is null || !PluginEnabled)
+        if (_api is null || !Enabled)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -187,7 +182,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !PluginEnabled)
+        if (_api is null || !Enabled)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -293,4 +288,15 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize => true;
+
+    private class OptimismModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+            builder
+                .AddSingleton<INethermindApi, OptimismNethermindApi>()
+                .AddIStepsFromAssembly(GetType().Assembly);
+        }
+    }
 }

@@ -26,7 +26,7 @@ namespace Nethermind.Analytics
         public string Author => "Nethermind";
 
 
-        public bool PluginEnabled =>initConfig.WebSocketsEnabled &&
+        public bool Enabled =>initConfig.WebSocketsEnabled &&
                                     (analyticsConfig.PluginsEnabled ||
                                      analyticsConfig.StreamBlocks ||
                                      analyticsConfig.StreamTransactions);
@@ -38,7 +38,7 @@ namespace Nethermind.Analytics
 
             IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
 
-            if (!PluginEnabled)
+            if (!Enabled)
             {
                 if (!initConfig.WebSocketsEnabled)
                 {
@@ -68,12 +68,12 @@ namespace Nethermind.Analytics
         public Task InitNetworkProtocol()
         {
             var (getFromAPi, _) = _api.ForNetwork;
-            if (PluginEnabled)
+            if (Enabled)
             {
                 getFromAPi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
             }
 
-            if (PluginEnabled)
+            if (Enabled)
             {
                 AnalyticsWebSocketsModule webSocketsModule = new(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
                 getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);

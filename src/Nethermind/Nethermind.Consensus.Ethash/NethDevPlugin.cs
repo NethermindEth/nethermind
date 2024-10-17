@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {

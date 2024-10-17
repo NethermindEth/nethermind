@@ -22,7 +22,7 @@ public class ClefSignerPlugin : INethermindPlugin
     public string Description => "Enabled signing from a remote Clef instance over Json RPC.";
 
     public string Author => "Nethermind";
-    public bool PluginEnabled => true;
+    public bool Enabled => true;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

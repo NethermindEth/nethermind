@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Clique
 
         public string Author => "Nethermind";
 
-        public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {

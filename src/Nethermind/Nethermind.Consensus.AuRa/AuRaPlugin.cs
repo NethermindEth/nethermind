@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -33,14 +34,11 @@ namespace Nethermind.Consensus.AuRa
         public string Author => "Nethermind";
 
         public string SealEngineType => Core.SealEngineType.AuRa;
-        public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
-        public void ConfigureContainer(ContainerBuilder builder)
-        {
-            builder.RegisterModule(new AuraModule());
-        }
+        public IModule? ContainerModule => new AuraModule();
 
         public ValueTask DisposeAsync()
         {

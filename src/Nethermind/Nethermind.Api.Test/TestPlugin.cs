@@ -31,6 +31,6 @@ namespace Nethermind.Api.Test
             throw new System.NotImplementedException();
         }
 
-        public bool PluginEnabled => true;
+        public bool Enabled => true;
     }
 }

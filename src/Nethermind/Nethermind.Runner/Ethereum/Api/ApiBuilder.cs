@@ -85,14 +85,18 @@ namespace Nethermind.Runner.Ethereum.Api
 
             foreach (INethermindPlugin nethermindPlugin in pluginLoader.Resolve<IEnumerable<INethermindPlugin>>())
             {
-                if (_logger.IsDebug) _logger.Warn($"Plugin {nethermindPlugin.Name} enabled: {nethermindPlugin.PluginEnabled}");
-                if (!nethermindPlugin.PluginEnabled)
+                if (_logger.IsDebug) _logger.Warn($"Plugin {nethermindPlugin.Name} enabled: {nethermindPlugin.Enabled}");
+                if (!nethermindPlugin.Enabled)
                 {
                     continue;
                 }
 
-                containerBuilder.RegisterInstance(nethermindPlugin).As<INethermindPlugin>();
-                nethermindPlugin.ConfigureContainer(containerBuilder);
+                containerBuilder.AddInstance(nethermindPlugin);
+
+                if (nethermindPlugin.ContainerModule is Module module)
+                {
+                    containerBuilder.AddModule(nethermindPlugin.ContainerModule);
+                }
             }
         }
 

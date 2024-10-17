@@ -63,8 +63,8 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
 
-    protected virtual bool MergeEnabled => PluginEnabled;
-    public virtual bool PluginEnabled => mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+    protected virtual bool MergeEnabled => Enabled;
+    public virtual bool Enabled => mergeConfig.Enabled && chainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
 
     public int Priority => PluginPriorities.Merge;
 

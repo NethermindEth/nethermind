@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 
 namespace Nethermind.Api.Extensions;
 
@@ -25,6 +26,6 @@ public interface INethermindPlugin : IAsyncDisposable
 
     bool MustInitialize => false;
 
-    bool PluginEnabled { get; }
-    void ConfigureContainer(ContainerBuilder builder) {}
+    bool Enabled { get; }
+    IModule? ContainerModule => null;
 }

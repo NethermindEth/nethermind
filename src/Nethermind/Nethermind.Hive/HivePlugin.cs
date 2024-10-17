@@ -15,7 +15,7 @@ namespace Nethermind.Hive
         private INethermindApi _api = null!;
         private ILogger _logger;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
-        public bool PluginEnabled => Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || hiveConfig.Enabled;
+        public bool Enabled => Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || hiveConfig.Enabled;
 
         public ValueTask DisposeAsync()
         {
@@ -40,7 +40,7 @@ namespace Nethermind.Hive
 
         public async Task InitNetworkProtocol()
         {
-            if (PluginEnabled)
+            if (Enabled)
             {
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));

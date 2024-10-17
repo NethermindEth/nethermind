@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -32,13 +33,9 @@ namespace Nethermind.Merge.AuRa
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => PluginEnabled;
-        public override bool PluginEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
-
-        public void ConfigureContainer(ContainerBuilder builder)
-        {
-            builder.AddIStepsFromAssembly(GetType().Assembly);
-        }
+        protected override bool MergeEnabled => Enabled;
+        public override bool Enabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
+        public IModule? ContainerModule => new AuraMergeModule();
 
         public override async Task Init(INethermindApi nethermindApi)
         {
@@ -90,6 +87,15 @@ namespace Nethermind.Merge.AuRa
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
                 _poSSwitcher);
+        }
+
+        private class AuraMergeModule: Module
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+                builder.AddIStepsFromAssembly(GetType().Assembly);
+            }
         }
     }
 }

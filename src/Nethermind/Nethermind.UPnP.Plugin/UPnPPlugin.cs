@@ -22,14 +22,14 @@ public class UPnPPlugin(INetworkConfig networkConfig) : INethermindPlugin
     private INetworkConfig _networkConfig = new NetworkConfig();
     private ILogger _logger = NullLogger.Instance;
 
-    public bool PluginEnabled => networkConfig.EnableUPnP;
+    public bool Enabled => networkConfig.EnableUPnP;
 
     public Task Init(INethermindApi api)
     {
         _networkConfig = api.Config<INetworkConfig>();
         _logger = api.LogManager.GetClassLogger<UPnPPlugin>();
 
-        if (PluginEnabled)
+        if (Enabled)
         {
             Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
         }

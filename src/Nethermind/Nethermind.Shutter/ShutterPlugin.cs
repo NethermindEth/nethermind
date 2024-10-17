@@ -25,8 +25,8 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";
     public string Author => "Nethermind";
-    public bool Enabled => PluginEnabled;
-    public bool PluginEnabled => shutterConfig!.Enabled && mergeConfig!.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
+    public bool ConsensusWrapperEnabled => Enabled;
+    public bool Enabled => shutterConfig!.Enabled && mergeConfig!.Enabled && chainSpec.SealEngineType is SealEngineType.AuRa;
 
     public int Priority => PluginPriorities.Shutter;
 
@@ -49,7 +49,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public Task InitRpcModules()
     {
-        if (Enabled)
+        if (ConsensusWrapperEnabled)
         {
             if (_api!.BlockProducer is null) throw new ArgumentNullException(nameof(_api.BlockProducer));
 
@@ -61,7 +61,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
     {
-        if (Enabled)
+        if (ConsensusWrapperEnabled)
         {
             if (_api!.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.EthereumEcdsa is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
