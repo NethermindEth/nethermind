@@ -113,7 +113,8 @@ public class RegisterRpcModules : IStep
             _api.SyncModeSelector,
             _api.BadBlocksStore,
             _api.FileSystem,
-            _api.LogManager);
+            _api.LogManager,
+            _api.StateReader);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, _jsonRpcConfig.Timeout);
 
         RegisterTraceRpcModule(rpcModuleProvider);

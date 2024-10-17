@@ -18,7 +18,15 @@ using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
+
+using Nethermind.Facade.Eth;
+using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Int256;
+using Newtonsoft.Json;
+using Nethermind.State;
+
 using Nethermind.Facade.Eth.RpcTransaction;
+
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -84,6 +92,45 @@ public class DebugRpcModule : IDebugRpcModule
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+    public ResultWrapper<IEnumerable<GethLikeTxTrace>> debug_traceCallMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
+    {
+        blockParameter ??= BlockParameter.Latest;
+        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        SearchResult<BlockHeader> headerSearch = _debugBridge.SearchBlockHeaderForTraceCall(blockParameter);
+        if (headerSearch.IsError)
+        {
+            return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail(headerSearch);
+        }
+
+        if (!_debugBridge.HasStateForBlock(headerSearch.Object))
+        {
+            return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"No state available for block {headerSearch.Object.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
+
+        Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
+        Transaction[] txs = new Transaction[calls.Length];
+        for (int i = 0; i < calls.Length; i++)
+        {
+            calls[i].Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
+            Transaction tx = calls[i].Transaction.ToTransaction();
+            tx.Hash = new Hash256(new UInt256((ulong)i).ToBigEndian());
+            txs[i] = tx;
+        }
+
+        Block block = new(headerSearch.Object!, txs, Enumerable.Empty<BlockHeader>());
+
+        IReadOnlyCollection<GethLikeTxTrace> traces = _debugBridge.GetBlockTrace(blockParameter, cancellationToken);
+
+        if (traces is null)
+        {
+            return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"Failed to trace block transactions for input txns: {JsonConvert.SerializeObject(calls)}", ErrorCodes.ResourceNotFound);
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceCallMany)} with input transactions: {calls} returned the result: {traces}");
+        return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Success(traces);
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
