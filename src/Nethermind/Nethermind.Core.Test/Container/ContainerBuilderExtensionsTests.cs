@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Core.Container;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;

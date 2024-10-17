@@ -45,6 +45,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie;

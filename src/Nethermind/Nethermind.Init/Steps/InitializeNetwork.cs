@@ -15,6 +15,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;

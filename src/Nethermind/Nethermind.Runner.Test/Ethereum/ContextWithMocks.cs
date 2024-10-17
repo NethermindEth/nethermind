@@ -48,6 +48,7 @@ using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Facade.Find;
 using Nethermind.Runner.Modules;
 

@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
 using Nethermind.Init.Steps;

@@ -12,6 +12,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

@@ -12,6 +12,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 using Nethermind.Runner.Modules;

@@ -9,7 +9,7 @@ using Autofac;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Container;
 
 public static class ContainerBuilderExtensions
 {

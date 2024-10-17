@@ -15,6 +15,7 @@ using Autofac.Features.ResolveAnything;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -27,7 +28,8 @@ namespace Nethermind.Runner.Modules;
 
 /// <summary>
 /// Basic common behaviour such as instrumentation and system related stuff. Should be completely compatible in all
-/// situation and can be run in tests.
+/// situation and can be run in tests. Probably should be called `PrePluginModule` as it is also run without
+/// having plugins.
 /// </summary>
 public class BaseModule : Module
 {

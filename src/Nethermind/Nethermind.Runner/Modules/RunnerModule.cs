@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
 using Nethermind.Runner.Ethereum;
 

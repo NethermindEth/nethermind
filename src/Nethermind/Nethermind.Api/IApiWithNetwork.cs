@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;

@@ -4,6 +4,8 @@
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Consensus;
+using Nethermind.Core.Container;
+using Module = Autofac.Module;
 
 namespace Nethermind.Runner.Modules;
 
@@ -16,12 +18,10 @@ public class CoreModule : Module
     {
         base.Load(builder);
 
-        builder.RegisterType<FollowOtherMiners>()
-            .As<IGasLimitCalculator>()
-            .SingleInstance();
+        builder
+            .AddSingleton<IGasLimitCalculator, FollowOtherMiners>()
+            .AddSingleton<INethermindApi, NethermindApi>();
 
-        builder.RegisterType<NethermindApi>()
-            .As<INethermindApi>()
-            .SingleInstance();
+        builder.RegisterSource(new FallbackToFieldFromApi<INethermindApi>());
     }
 }
