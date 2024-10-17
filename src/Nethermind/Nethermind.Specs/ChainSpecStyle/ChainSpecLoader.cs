@@ -11,7 +11,6 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -434,7 +433,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
         if (requestsEnabled)
-            genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
+            genesisHeader.RequestsHash = Keccak.EmptyTreeHash;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -463,8 +462,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 genesisHeader,
                 Array.Empty<Transaction>(),
                 Array.Empty<BlockHeader>(),
-                Array.Empty<Withdrawal>(),
-                requestsEnabled ? Array.Empty<ConsensusRequest>() : null);
+                Array.Empty<Withdrawal>());
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

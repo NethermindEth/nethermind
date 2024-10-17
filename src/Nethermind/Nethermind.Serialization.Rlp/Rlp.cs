@@ -1560,6 +1560,30 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            public byte DecodeByte()
+            {
+                byte byteValue = PeekByte();
+                if (byteValue < 128)
+                {
+                    SkipBytes(1);
+                    return byteValue;
+                }
+
+                if (byteValue == 128)
+                {
+                    SkipBytes(1);
+                    return 0;
+                }
+
+                if (byteValue == 129)
+                {
+                    SkipBytes(1);
+                    return ReadByte();
+                }
+
+                throw new RlpException($"Unexpected value while decoding byte {byteValue}");
+            }
+
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
                 T defaultElement = default)
             {

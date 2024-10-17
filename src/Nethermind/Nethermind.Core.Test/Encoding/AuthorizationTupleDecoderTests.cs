@@ -55,6 +55,87 @@ public class AuthorizationTupleDecoderTests
         , Throws.TypeOf<RlpException>());
     }
 
+    public static IEnumerable<RlpStream> WrongSizeFieldsEncodedCases()
+    {
+        yield return TupleRlpStream(
+            //Wrong chain size
+            Enumerable.Range(0, 9).Select(i => (byte)0xFF).ToArray(),
+            Address.Zero.Bytes,
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            );
+
+        yield return TupleRlpStream(
+            //Wrong address size
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 19).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            );
+
+        yield return TupleRlpStream(
+            //Wrong address size
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 21).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            );
+
+        yield return TupleRlpStream(
+            //Wrong nonce size
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Address.Zero.Bytes,
+            Enumerable.Range(0, 9).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            );
+
+        yield return TupleRlpStream(
+            //Wrong yParity size
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Address.Zero.Bytes,
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 2).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            );
+
+        yield return TupleRlpStream(
+            //Wrong R size
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Address.Zero.Bytes,
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 33).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray()
+            );
+
+        yield return TupleRlpStream(
+            //Wrong S size
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Address.Zero.Bytes,
+            Enumerable.Range(0, 8).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 1).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 32).Select(i => (byte)0xFF).ToArray(),
+            Enumerable.Range(0, 33).Select(i => (byte)0xFF).ToArray()
+            );
+    }
+
+    [TestCaseSource(nameof(WrongSizeFieldsEncodedCases))]
+    public void Encode_TupleHasFieldsOutsideBoundaries_ThrowsRlpException(RlpStream badEncoding)
+    {
+        AuthorizationTupleDecoder sut = new();
+
+        Assert.That(() => sut.Decode(badEncoding, RlpBehaviors.None), Throws.InstanceOf<RlpException>());
+    }
+
     private static RlpStream TupleRlpStreamWithNull()
     {
         Address? codeAddress = null;
@@ -74,6 +155,27 @@ public class AuthorizationTupleDecoderTests
         stream.Encode(sig.RecoveryId);
         stream.Encode(sig.R);
         stream.Encode(sig.S);
+        stream.Position = 0;
+        return stream;
+    }
+
+    private static RlpStream TupleRlpStream(byte[] chainId, byte[] address, byte[] nonce, byte[] yParity, byte[] r, byte[] s)
+    {
+        int length =
+            +Rlp.LengthOf(chainId)
+            + Rlp.LengthOf(address)
+            + Rlp.LengthOf(nonce)
+            + Rlp.LengthOf(yParity)
+            + Rlp.LengthOf(r)
+            + Rlp.LengthOf(s);
+        RlpStream stream = new RlpStream(Rlp.LengthOfSequence(length));
+        stream.StartSequence(length);
+        stream.Encode(chainId);
+        stream.Encode(address);
+        stream.Encode(nonce);
+        stream.Encode(yParity);
+        stream.Encode(r);
+        stream.Encode(s);
         stream.Position = 0;
         return stream;
     }
