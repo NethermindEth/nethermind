@@ -166,7 +166,7 @@ namespace Ethereum.Test.Base
                         i.ChainId,
                         i.Address,
                         i.Nonce,
-                        i.V,
+                        i.RecoveryId,
                         i.R,
                         i.S)).ToArray();
                 if (transaction.AuthorizationList.Any())
