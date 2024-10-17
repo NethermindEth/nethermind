@@ -27,31 +27,26 @@ namespace Nethermind.Api
     {
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
-        IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
-        IDiscoveryApp? DiscoveryApp { get; set; }
+        IDiscoveryApp? DiscoveryApp { get; }
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
         IMonitoringService MonitoringService { get; set; }
-        INodeStatsManager? NodeStatsManager { get; set; }
-        IPeerManager? PeerManager { get; set; }
-        IPeerPool? PeerPool { get; set; }
-        IProtocolsManager? ProtocolsManager { get; set; }
-        IProtocolValidator? ProtocolValidator { get; set; }
+        INodeStatsManager? NodeStatsManager { get; }
+        IPeerManager? PeerManager { get; }
+        IPeerPool? PeerPool { get; }
         IList<IPublisher> Publishers { get; }
-        IRlpxHost? RlpxPeer { get; set; }
+        IRlpxHost? RlpxPeer { get; }
         IRpcModuleProvider? RpcModuleProvider { get; set; }
         IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
-        ISessionMonitor? SessionMonitor { get; set; }
-        IStaticNodesManager? StaticNodesManager { get; set; }
+        ISessionMonitor? SessionMonitor { get; }
+        IStaticNodesManager? StaticNodesManager { get; }
         ISynchronizer? Synchronizer { get; }
         ISyncModeSelector SyncModeSelector { get; }
-        ISyncProgressResolver? SyncProgressResolver { get; }
-        IPivot? Pivot { get; set; }
-        ISyncPeerPool? SyncPeerPool { get; set; }
-        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
-        ISyncServer? SyncServer { get; set; }
+        ISyncPeerPool? SyncPeerPool { get; }
+        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }
+        ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 

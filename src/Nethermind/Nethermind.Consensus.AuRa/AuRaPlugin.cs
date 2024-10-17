@@ -7,16 +7,12 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
 
@@ -56,13 +52,16 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task InitSynchronization()
+        public void ConfigureSynchronizationBuilder(ContainerBuilder containerBuilder)
         {
             if (_nethermindApi is not null)
             {
-                _nethermindApi.BetterPeerStrategy = new AuRaBetterPeerStrategy(_nethermindApi.BetterPeerStrategy!, _nethermindApi.LogManager);
+                containerBuilder.RegisterDecorator<AuRaBetterPeerStrategy, IBetterPeerStrategy>();
             }
+        }
 
+        public Task InitSynchronization(IContainer container)
+        {
             return Task.CompletedTask;
         }
 

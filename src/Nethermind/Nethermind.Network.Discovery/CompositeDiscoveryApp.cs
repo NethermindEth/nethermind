@@ -67,11 +67,8 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
         _ipResolver = ipResolver ?? throw new ArgumentNullException(nameof(ipResolver));
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, _discoveryConfig);
-    }
 
-    public void Initialize(PublicKey masterPublicKey)
-    {
-        var nodeKeyProvider = new SameKeyGenerator(_nodeKey.Unprotect());
+        SameKeyGenerator nodeKeyProvider = new SameKeyGenerator(_nodeKey.Unprotect());
         List<INodeSource> allNodeSources = new();
 
         if ((_discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
@@ -189,9 +186,8 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             _networkConfig,
             discoveryConfig,
             _timestamper,
+            _nodeKey.PublicKey,
             _logManager);
-
-        _v4.Initialize(_nodeKey.PublicKey);
     }
 
     private void InitDiscoveryV5(SameKeyGenerator privateKeyProvider)
@@ -202,7 +198,6 @@ public class CompositeDiscoveryApp : IDiscoveryApp
             _logManager);
 
         _v5 = new DiscoveryV5App(privateKeyProvider, _ipResolver, _networkConfig, _discoveryConfig, discv5DiscoveryDb, _logManager);
-        _v5.Initialize(_nodeKey.PublicKey);
     }
 
     private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)

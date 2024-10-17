@@ -9,8 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -25,6 +23,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -32,13 +31,13 @@ using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -320,28 +319,16 @@ public class SynchronizerTests
                 .WithoutSettingHead
                 .TestObject;
 
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager stats = new(timerFactory, _logManager);
-
             MergeConfig mergeConfig = new();
             if (WithTTD(synchronizerType))
             {
                 mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
             }
             PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), new ChainSpec(), _logManager);
-            IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, poSSwitcher, _logManager);
-
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
-            IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
-                ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
-                : totalDifficultyBetterPeerStrategy;
 
             StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
-
-            SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
-            Pivot pivot = new(syncConfig);
 
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
@@ -351,48 +338,36 @@ public class SynchronizerTests
             builder
                 .AddInstance(dbProvider)
                 .AddInstance(nodeStorage)
+                .AddInstance<INetworkConfig>(new NetworkConfig())
+                .AddInstance(Substitute.For<ITimerFactory>())
                 .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddInstance<IBlockTree>(BlockTree)
                 .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddInstance(SyncPeerPool)
-                .AddInstance<INodeStatsManager>(stats)
+                .AddInstance<IReceiptFinder>(NullReceiptStorage.Instance)
                 .AddInstance(syncConfig)
-                .AddInstance<IPivot>(pivot)
                 .AddInstance<IPoSSwitcher>(poSSwitcher)
                 .AddInstance<IMergeConfig>(mergeConfig)
                 .AddInstance(invalidChainTracker)
                 .AddInstance(Substitute.For<IProcessExitSource>())
-                .AddInstance<IBetterPeerStrategy>(bestPeerStrategy)
                 .AddInstance(new ChainSpec())
-                .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddInstance<IStateReader>(reader)
                 .AddInstance<ISealValidator>(Always.Valid)
                 .AddInstance<IBlockValidator>(Always.Valid)
-                .AddInstance(beaconPivot)
+                .AddInstance<IGossipPolicy>(Policy.FullGossip)
+                .AddInstance<IBlockCacheService>(new BlockCacheService())
                 .AddInstance(_logManager);
 
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
+            builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeSynchronizerModule());
+                builder.RegisterModule(new MergeNetworkModule());
             }
 
             IContainer container = builder.Build();
-            Synchronizer = container.Resolve<Synchronizer>();
-            SyncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
-                codeDb,
-                BlockTree,
-                NullReceiptStorage.Instance,
-                Always.Valid,
-                Always.Valid,
-                SyncPeerPool,
-                container.Resolve<ISyncModeSelector>(),
-                syncConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                _logManager);
+            Synchronizer = container.Resolve<ISynchronizer>();
+            SyncPeerPool = container.Resolve<ISyncPeerPool>();
+            SyncServer = container.Resolve<ISyncServer>();
 
             SyncPeerPool.Start();
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -29,11 +28,9 @@ using Nethermind.Core.Container;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
 using Nethermind.Init.Steps;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
@@ -125,58 +122,33 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         return Task.CompletedTask;
     }
 
-    public Task InitSynchronization()
+    public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
+    {
+        if (Enabled)
+            return;
+
+        builder
+            .AddInstance<IBlockCacheService>(_blockCacheService!)
+            .AddInstance<IInvalidChainTracker>(_invalidChainTracker!);
+
+        builder
+            .RegisterModule(new MergeNetworkModule());
+    }
+
+    public Task InitSynchronization(IContainer container)
     {
         if (_api is null || !Enabled)
             return Task.CompletedTask;
 
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.PeerDifficultyRefreshPool);
-        ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
-        ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
         ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
-        ArgumentNullException.ThrowIfNull(_api.BetterPeerStrategy);
-
-        ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
 
         _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
-        _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
-        _api.Pivot = _beaconPivot;
-
-        ContainerBuilder builder = new ContainerBuilder();
-        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
-            .AddInstance<IBeaconSyncStrategy>(_beaconSync)
-            .AddInstance(_beaconPivot)
-            .AddInstance(_api.PoSSwitcher)
-            .AddInstance(_mergeConfig)
-            .AddInstance(_invalidChainTracker);
-
-        builder.RegisterModule(new SynchronizerModule(_syncConfig));
-        builder.RegisterModule(new MergeSynchronizerModule());
-
-        IContainer container = builder.Build();
-
-        _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Append(container);
-
-        _ = new PivotUpdator(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.DbProvider.MetadataDb,
-            _api.LogManager);
+        _peerRefresher = container.Resolve<PeerRefresher>();
+        _beaconPivot = container.Resolve<IBeaconPivot>();
+        _beaconSync = container.Resolve<BeaconSync>();
+        _ = container.Resolve<PivotUpdator>();
 
         return Task.CompletedTask;
     }

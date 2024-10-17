@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -55,8 +56,6 @@ namespace Nethermind.Synchronization
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        public ISyncModeSelector SyncModeSelector => syncModeSelector;
-
         public virtual void Start()
         {
             if (!syncConfig.SynchronizationEnabled)
@@ -82,12 +81,12 @@ namespace Nethermind.Synchronization
 
             if (syncConfig.ExitOnSynced)
             {
-                exitSource.WatchForExit(SyncModeSelector, logManager, TimeSpan.FromSeconds(syncConfig.ExitOnSyncedWaitTimeSec));
+                exitSource.WatchForExit(syncModeSelector, logManager, TimeSpan.FromSeconds(syncConfig.ExitOnSyncedWaitTimeSec));
             }
 
             WireMultiSyncModeSelector();
 
-            SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+            syncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }
 
         private void StartFullSyncComponents()
@@ -249,11 +248,11 @@ namespace Nethermind.Synchronization
         public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
         {
             if (feed is null) return;
-            SyncModeSelector.Changed += ((sender, args) =>
+            syncModeSelector.Changed += ((sender, args) =>
             {
                 feed?.SyncModeSelectorOnChanged(args.Current);
             });
-            feed?.SyncModeSelectorOnChanged(SyncModeSelector.Current);
+            feed?.SyncModeSelectorOnChanged(syncModeSelector.Current);
         }
 
         public void Dispose()

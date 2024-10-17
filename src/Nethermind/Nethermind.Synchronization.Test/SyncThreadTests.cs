@@ -6,8 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -34,19 +32,17 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
+using Nethermind.Init.Steps;
+using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie;
 
@@ -316,10 +312,6 @@ namespace Nethermind.Synchronization.Test
             BlockchainProcessor processor = new(tree, blockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.Default);
 
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
-
             WorldState devState = new(trieStore, codeDb, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, codeInfoRepository, logManager);
@@ -359,49 +351,32 @@ namespace Nethermind.Synchronization.Test
                 tree,
                 producer);
 
-            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            Pivot pivot = new(syncConfig);
-
             ContainerBuilder builder = new ContainerBuilder();
             builder
                 .AddInstance(dbProvider)
+                .AddInstance(Substitute.For<ITimerFactory>())
+                .AddInstance<INetworkConfig>(new NetworkConfig())
                 .AddInstance<INodeStorage>(new NodeStorage(dbProvider.StateDb))
                 .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddInstance<IBlockTree>(tree)
-                .AddInstance(NullReceiptStorage.Instance)
-                .AddInstance<ISyncPeerPool>(syncPeerPool)
-                .AddInstance<INodeStatsManager>(nodeStatsManager)
+                .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddInstance<IReceiptFinder>(NullReceiptStorage.Instance)
                 .AddInstance(syncConfig)
                 .AddInstance<IBlockValidator>(blockValidator)
                 .AddInstance<ISealValidator>(sealValidator)
-                .AddInstance<IPivot>(pivot)
                 .AddInstance(Substitute.For<IProcessExitSource>())
-                .AddInstance<IBetterPeerStrategy>(bestPeerStrategy)
                 .AddInstance(new ChainSpec())
+                .AddInstance<IGossipPolicy>(Policy.FullGossip)
                 .AddInstance<IStateReader>(stateReader)
                 .AddInstance<IReceiptStorage>(receiptStorage)
-                .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddInstance<ILogManager>(logManager);
+
             dbProvider.ConfigureServiceCollection(builder);
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
+            builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
             IContainer container = builder.Build();
-
-            Synchronizer synchronizer = container.Resolve<Synchronizer>();
-
-            ISyncModeSelector selector = synchronizer.SyncModeSelector;
-            SyncServer syncServer = new(
-                trieStore.TrieNodeRlpStore,
-                codeDb,
-                tree,
-                receiptStorage,
-                Always.Valid,
-                Always.Valid,
-                syncPeerPool,
-                selector,
-                syncConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                logManager);
+            ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
+            ISyncPeerPool syncPeerPool = container.Resolve<ISyncPeerPool>();
+            ISyncServer syncServer = container.Resolve<ISyncServer>();
 
             ManualResetEventSlim waitEvent = new();
             tree.NewHeadBlock += (_, _) => waitEvent.Set();

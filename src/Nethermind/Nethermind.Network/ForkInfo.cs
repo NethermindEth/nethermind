@@ -12,6 +12,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Network
 {
@@ -20,6 +21,11 @@ namespace Nethermind.Network
         private Dictionary<uint, (ForkActivation Activation, ForkId Id)> DictForks { get; }
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
         private readonly bool _hasTimestampFork;
+
+        public ForkInfo(ISpecProvider specProvider, ISyncServer syncServer)
+            : this(specProvider, syncServer.Genesis.Hash!)
+        {
+        }
 
         public ForkInfo(ISpecProvider specProvider, Hash256 genesisHash)
         {
