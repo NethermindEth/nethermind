@@ -115,6 +115,18 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Shorthand for registering a constructor that resolve TImpl as TAs.
+    /// This is useful for clarity or for conditional registration where TImpl is declared somewhere else.
+    /// </summary>
+    public static ContainerBuilder Bind<TImpl, TAs>(this ContainerBuilder builder) where TImpl : notnull where TAs : notnull
+    {
+        builder.Register(ctx => ctx.Resolve<TImpl>())
+            .As<TAs>();
+
+        return builder;
+    }
 }
 
 /// <summary>
