@@ -15,12 +15,14 @@ using Nethermind.Logging;
 using System.IO;
 using Nethermind.Serialization.Json;
 using System.Threading;
+using Autofac;
 using Nethermind.Config;
+using Nethermind.Init.Steps;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Shutter;
 
-public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin, IInitializationPlugin
+public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfig, ChainSpec chainSpec) : IConsensusWrapperPlugin
 {
     public string Name => "Shutter";
     public string Description => "Shutter plugin for AuRa post-merge chains";
@@ -125,5 +127,14 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
     {
         FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.None);
         return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
+    }
+
+    private class ShutterModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+            builder.AddIStepsFromAssembly(GetType().Assembly);
+        }
     }
 }

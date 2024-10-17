@@ -25,7 +25,7 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) : MergePlugin(mergeConfig, chainSpec), IInitializationPlugin
+    public class AuRaMergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) : MergePlugin(mergeConfig, chainSpec)
     {
         private AuRaNethermindApi? _auraApi;
         private readonly ChainSpec _chainSpec = chainSpec;

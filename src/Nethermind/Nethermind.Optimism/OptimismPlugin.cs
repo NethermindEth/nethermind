@@ -36,7 +36,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
