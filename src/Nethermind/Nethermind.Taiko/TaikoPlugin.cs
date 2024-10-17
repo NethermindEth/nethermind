@@ -91,14 +91,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         return Task.CompletedTask;
     }
 
-    public void InitTxTypesAndRlpDecoders(INethermindApi api)
-    {
-        if (ShouldRunSteps(api))
-        {
-            Rlp.RegisterDecoder(typeof(L1Origin), new L1OriginDecoder());
-        }
-    }
-
     public async Task InitRpcModules()
     {
         if (_api is null || !ShouldRunSteps(_api))

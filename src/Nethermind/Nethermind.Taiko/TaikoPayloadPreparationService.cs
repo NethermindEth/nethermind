@@ -59,9 +59,9 @@ public class TaikoPayloadPreparationService(
             l1Origin.L2BlockHash = block.Hash;
 
             // Write L1Origin.
-            _l1OriginStore.WriteL1Origin(l1Origin.BlockID, l1Origin);
+            _l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
             // Write the head L1Origin.
-            _l1OriginStore.WriteHeadL1Origin(l1Origin.BlockID);
+            _l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
 
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
             _payloadStorage.TryAdd(payloadId, new NoBlockProductionContext(block, UInt256.Zero));

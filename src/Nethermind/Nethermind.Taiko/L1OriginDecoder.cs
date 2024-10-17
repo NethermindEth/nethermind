@@ -35,7 +35,7 @@ public class L1OriginDecoder : IRlpObjectDecoder<L1Origin>, IRlpStreamDecoder<L1
     {
         stream.StartSequence(GetLength(item, rlpBehaviors));
 
-        stream.Encode(item.BlockID);
+        stream.Encode(item.BlockId);
         stream.Encode(item.L2BlockHash);
         stream.Encode(item.L1BlockHeight);
         stream.Encode(item.L1BlockHash);
@@ -44,7 +44,7 @@ public class L1OriginDecoder : IRlpObjectDecoder<L1Origin>, IRlpStreamDecoder<L1
     public int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {
         return Rlp.LengthOfSequence(
-            Rlp.LengthOf(item.BlockID)
+            Rlp.LengthOf(item.BlockId)
             + Rlp.LengthOf(item.L2BlockHash)
             + Rlp.LengthOf(item.L1BlockHeight)
             + Rlp.LengthOf(item.L1BlockHash));
