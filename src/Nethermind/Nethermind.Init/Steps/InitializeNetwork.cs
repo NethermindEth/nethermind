@@ -316,7 +316,7 @@ public class InitializeNetwork : IStep
     }
 }
 
-public class NetworkModule(INetworkConfig networkConfig, ISyncConfig syncConfig): Module
+public class NetworkModule(INetworkConfig networkConfig, ISyncConfig syncConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
