@@ -74,7 +74,7 @@ public class RangeQueryVisitorTests
         tree.Set(new Hash256("0400000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0500000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.UpdateRootHash();
-        tree.Commit(0);
+        tree.Commit();
 
         var startHash = new Hash256("0150000000000000000000000000000000000000000000000000000000000000");
         var limitHash = new Hash256("0350000000000000000000000000000000000000000000000000000000000000");
@@ -98,7 +98,7 @@ public class RangeQueryVisitorTests
         tree.Set(new Hash256("0400000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0500000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.UpdateRootHash();
-        tree.Commit(0);
+        tree.Commit();
 
         var startHash = new Hash256("0510000000000000000000000000000000000000000000000000000000000000");
         var limitHash = new Hash256("0600000000000000000000000000000000000000000000000000000000000000");
@@ -127,7 +127,7 @@ public class RangeQueryVisitorTests
         stateTree.Set(new Hash256("0x6000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Set(new Hash256("0x7000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Set(new Hash256("0x8000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
-        stateTree.Commit(0);
+        stateTree.Commit();
 
         var startHash = new Hash256("0x3000000000000000000000000000000000000000000000000000000000000000");
         var limitHash = new Hash256("0x4500000000000000000000000000000000000000000000000000000000000000");
@@ -163,7 +163,7 @@ public class RangeQueryVisitorTests
         {
             stateTree.Set(new Hash256(path), TestItem.GenerateRandomAccount(random));
         }
-        stateTree.Commit(0);
+        stateTree.Commit();
 
         var startHash = new Hash256("0x1140000000000000000000000000000000000000000000000000000000000000");
         var limitHash = new Hash256("0x1235000000000000000000000000000000000000000000000000000000000000");
