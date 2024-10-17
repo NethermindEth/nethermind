@@ -8,8 +8,10 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 
@@ -80,8 +82,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBetterPeerStrategy betterPeerStrategy,
-            ILogManager logManager,
-            bool needToWaitForHeaders = false)
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -89,7 +90,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
-            _needToWaitForHeaders = needToWaitForHeaders;
+            _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
             {
