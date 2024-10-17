@@ -315,8 +315,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     return new TransactionSubstate(
                         callResult.Output,
                         currentState.Refund,
-                        (IReadOnlyCollection<Address>)currentState.DestroyList,
-                        (IReadOnlyCollection<LogEntry>)currentState.Logs,
+                        currentState.AccessTracker.DestroyList,
+                        (IReadOnlyCollection<LogEntry>)currentState.AccessTracker.Logs,
                         callResult.ShouldRevert,
                         isTracerConnected: isTracing,
                         _logger);
@@ -2239,7 +2239,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             outputOffset.ToLong(),
             outputLength.ToLong(),
             instruction == Instruction.STATICCALL || vmState.IsStatic,
-            vmState,
+            vmState.AccessTracker,
             isContinuation: false,
             isCreateOnPreExistingAccount: false);
 
@@ -2322,9 +2322,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, false, spec, false)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.CreateList.Contains(executingAccount);
+        bool createInSameTx = vmState.AccessTracker.IsCold(executingAccount);
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
-            vmState.DestroyList.Add(executingAccount);
+            vmState.AccessTracker.WarmUp(executingAccount);
 
         UInt256 result = _state.GetBalance(executingAccount);
         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
@@ -2487,7 +2487,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             0L,
             0L,
             vmState.IsStatic,
-            vmState,
+            vmState.AccessTracker,
             false,
             accountExists);
 
@@ -2517,7 +2517,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.Env.ExecutingAccount,
             data.ToArray(),
             topics);
-        vmState.Logs.Add(logEntry);
+        vmState.AccessTracker.Logs.Add(logEntry);
 
         if (_txTracer.IsTracingLogs)
         {

@@ -14,7 +14,7 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
     {
         if (typeof(TTracingActions) == typeof(VirtualMachine.IsTracing) && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
         {
-            logsMutator.SetLogsToMutate(state.Logs);
+            logsMutator.SetLogsToMutate(state.AccessTracker.Logs);
         }
 
         return virtualMachine.Run<TTracingActions>(state, worldState, txTracer);
