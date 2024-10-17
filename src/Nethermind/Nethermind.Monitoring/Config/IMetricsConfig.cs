@@ -26,6 +26,9 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }
 
+    [ConfigItem(DefaultValue = "2", Description = "The minimal frequency of pushing metrics to Prometheus, in seconds. Push should not occur more often than this")]
+    int MinimalIntervalSeconds { get; }
+
     [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "\"Nethermind\"")]
     string NodeName { get; }
 
