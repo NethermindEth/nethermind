@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
@@ -37,7 +38,6 @@ public class MergePluginTests
         IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
 
         _context = Build.ContextWithMocks();
-        _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
@@ -56,16 +56,14 @@ public class MergePluginTests
             _context.TransactionComparerProvider!,
             miningConfig,
             _context.LogManager!);
-        _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
         _context.ChainSpec!.Clique = new CliqueParameters()
         {
             Epoch = CliqueConfig.Default.Epoch,
             Period = CliqueConfig.Default.BlockPeriod
         };
-        _plugin = new MergePlugin();
-
-        _consensusPlugin = new();
+        _plugin = new MergePlugin(_mergeConfig, _context.ChainSpec);
+        _consensusPlugin = new(_context.ChainSpec);
     }
 
     [TearDown]

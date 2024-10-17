@@ -53,6 +53,7 @@ namespace Nethermind.HealthChecks
         public string Author => "Nethermind";
 
         public bool MustInitialize => true;
+        public bool PluginEnabled => true;
 
         public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
             () => new FreeDiskSpaceChecker(

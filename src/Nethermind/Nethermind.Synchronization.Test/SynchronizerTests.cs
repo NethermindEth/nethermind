@@ -348,27 +348,27 @@ public class SynchronizerTests
             dbProvider.ConfigureServiceCollection(builder);
 
             builder
-                .AddSingleton(dbProvider)
-                .AddSingleton(nodeStorage)
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IBlockTree>(BlockTree)
-                .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton(SyncPeerPool)
-                .AddSingleton<INodeStatsManager>(stats)
-                .AddSingleton(syncConfig)
-                .AddSingleton<IPivot>(pivot)
-                .AddSingleton<IPoSSwitcher>(poSSwitcher)
-                .AddSingleton<IMergeConfig>(mergeConfig)
-                .AddSingleton(invalidChainTracker)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
-                .AddSingleton(new ChainSpec())
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton<IStateReader>(reader)
-                .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton(beaconPivot)
-                .AddSingleton(_logManager);
+                .AddInstance(dbProvider)
+                .AddInstance(nodeStorage)
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance<IBlockTree>(BlockTree)
+                .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddInstance(SyncPeerPool)
+                .AddInstance<INodeStatsManager>(stats)
+                .AddInstance(syncConfig)
+                .AddInstance<IPivot>(pivot)
+                .AddInstance<IPoSSwitcher>(poSSwitcher)
+                .AddInstance<IMergeConfig>(mergeConfig)
+                .AddInstance(invalidChainTracker)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddInstance(new ChainSpec())
+                .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddInstance<IStateReader>(reader)
+                .AddInstance<ISealValidator>(Always.Valid)
+                .AddInstance<IBlockValidator>(Always.Valid)
+                .AddInstance(beaconPivot)
+                .AddInstance(_logManager);
 
             builder.RegisterModule(new SynchronizerModule(syncConfig));
 

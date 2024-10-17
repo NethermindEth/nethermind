@@ -11,11 +11,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceStorePlugin : INethermindPlugin
+public class TraceStorePlugin(ITraceStoreConfig config) : INethermindPlugin
 {
     private const string DbName = "TraceStore";
     private INethermindApi _api = null!;
-    private ITraceStoreConfig _config = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IDb? _db;
     private TraceStorePruner? _pruner;
@@ -25,29 +24,29 @@ public class TraceStorePlugin : INethermindPlugin
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
-    private bool Enabled => _config?.Enabled == true;
+    public bool PluginEnabled => config.Enabled;
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        _config = _api.Config<ITraceStoreConfig>();
+        config = _api.Config<ITraceStoreConfig>();
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 
-        if (Enabled)
+        if (PluginEnabled)
         {
             // Setup serialization
-            _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
+            _traceSerializer = new ParityLikeTraceSerializer(_logManager, config.MaxDepth, config.VerifySerialized);
 
             // Setup DB
             _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured
-            if (_config.BlocksToKeep != 0)
+            if (config.BlocksToKeep != 0)
             {
-                _pruner = new TraceStorePruner(_api.BlockTree!, _db, _config.BlocksToKeep, _logManager);
+                _pruner = new TraceStorePruner(_api.BlockTree!, _db, config.BlocksToKeep, _logManager);
             }
         }
 
@@ -56,12 +55,12 @@ public class TraceStorePlugin : INethermindPlugin
 
     public Task InitNetworkProtocol()
     {
-        if (Enabled)
+        if (PluginEnabled)
         {
-            if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {_config.TraceTypes} traces.");
+            if (_logger.IsInfo) _logger.Info($"Starting TraceStore with {config.TraceTypes} traces.");
 
             // Setup tracing
-            ParityLikeBlockTracer parityTracer = new(_config.TraceTypes);
+            ParityLikeBlockTracer parityTracer = new(config.TraceTypes);
             DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer> dbPersistingTracer =
                 new(parityTracer, _db!, _traceSerializer!, _logManager);
             _api.BlockchainProcessor!.Tracers.Add(dbPersistingTracer);
@@ -73,12 +72,12 @@ public class TraceStorePlugin : INethermindPlugin
 
     public Task InitRpcModules()
     {
-        if (Enabled && _jsonRpcConfig.Enabled)
+        if (PluginEnabled && _jsonRpcConfig.Enabled)
         {
             IRpcModuleProvider apiRpcModuleProvider = _api.RpcModuleProvider!;
             if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
             {
-                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, _config.DeserializationParallelization);
+                TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, config.DeserializationParallelization);
                 apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
             }
         }
@@ -88,7 +87,7 @@ public class TraceStorePlugin : INethermindPlugin
 
     public ValueTask DisposeAsync()
     {
-        if (Enabled)
+        if (PluginEnabled)
         {
             _pruner?.Dispose();
             _db?.Dispose();

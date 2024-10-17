@@ -10,12 +10,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Hive
 {
-    public class HivePlugin : INethermindPlugin
+    public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
     {
         private INethermindApi _api = null!;
-        private IHiveConfig _hiveConfig = null!;
         private ILogger _logger;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
+        public bool PluginEnabled => Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || hiveConfig.Enabled;
 
         public ValueTask DisposeAsync()
         {
@@ -33,17 +33,14 @@ namespace Nethermind.Hive
         public Task Init(INethermindApi api)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
-            _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
             _logger = _api.LogManager.GetClassLogger();
-
-            Enabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || _hiveConfig.Enabled;
 
             return Task.CompletedTask;
         }
 
         public async Task InitNetworkProtocol()
         {
-            if (Enabled)
+            if (PluginEnabled)
             {
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
@@ -73,7 +70,5 @@ namespace Nethermind.Hive
         {
             return Task.CompletedTask;
         }
-
-        private bool Enabled { get; set; }
     }
 }

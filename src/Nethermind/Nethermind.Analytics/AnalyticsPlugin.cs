@@ -12,13 +12,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Analytics
 {
-    public class AnalyticsPlugin : INethermindPlugin
+    public class AnalyticsPlugin(IAnalyticsConfig analyticsConfig, IInitConfig initConfig) : INethermindPlugin
     {
-        private IAnalyticsConfig _analyticsConfig;
         private IList<IPublisher> _publishers;
         private INethermindApi _api;
-
-        private bool _isOn;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -28,19 +25,20 @@ namespace Nethermind.Analytics
 
         public string Author => "Nethermind";
 
+
+        public bool PluginEnabled =>initConfig.WebSocketsEnabled &&
+                                    (analyticsConfig.PluginsEnabled ||
+                                     analyticsConfig.StreamBlocks ||
+                                     analyticsConfig.StreamTransactions);
+
         public Task Init(INethermindApi api)
         {
             _api = api;
             var (getFromAPi, _) = _api.ForInit;
-            _analyticsConfig = getFromAPi.Config<IAnalyticsConfig>();
 
             IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
-            _isOn = initConfig.WebSocketsEnabled &&
-                    (_analyticsConfig.PluginsEnabled ||
-                     _analyticsConfig.StreamBlocks ||
-                     _analyticsConfig.StreamTransactions);
 
-            if (!_isOn)
+            if (!PluginEnabled)
             {
                 if (!initConfig.WebSocketsEnabled)
                 {
@@ -57,7 +55,7 @@ namespace Nethermind.Analytics
 
         private void TxPoolOnNewDiscovered(object sender, TxEventArgs e)
         {
-            if (_analyticsConfig.StreamTransactions)
+            if (analyticsConfig.StreamTransactions)
             {
                 foreach (IPublisher publisher in _publishers)
                 {
@@ -70,12 +68,12 @@ namespace Nethermind.Analytics
         public Task InitNetworkProtocol()
         {
             var (getFromAPi, _) = _api.ForNetwork;
-            if (_isOn)
+            if (PluginEnabled)
             {
                 getFromAPi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
             }
 
-            if (_isOn)
+            if (PluginEnabled)
             {
                 AnalyticsWebSocketsModule webSocketsModule = new(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
                 getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);

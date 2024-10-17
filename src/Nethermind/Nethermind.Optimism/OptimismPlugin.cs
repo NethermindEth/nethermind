@@ -26,6 +26,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
+using Nethermind.Init.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
@@ -34,7 +35,7 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -52,13 +53,20 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
 
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
-
     #region IConsensusPlugin
 
     public string SealEngineType => Core.SealEngineType.Optimism;
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
+
+    public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
+
+    public void ConfigureContainer(ContainerBuilder builder)
+    {
+        builder
+            .AddSingleton<INethermindApi, OptimismNethermindApi>()
+            .AddIStepsFromAssembly(GetType().Assembly);
+    }
 
     public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
     {
@@ -74,13 +82,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     #endregion
 
-    public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-        ILogManager logManager, ChainSpec chainSpec) =>
-        new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
-
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (ShouldRunSteps(api))
+        if (PluginEnabled)
         {
             api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
             Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
@@ -89,7 +93,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
+        if (!PluginEnabled)
             return Task.CompletedTask;
 
         _api = (OptimismNethermindApi)api;
@@ -127,7 +131,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !PluginEnabled)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -154,11 +158,11 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         ContainerBuilder builder = new ContainerBuilder();
         ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
-            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton(_beaconPivot)
-            .AddSingleton(_api.PoSSwitcher)
-            .AddSingleton(_mergeConfig)
-            .AddSingleton(_invalidChainTracker);
+            .AddInstance<IBeaconSyncStrategy>(_beaconSync)
+            .AddInstance(_beaconPivot)
+            .AddInstance(_api.PoSSwitcher)
+            .AddInstance(_mergeConfig)
+            .AddInstance(_invalidChainTracker);
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
@@ -183,7 +187,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !PluginEnabled)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);

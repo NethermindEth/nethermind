@@ -135,7 +135,7 @@ public class InitializeNetwork : IStep
 
             ContainerBuilder builder = new ContainerBuilder();
             _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
+                .AddInstance<IBeaconSyncStrategy>(No.BeaconSync);
             builder.RegisterModule(new SynchronizerModule(_syncConfig));
             IContainer container = builder.Build();
 

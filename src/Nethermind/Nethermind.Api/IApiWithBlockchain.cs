@@ -106,7 +106,7 @@ namespace Nethermind.Api
         {
             return ConfigureContainerBuilderFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+                .AddInstance<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
         }
     }
 }

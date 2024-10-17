@@ -70,22 +70,22 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             ContainerBuilder builder = new ContainerBuilder()
-                .AddSingleton(nodeStorage)
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton(_blockTree)
-                .AddSingleton(_receiptStorage)
-                .AddSingleton(_pool)
-                .AddSingleton<INodeStatsManager>(stats)
-                .AddSingleton<ISyncConfig>(syncConfig)
-                .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton<IPivot>(pivot)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
-                .AddSingleton(new ChainSpec())
-                .AddSingleton(stateReader)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton<ILogManager>(LimboLogs.Instance);
+                .AddInstance(nodeStorage)
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance(_blockTree)
+                .AddInstance(_receiptStorage)
+                .AddInstance(_pool)
+                .AddInstance<INodeStatsManager>(stats)
+                .AddInstance<ISyncConfig>(syncConfig)
+                .AddInstance<IBlockValidator>(Always.Valid)
+                .AddInstance<ISealValidator>(Always.Valid)
+                .AddInstance<IPivot>(pivot)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddInstance(new ChainSpec())
+                .AddInstance(stateReader)
+                .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddInstance<ILogManager>(LimboLogs.Instance);
             dbProvider.ConfigureServiceCollection(builder);
 
             builder.RegisterModule(new SynchronizerModule(syncConfig));

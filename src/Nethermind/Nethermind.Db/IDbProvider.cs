@@ -36,7 +36,7 @@ namespace Nethermind.Db
 
         void ConfigureServiceCollection(ContainerBuilder sc)
         {
-            sc.AddSingleton(this);
+            sc.AddInstance(this);
 
             // TODO: Have hooks that automatically get these
             string[] dbNames = [
@@ -59,7 +59,7 @@ namespace Nethermind.Db
             }
 
             IColumnsDb<ReceiptsColumns> receiptColumnDb = GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
-            sc.AddSingleton<IColumnsDb<ReceiptsColumns>>(receiptColumnDb);
+            sc.AddInstance<IColumnsDb<ReceiptsColumns>>(receiptColumnDb);
             sc.AddKeyedSingleton<ITunableDb>(DbNames.Receipts, receiptColumnDb as ITunableDb ?? new NoopTunableDb());
         }
     }

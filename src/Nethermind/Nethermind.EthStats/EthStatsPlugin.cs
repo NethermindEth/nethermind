@@ -18,9 +18,8 @@ using ILogger = Nethermind.Logging.InterfaceLogger;
 
 namespace Nethermind.EthStats;
 
-public class EthStatsPlugin : INethermindPlugin
+public class EthStatsPlugin(IEthStatsConfig ethStatsConfig) : INethermindPlugin
 {
-    private IEthStatsConfig _ethStatsConfig = null!;
     private IEthStatsClient _ethStatsClient = null!;
     private IEthStatsIntegration _ethStatsIntegration = null!;
     private INethermindApi _api = null!;
@@ -31,6 +30,7 @@ public class EthStatsPlugin : INethermindPlugin
     public string Name => "EthStats";
     public string Description => "Ethereum Statistics";
     public string Author => "Nethermind";
+    public bool PluginEnabled => ethStatsConfig.Enabled;
 
     public ValueTask DisposeAsync()
     {
@@ -42,10 +42,10 @@ public class EthStatsPlugin : INethermindPlugin
     {
         _api = nethermindApi;
         var (getFromAPi, _) = _api.ForInit;
-        _ethStatsConfig = getFromAPi.Config<IEthStatsConfig>();
+        ethStatsConfig = getFromAPi.Config<IEthStatsConfig>();
 
         IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
-        _isOn = _ethStatsConfig.Enabled;
+        _isOn = ethStatsConfig.Enabled;
         _logger = getFromAPi.LogManager.GetClassLogger();
 
         if (!_isOn)
@@ -72,10 +72,10 @@ public class EthStatsPlugin : INethermindPlugin
 
         if (_isOn)
         {
-            string instanceId = $"{_ethStatsConfig.Name}-{Keccak.Compute(getFromAPi.Enode!.Info)}";
+            string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(getFromAPi.Enode!.Info)}";
             if (_logger.IsInfo)
             {
-                _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {_ethStatsConfig.Server}");
+                _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
             }
             MessageSender sender = new(instanceId, _api.LogManager);
             const int reconnectionInterval = 5000;
@@ -88,22 +88,22 @@ public class EthStatsPlugin : INethermindPlugin
             string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";
 
             _ethStatsClient = new EthStatsClient(
-                _ethStatsConfig.Server,
+                ethStatsConfig.Server,
                 reconnectionInterval,
                 sender,
                 _api.LogManager);
 
             _ethStatsIntegration = new EthStatsIntegration(
-                _ethStatsConfig.Name!,
+                ethStatsConfig.Name!,
                 node,
                 port,
                 network,
                 protocol,
                 api,
                 client,
-                _ethStatsConfig.Contact!,
+                ethStatsConfig.Contact!,
                 canUpdateHistory,
-                _ethStatsConfig.Secret!,
+                ethStatsConfig.Secret!,
                 _ethStatsClient,
                 sender,
                 getFromAPi.TxPool!,
@@ -112,7 +112,7 @@ public class EthStatsPlugin : INethermindPlugin
                 getFromAPi.GasPriceOracle!,
                 getFromAPi.EthSyncingInfo!,
                 initConfig.IsMining,
-                TimeSpan.FromSeconds(_ethStatsConfig.SendInterval),
+                TimeSpan.FromSeconds(ethStatsConfig.SendInterval),
                 getFromAPi.LogManager);
 
             await _ethStatsIntegration.InitAsync();

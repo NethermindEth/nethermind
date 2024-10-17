@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
@@ -118,25 +120,28 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             return base.Build(specProvider, initialValues, addBlockOnStart);
         }
 
+        protected override void ConfigureContainer(ContainerBuilder builder)
+        {
+            base.ConfigureContainer(builder);
+            builder.RegisterInstance(new ChainSpec
+            {
+                AuRa = new()
+                {
+                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                },
+                Parameters = new()
+            });
+            builder.RegisterModule(new AuraModule());
+        }
+
         protected override IBlockProcessor CreateBlockProcessor()
         {
-            _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
-                    new ChainSpec
-                    {
-                        AuRa = new()
-                        {
-                            WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                        },
-                        Parameters = new()
-                    })
-            {
-                BlockTree = BlockTree,
-                DbProvider = DbProvider,
-                WorldStateManager = WorldStateManager,
-                SpecProvider = SpecProvider,
-                TransactionComparerProvider = TransactionComparerProvider,
-                TxPool = TxPool
-            };
+            _api = Container.Resolve<AuRaNethermindApi>();
+            _api.BlockTree = BlockTree;
+            _api.DbProvider = DbProvider;
+            _api.WorldStateManager = WorldStateManager;
+            _api.TransactionComparerProvider = TransactionComparerProvider;
+            _api.TxPool = TxPool;
 
             WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.AuRa, _api.AbiEncoder);
             WithdrawalProcessor = new AuraWithdrawalProcessor(

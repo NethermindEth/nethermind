@@ -363,24 +363,24 @@ namespace Nethermind.Synchronization.Test
 
             ContainerBuilder builder = new ContainerBuilder();
             builder
-                .AddSingleton(dbProvider)
-                .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IBlockTree>(tree)
-                .AddSingleton(NullReceiptStorage.Instance)
-                .AddSingleton<ISyncPeerPool>(syncPeerPool)
-                .AddSingleton<INodeStatsManager>(nodeStatsManager)
-                .AddSingleton(syncConfig)
-                .AddSingleton<IBlockValidator>(blockValidator)
-                .AddSingleton<ISealValidator>(sealValidator)
-                .AddSingleton<IPivot>(pivot)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
-                .AddSingleton(new ChainSpec())
-                .AddSingleton<IStateReader>(stateReader)
-                .AddSingleton<IReceiptStorage>(receiptStorage)
-                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-                .AddSingleton<ILogManager>(logManager);
+                .AddInstance(dbProvider)
+                .AddInstance<INodeStorage>(new NodeStorage(dbProvider.StateDb))
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance<IBlockTree>(tree)
+                .AddInstance(NullReceiptStorage.Instance)
+                .AddInstance<ISyncPeerPool>(syncPeerPool)
+                .AddInstance<INodeStatsManager>(nodeStatsManager)
+                .AddInstance(syncConfig)
+                .AddInstance<IBlockValidator>(blockValidator)
+                .AddInstance<ISealValidator>(sealValidator)
+                .AddInstance<IPivot>(pivot)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddInstance(new ChainSpec())
+                .AddInstance<IStateReader>(stateReader)
+                .AddInstance<IReceiptStorage>(receiptStorage)
+                .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddInstance<ILogManager>(logManager);
             dbProvider.ConfigureServiceCollection(builder);
             builder.RegisterModule(new SynchronizerModule(syncConfig));
             IContainer container = builder.Build();

@@ -21,17 +21,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliquePlugin : IConsensusPlugin
+    public class CliquePlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         public string Name => "Clique";
 
         public string Description => "Clique Consensus Engine";
 
         public string Author => "Nethermind";
+
+        public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {

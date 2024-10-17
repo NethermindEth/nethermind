@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 
 namespace Nethermind.Api.Extensions;
 
@@ -23,4 +24,7 @@ public interface INethermindPlugin : IAsyncDisposable
     Task InitRpcModules() => Task.CompletedTask;
 
     bool MustInitialize => false;
+
+    bool PluginEnabled { get; }
+    void ConfigureContainer(ContainerBuilder builder) {}
 }

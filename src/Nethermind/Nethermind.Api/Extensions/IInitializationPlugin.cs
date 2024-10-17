@@ -9,11 +9,4 @@ namespace Nethermind.Api.Extensions;
 /// </summary>
 public interface IInitializationPlugin : INethermindPlugin
 {
-    /// <summary>
-    /// This method will be called on the plugin instance
-    /// decide whether or not we need to run initialization steps
-    /// defined in its assembly. It receives the api to be able to
-    /// look at the config.
-    /// </summary>
-    bool ShouldRunSteps(INethermindApi api);
 }

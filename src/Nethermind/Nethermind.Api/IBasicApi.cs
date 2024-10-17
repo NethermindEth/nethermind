@@ -28,25 +28,25 @@ namespace Nethermind.Api
         DisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
-        ChainSpec ChainSpec { get; set; }
-        IConfigProvider ConfigProvider { get; set; }
+        ChainSpec ChainSpec { get; }
+        IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
-        IJsonSerializer EthereumJsonSerializer { get; set; }
+        IJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
-        ILogManager LogManager { get; set; }
+        ILogManager LogManager { get; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
-        string SealEngineType { get; set; }
-        ISpecProvider? SpecProvider { get; set; }
+        string SealEngineType { get; }
+        ISpecProvider? SpecProvider { get; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
-        IProcessExitSource? ProcessExit { get; set; }
+        IProcessExitSource? ProcessExit { get; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
@@ -63,7 +63,7 @@ namespace Nethermind.Api
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
+                .AddInstance(ConfigProvider.GetConfig<ISyncConfig>());
 
             DbProvider!.ConfigureServiceCollection(builder);
 

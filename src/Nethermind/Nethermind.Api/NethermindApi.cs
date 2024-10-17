@@ -64,15 +64,12 @@ namespace Nethermind.Api
 {
     public class NethermindApi : INethermindApi
     {
-        public NethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
+        public NethermindApi(ILifetimeScope lifetimeScope)
         {
-            ConfigProvider = configProvider;
-            EthereumJsonSerializer = jsonSerializer;
-            LogManager = logManager;
-            ChainSpec = chainSpec;
-            CryptoRandom = new CryptoRandom();
-            DisposeStack.Push(CryptoRandom);
+            BaseContainer = lifetimeScope;
         }
+
+        public ILifetimeScope BaseContainer { get; set; }
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
@@ -124,8 +121,8 @@ namespace Nethermind.Api
         public IBlockValidator? BlockValidator { get; set; }
         public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
-        public IConfigProvider ConfigProvider { get; set; }
-        public ICryptoRandom CryptoRandom { get; }
+        public IConfigProvider ConfigProvider => BaseContainer.Resolve<IConfigProvider>();
+        public ICryptoRandom CryptoRandom => BaseContainer.Resolve<ICryptoRandom>();
         public IDbProvider? DbProvider { get; set; }
         public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
@@ -145,11 +142,11 @@ namespace Nethermind.Api
             new BuildBlocksWhenRequested();
 
         public IIPResolver? IpResolver { get; set; }
-        public IJsonSerializer EthereumJsonSerializer { get; set; }
+        public IJsonSerializer EthereumJsonSerializer => BaseContainer.Resolve<IJsonSerializer>();
         public IKeyStore? KeyStore { get; set; }
         public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
-        public ILogManager LogManager { get; set; }
+        public ILogManager LogManager => BaseContainer.Resolve<ILogManager>();
         public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
@@ -168,7 +165,7 @@ namespace Nethermind.Api
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
-        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
+        public string SealEngineType => ChainSpec.SealEngineType;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
         private ISealEngine? _sealEngine;
         public ISealEngine SealEngine
@@ -185,7 +182,7 @@ namespace Nethermind.Api
         }
 
         public ISessionMonitor? SessionMonitor { get; set; }
-        public ISpecProvider? SpecProvider { get; set; }
+        public ISpecProvider? SpecProvider => BaseContainer.Resolve<ISpecProvider>();
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
 
@@ -237,12 +234,12 @@ namespace Nethermind.Api
         /// </summary>
         public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
-        public ChainSpec ChainSpec { get; set; }
+        public ChainSpec ChainSpec => BaseContainer.Resolve<ChainSpec>();
         public DisposableStack DisposeStack { get; } = new();
-        public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
+        public IReadOnlyList<INethermindPlugin> Plugins => BaseContainer.Resolve<IReadOnlyList<INethermindPlugin>>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
-        public IProcessExitSource? ProcessExit { get; set; }
+        public IProcessExitSource? ProcessExit => BaseContainer.Resolve<IProcessExitSource>();
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
 
         public IContainer? ApiWithNetworkServiceContainer { get; set; }

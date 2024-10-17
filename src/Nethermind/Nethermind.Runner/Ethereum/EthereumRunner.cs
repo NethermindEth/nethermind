@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -18,38 +14,24 @@ namespace Nethermind.Runner.Ethereum
     public class EthereumRunner
     {
         private readonly INethermindApi _api;
-
         private readonly ILogger _logger;
+        private readonly EthereumStepsManager _stepManager;
 
-        public EthereumRunner(INethermindApi api)
+        public EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILogger logger)
         {
             _api = api;
-            _logger = api.LogManager.GetClassLogger();
+            _stepManager = stepsManager;
+            _logger = logger;
         }
 
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
-            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetStepsAssemblies(_api));
-            EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
-            await stepsManager.InitializeAll(cancellationToken);
+            await _stepManager.InitializeAll(cancellationToken);
 
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
-        }
-
-        private IEnumerable<Assembly> GetStepsAssemblies(INethermindApi api)
-        {
-            yield return typeof(IStep).Assembly;
-            yield return GetType().Assembly;
-            IEnumerable<IInitializationPlugin> enabledInitializationPlugins =
-                _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
-
-            foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
-            {
-                yield return initializationPlugin.GetType().Assembly;
-            }
         }
 
         public async Task StopAsync()
@@ -65,11 +47,6 @@ namespace Nethermind.Runner.Ethereum
             Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
             Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping rlpx peer");
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, syncPeerPoolTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
-
-            foreach (INethermindPlugin plugin in _api.Plugins)
-            {
-                await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
-            }
 
             while (_api.DisposeStack.Count != 0)
             {

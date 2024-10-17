@@ -7,10 +7,11 @@ using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashPlugin : IConsensusPlugin
+    public class EthashPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         private INethermindApi _nethermindApi;
 
@@ -21,6 +22,8 @@ namespace Nethermind.Consensus.Ethash
         public string Description => "Ethash Consensus";
 
         public string Author => "Nethermind";
+
+        public bool PluginEnabled => chainSpec.SealEngineType == SealEngineType;
 
         public Task Init(INethermindApi nethermindApi)
         {

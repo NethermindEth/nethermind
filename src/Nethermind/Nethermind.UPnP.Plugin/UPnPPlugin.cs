@@ -9,7 +9,7 @@ using Open.Nat;
 
 namespace Nethermind.UPnP.Plugin;
 
-public class UPnPPlugin : INethermindPlugin
+public class UPnPPlugin(INetworkConfig networkConfig) : INethermindPlugin
 {
     public string Name => "UPnP";
     public string Description => "Automatic port forwarding with UPnP";
@@ -22,12 +22,14 @@ public class UPnPPlugin : INethermindPlugin
     private INetworkConfig _networkConfig = new NetworkConfig();
     private ILogger _logger = NullLogger.Instance;
 
+    public bool PluginEnabled => networkConfig.EnableUPnP;
+
     public Task Init(INethermindApi api)
     {
         _networkConfig = api.Config<INetworkConfig>();
         _logger = api.LogManager.GetClassLogger<UPnPPlugin>();
 
-        if (_networkConfig.EnableUPnP)
+        if (PluginEnabled)
         {
             Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
         }

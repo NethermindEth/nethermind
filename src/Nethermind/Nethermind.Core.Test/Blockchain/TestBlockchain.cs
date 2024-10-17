@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -33,6 +35,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Runner.Modules;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
@@ -127,11 +130,18 @@ public class TestBlockchain : IDisposable
 
     private PreBlockCaches PreBlockCaches { get; } = new();
 
+    protected IContainer Container { get; private set; } = null!;
+
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
+
+        ContainerBuilder builder = new ContainerBuilder();
+        ConfigureContainer(builder);
+        Container = builder.Build();
+
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
@@ -248,6 +258,17 @@ public class TestBlockchain : IDisposable
             await AddBlocksOnStart();
 
         return this;
+    }
+
+    protected virtual void ConfigureContainer(ContainerBuilder builder)
+    {
+        builder.RegisterModule(new BaseModule());
+        builder.RegisterModule(new CoreModule());
+
+        builder
+            .AddInstance(SpecProvider)
+            .AddInstance<ILogManager>(LogManager)
+            .AddInstance<IConfigProvider>(new ConfigProvider());
     }
 
     private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)
