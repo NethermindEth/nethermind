@@ -42,7 +42,7 @@ public abstract class GethLikeTxTracer : TxTracer
 
     public override void ReportTransaction(Transaction tx)
     {
-        Trace.TxHash = tx.Hash!;
+        Trace.TransactionHash = tx.Hash!;
     }
 
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)

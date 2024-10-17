@@ -177,10 +177,9 @@ public class GethStyleTracer : IGethStyleTracer
         ArgumentNullException.ThrowIfNull(options);
 
         var block = _badBlockStore
-            .GetAll()
-            .Where(b => b.Hash == blockHash)
-            .FirstOrDefault()
-            ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+                        .GetAll()
+                        .FirstOrDefault(b => b.Hash == blockHash)
+                    ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
 
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 

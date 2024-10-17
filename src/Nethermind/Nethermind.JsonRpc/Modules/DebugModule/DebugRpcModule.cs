@@ -156,7 +156,7 @@ public class DebugRpcModule : IDebugRpcModule
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 
-    public ResultWrapper<IReadOnlyCollection<GethLikeTxTraceFull>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;
@@ -165,19 +165,19 @@ public class DebugRpcModule : IDebugRpcModule
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
 
             if (blockTrace is null) // remove - never null?
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceFull>>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceFull>>.Success(blockTrace.Select(trace => new GethLikeTxTraceFull(trace)).ToList());
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>>.Success(blockTrace.Select(trace => new GethLikeTxTraceResponseDebugTraceBlock(trace)).ToList());
         }
         catch (RlpException)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceFull>>.Fail($"Error decoding block rlp: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>>.Fail($"Error decoding block rlp: {blockRlp.ToHexString()}", ErrorCodes.InvalidInput);
         }
         catch (ArgumentNullException)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceFull>>.Fail($"Couldn't find any block", ErrorCodes.InvalidInput);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>>.Fail($"Couldn't find any block", ErrorCodes.InvalidInput);
         }
     }
 

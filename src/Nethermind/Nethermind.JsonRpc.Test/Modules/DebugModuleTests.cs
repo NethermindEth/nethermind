@@ -418,7 +418,7 @@ public class DebugModuleTests
     public void TraceBlock_Success()
     {
         var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
-        var tracesClone = TestItem.CloneObject(traces).Select(trace => new GethLikeTxTraceFull(trace)).ToArray();
+        var tracesClone = TestItem.CloneObject(traces).Select(trace => new GethLikeTxTraceResponseDebugTraceBlock(trace)).ToArray();
         var blockRlp = new Rlp(TestItem.RandomDataA);
 
         debugBridge
@@ -427,7 +427,7 @@ public class DebugModuleTests
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
-        var expected = ResultWrapper<GethLikeTxTraceFull[]>.Success(tracesClone);
+        var expected = ResultWrapper<GethLikeTxTraceResponseDebugTraceBlock[]>.Success(tracesClone);
 
         actual.Should().BeEquivalentTo(expected);
     }
@@ -443,7 +443,7 @@ public class DebugModuleTests
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
-        var expected = ResultWrapper<GethLikeTxTraceFull[]>.Fail($"Trace is null for RLP {blockRlp.Bytes.ToHexString()}", ErrorCodes.ResourceNotFound);
+        var expected = ResultWrapper<GethLikeTxTraceResponseDebugTraceBlock[]>.Fail($"Trace is null for RLP {blockRlp.Bytes.ToHexString()}", ErrorCodes.ResourceNotFound);
 
         actual.Should().BeEquivalentTo(expected);
     }

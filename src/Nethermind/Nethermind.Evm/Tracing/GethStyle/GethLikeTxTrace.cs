@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -24,7 +24,8 @@ public class GethLikeTxTrace : IDisposable
 
     public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
-    public Hash256 TxHash { get; set; }
+    [JsonIgnore]
+    public Hash256 TransactionHash { get; set; } // here simply for debug_traceblock endpoint.
 
     public long Gas { get; set; }
 
@@ -42,13 +43,13 @@ public class GethLikeTxTrace : IDisposable
     }
 }
 
-public class GethLikeTxTraceResult
+public class GethLikeTxTraceResultDebugTraceBlock
 // doing this instead of making a change to the above structure because of the ripple effect to other endpoints!
 // if that's preferred then all the endpoints responses would have to be changed - prefered option and initial route I took
 // before switching to this, as it was time-consuming and would have required a lot of external input from team memberss!
 {
 
-    public GethLikeTxTraceResult(GethLikeTxTrace trace)
+    public GethLikeTxTraceResultDebugTraceBlock(GethLikeTxTrace trace)
     {
         Gas = trace.Gas;
         Failed = trace.Failed;
@@ -57,9 +58,10 @@ public class GethLikeTxTraceResult
         CustomTracerResult = trace.CustomTracerResult;
     }
 
-    public GethLikeTxTraceResult() { }
+    public GethLikeTxTraceResultDebugTraceBlock() { }
 
     // place converter annotation here, zero ripple effect as it's not used by other endpoints (solves item 3 headache)
+    [JsonConverter(typeof(LongRawJsonConverter))]
     public long Gas { get; set; }
 
     public bool Failed { get; set; }
@@ -72,17 +74,18 @@ public class GethLikeTxTraceResult
     public GethLikeCustomTrace? CustomTracerResult { get; set; }
 }
 
-public class GethLikeTxTraceFull // name isn't really to be desired might change.
+public class GethLikeTxTraceResponseDebugTraceBlock
 {
-    public Hash256 TxHash { get; set; }
-    public GethLikeTxTraceResult Result { get; set; }
+    [JsonPropertyName("txHash")]
+    public Hash256 TransactionHash { get; set; }
+    public GethLikeTxTraceResultDebugTraceBlock Result { get; set; }
 
-    public GethLikeTxTraceFull() {}
+    public GethLikeTxTraceResponseDebugTraceBlock() {}
 
-    public GethLikeTxTraceFull(GethLikeTxTrace trace)
+    public GethLikeTxTraceResponseDebugTraceBlock(GethLikeTxTrace trace)
     {
         Result = new (trace);
-        TxHash = trace.TxHash;
+        TransactionHash = trace.TransactionHash;
     }
 
 }
