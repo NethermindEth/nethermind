@@ -316,7 +316,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_setEngineSigner()
         {
-            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
             _signerStore.Address.Should().Be(TestItem.AddressA);
@@ -336,7 +336,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_clearEngineSigner()
         {
-            await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
+            await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
             string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             serialized.Should().Be(expectedResult);

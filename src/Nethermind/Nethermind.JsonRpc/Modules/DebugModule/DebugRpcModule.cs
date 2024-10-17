@@ -18,11 +18,15 @@ using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Core.Specs;
+
 using Nethermind.Facade.Eth;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Newtonsoft.Json;
 using Nethermind.State;
+
+using Nethermind.Facade.Eth.RpcTransaction;
+
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
