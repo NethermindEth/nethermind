@@ -106,6 +106,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             state.Commit(false);
+
+            StitchBoundaries(sortedBoundaryList, state, Keccak.Zero);
+
+            state.Commit(false);
+
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
@@ -148,7 +153,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 childNode.ResolveNode(NullTrieNodeResolver.Instance, in emptyPath);
 
                                 TreePath inlineChild = childPath.Append(childNode.Key);
-                                state.SetStorage(accountHash, inlineChild.Path, childNode.Value);
+                                state.SetStorage(accountHash, inlineChild.Path, new Rlp.ValueDecoderContext(childNode.Value).DecodeByteArray());
                             }
                         }
                     }
@@ -252,6 +257,10 @@ namespace Nethermind.Synchronization.SnapSync
                 state.Discard();
                 return (AddRangeResult.DifferentRootHash, true);
             }
+
+            state.Commit(false);
+
+            StitchBoundaries(sortedBoundaryList, state, account.Path);
 
             state.Commit(false);
 
@@ -408,6 +417,78 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             return dict;
+        }
+
+        private static void StitchBoundaries(List<(TrieNode, TreePath)> sortedBoundaryList, IRawState rawState, ValueHash256 accountHash)
+        {
+            if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
+            {
+                return;
+            }
+            for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
+            {
+                (TrieNode node, TreePath path) = sortedBoundaryList[i];
+
+                if (accountHash == Keccak.Zero && path == TreePath.Empty)
+                    continue;
+
+                if (!rawState.IsPersisted(accountHash, path.Span, path.Length))
+                {
+                    if (node.IsExtension)
+                    {
+                        TreePath childPath = path.Append(node.Key);
+                        if (rawState.IsPersisted(accountHash, childPath.Span, childPath.Length))
+                        {
+                            rawState.CreateProofExtension(accountHash, childPath.Span, path.Length, node.Key.Length, true);
+                        }
+                    }
+
+                    if (node.IsBranch)
+                    {
+                        List<byte> children = new List<byte>();
+                        List<Hash256?> childHashes = new List<Hash256?>();
+                        bool shouldPersist = true;
+
+                        TreePath emptyPath = TreePath.Empty;
+                        for (byte ci = 0; ci <= 15; ci++)
+                        {
+                            TreePath childPath = path.Append(ci);
+                            TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, ci);
+                            if (childNode is not null)
+                            {
+                                children.Add(ci);
+                                childHashes.Add(childNode.Keccak);
+
+                                //inline data - assume to be persisted
+                                if (childNode.HasRlp && childNode.RlpStream.Length < 32)
+                                    continue;
+
+                                if (childNode.Keccak == null)
+                                {
+                                    childNode.ResolveNode(NullTrieNodeResolver.Instance, in emptyPath);
+                                    childNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath, path == TreePath.Empty);
+                                }
+
+                                ValueHash256 existingHash = accountHash == Keccak.Zero ?
+                                    rawState.GetHash(childPath.Span, childPath.Length, false) :
+                                    rawState.GetStorageHash(accountHash, childPath.Span, childPath.Length, false);
+
+                                if (existingHash != childNode.Keccak)
+                                {
+                                    shouldPersist = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (shouldPersist)
+                        {
+                            rawState.CreateProofBranch(accountHash, path.Span, path.Length, children.ToArray(),
+                                childHashes.ToArray(), true);
+                        }
+                    }
+                }
+            }
         }
     }
 }
