@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -21,6 +22,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -30,6 +32,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -329,6 +332,25 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
+            ContainerBuilder builder = new ContainerBuilder();
+            builder
+                .AddSingleton<IPayloadPreparationService>(payloadPreparationService)
+                .AddSingleton<IMergeConfig>(_mergeConfig)
+                .AddSingleton<IPoSSwitcher>(_poSSwitcher)
+                .AddSingleton<IBeaconPivot>(_beaconPivot)
+                .AddSingleton<IBlockCacheService>(_blockCacheService)
+                .AddSingleton<IInvalidChainTracker>(_invalidChainTracker)
+                .AddSingleton<IManualBlockFinalizationManager>(_blockFinalizationManager)
+                .AddSingleton<IMergeSyncController>(_beaconSync)
+                .AddSingleton<IPeerRefresher>(_peerRefresher)
+                .AddSingleton<IBeaconSyncStrategy>(_beaconSync);
+
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder);
+            builder.RegisterModule(new MergeRpcModule(_api.Config<IInitConfig>()));
+            IContainer container = builder.Build();
+            _api.DisposeStack.Push((IAsyncDisposable)container);
+
+            /*
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -374,13 +396,54 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.SpecProvider,
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);
+                */
 
+            IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
             RegisterEngineRpcModule(engineRpcModule);
 
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
 
         return Task.CompletedTask;
+    }
+
+    private class MergeRpcModule(IInitConfig initConfig) : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            builder
+                .Add<IAsyncHandler<byte[], ExecutionPayload?>, GetPayloadV1Handler>()
+                .Add<IAsyncHandler<byte[], GetPayloadV2Result?>, GetPayloadV2Handler>()
+                .Add<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
+                .Add<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
+                .Add<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
+                .Add<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
+                .Add<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>,
+                    GetPayloadBodiesByHashV1Handler>()
+                .Add<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
+                .Add<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>,
+                    GetPayloadBodiesByHashV2Handler>()
+                .Add<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+                .Add<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>,
+                    ExchangeTransitionConfigurationV1Handler>()
+                .Add<IHandler<IEnumerable<string>, IEnumerable<string>>, ExchangeCapabilitiesHandler>()
+                .Add<IAsyncHandler<byte[][], GetBlobsV1Result>, GetBlobsHandler>()
+                .AddSingleton<GCKeeper>()
+
+                // And finally
+                .Add<IEngineRpcModule, EngineRpcModule>();
+
+            if (initConfig.DisableGcOnNewPayload)
+            {
+                builder.Add<IGCStrategy, NoSyncGcRegionStrategy>();
+            }
+            else
+            {
+                builder.AddSingleton<IGCStrategy>(NoGCStrategy.Instance);
+            }
+        }
     }
 
     protected virtual void RegisterEngineRpcModule(IEngineRpcModule engineRpcModule)

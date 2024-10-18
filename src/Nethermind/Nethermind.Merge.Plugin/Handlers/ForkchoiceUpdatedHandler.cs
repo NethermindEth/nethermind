@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -50,6 +51,41 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly bool _simulateBlockProduction;
     private readonly ulong _secondsPerSlot;
     private readonly ISyncPeerPool _syncPeerPool;
+
+    public ForkchoiceUpdatedHandler(
+        IBlockTree blockTree,
+        IManualBlockFinalizationManager manualBlockFinalizationManager,
+        IPoSSwitcher poSSwitcher,
+        IPayloadPreparationService payloadPreparationService,
+        IBlockProcessingQueue processingQueue,
+        IBlockCacheService blockCacheService,
+        IInvalidChainTracker invalidChainTracker,
+        IMergeSyncController mergeSyncController,
+        IBeaconPivot beaconPivot,
+        IPeerRefresher peerRefresher,
+        ISpecProvider specProvider,
+        ISyncPeerPool syncPeerPool,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig,
+        IMergeConfig mergeConfig)
+        : this (
+            blockTree,
+            manualBlockFinalizationManager,
+            poSSwitcher,
+            payloadPreparationService,
+            processingQueue,
+            blockCacheService,
+            invalidChainTracker,
+            mergeSyncController,
+            beaconPivot,
+            peerRefresher,
+            specProvider,
+            syncPeerPool,
+            logManager,
+            blocksConfig.SecondsPerSlot,
+            mergeConfig.SimulateBlockProduction)
+    {
+    }
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,

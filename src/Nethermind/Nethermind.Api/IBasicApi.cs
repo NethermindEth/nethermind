@@ -63,7 +63,8 @@ namespace Nethermind.Api
         {
             builder
                 .AddPropertiesFrom<IBasicApi>(this)
-                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>());
+                .AddSingleton(ConfigProvider.GetConfig<ISyncConfig>())
+                .AddSingleton(ConfigProvider.GetConfig<IBlocksConfig>());
 
             DbProvider!.ConfigureServiceCollection(builder);
 
