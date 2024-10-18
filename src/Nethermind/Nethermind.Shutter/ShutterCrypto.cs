@@ -12,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Merkleization;
 using System.Text;
 using Nethermind.Core.Collections;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Shutter;
 
@@ -37,6 +38,7 @@ public static class ShutterCrypto
 
     public class ShutterCryptoException(string message, Exception? innerException = null) : Exception(message, innerException);
 
+    [SkipLocalsInit]
     public static void ComputeIdentity(G1 p, scoped ReadOnlySpan<byte> identityPrefix, in Address sender)
     {
         Span<byte> preimage = stackalloc byte[52];
@@ -97,18 +99,19 @@ public static class ShutterCrypto
         }
     }
 
-    public static void RecoverSigma(out Span<byte> res, EncryptedMessage encryptedMessage, G1Affine decryptionKey)
+    public static void RecoverSigma(out Span<byte> sigma, EncryptedMessage encryptedMessage, G1Affine decryptionKey)
     {
         using ArrayPoolList<long> buf = new(GT.Sz, GT.Sz);
         GT p = new(buf.AsSpan());
         p.MillerLoop(encryptedMessage.C1.ToAffine(), decryptionKey);
-        res = Hash2(p); // key
-        res.Xor(encryptedMessage.C2);
+        sigma = Hash2(p); // key
+        sigma.Xor(encryptedMessage.C2);
     }
 
-    public static void ComputeBlockKeys(Span<byte> res, ReadOnlySpan<byte> sigma, int n)
+    [SkipLocalsInit]
+    public static void ComputeBlockKeys(Span<byte> blockKeys, ReadOnlySpan<byte> sigma, int n)
     {
-        if (res.Length != 32 * n)
+        if (blockKeys.Length != 32 * n)
         {
             throw new ArgumentException("Block keys buffer was the wrong size.");
         }
@@ -132,7 +135,7 @@ public static class ShutterCrypto
             sigma.CopyTo(preimage);
             suffix[(4 - suffixLength)..4].CopyTo(preimage[32..]);
 
-            Hash4(preimage).Bytes.CopyTo(res[(i * 32)..]);
+            Hash4(preimage).Bytes.CopyTo(blockKeys[(i * 32)..]);
         }
     }
 
@@ -156,7 +159,6 @@ public static class ShutterCrypto
         return HashBytesToBlock(preimage);
     }
 
-    // res should be intialised to one
     public static void GTExp(ref GT x, UInt256 exp)
     {
         if (exp == 0)
@@ -178,6 +180,7 @@ public static class ShutterCrypto
         }
     }
 
+    [SkipLocalsInit]
     public static bool CheckDecryptionKey(G1Affine decryptionKey, G2Affine eonPublicKey, G1Affine identity)
     {
         int len = GT.Sz * 2;
@@ -188,8 +191,6 @@ public static class ShutterCrypto
         p2.MillerLoop(eonPublicKey, identity);
         return GT.FinalVerify(p1, p2);
     }
-
-    private static readonly Ecdsa _ecdsa = new();
 
     public static bool CheckSlotDecryptionIdentitiesSignature(
         ulong instanceId,
@@ -215,6 +216,7 @@ public static class ShutterCrypto
         return expectedPubkey is not null && keyperAddress == expectedPubkey.Address;
     }
 
+    [SkipLocalsInit]
     public static bool CheckValidatorRegistrySignature(ReadOnlySpan<byte> pkBytes, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
     {
         BlsSigner.Signature sig = new(sigBytes);
@@ -255,6 +257,8 @@ public static class ShutterCrypto
         return encoded;
     }
 
+    private static readonly Ecdsa _ecdsa = new();
+
     private static G2 ComputeC1(UInt256 r)
         => G2.Generator().Mult(r.ToLittleEndian());
 
@@ -284,37 +288,37 @@ public static class ShutterCrypto
         GT p = new(buf.AsSpan());
         p.MillerLoop(eonKey, identity);
         GTExp(ref p, r);
-        Span<byte> res = Hash2(p); //key
-        res.Xor(sigma);
-        return res;
+        Span<byte> c2 = Hash2(p); //key
+        c2.Xor(sigma);
+        return c2;
     }
 
-    private static void ComputeC3(Span<byte> res, scoped ReadOnlySpan<byte> msgBlocks, ReadOnlySpan<byte> sigma)
+    private static void ComputeC3(Span<byte> c3, scoped ReadOnlySpan<byte> msgBlocks, ReadOnlySpan<byte> sigma)
     {
-        // res = keys ^ msgs
-        ComputeBlockKeys(res, sigma, msgBlocks.Length / 32);
-        res.Xor(msgBlocks);
+        // c3 = keys ^ msgs
+        ComputeBlockKeys(c3, sigma, msgBlocks.Length / 32);
+        c3.Xor(msgBlocks);
     }
 
     private static int PaddedLength(ReadOnlySpan<byte> bytes)
         => bytes.Length + (32 - (bytes.Length % 32));
 
-    private static Span<byte> PadAndSplit(Span<byte> res, scoped ReadOnlySpan<byte> bytes)
+    private static Span<byte> PadAndSplit(Span<byte> paddedBytes, scoped ReadOnlySpan<byte> bytes)
     {
         int n = 32 - (bytes.Length % 32);
-        bytes.CopyTo(res);
-        res[bytes.Length..].Fill((byte)n);
-        return res;
+        bytes.CopyTo(paddedBytes);
+        paddedBytes[bytes.Length..].Fill((byte)n);
+        return paddedBytes;
     }
 
-    private static void ComputeR(scoped ReadOnlySpan<byte> sigma, scoped ReadOnlySpan<byte> msg, out UInt256 res)
+    private static void ComputeR(scoped ReadOnlySpan<byte> sigma, scoped ReadOnlySpan<byte> msg, out UInt256 r)
     {
         int len = 32 + msg.Length;
         using ArrayPoolList<byte> buf = new(len, len);
         Span<byte> preimage = buf.AsSpan();
         sigma.CopyTo(preimage);
         msg.CopyTo(preimage[32..]);
-        Hash3(preimage, out res);
+        Hash3(preimage, out r);
     }
 
     internal static ValueHash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)

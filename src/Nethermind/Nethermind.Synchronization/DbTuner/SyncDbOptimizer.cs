@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Synchronization.FastBlocks;
@@ -24,26 +26,32 @@ public class SyncDbTuner
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,
         ISyncFeed<BodiesSyncBatch>? bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch>? receiptSyncFeed,
-        ITunableDb? stateDb,
-        ITunableDb? codeDb,
-        ITunableDb? blockDb,
-        ITunableDb? receiptDb
+        [KeyFilter(DbNames.State)] ITunableDb? stateDb,
+        [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
+        [KeyFilter(DbNames.Blocks)] ITunableDb? blockDb,
+        [KeyFilter(DbNames.Receipts)] ITunableDb? receiptDb
     )
     {
+        if (syncConfig.TuneDbMode == ITunableDb.TuneType.Default && syncConfig.BlocksDbTuneDbMode == ITunableDb.TuneType.Default)
+        {
+            // Do nothing.
+            return;
+        }
+
         // Only these three make sense as they are write heavy
         // Headers is used everywhere, so slowing read might slow the whole sync.
         // Statesync is read heavy, Forward sync is just plain too slow to saturate IO.
-        if (snapSyncFeed is not null)
+        if (snapSyncFeed is not NoopSyncFeed<SnapSyncBatch>)
         {
             snapSyncFeed.StateChanged += SnapStateChanged;
         }
 
-        if (bodiesSyncFeed is not null)
+        if (bodiesSyncFeed is not NoopSyncFeed<BodiesSyncBatch>)
         {
             bodiesSyncFeed.StateChanged += BodiesStateChanged;
         }
 
-        if (receiptSyncFeed is not null)
+        if (receiptSyncFeed is not NoopSyncFeed<ReceiptsSyncBatch>)
         {
             receiptSyncFeed.StateChanged += ReceiptsStateChanged;
         }
