@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
@@ -65,7 +64,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
-    protected void AddToBlobIndex(Transaction blobTx)
+    private void AddToBlobIndex(Transaction blobTx)
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
         {

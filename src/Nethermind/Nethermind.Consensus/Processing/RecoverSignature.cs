@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.Processing
                     recoverFromEcdsa++;
                 }
 
-                if (tx.HasAuthorizationList)
+                if (poolTx is not null && tx.HasAuthorizationList)
                 {
                     for (int i = 0; i < tx.AuthorizationList.Length; i++)
                     {
@@ -95,7 +95,7 @@ namespace Nethermind.Consensus.Processing
                         {
                             tx.AuthorizationList[i].Authority = poolTx.AuthorizationList[i].Authority;
                         }
-                        else
+                        else if (tx.AuthorizationList[i].Authority is null)
                         {
                             recoverFromEcdsa++;
                         }

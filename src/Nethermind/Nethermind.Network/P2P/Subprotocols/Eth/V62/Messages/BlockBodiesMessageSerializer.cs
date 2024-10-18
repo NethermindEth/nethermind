@@ -5,14 +5,13 @@ using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockBodiesMessageSerializer : IZeroInnerMessageSerializer<BlockBodiesMessage>
     {
-        private readonly BlockBodyDecoder _blockBodyDecoder = new();
+        private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
@@ -53,6 +52,5 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             return new() { Bodies = new(bodies, memoryOwner) };
         }
-
     }
 }

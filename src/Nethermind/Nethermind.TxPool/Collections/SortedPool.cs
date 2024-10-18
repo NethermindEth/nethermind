@@ -352,7 +352,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="value">Element to insert.</param>
         /// <param name="removed">Element removed because of exceeding capacity</param>
         /// <returns>If element was inserted. False if element was already present in pool.</returns>
-        public virtual bool TryInsert(TKey key, TValue value, out TValue? removed)
+        public bool TryInsert(TKey key, TValue value, out TValue? removed)
         {
             using var lockRelease = Lock.Acquire();
 

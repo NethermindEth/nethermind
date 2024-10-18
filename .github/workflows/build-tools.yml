@@ -17,7 +17,7 @@ jobs:
       matrix:
         config: [release]
         project:
-          - docgen/DocGen.sln
+          - DocGen/DocGen.sln
           - HiveCompare/HiveCompare.sln
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.csproj
           - Nethermind.Tools.Kute/Nethermind.Tools.Kute.csproj
