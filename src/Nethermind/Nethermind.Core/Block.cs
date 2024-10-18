@@ -122,6 +122,9 @@ public class Block
 
     public Hash256? RequestsRoot => Header.RequestsRoot; // do not add setter here
 
+    public ulong? TargetBlobCount => Header.TargetBlobCount; // do not add setter here
+
+    public ulong? MaxBlobCount => Header.MaxBlobCount; // do not add setter here
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
     [JsonIgnore]
