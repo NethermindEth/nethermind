@@ -276,6 +276,7 @@ jobs:
 
       - name: Destroy VM
         if: always()
+        continue-on-error: true
         id: run-linode-action
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
