@@ -64,7 +64,7 @@ public class FallbackToFieldFromApiTests
         public TargetService TargetService { get; set; }
     }
 
-    public class Api: IApi
+    public class Api : IApi
     {
         public NamedTargetService NamedTargetService { get; set; } = null!;
         public TargetService TargetService { get; set; } = null!;

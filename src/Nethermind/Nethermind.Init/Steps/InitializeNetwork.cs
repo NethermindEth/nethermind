@@ -111,16 +111,16 @@ public class InitializeNetwork : IStep
         SyncedTxGossipPolicy txGossipPolicy = _api.BaseContainer.Resolve<SyncedTxGossipPolicy>();
         ISyncServer _ = _api.BaseContainer.Resolve<ISyncServer>();
         IDiscoveryApp discoveryApp = _api.BaseContainer.Resolve<IDiscoveryApp>();
-        IPeerPool peerPool =  _api.BaseContainer.Resolve<IPeerPool>();
-        IPeerManager peerManager =  _api.BaseContainer.Resolve<IPeerManager>();
-        ISessionMonitor sessionMonitor =  _api.BaseContainer.Resolve<ISessionMonitor>();
-        IRlpxHost rlpxHost =  _api.BaseContainer.Resolve<IRlpxHost>();
-        IStaticNodesManager staticNodesManager =  _api.BaseContainer.Resolve<IStaticNodesManager>();
-        Func<NodeSourceToDiscV4Feeder> nodeSourceToDiscV4Feeder =  _api.BaseContainer.Resolve<Func<NodeSourceToDiscV4Feeder>>();
-        IProtocolsManager protocolsManager =  _api.BaseContainer.Resolve<IProtocolsManager>();
-        SnapCapabilitySwitcher snapCapabilitySwitcher =  _api.BaseContainer.Resolve<SnapCapabilitySwitcher>();
-        ISyncPeerPool syncPeerPool =  _api.BaseContainer.Resolve<ISyncPeerPool>();
-        ISynchronizer synchronizer =  _api.BaseContainer.Resolve<ISynchronizer>();
+        IPeerPool peerPool = _api.BaseContainer.Resolve<IPeerPool>();
+        IPeerManager peerManager = _api.BaseContainer.Resolve<IPeerManager>();
+        ISessionMonitor sessionMonitor = _api.BaseContainer.Resolve<ISessionMonitor>();
+        IRlpxHost rlpxHost = _api.BaseContainer.Resolve<IRlpxHost>();
+        IStaticNodesManager staticNodesManager = _api.BaseContainer.Resolve<IStaticNodesManager>();
+        Func<NodeSourceToDiscV4Feeder> nodeSourceToDiscV4Feeder = _api.BaseContainer.Resolve<Func<NodeSourceToDiscV4Feeder>>();
+        IProtocolsManager protocolsManager = _api.BaseContainer.Resolve<IProtocolsManager>();
+        SnapCapabilitySwitcher snapCapabilitySwitcher = _api.BaseContainer.Resolve<SnapCapabilitySwitcher>();
+        ISyncPeerPool syncPeerPool = _api.BaseContainer.Resolve<ISyncPeerPool>();
+        ISynchronizer synchronizer = _api.BaseContainer.Resolve<ISynchronizer>();
 
         _api.TxGossipPolicy.Policies.Add(txGossipPolicy);
 

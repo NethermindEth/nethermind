@@ -9,7 +9,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNumber) : IPoSSwitcher
 {
-    public OptimismPoSSwitcher(ISpecProvider specProvider, ChainSpec chainSpec): this(specProvider, chainSpec.Optimism.BedrockBlockNumber)
+    public OptimismPoSSwitcher(ISpecProvider specProvider, ChainSpec chainSpec) : this(specProvider, chainSpec.Optimism.BedrockBlockNumber)
     {
     }
 

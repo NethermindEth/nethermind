@@ -8,7 +8,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Runner.Modules;
 
-public class DbModule: Module
+public class DbModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

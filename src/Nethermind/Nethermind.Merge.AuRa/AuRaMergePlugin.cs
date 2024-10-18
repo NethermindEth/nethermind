@@ -88,7 +88,7 @@ namespace Nethermind.Merge.AuRa
                 _poSSwitcher);
         }
 
-        private class AuraMergeModule: Module
+        private class AuraMergeModule : Module
         {
             protected override void Load(ContainerBuilder builder)
             {

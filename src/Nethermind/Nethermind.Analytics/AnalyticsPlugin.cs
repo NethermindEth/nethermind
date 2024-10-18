@@ -26,7 +26,7 @@ namespace Nethermind.Analytics
         public string Author => "Nethermind";
 
 
-        public bool Enabled =>initConfig.WebSocketsEnabled &&
+        public bool Enabled => initConfig.WebSocketsEnabled &&
                                     (analyticsConfig.PluginsEnabled ||
                                      analyticsConfig.StreamBlocks ||
                                      analyticsConfig.StreamTransactions);
