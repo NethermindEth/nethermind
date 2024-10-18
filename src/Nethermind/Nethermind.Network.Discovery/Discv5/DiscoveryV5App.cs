@@ -190,8 +190,6 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public void Initialize(PublicKey masterPublicKey) { }
-
     public void InitializeChannel(IChannel channel)
     {
         var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
@@ -290,6 +288,9 @@ public class DiscoveryV5App : IDiscoveryApp
                     }
 
                     await Task.WhenAll(discoverTasks);
+                }
+                catch (OperationCanceledException)
+                {
                 }
                 catch (Exception ex)
                 {

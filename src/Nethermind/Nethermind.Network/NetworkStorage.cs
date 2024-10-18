@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,7 +25,7 @@ namespace Nethermind.Network
         private long _removeCounter;
         private NetworkNode[]? _nodes;
 
-        public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
+        public NetworkStorage([KeyFilter(nameof(NetworkStorage))] IFullDb? fullDb, ILogManager? logManager)
         {
             _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

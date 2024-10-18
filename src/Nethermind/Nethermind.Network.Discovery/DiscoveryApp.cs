@@ -48,6 +48,7 @@ public class DiscoveryApp : IDiscoveryApp
         INetworkConfig? networkConfig,
         IDiscoveryConfig? discoveryConfig,
         ITimestamper? timestamper,
+        PublicKey masterPublicKey,
         ILogManager? logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -63,10 +64,7 @@ public class DiscoveryApp : IDiscoveryApp
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryStorage.StartBatch();
-    }
 
-    public void Initialize(PublicKey masterPublicKey)
-    {
         _discoveryManager.NodeDiscovered += OnNodeDiscovered;
         _nodeTable.Initialize(masterPublicKey);
         if (_nodeTable.MasterNode is null)

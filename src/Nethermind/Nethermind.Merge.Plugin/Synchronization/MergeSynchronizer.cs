@@ -8,6 +8,7 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
