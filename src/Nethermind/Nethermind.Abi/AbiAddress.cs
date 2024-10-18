@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
-
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Abi
 {
@@ -21,14 +24,22 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
+            NettyAbiStream nettyAbiStream = new NettyAbiStream(PooledByteBufferAllocator.Default.Buffer(1));
             while (true)
             {
                 switch (arg)
                 {
                     case Address input:
                         {
-                            byte[] bytes = input.Bytes;
-                            return packed ? bytes : bytes.PadLeft(UInt256.LengthInBytes);
+                            if (packed)
+                            {
+                                nettyAbiStream.Write(input.Bytes.ToList());
+                            }
+                            else
+                            {
+                                nettyAbiStream.Write(input.Bytes.PadLeft(UInt256.LengthInBytes).ToList());
+                            }
+                            return nettyAbiStream.AsSpan().ToArray();
                         }
                     case string stringInput:
                         {
