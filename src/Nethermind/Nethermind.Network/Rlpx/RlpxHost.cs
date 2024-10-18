@@ -6,11 +6,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -47,6 +49,7 @@ namespace Nethermind.Network.Rlpx
 
         public RlpxHost(
             IMessageSerializationService serializationService,
+            [KeyFilter(ComponentKey.NodeKey)]
             ProtectedPrivateKey nodeKey,
             INetworkConfig networkConfig,
             IHandshakeService handshakeService,

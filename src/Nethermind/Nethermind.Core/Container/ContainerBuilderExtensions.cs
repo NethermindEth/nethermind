@@ -33,7 +33,15 @@ public static class ContainerBuilderExtensions
             object? val = propertyInfo.GetValue(source);
             if (val != null)
             {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+                ComponentKeyAttribute? componentKeyAttribute = propertyInfo.GetCustomAttribute<ComponentKeyAttribute>();
+                if (componentKeyAttribute != null)
+                {
+                    configuration.RegisterInstance(val).Keyed(componentKeyAttribute.Key, propertyInfo.PropertyType);
+                }
+                else
+                {
+                    configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+                }
             }
         }
 
