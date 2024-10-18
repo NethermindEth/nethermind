@@ -52,14 +52,6 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public void ConfigureSynchronizationBuilder(ContainerBuilder containerBuilder)
-        {
-            if (_nethermindApi is not null)
-            {
-                containerBuilder.RegisterDecorator<AuRaBetterPeerStrategy, IBetterPeerStrategy>();
-            }
-        }
-
         public Task InitSynchronization()
         {
             return Task.CompletedTask;
@@ -89,6 +81,8 @@ namespace Nethermind.Consensus.AuRa
         protected override void Load(ContainerBuilder builder)
         {
             base.Load(builder);
+
+            builder.RegisterDecorator<AuRaBetterPeerStrategy, IBetterPeerStrategy>();
 
             builder
                 .AddSingleton<INethermindApi, AuRaNethermindApi>()

@@ -44,7 +44,12 @@ public class FallbackToFieldFromApiTests
         act.Should().Throw<InvalidConfigurationException>();
     }
 
-    public class Api
+    public interface IApi
+    {
+        public TargetService TargetService { get; set; }
+    }
+
+    public class Api: IApi
     {
         public TargetService TargetService { get; set; } = null!;
     }

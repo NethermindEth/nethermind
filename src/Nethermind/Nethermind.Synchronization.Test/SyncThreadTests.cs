@@ -354,6 +354,8 @@ namespace Nethermind.Synchronization.Test
 
             ContainerBuilder builder = new ContainerBuilder();
             builder
+                .AddModule(new NetworkModule(new NetworkConfig(), syncConfig))
+                .AddModule(new DbModule())
                 .AddInstance(dbProvider)
                 .AddInstance(Substitute.For<ITimerFactory>())
                 .AddInstance<INetworkConfig>(new NetworkConfig())
@@ -370,10 +372,8 @@ namespace Nethermind.Synchronization.Test
                 .AddInstance<IGossipPolicy>(Policy.FullGossip)
                 .AddInstance<IStateReader>(stateReader)
                 .AddInstance<IReceiptStorage>(receiptStorage)
-                .AddInstance<ILogManager>(logManager)
-                .AddModule(new DbModule());
+                .AddInstance<ILogManager>(logManager);
 
-            builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
             IContainer container = builder.Build();
             ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
             ISyncPeerPool syncPeerPool = container.Resolve<ISyncPeerPool>();

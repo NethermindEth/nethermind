@@ -39,7 +39,7 @@ public class MergePluginTests
 
         _context = Build.ContextWithMocks(containerConfigurer: (builder) =>
         {
-            builder.RegisterModule(new MergeNetworkModule());
+            builder.RegisterModule(new MergeModule());
         });
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());

@@ -27,6 +27,7 @@ public class CoreModule : Module
         builder
             .AddSingleton<IGasLimitCalculator, FollowOtherMiners>()
             .AddSingleton<INethermindApi, NethermindApi>()
+            .AddInstance<IPoSSwitcher>(NoPoS.Instance)
             .Bind<IEthereumEcdsa, IEcdsa>()
             .Bind<IBlockTree, IBlockFinder>();
 

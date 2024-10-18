@@ -17,7 +17,7 @@ public class OptimismNethermindApi : NethermindApi
     {
     }
 
-    public IInvalidChainTracker? InvalidChainTracker { get; set; }
+    public IInvalidChainTracker? InvalidChainTracker => BaseContainer.Resolve<IInvalidChainTracker>();
     public OPL1CostHelper? L1CostHelper { get; set; }
     public OptimismSpecHelper? SpecHelper { get; set; }
 }

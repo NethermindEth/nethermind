@@ -100,17 +100,9 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _api.ChainSpec.Optimism.BedrockBlockNumber);
-
-        _blockCacheService = new BlockCacheService();
+        _blockCacheService = _api.BaseContainer.Resolve<BlockCacheService>();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
-        _api.InvalidChainTracker = _invalidChainTracker = new InvalidChainTracker(
-            _api.PoSSwitcher,
-            _api.BlockTree,
-            _blockCacheService,
-            _api.LogManager);
-        _api.DisposeStack.Push(_invalidChainTracker);
-
+        _invalidChainTracker = _api.BaseContainer.Resolve<InvalidChainTracker>();
         _api.FinalizationManager = _blockFinalizationManager = new ManualBlockFinalizationManager();
 
         _api.RewardCalculatorSource = NoBlockRewards.Instance;
@@ -120,19 +112,6 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.PoSSwitcher));
 
         return Task.CompletedTask;
-    }
-
-    public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
-    {
-        if (Enabled)
-            return;
-
-        builder
-            .AddInstance<IBlockCacheService>(_blockCacheService!)
-            .AddInstance<IInvalidChainTracker>(_invalidChainTracker!);
-
-        builder
-            .RegisterModule(new MergeNetworkModule());
     }
 
     public Task InitSynchronization()
@@ -266,8 +245,11 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchroniz
     {
         protected override void Load(ContainerBuilder builder)
         {
+
             base.Load(builder);
             builder
+                .AddModule(new MergeModule())
+                .AddSingleton<IPoSSwitcher, OptimismPoSSwitcher>()
                 .AddSingleton<INethermindApi, OptimismNethermindApi>()
                 .AddIStepsFromAssembly(GetType().Assembly);
         }

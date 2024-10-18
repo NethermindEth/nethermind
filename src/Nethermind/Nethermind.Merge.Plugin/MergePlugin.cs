@@ -70,6 +70,8 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
 
     public int Priority => PluginPriorities.Merge;
 
+    public virtual IModule? ContainerModule => new MergeModule();
+
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
@@ -94,22 +96,9 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
             EnsureJsonRpcUrl();
             EnsureReceiptAvailable();
 
-            _blockCacheService = new BlockCacheService();
-            _poSSwitcher = new PoSSwitcher(
-                mergeConfig,
-                _syncConfig,
-                _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
-                _api.BlockTree,
-                _api.SpecProvider,
-                _api.ChainSpec,
-                _api.LogManager);
-            _invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(
-                _poSSwitcher,
-                _api.BlockTree,
-                _blockCacheService,
-                _api.LogManager);
-            _api.PoSSwitcher = _poSSwitcher;
-            _api.DisposeStack.Push(_invalidChainTracker);
+            _blockCacheService = _api.BaseContainer.Resolve<IBlockCacheService>();
+            _poSSwitcher = _api.BaseContainer.Resolve<IPoSSwitcher>();
+            _invalidChainTracker = _api.BaseContainer.Resolve<InvalidChainTracker.InvalidChainTracker>();
             _blockFinalizationManager = new ManualBlockFinalizationManager();
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
@@ -387,18 +376,6 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
         _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
 
-    public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
-    {
-        if (!MergeEnabled) return;
-
-        builder
-            .AddInstance<IBlockCacheService>(_blockCacheService)
-            .AddInstance<IInvalidChainTracker>(_invalidChainTracker);
-
-        builder
-            .RegisterModule(new MergeNetworkModule());
-    }
-
     public Task InitSynchronization()
     {
         if (MergeEnabled)
@@ -450,6 +427,20 @@ public partial class MergePlugin(IMergeConfig mergeConfig, ChainSpec chainSpec) 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
+}
+
+public class MergeModule : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+
+        builder
+            .AddModule(new MergeNetworkModule())
+            .AddSingleton<IBlockCacheService, BlockCacheService>()
+            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddSingleton<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>();
+    }
 }
 
 public class MergeNetworkModule : Module

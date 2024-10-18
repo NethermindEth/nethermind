@@ -182,7 +182,7 @@ namespace Nethermind.Api
 
         public ISessionMonitor? SessionMonitor => BaseContainer.ResolveOptional<ISessionMonitor>();
         public ISpecProvider? SpecProvider => BaseContainer.Resolve<ISpecProvider>();
-        public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
+        public IPoSSwitcher PoSSwitcher => BaseContainer.Resolve<IPoSSwitcher>();
         public ISyncModeSelector SyncModeSelector => BaseContainer.ResolveOptional<ISyncModeSelector>()!;
         public IBetterPeerStrategy? BetterPeerStrategy => BaseContainer.ResolveOptional<IBetterPeerStrategy>();
         public ISyncPeerPool? SyncPeerPool => BaseContainer.ResolveOptional<ISyncPeerPool>();

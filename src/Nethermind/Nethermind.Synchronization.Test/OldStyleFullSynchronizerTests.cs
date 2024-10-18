@@ -72,6 +72,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             ContainerBuilder builder = new ContainerBuilder()
+                .AddInstance(dbProvider)
                 .AddInstance(nodeStorage)
                 .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddInstance(Substitute.For<ITimerFactory>())

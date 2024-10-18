@@ -5,9 +5,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Optimism;
+using Nethermind.Specs.ChainSpecStyle;
 
 public class OptimismPoSSwitcher(ISpecProvider specProvider, long bedrockBlockNumber) : IPoSSwitcher
 {
+    public OptimismPoSSwitcher(ISpecProvider specProvider, ChainSpec chainSpec): this(specProvider, chainSpec.Optimism.BedrockBlockNumber)
+    {
+    }
+
     public UInt256? TerminalTotalDifficulty => specProvider.TerminalTotalDifficulty;
 
     public UInt256? FinalTotalDifficulty => TerminalTotalDifficulty;

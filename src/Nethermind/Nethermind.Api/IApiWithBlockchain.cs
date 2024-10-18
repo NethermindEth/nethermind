@@ -53,7 +53,7 @@ namespace Nethermind.Api
         /// <summary>
         /// PoS switcher for The Merge
         /// </summary>
-        IPoSSwitcher PoSSwitcher { get; set; }
+        IPoSSwitcher PoSSwitcher { get; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }

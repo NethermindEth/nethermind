@@ -100,16 +100,7 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        ContainerBuilder builder = new ContainerBuilder();
-        builder.RegisterModule(new NetworkModule(_networkConfig, _syncConfig));
-
         ISynchronizationPlugin[] synchronizationPlugins = _api.GetSynchronizationPlugins().ToArray();
-
-        foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
-        {
-            plugin.ConfigureSynchronizationBuilder(builder);
-        }
-
         foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
         {
             await plugin.InitSynchronization();
