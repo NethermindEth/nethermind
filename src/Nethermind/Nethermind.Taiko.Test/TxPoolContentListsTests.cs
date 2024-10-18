@@ -86,7 +86,7 @@ public class TxPoolContentListsTests
             txPool,
             blockFinder,
             readOnlyTxProcessingEnvFactory,
-            Substitute.For<IRlpStreamDecoder<Transaction>>()
+            TxDecoder.Instance
         );
 
         ResultWrapper<PreBuiltTxList[]?> result = taikoRpcModule.taikoAuth_txPoolContent(
@@ -113,7 +113,7 @@ public class TxPoolContentListsTests
                     txs.ToDictionary(
                         kv => (AddressAsKey)Build.An.Address.FromNumber(kv.Key).TestObject,
                         kv => kv.Value.Select(txId =>
-                            Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
+                            Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(7).WithNonce(1).WithValue(1).WithGasPrice(20).WithData([(byte)txId]).SignedAndResolved().TestObject
                         ).ToArray()),
                     localAccounts.Select(a => Build.An.Address.FromNumber(a).TestObject).ToArray(),
                     blockGasLimit,
@@ -143,7 +143,7 @@ public class TxPoolContentListsTests
                 ExpectedResult = new int[][] { [20, 21, 40, 41, 1, 3] },
             };
 
-            yield return new TestCaseData(args: MakeTestData(new Dictionary<int, int[]> { { 1, [1] }, { 2, [2] }, { 3, [3] } }, [], 10 * Transaction.BaseTxGasCost, 100, 1))
+            yield return new TestCaseData(args: MakeTestData(new Dictionary<int, int[]> { { 1, [1] }, { 2, [2] }, { 3, [3] } }, [], 10 * Transaction.BaseTxGasCost, 120, 1))
             {
                 TestName = "Considers compressed tx list size limit",
                 ExpectedResult = new int[][] { [1] },

@@ -33,12 +33,6 @@ public class L1OriginStore(IDb db, IRlpStreamDecoder<L1Origin> decoder, ILogMana
         Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
         blockId.ToBigEndian(key);
 
-        if (decoder is null)
-        {
-            _logger?.Warn($"Unable to save L1 origin decoder for {nameof(L1Origin)} not found");
-            return;
-        }
-
         int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(encodedL1OriginLength);
 

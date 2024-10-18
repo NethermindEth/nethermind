@@ -268,7 +268,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         public bool TryAddTx(Transaction tx)
         {
             ulong estimatedLength = EstimateTxLength(tx);
-            if (_length + estimatedLength < _maxBytes)
+            if (_length + estimatedLength <= _maxBytes)
             {
                 Transactions.Add(tx);
                 _length += estimatedLength;
@@ -333,7 +333,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             compressingStream.Flush();
             return (ulong)stream.Position;
         }
-
 
         public readonly void Dispose()
         {

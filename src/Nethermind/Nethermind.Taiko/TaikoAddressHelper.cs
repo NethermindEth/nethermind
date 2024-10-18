@@ -3,10 +3,12 @@
 
 using Nethermind.Core.Specs;
 using Nethermind.Core;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Nethermind.Taiko.Test")]
 
 namespace Nethermind.Taiko;
-
-static class TaikoAddressHelper
+internal static class TaikoAddressHelper
 {
     private const string TaikoL2AddressSuffix = "10001";
 
