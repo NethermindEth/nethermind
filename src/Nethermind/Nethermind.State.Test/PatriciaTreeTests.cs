@@ -24,11 +24,11 @@ namespace Nethermind.Store.Test
             Account account = new(1);
             StateTree stateTree = new();
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit();
 
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit();
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
             Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
@@ -41,11 +41,11 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Set(TestItem.AddressB, account);
-            stateTree.Commit(0);
+            stateTree.Commit();
 
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit();
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
             Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
@@ -58,7 +58,7 @@ namespace Nethermind.Store.Test
             Account account = new(1);
             StateTree stateTree = new(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit();
 
             Hash256 rootHash = stateTree.RootHash;
             stateTree.RootHash = null;
@@ -67,7 +67,7 @@ namespace Nethermind.Store.Test
             stateTree.Get(TestItem.AddressA);
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit();
 
             Assert.That(db.Keys.Count, Is.EqualTo(2));
         }
@@ -84,7 +84,7 @@ namespace Nethermind.Store.Test
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
             Hash256 stateRoot = stateTree.RootHash;
-            stateTree.Commit(0, skipRoot);
+            stateTree.Commit(skipRoot);
 
             if (hasRoot)
             {

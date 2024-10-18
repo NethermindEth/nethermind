@@ -164,7 +164,7 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
-            .WithRequestsRoot(Keccak.Zero).TestObject;
+            .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
@@ -182,7 +182,7 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
-            .WithRequestsRoot(Keccak.Zero).TestObject;
+            .WithRequestsHash(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());

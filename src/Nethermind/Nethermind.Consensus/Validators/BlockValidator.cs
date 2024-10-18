@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
@@ -15,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 
@@ -138,11 +134,6 @@ public class BlockValidator(
             {
                 return false;
             }
-
-            if (!ValidateRequests(block, spec, out errorMessage))
-            {
-                return false;
-            }
         }
 
         return true;
@@ -221,10 +212,10 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidParentBeaconBlockRoot;
         }
 
-        if (processedBlock.Header.RequestsRoot != suggestedBlock.Header.RequestsRoot)
+        if (processedBlock.Header.RequestsHash != suggestedBlock.Header.RequestsHash)
         {
-            if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsRoot}, got {processedBlock.Header.RequestsRoot}");
-            error ??= BlockErrorMessages.InvalidRequestsRoot(suggestedBlock.Header.RequestsRoot, processedBlock.Header.RequestsRoot);
+            if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
+            error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
         for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -280,65 +271,6 @@ public class BlockValidator(
 
         error = null;
 
-        return true;
-    }
-
-    public bool ValidateRequests(Block block, out string? error) =>
-        ValidateRequests(block, _specProvider.GetSpec(block.Header), out error);
-
-    private bool ValidateRequests(Block block, IReleaseSpec spec, out string? error)
-    {
-        if (spec.RequestsEnabled && block.Requests is null)
-        {
-            error = BlockErrorMessages.MissingRequests;
-
-            if (_logger.IsWarn) _logger.Warn(error);
-
-            return false;
-        }
-
-        if (!spec.RequestsEnabled && block.Requests is not null)
-        {
-            error = BlockErrorMessages.RequestsNotEnabled;
-
-            if (_logger.IsWarn) _logger.Warn(error);
-
-            return false;
-        }
-
-        if (!ValidateRequestsHashMatches(block, out Hash256 requestsRoot))
-        {
-            error = BlockErrorMessages.InvalidRequestsRoot(block.Header.RequestsRoot, requestsRoot);
-            if (_logger.IsWarn) _logger.Warn($"DepositsRoot root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.RequestsRoot}, got {requestsRoot}");
-
-            return false;
-        }
-
-        // validate that the requests types are in ascending order
-        if (!ValidateRequestsOrder(block, out error))
-        {
-            if (_logger.IsWarn) _logger.Warn(error);
-            return false;
-        }
-
-        error = null;
-        return true;
-    }
-
-    public static bool ValidateRequestsOrder(Block block, out string? error)
-    {
-        if (block.Requests is not null)
-        {
-            for (int i = 1; i < block.Requests.Length; i++)
-            {
-                if (block.Requests[i].Type < block.Requests[i - 1].Type)
-                {
-                    error = BlockErrorMessages.InvalidRequestsOrder;
-                    return false;
-                }
-            }
-        }
-        error = null;
         return true;
     }
 
@@ -426,8 +358,7 @@ public class BlockValidator(
     public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateTxRootMatchesTxs(header, toBeValidated, out _)
         && ValidateUnclesHashMatches(header, toBeValidated, out _)
-        && ValidateWithdrawalsHashMatches(header, toBeValidated, out _)
-        && ValidateRequestsHashMatches(header, toBeValidated, out _);
+        && ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
 
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot) =>
         ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
@@ -453,20 +384,6 @@ public class BlockValidator(
         }
 
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
-    }
-
-    public static bool ValidateRequestsHashMatches(Block block, out Hash256? requestsRoot) =>
-        ValidateRequestsHashMatches(block.Header, block.Body, out requestsRoot);
-
-    private static bool ValidateRequestsHashMatches(BlockHeader header, BlockBody body, out Hash256? requestsRoot)
-    {
-        if (body.Requests == null)
-        {
-            requestsRoot = null;
-            return header.RequestsRoot is null;
-        }
-
-        return (requestsRoot = new RequestsTrie(body.Requests).RootHash) == header.RequestsRoot;
     }
 
     private static string Invalid(Block block) =>

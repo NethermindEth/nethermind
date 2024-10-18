@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithChainId(ulong chainId)
+        public TransactionBuilder<T> WithChainId(ulong? chainId)
         {
             TestObjectInternal.ChainId = chainId;
             return this;
@@ -295,6 +295,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
         {
             TestObjectInternal.IsServiceTransaction = isServiceTransaction;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithSourceHash(Hash256? sourceHash)
+        {
+            TestObjectInternal.SourceHash = sourceHash;
             return this;
         }
 

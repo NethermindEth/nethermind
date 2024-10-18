@@ -326,12 +326,8 @@ public abstract class BlockchainTestBase
                 stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
             }
 
-            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-            for (int i = 0; i < accountState.Value.Nonce; i++)
-            {
-                stateProvider.IncrementNonce(accountState.Key);
-            }
         }
 
         stateProvider.Commit(specProvider.GenesisSpec);

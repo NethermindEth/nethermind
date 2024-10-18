@@ -342,7 +342,7 @@ public class SnapServerTest
         {
             stateTree.Set(TestItem.GetRandomAddress(), TestItem.GenerateRandomAccount());
         }
-        stateTree.Commit(0);
+        stateTree.Commit();
 
         List<PathWithAccount> accountWithStorage = new();
         for (int i = 1000; i < 10000; i += 1000)
@@ -353,12 +353,12 @@ public class SnapServerTest
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
             }
-            storageTree.Commit(1);
+            storageTree.Commit();
             var account = TestItem.GenerateRandomAccount().WithChangedStorageRoot(storageTree.RootHash);
             stateTree.Set(address, account);
             accountWithStorage.Add(new PathWithAccount() { Path = Keccak.Compute(address.Bytes), Account = account });
         }
-        stateTree.Commit(1);
+        stateTree.Commit();
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 

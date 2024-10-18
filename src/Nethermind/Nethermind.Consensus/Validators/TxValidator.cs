@@ -328,15 +328,6 @@ public sealed class AuthorizationListTxValidator : ITxValidator
         transaction.AuthorizationList switch
         {
             null or { Length: 0 } => TxErrorMessages.MissingAuthorizationList,
-            var authorizationList when authorizationList.Any(a => !ValidateAuthoritySignature(a.AuthoritySignature)) =>
-                TxErrorMessages.InvalidAuthoritySignature,
             _ => ValidationResult.Success
         };
-
-    private bool ValidateAuthoritySignature(Signature signature)
-    {
-        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
-
-        return sValue < Secp256K1Curve.HalfNPlusOne && signature.RecoveryId is 0 or 1;
-    }
 }
