@@ -16,7 +16,6 @@ using Nethermind.JsonRpc;
 using Nethermind.HealthChecks;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin;
@@ -35,6 +34,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
+using Autofac;
+using Nethermind.Synchronization;
+using System.Linq;
 
 namespace Nethermind.Taiko;
 
@@ -89,6 +91,14 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.PoSSwitcher));
 
         return Task.CompletedTask;
+    }
+
+    public void InitTxTypesAndRlpDecoders(INethermindApi api)
+    {
+        if (ShouldRunSteps(api))
+        {
+            Rlp.RegisterDecoder(typeof(L1Origin), new L1OriginDecoder());
+        }
     }
 
     public async Task InitRpcModules()
@@ -294,42 +304,25 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        MergeBlockDownloaderFactory blockDownloaderFactory = new(
-            _api.PoSSwitcher,
-            _beaconPivot,
-            _api.SpecProvider,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _syncConfig,
-            _api.BetterPeerStrategy!,
-            new FullStateFinder(_api.BlockTree, _api.StateReader!),
-            _api.LogManager);
+        ContainerBuilder builder = new ContainerBuilder();
 
-        _api.Synchronizer = new MergeSynchronizer(
-            _api.DbProvider,
-            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-            _api.SpecProvider!,
-            _api.BlockTree!,
-            _api.ReceiptStorage!,
-            _api.SyncPeerPool,
-            _api.NodeStatsManager!,
-            _syncConfig,
-            blockDownloaderFactory,
-            _beaconPivot,
-            _api.PoSSwitcher,
-            _mergeConfig,
-            _api.InvalidChainTracker,
-            _api.ProcessExit!,
-            _api.BetterPeerStrategy,
-            _api.ChainSpec,
-            _beaconSync,
-            _api.StateReader!,
-            _api.LogManager
-        );
+        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
+            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+            .AddSingleton<IBeaconPivot>(_beaconPivot)
+            .AddSingleton(_mergeConfig)
+            .AddSingleton<IInvalidChainTracker>(_api.InvalidChainTracker);
+
+        builder.RegisterModule(new SynchronizerModule(_syncConfig));
+        builder.RegisterModule(new MergeSynchronizerModule());
+
+        IContainer container = builder.Build();
+
+        _api.ApiWithNetworkServiceContainer = container;
+        _api.DisposeStack.Append(container);
 
         PivotUpdator pivotUpdator = new(
             _api.BlockTree,
-            _api.Synchronizer.SyncModeSelector,
+            _api.SyncModeSelector,
             _api.SyncPeerPool,
             _syncConfig,
             _blockCacheService,
