@@ -3,11 +3,13 @@
 
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -48,7 +50,7 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private IDiscoveryApp? _v5;
     private INodeSource _compositeNodeSource = null!;
 
-    public CompositeDiscoveryApp(ProtectedPrivateKey? nodeKey,
+    public CompositeDiscoveryApp([KeyFilter(ComponentKey.NodeKey)] ProtectedPrivateKey? nodeKey,
         INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, IInitConfig initConfig,
         IEthereumEcdsa? ethereumEcdsa, IMessageSerializationService? serializationService,
         ILogManager? logManager, ITimestamper? timestamper, ICryptoRandom? cryptoRandom,
