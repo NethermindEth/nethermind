@@ -337,6 +337,7 @@ public class SynchronizerTests
 
             builder
                 .AddInstance(dbProvider)
+                .AddInstance(nodeStorage)
                 .AddInstance<INetworkConfig>(new NetworkConfig())
                 .AddInstance(Substitute.For<ITimerFactory>())
                 .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
