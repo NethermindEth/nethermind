@@ -46,7 +46,7 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
             throw new ArgumentNullException(nameof(registrationAccessor));
         }
 
-        TypedService? ts = service as TypedService;
+        IServiceWithType? ts = service as IServiceWithType;
         if (ts == null || ts.ServiceType == typeof(string))
         {
             return Enumerable.Empty<IComponentRegistration>();
@@ -75,11 +75,33 @@ public class FallbackToFieldFromApi<TApi> : IRegistrationSource where TApi : not
             return Enumerable.Empty<IComponentRegistration>();
         }
 
+        ComponentKeyAttribute? keyAttribute = property.GetCustomAttribute<ComponentKeyAttribute>();
+        if (keyAttribute is not null)
+        {
+            if (ts is not KeyedService keyedService)
+            {
+                // not a keyed service
+                return Enumerable.Empty<IComponentRegistration>();
+            }
+
+            if (!keyedService.ServiceKey.Equals(keyAttribute.Key))
+            {
+                // Different key
+                return Enumerable.Empty<IComponentRegistration>();
+            }
+        }
+
         IRegistrationBuilder<object, SimpleActivatorData, SingleRegistrationStyle> builder = RegistrationBuilder.ForDelegate(serviceType, (ctx, reg) =>
         {
             TApi baseT = ctx.Resolve<TApi>();
             return property.GetValue(baseT)!;
         });
+
+        if (keyAttribute is not null)
+        {
+            return new[] { builder.Keyed(keyAttribute.Key, serviceType).CreateRegistration() };
+        }
+
         return new[] { builder.CreateRegistration() };
     }
 

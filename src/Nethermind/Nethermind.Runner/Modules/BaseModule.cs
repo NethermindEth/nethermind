@@ -37,9 +37,6 @@ public class BaseModule : Module
     {
         base.Load(builder);
 
-        // Maybe this should not be used? as it can be error prone.
-        builder.RegisterSource(new AnyConcreteTypeNotAlreadyRegisteredSource());
-
         builder.RegisterSource(new ConfigRegistrationSource());
         LoggerMiddleware.Configure(builder);
 

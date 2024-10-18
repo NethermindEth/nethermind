@@ -5,6 +5,7 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Core.Container;
 using Nethermind.Logging;
 using Nethermind.Runner.Modules;
 using Nethermind.Serialization.Json;
@@ -28,15 +29,15 @@ public class BaseModuleTests
         configProvider.GetConfig<IInitConfig>().Returns(new InitConfig());
         logManager.GetClassLogger(typeof(TestClass)).Returns(LimboLogs.Instance.GetClassLogger<TestClass>());
 
-        ContainerBuilder builder = new ContainerBuilder();
-        builder.RegisterInstance(configProvider);
-        builder.RegisterInstance(processExitSource);
-        builder.RegisterInstance(chainSpec);
-        builder.RegisterInstance(jsonSerializer);
-        builder.RegisterInstance(logManager);
-        builder.RegisterModule(new BaseModule());
-
-        using IContainer container = builder.Build();
+        using IContainer container = new ContainerBuilder()
+            .AddInstance(configProvider)
+            .AddInstance(processExitSource)
+            .AddInstance(chainSpec)
+            .AddInstance(jsonSerializer)
+            .AddInstance(logManager)
+            .AddModule(new BaseModule())
+            .AddSingleton<TestClass>()
+            .Build();
 
         TestClass testObj = container.Resolve<TestClass>();
         testObj.Logger.Should().NotBeNull();

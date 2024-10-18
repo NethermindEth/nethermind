@@ -79,7 +79,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 .AddInstance(Substitute.For<ISpecProvider>()); // need more complete chainspec to use ISpecProvider
 
             containerConfigurer?.Invoke(containerBuilder);
-
             IContainer container = containerBuilder.Build();
 
             var api = container.Resolve<INethermindApi>();
@@ -131,6 +130,8 @@ namespace Nethermind.Runner.Test.Ethereum
             api.BadBlocksStore = Substitute.For<IBlockStore>();
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
+            api.NodeKey = new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.GetTempPath());
+            api.ConfigProvider.GetConfig<ISyncConfig>().Returns(syncConfig ?? new SyncConfig()); // The default get config substitute set nullable string to empty string causing issues.
 
             return (NethermindApi)api;
         }
