@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Runner.Test\Nethermind.Runner.Test.csproj" />
   </ItemGroup>
 
   <ItemGroup>

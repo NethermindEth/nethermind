@@ -3,15 +3,16 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using Nethermind.Core.Container;
+using Nethermind.Init.Steps;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
 
@@ -20,7 +21,7 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+    public class AuRaPlugin(ChainSpec chainSpec) : IConsensusPlugin, ISynchronizationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -30,9 +31,11 @@ namespace Nethermind.Consensus.AuRa
         public string Author => "Nethermind";
 
         public string SealEngineType => Core.SealEngineType.AuRa;
+        public bool Enabled => chainSpec.SealEngineType == SealEngineType;
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
+        public IModule? ContainerModule => new AuraModule();
 
         public ValueTask DisposeAsync()
         {
@@ -51,11 +54,6 @@ namespace Nethermind.Consensus.AuRa
 
         public Task InitSynchronization()
         {
-            if (_nethermindApi is not null)
-            {
-                _nethermindApi.BetterPeerStrategy = new AuRaBetterPeerStrategy(_nethermindApi.BetterPeerStrategy!, _nethermindApi.LogManager);
-            }
-
             return Task.CompletedTask;
         }
 
@@ -76,10 +74,19 @@ namespace Nethermind.Consensus.AuRa
                 _nethermindApi.BlockTree,
                 _nethermindApi.BlockProducer!);
         }
+    }
 
-        public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-            ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+    public class AuraModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
 
-        public bool ShouldRunSteps(INethermindApi api) => true;
+            builder.RegisterDecorator<AuRaBetterPeerStrategy, IBetterPeerStrategy>();
+
+            builder
+                .AddSingleton<INethermindApi, AuRaNethermindApi>()
+                .AddIStepsFromAssembly(GetType().Assembly);
+        }
     }
 }

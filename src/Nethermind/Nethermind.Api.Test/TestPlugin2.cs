@@ -30,5 +30,7 @@ namespace Nethermind.Api.Test
         {
             throw new System.NotImplementedException();
         }
+
+        public bool Enabled => true;
     }
 }

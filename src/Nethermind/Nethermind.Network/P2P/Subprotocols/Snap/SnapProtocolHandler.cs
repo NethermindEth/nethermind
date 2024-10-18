@@ -21,6 +21,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
@@ -71,7 +72,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
             BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler);
-            ServingEnabled = SyncServer is not null;
+            ServingEnabled = SyncServer is not null && SyncServer.IsEnabled;
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;

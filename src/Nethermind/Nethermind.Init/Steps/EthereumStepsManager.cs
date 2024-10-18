@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -20,22 +21,19 @@ namespace Nethermind.Init.Steps
         private readonly ILogger _logger;
 
         private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
-        private readonly INethermindApi _api;
+        private readonly ILifetimeScope _container;
         private readonly List<StepInfo> _allSteps;
         private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
-            INethermindApi context,
-            ILogManager logManager)
+            ILifetimeScope container,
+            ILogger logger)
         {
-            ArgumentNullException.ThrowIfNull(loader);
+            _container = container;
+            _logger = logger;
 
-            _api = context ?? throw new ArgumentNullException(nameof(context));
-            _logger = logManager?.GetClassLogger<EthereumStepsManager>()
-                      ?? throw new ArgumentNullException(nameof(logManager));
-
-            _allSteps = loader.LoadSteps(_api.GetType()).ToList();
+            _allSteps = loader.LoadSteps().ToList();
             _allStepsByBaseType = _allSteps.ToDictionary(s => s.StepBaseType, s => s);
         }
 
@@ -147,14 +145,14 @@ namespace Nethermind.Init.Steps
 
         private async Task ExecuteStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
         {
-            long startTime = Stopwatch.GetTimestamp();
+            Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
                 await step.Execute(cancellationToken);
 
                 if (_logger.IsDebug)
                     _logger.Debug(
-                        $"Step {step.GetType().Name.PadRight(24)} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                        $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
 
                 stepInfo.Stage = StepInitializationStage.Complete;
             }
@@ -164,7 +162,7 @@ namespace Nethermind.Init.Steps
                 {
                     if (_logger.IsError)
                         _logger.Error(
-                            $"Step {step.GetType().Name.PadRight(24)} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
+                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             exception);
 
                     stepInfo.Stage = StepInitializationStage.Failed;
@@ -174,12 +172,13 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsWarn)
                 {
                     _logger.Warn(
-                        $"Step {step.GetType().Name.PadRight(24)} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
+                        $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms {exception}");
                 }
                 stepInfo.Stage = StepInitializationStage.Complete;
             }
             finally
             {
+                stopwatch.Stop();
                 _autoResetEvent.Set();
 
                 if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
@@ -191,7 +190,7 @@ namespace Nethermind.Init.Steps
             IStep? step = null;
             try
             {
-                step = Activator.CreateInstance(stepInfo.StepType, _api) as IStep;
+                step = (IStep)_container.Resolve(stepInfo.StepType);
             }
             catch (Exception e)
             {

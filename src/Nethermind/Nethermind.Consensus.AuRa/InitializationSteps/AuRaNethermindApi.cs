@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -20,8 +21,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class AuRaNethermindApi : NethermindApi
     {
-        public AuRaNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
-            : base(configProvider, jsonSerializer, logManager, chainSpec)
+        public AuRaNethermindApi(ILifetimeScope lifetimeScope) : base(lifetimeScope)
         {
         }
 
