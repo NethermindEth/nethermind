@@ -40,6 +40,7 @@ namespace Nethermind.Api
         IFileSystem FileSystem { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; set; }
+        [SkipServiceCollection]
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
