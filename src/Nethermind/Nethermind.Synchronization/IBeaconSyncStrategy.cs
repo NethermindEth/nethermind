@@ -20,6 +20,7 @@ namespace Nethermind.Synchronization
         public bool MergeTransitionFinished => false;
         public long? GetTargetBlockHeight() => null;
         public Hash256? GetFinalizedHash() => null;
+        public Hash256? GetHeadBlockHash() => null;
     }
 
     public interface IBeaconSyncStrategy
@@ -32,5 +33,6 @@ namespace Nethermind.Synchronization
 
         public long? GetTargetBlockHeight();
         public Hash256? GetFinalizedHash();
+        public Hash256? GetHeadBlockHash();
     }
 }
