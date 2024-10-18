@@ -21,32 +21,32 @@ namespace Nethermind.Abi
         {
             if (length % 8 != 0)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUFixed)} has to be a multiple of 8");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiUFixed)} has to be a multiple of 8");
             }
 
             if (length > MaxLength)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUFixed)} has to be less or equal to {MaxLength}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiUFixed)} has to be less or equal to {MaxLength}");
             }
 
             if (length <= MinLength)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUFixed)} has to be greater than {MinLength}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiUFixed)} has to be greater than {MinLength}");
             }
 
             if (precision > MaxPrecision)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(precision)} of {nameof(AbiUFixed)} has to be less or equal to {MaxPrecision}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(precision)} of {nameof(AbiUFixed)} has to be less or equal to {MaxPrecision}");
             }
 
             if (precision <= MinPrecision)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(precision)} of {nameof(AbiUFixed)} has to be greater than {MinPrecision}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(precision)} of {nameof(AbiUFixed)} has to be greater than {MinPrecision}");
             }
 
             Length = length;

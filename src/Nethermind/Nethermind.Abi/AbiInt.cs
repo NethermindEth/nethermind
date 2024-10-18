@@ -24,20 +24,20 @@ namespace Nethermind.Abi
         {
             if (length % 8 != 0)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be a multiple of 8");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiInt)} has to be a multiple of 8");
             }
 
             if (length > MaxSize)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be less or equal to {MinSize}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiInt)} has to be less or equal to {MinSize}");
             }
 
             if (length <= MinSize)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiInt)} has to be greater than {MinSize}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiInt)} has to be greater than {MinSize}");
             }
 
             Length = length;

@@ -21,14 +21,14 @@ namespace Nethermind.Abi
         {
             if (length > MaxLength)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be less or equal to {MaxLength}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiBytes)} has to be less or equal to {MaxLength}");
             }
 
             if (length <= MinLength)
             {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be greater than {MinLength}");
+                throw new ArgumentException(paramName: nameof(length),
+                    message: $"{nameof(length)} of {nameof(AbiBytes)} has to be greater than {MinLength}");
             }
 
             Length = length;
