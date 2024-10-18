@@ -202,7 +202,7 @@ namespace Nethermind.Core
         {
             string gasPriceString =
                 Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
-            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray()?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
         public string ToString(string indent)

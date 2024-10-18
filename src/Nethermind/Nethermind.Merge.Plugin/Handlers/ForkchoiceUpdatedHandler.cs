@@ -271,11 +271,13 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return null;
     }
 
+    DateTime start = DateTime.UtcNow;
+
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
 
-        if (_simulateBlockProduction)
+        if (_simulateBlockProduction && (DateTime.UtcNow - start).TotalMinutes > 5 && _blockTree.BestKnownNumber == newHeadBlock.Number)
         {
             payloadAttributes ??= new PayloadAttributes()
             {

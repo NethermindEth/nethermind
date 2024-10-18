@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Producers
         private ITimestamper Timestamper { get; }
 
         private ISealer Sealer { get; }
-        private IWorldState StateProvider { get; }
+        public IWorldState StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
@@ -146,12 +146,13 @@ namespace Nethermind.Consensus.Producers
                         {
                             if (t.IsCompletedSuccessfully)
                             {
-                                if (t.Result is not null)
+                                Block? block = t.Result;
+                                if (block is not null)
                                 {
-                                    if (Logger.IsInfo)
-                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                    //if (Logger.IsInfo)
+                                    //    Logger.Info($"Produced block {block.ToString(block.Difficulty == 0 ? Block.Format.HashNumberMGasAndTx : Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
-                                    return t.Result;
+                                    return block;
                                 }
                                 else
                                 {
@@ -251,7 +252,6 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
             IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
-
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
     }

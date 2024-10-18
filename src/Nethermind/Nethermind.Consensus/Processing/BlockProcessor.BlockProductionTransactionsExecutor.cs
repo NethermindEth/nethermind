@@ -66,10 +66,42 @@ namespace Nethermind.Consensus.Processing
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
-                IEnumerable<Transaction> transactions = GetTransactions(block);
+                Transaction?[] transactions = GetTransactions(block).DistinctBy((tx) => tx, ByHashTxComparer.Instance).ToArray();
+
+                var groups = transactions.Select((t, i) => (t, i)).GroupBy(ti => ti.t.SenderAddress).Where(g => g.Count() > 0);
+                LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
+                foreach (var group in groups)
+                {
+                    var order = group.OrderBy(ti => ti.t.Nonce).Select(ti => ti.t).ToArray();
+                    var current = group.OrderBy(ti => ti.i).Select(ti => ti.i).ToArray();
+                    bool blank = false;
+                    for (int index = 0; index < current.Length; index++)
+                    {
+                        var offset = current[index];
+                        Transaction? tx = null;
+                        if (!blank)
+                        {
+                            tx = order[index];
+                            if (txPicker.CanAddTransaction(block, tx, transactionsInBlock, stateProvider).Action
+                                == TxAction.Invalid)
+                            {
+                                tx = null;
+                                blank = true;
+                            }
+                        }
+                        transactions[offset] = tx;
+                    }
+                }
+
+                transactionsInBlock.Clear();
+                transactions = transactions.Where(tx => tx is not null).ToArray();
+
+                transactions.AsSpan().Sort((tx0, tx1) =>
+                    tx0.SenderAddress == tx1.SenderAddress ?
+                    0 : tx0.MaxPriorityFeePerGas.CompareTo(tx1.MaxPriorityFeePerGas)
+                );
 
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {

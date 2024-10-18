@@ -145,7 +145,9 @@ public partial class BlockProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
-                QueueClearCaches(preWarmer, preWarmTask);
+
+                if (!options.ContainsFlag(ProcessingOptions.ProducingBlock))
+                    QueueClearCaches(preWarmer, preWarmTask);
 
                 if (notReadOnly)
                 {

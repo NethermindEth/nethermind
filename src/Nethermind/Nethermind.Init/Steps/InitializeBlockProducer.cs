@@ -54,7 +54,9 @@ namespace Nethermind.Init.Steps
                 _api.TxPool!,
                 _api.TransactionComparerProvider!,
                 _api.Config<IBlocksConfig>(),
-                _api.LogManager);
+                _api.LogManager,
+                null,
+                _api.WorldState!);
 
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Producers;
 
@@ -12,5 +13,6 @@ public interface IBlockImprovementContextFactory
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime);
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees);
 }

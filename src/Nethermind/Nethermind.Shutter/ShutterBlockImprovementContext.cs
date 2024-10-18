@@ -26,7 +26,8 @@ public class ShutterBlockImprovementContextFactory(
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees) =>
         new ShutterBlockImprovementContext(blockProducer,
                                            shutterTxSource,
                                            shutterConfig,

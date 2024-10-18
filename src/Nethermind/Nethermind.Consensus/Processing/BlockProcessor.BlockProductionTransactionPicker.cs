@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -62,18 +64,26 @@ namespace Nethermind.Consensus.Processing
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 if (currentTx.IsAboveInitCode(spec))
                 {
-                    return args.Set(TxAction.Skip, $"EIP-3860 - transaction size over max init code size");
+                    return args.Set(TxAction.Invalid, $"EIP-3860 - transaction size over max init code size");
                 }
 
                 if (!_ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
-                    return args.Set(TxAction.Skip, $"Sender is contract");
+                    return args.Set(TxAction.Invalid, $"Sender is contract");
                 }
 
                 UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                if (expectedNonce > currentTx.Nonce)
+                {
+                    return args.Set(TxAction.Invalid, $"Invalid nonce - expected {expectedNonce}");
+                }
                 if (expectedNonce != currentTx.Nonce)
                 {
-                    return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    var txs = transactionsInBlock.Where(t => t.SenderAddress == currentTx.SenderAddress);
+                    if (txs.Count() == 0 || expectedNonce != txs.Max(t => t.Nonce) + 1)
+                    {
+                        return args.Set(TxAction.Invalid, $"Invalid nonce - expected {expectedNonce}");
+                    }
                 }
 
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
@@ -123,6 +133,7 @@ namespace Nethermind.Consensus.Processing
         {
             Add,
             Skip,
+            Invalid,
             Stop
         }
     }

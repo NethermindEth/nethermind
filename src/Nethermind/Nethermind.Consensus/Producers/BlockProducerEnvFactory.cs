@@ -35,6 +35,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly ITransactionComparerProvider _transactionComparerProvider;
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
+        protected readonly IWorldState? _worldStateToWarmUp;
         private readonly IConsensusRequestsProcessor? _consensusRequestsProcessor;
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
@@ -51,9 +52,11 @@ namespace Nethermind.Consensus.Producers
             ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
             ILogManager logManager,
-            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
+            IConsensusRequestsProcessor? consensusRequestsProcessor = null,
+            IWorldState? worldState = null)
         {
             _worldStateManager = worldStateManager;
+            _worldStateToWarmUp = worldState;
             _blockTree = blockTree;
             _specProvider = specProvider;
             _blockValidator = blockValidator;
@@ -112,7 +115,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(worldStateManager, readOnlyBlockTree, _specProvider, _logManager);
+            new(worldStateManager, readOnlyBlockTree, _specProvider, _logManager, _worldStateToWarmUp);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,
@@ -147,8 +150,23 @@ namespace Nethermind.Consensus.Producers
             IRewardCalculatorSource rewardCalculatorSource,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IBlocksConfig blocksConfig) =>
-            new(specProvider,
+            IBlocksConfig blocksConfig)
+        {
+            //BlockCachePreWarmer? preWarmer = null;
+
+            //PreBlockCaches? preBlockCaches = new PreBlockCaches();
+            //preWarmer = preBlockCaches is not null ? new(
+            //    new(
+            //        _worldStateManager,
+            //        _blockTree.AsReadOnly(),
+            //        specProvider,
+            //        logManager,
+            //        readOnlyTxProcessingEnv.WorldState),
+            //    specProvider,
+            //    logManager,
+            //    preBlockCaches) : null;
+
+            return new(specProvider,
                 blockValidator,
                 rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
@@ -161,5 +179,6 @@ namespace Nethermind.Consensus.Producers
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),
                 consensusRequestsProcessor: _consensusRequestsProcessor
             );
+        }
     }
 }
