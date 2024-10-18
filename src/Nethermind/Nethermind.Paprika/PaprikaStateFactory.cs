@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +13,7 @@ using Paprika.Chain;
 using Paprika.Data;
 using Paprika.Merkle;
 using Paprika.Store;
+using Account = Nethermind.Core.Account;
 using IRawState = Paprika.Chain.IRawState;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
@@ -26,9 +26,9 @@ namespace Nethermind.Paprika;
 public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
-    private static readonly long _sepolia = 32.GiB();
-    private static readonly long _holesky = 32.GiB();
-    private static readonly long _mainnet = 256.GiB();
+    private static readonly long _sepolia = 48.GiB();
+    private static readonly long _holesky = 64.GiB();
+    private static readonly long _mainnet = 430.GiB();
 
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
 
@@ -59,11 +59,9 @@ public class PaprikaStateFactory : IStateFactory
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
-        _db = PagedDb.MemoryMappedDb(_holesky, 64, directory, flushToDisk: true);
+        _db = PagedDb.MemoryMappedDb(_holesky, 32, directory, flushToDisk: true);
 
-        //TODO - issue for snap-sync - diagnose the root cause
-        //var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
-        var parallelism = ComputeMerkleBehavior.ParallelismNone;
+        var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
         _merkleBehaviour = new(parallelism);
         _blockchain = new Blockchain(_db, _merkleBehaviour, _flushFileEvery, stateOptions, merkleOptions);
@@ -87,7 +85,7 @@ public class PaprikaStateFactory : IStateFactory
     public IReadOnlyState GetReadOnly(Hash256? stateRoot) =>
         new ReadOnlyState(stateRoot != null
             ? _blockchain.StartReadOnly(Convert(stateRoot))
-            : _blockchain.StartReadOnlyLatestFromDb());
+            : Blockchain.StartReadOnlyLatestFromDb(_db));
 
     public bool HasRoot(Hash256 stateRoot)
     {
@@ -501,10 +499,21 @@ public class PaprikaStateFactory : IStateFactory
             return Convert(_wrapped.GetHash(nibblePath, ignoreCache));
         }
 
-        public ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength)
+        public ValueHash256 GetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> storagePath, int pathLength, bool ignoreCache)
         {
             NibblePath nibblePath = NibblePath.FromKey(storagePath).SliceTo(pathLength);
-            return Convert(_wrapped.GetStorageHash(Convert(accountHash), nibblePath));
+            return Convert(_wrapped.GetStorageHash(Convert(accountHash), nibblePath, ignoreCache));
+        }
+
+        public bool IsPersisted(ValueHash256 accountHash, ReadOnlySpan<byte> path, int pathLength)
+        {
+            NibblePath nibblePath = NibblePath.FromKey(path).SliceTo(pathLength);
+            return _wrapped.IsPersisted(Convert(accountHash), nibblePath);
+        }
+
+        public ValueHash256 RecalculateRootHash()
+        {
+            return Convert(_wrapped.RecalculateRootHash());
         }
 
         public void Finalize(uint blockNumber)
