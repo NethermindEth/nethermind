@@ -165,7 +165,7 @@ internal static class ConfigGenerator
                 var attr = field.GetCustomAttribute<DescriptionAttribute>();
                 var description = string.IsNullOrEmpty(attr?.Description) ? null : $": {attr.Description}";
 
-                file.WriteLine($"    - `{field.Name}{description}`");
+                file.WriteLine($"    - `{field.Name}`{description}");
             }
 
             file.WriteLine();

@@ -1,26 +1,30 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Nethermind.Db
+using System.ComponentModel;
+
+namespace Nethermind.Db;
+
+/// <summary>
+/// Triggers for Full Pruning.
+/// </summary>
+public enum FullPruningTrigger
 {
+    [Description("Does not trigger. Pruning can be triggered manually.")]
     /// <summary>
-    /// Triggers for Full Pruning.
+    /// Only Manual trigger is supported.
     /// </summary>
-    public enum FullPruningTrigger
-    {
-        /// <summary>
-        /// Only Manual trigger is supported.
-        /// </summary>
-        Manual,
+    Manual,
 
-        /// <summary>
-        /// Automatically triggers on State DB size.
-        /// </summary>
-        StateDbSize,
+    [Description("Triggers when the state DB size is above the specified threshold.")]
+    /// <summary>
+    /// Automatically triggers on State DB size.
+    /// </summary>
+    StateDbSize,
 
-        /// <summary>
-        /// Automatically triggers on Volume free space on volume with State DB.
-        /// </summary>
-        VolumeFreeSpace
-    }
+    [Description("Triggers when the free disk space where the state DB is stored is below the specified threshold.")]
+    /// <summary>
+    /// Automatically triggers on Volume free space on volume with State DB.
+    /// </summary>
+    VolumeFreeSpace
 }
