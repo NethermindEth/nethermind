@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Core.Container;
 
 namespace Nethermind.Init.Steps
 {
@@ -38,9 +39,7 @@ namespace Nethermind.Init.Steps
                 .WithAttributeFiltering();
 
             StepInfo info = new StepInfo(stepType, GetStepBaseType(stepType));
-            builder.RegisterInstance(info);
-
-            return builder;
+            return builder.AddInstance(info);
         }
 
         private static bool IsStepType(Type t) => !t.IsInterface && !t.IsAbstract && typeof(IStep).IsAssignableFrom((Type?)(Type?)t);

@@ -21,6 +21,7 @@ using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -123,15 +124,16 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         protected override void ConfigureContainer(ContainerBuilder builder)
         {
             base.ConfigureContainer(builder);
-            builder.RegisterInstance(new ChainSpec
-            {
-                AuRa = new()
+            builder
+                .AddInstance(new ChainSpec
                 {
-                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                },
-                Parameters = new()
-            });
-            builder.RegisterModule(new AuraModule());
+                    AuRa = new()
+                    {
+                        WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                    },
+                    Parameters = new()
+                })
+                .AddModule(new AuraModule());
         }
 
         protected override IBlockProcessor CreateBlockProcessor()

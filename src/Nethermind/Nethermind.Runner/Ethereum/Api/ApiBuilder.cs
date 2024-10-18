@@ -52,18 +52,17 @@ namespace Nethermind.Runner.Ethereum.Api
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
 
-            ContainerBuilder containerBuilder = new ContainerBuilder();
-            containerBuilder.RegisterInstance(_configProvider).SingleInstance();
-            containerBuilder.RegisterInstance(_processExitSource).SingleInstance();
-            containerBuilder.RegisterInstance(_jsonSerializer).SingleInstance();
-            containerBuilder.RegisterInstance(_logManager).SingleInstance();
-            containerBuilder.RegisterInstance(chainSpec).SingleInstance();
-
-            containerBuilder.RegisterModule(new BaseModule());
-            containerBuilder.RegisterModule(new CoreModule());
-            containerBuilder.RegisterModule(new RunnerModule());
-            containerBuilder.RegisterModule(new NetworkModule(_configProvider.GetConfig<INetworkConfig>(), _configProvider.GetConfig<ISyncConfig>()));
-            containerBuilder.RegisterModule(new DbModule());
+            ContainerBuilder containerBuilder = new ContainerBuilder()
+                .AddInstance(_configProvider)
+                .AddInstance(_processExitSource)
+                .AddInstance(_jsonSerializer)
+                .AddInstance(_logManager)
+                .AddInstance(chainSpec)
+                .AddModule(new BaseModule())
+                .AddModule(new CoreModule())
+                .AddModule(new RunnerModule())
+                .AddModule(new NetworkModule(_configProvider.GetConfig<INetworkConfig>(), _configProvider.GetConfig<ISyncConfig>()))
+                .AddModule(new DbModule());
             ApplyPluginModule(plugins, chainSpec, containerBuilder);
 
             return containerBuilder.Build();
@@ -71,13 +70,14 @@ namespace Nethermind.Runner.Ethereum.Api
 
         private void ApplyPluginModule(IEnumerable<Type> plugins, ChainSpec chainSpec, ContainerBuilder containerBuilder)
         {
-            ContainerBuilder pluginLoaderBuilder = new ContainerBuilder();
-            pluginLoaderBuilder.RegisterInstance(_configProvider).SingleInstance();
-            pluginLoaderBuilder.RegisterInstance(_processExitSource).SingleInstance();
-            pluginLoaderBuilder.RegisterInstance(_jsonSerializer).SingleInstance();
-            pluginLoaderBuilder.RegisterInstance(_logManager).SingleInstance();
-            pluginLoaderBuilder.RegisterInstance(chainSpec).SingleInstance();
-            pluginLoaderBuilder.RegisterModule(new BaseModule());
+            ContainerBuilder pluginLoaderBuilder = new ContainerBuilder()
+                .AddInstance(_configProvider)
+                .AddInstance(_processExitSource)
+                .AddInstance(_jsonSerializer)
+                .AddInstance(_logManager)
+                .AddInstance(chainSpec)
+                .AddModule(new BaseModule());
+
             foreach (Type plugin in plugins)
             {
                 pluginLoaderBuilder.RegisterType(plugin)

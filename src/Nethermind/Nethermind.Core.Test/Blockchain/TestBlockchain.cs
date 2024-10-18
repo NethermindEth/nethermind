@@ -263,10 +263,9 @@ public class TestBlockchain : IDisposable
 
     protected virtual void ConfigureContainer(ContainerBuilder builder)
     {
-        builder.RegisterModule(new BaseModule());
-        builder.RegisterModule(new CoreModule());
-
         builder
+            .AddModule(new BaseModule())
+            .AddModule(new CoreModule())
             .AddInstance(SpecProvider)
             .AddInstance<ILogManager>(LogManager)
             .AddInstance<IConfigProvider>(new ConfigProvider());

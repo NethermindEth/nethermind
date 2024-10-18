@@ -9,6 +9,7 @@ using Autofac.Core;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
+using Nethermind.Core.Container;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Runner.Modules;
@@ -82,11 +83,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
         private static ContainerBuilder CreateBaseContainerBuilder()
         {
-            var builder = new ContainerBuilder();
-            builder.RegisterInstance(LimboLogs.Instance).AsImplementedInterfaces();
-            builder.RegisterModule(new BaseModule());
-            builder.RegisterModule(new RunnerModule());
-            return builder;
+            return new ContainerBuilder()
+                .AddInstance<ILogManager>(LimboLogs.Instance)
+                .AddModule(new BaseModule())
+                .AddModule(new RunnerModule());
         }
 
         private static IContainer CreateEmptyContainer()
@@ -97,23 +97,23 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
         private static IContainer CreateNethermindApi()
         {
-            ContainerBuilder builder = CreateBaseContainerBuilder();
-            builder.AddIStep(typeof(StepLong));
-            builder.AddIStep(typeof(StepForever));
-            builder.AddIStep(typeof(StepA));
-            builder.AddIStep(typeof(StepB));
-            builder.AddIStep(typeof(StepCStandard));
-            return builder.Build();
+            return CreateBaseContainerBuilder()
+                .AddIStep(typeof(StepLong))
+                .AddIStep(typeof(StepForever))
+                .AddIStep(typeof(StepA))
+                .AddIStep(typeof(StepB))
+                .AddIStep(typeof(StepCStandard))
+                .Build();
         }
         private static IContainer CreateAuraApi()
         {
-            ContainerBuilder builder = CreateBaseContainerBuilder();
-            builder.AddIStep(typeof(StepLong));
-            builder.AddIStep(typeof(StepForever));
-            builder.AddIStep(typeof(StepA));
-            builder.AddIStep(typeof(StepB));
-            builder.AddIStep(typeof(StepCAuRa));
-            return builder.Build();
+            return CreateBaseContainerBuilder()
+                .AddIStep(typeof(StepLong))
+                .AddIStep(typeof(StepForever))
+                .AddIStep(typeof(StepA))
+                .AddIStep(typeof(StepB))
+                .AddIStep(typeof(StepCAuRa))
+                .Build();
         }
     }
 
