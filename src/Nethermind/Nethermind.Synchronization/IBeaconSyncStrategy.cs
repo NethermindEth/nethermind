@@ -12,6 +12,8 @@ namespace Nethermind.Synchronization
 
         public static No BeaconSync { get; } = new();
 
+        public void AllowBeaconHeaderSync() { }
+
         public bool ShouldBeInBeaconHeaders() => false;
 
         public bool ShouldBeInBeaconModeControl() => false;
@@ -24,6 +26,7 @@ namespace Nethermind.Synchronization
 
     public interface IBeaconSyncStrategy
     {
+        void AllowBeaconHeaderSync();
         bool ShouldBeInBeaconHeaders();
         bool ShouldBeInBeaconModeControl();
         bool IsBeaconSyncFinished(BlockHeader? blockHeader);
