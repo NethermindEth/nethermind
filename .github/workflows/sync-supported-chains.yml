@@ -199,7 +199,7 @@ jobs:
           required_count["Processed"]=20
 
           network="${{ matrix.config.network }}"
-          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" && "$network" != "linea-mainnet" && "$network" != "linea-sepolia"]]; then
+          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" && "$network" != "linea-mainnet" && "$network" != "linea-sepolia" ]]; then
             good_logs["Synced Chain Head"]=0
             required_count["Synced Chain Head"]=20
           fi
