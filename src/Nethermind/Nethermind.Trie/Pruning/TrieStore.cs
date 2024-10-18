@@ -777,7 +777,7 @@ namespace Nethermind.Trie.Pruning
             {
                 (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
                 PersistNodeStartingFrom(trieNode, address2, path2, persistedNodeRecorder, writeFlags, disposeQueue);
-            })).ToArray());
+            })));
 
             disposeQueue.CompleteAdding();
             Task.WaitAll(_disposeTasks);

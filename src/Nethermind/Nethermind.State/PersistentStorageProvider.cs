@@ -347,7 +347,7 @@ namespace Nethermind.State
                 }
             }
 
-            Task.WaitAll(commitTask.ToArray());
+            Task.WaitAll(commitTask);
 
             _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
