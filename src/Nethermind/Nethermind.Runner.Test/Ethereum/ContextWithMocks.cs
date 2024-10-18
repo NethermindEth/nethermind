@@ -50,6 +50,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Facade.Find;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Init.Steps;
@@ -125,21 +126,21 @@ namespace Nethermind.Runner.Test.Ethereum
         {
             NethermindApi api = ContextWithoutContainer();
             api.ApiWithNetworkServiceContainer = new ContainerBuilder()
-                .AddSingleton(Substitute.For<IDiscoveryApp>())
-                .AddSingleton(Substitute.For<ISyncModeSelector>())
-                .AddSingleton(Substitute.For<ISynchronizer>())
-                .AddSingleton(Substitute.For<ISyncPeerPool>())
-                .AddSingleton(Substitute.For<IPivot>())
-                .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
-                .AddSingleton(Substitute.For<IBetterPeerStrategy>())
-                .AddSingleton(Substitute.For<ISyncServer>())
-                .AddSingleton(Substitute.For<IRlpxHost>())
-                .AddSingleton(Substitute.For<ISessionMonitor>())
-                .AddSingleton(Substitute.For<IEthSyncingInfo>())
-                .AddSingleton(Substitute.For<IStaticNodesManager>())
-                .AddSingleton(Substitute.For<IProtocolsManager>())
-                .AddSingleton(Substitute.For<IPeerManager>())
-                .AddSingleton(Substitute.For<IPeerPool>())
+                .AddInstance(Substitute.For<IDiscoveryApp>())
+                .AddInstance(Substitute.For<ISyncModeSelector>())
+                .AddInstance(Substitute.For<ISynchronizer>())
+                .AddInstance(Substitute.For<ISyncPeerPool>())
+                .AddInstance(Substitute.For<IPivot>())
+                .AddInstance(Substitute.For<IPeerDifficultyRefreshPool>())
+                .AddInstance(Substitute.For<IBetterPeerStrategy>())
+                .AddInstance(Substitute.For<ISyncServer>())
+                .AddInstance(Substitute.For<IRlpxHost>())
+                .AddInstance(Substitute.For<ISessionMonitor>())
+                .AddInstance(Substitute.For<IEthSyncingInfo>())
+                .AddInstance(Substitute.For<IStaticNodesManager>())
+                .AddInstance(Substitute.For<IProtocolsManager>())
+                .AddInstance(Substitute.For<IPeerManager>())
+                .AddInstance(Substitute.For<IPeerPool>())
                 .Build();
 
             return api;

@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -335,26 +336,26 @@ public class SynchronizerTests
             dbProvider.ConfigureServiceCollection(builder);
 
             builder
-                .AddSingleton(dbProvider)
-                .AddSingleton(nodeStorage)
-                .AddSingleton<INetworkConfig>(new NetworkConfig())
-                .AddSingleton(Substitute.For<ITimerFactory>())
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IBlockTree>(BlockTree)
-                .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton<IReceiptFinder>(NullReceiptStorage.Instance)
-                .AddSingleton(syncConfig)
-                .AddSingleton<IPoSSwitcher>(poSSwitcher)
-                .AddSingleton<IMergeConfig>(mergeConfig)
-                .AddSingleton(invalidChainTracker)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton(new ChainSpec())
-                .AddSingleton<IStateReader>(reader)
-                .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-                .AddSingleton<IBlockCacheService>(new BlockCacheService())
-                .AddSingleton(_logManager);
+                .AddInstance(dbProvider)
+                .AddInstance(nodeStorage)
+                .AddInstance<INetworkConfig>(new NetworkConfig())
+                .AddInstance(Substitute.For<ITimerFactory>())
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance<IBlockTree>(BlockTree)
+                .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddInstance<IReceiptFinder>(NullReceiptStorage.Instance)
+                .AddInstance(syncConfig)
+                .AddInstance<IPoSSwitcher>(poSSwitcher)
+                .AddInstance<IMergeConfig>(mergeConfig)
+                .AddInstance(invalidChainTracker)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance(new ChainSpec())
+                .AddInstance<IStateReader>(reader)
+                .AddInstance<ISealValidator>(Always.Valid)
+                .AddInstance<IBlockValidator>(Always.Valid)
+                .AddInstance<IGossipPolicy>(Policy.FullGossip)
+                .AddInstance<IBlockCacheService>(new BlockCacheService())
+                .AddInstance(_logManager);
 
             builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
 

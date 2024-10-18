@@ -17,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -106,9 +107,9 @@ namespace Nethermind.Api
         {
             ConfigureContainerBuilderFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+                .AddInstance<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
 
-            if (TrieStore != null) builder.AddSingleton<IReadOnlyTrieStore>(TrieStore.AsReadOnly());
+            if (TrieStore != null) builder.AddInstance<IReadOnlyTrieStore>(TrieStore.AsReadOnly());
 
             return builder;
         }

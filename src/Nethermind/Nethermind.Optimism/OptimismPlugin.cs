@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.HealthChecks;
 using Nethermind.Network;
@@ -132,8 +133,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             return;
 
         builder
-            .AddSingleton<IBlockCacheService>(_blockCacheService!)
-            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker!);
+            .AddInstance<IBlockCacheService>(_blockCacheService!)
+            .AddInstance<IInvalidChainTracker>(_invalidChainTracker!);
 
         builder
             .RegisterModule(new MergeNetworkModule());

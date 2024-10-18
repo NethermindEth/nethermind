@@ -21,6 +21,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -70,21 +71,21 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             ContainerBuilder builder = new ContainerBuilder()
-                .AddSingleton(nodeStorage)
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton(Substitute.For<ITimerFactory>())
-                .AddSingleton<INetworkConfig>(new NetworkConfig())
-                .AddSingleton(_blockTree)
-                .AddSingleton(_receiptStorage)
-                .AddSingleton<IReceiptFinder>(_receiptStorage)
-                .AddSingleton<ISyncConfig>(syncConfig)
-                .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton<ISealValidator>(Always.Valid)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton(new ChainSpec())
-                .AddSingleton(stateReader)
-                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-                .AddSingleton<ILogManager>(LimboLogs.Instance);
+                .AddInstance(nodeStorage)
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance(Substitute.For<ITimerFactory>())
+                .AddInstance<INetworkConfig>(new NetworkConfig())
+                .AddInstance(_blockTree)
+                .AddInstance(_receiptStorage)
+                .AddInstance<IReceiptFinder>(_receiptStorage)
+                .AddInstance<ISyncConfig>(syncConfig)
+                .AddInstance<IBlockValidator>(Always.Valid)
+                .AddInstance<ISealValidator>(Always.Valid)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance(new ChainSpec())
+                .AddInstance(stateReader)
+                .AddInstance<IGossipPolicy>(Policy.FullGossip)
+                .AddInstance<ILogManager>(LimboLogs.Instance);
             dbProvider.ConfigureServiceCollection(builder);
             builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
             IContainer container = builder.Build();

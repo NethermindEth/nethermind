@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;

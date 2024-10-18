@@ -39,6 +39,7 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Config;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.Network.Config;
@@ -352,23 +353,23 @@ namespace Nethermind.Synchronization.Test
 
             ContainerBuilder builder = new ContainerBuilder();
             builder
-                .AddSingleton(dbProvider)
-                .AddSingleton(Substitute.For<ITimerFactory>())
-                .AddSingleton<INetworkConfig>(new NetworkConfig())
-                .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
-                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-                .AddSingleton<IBlockTree>(tree)
-                .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton<IReceiptFinder>(NullReceiptStorage.Instance)
-                .AddSingleton(syncConfig)
-                .AddSingleton<IBlockValidator>(blockValidator)
-                .AddSingleton<ISealValidator>(sealValidator)
-                .AddSingleton(Substitute.For<IProcessExitSource>())
-                .AddSingleton(new ChainSpec())
-                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-                .AddSingleton<IStateReader>(stateReader)
-                .AddSingleton<IReceiptStorage>(receiptStorage)
-                .AddSingleton<ILogManager>(logManager);
+                .AddInstance(dbProvider)
+                .AddInstance(Substitute.For<ITimerFactory>())
+                .AddInstance<INetworkConfig>(new NetworkConfig())
+                .AddInstance<INodeStorage>(new NodeStorage(dbProvider.StateDb))
+                .AddInstance<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddInstance<IBlockTree>(tree)
+                .AddInstance<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddInstance<IReceiptFinder>(NullReceiptStorage.Instance)
+                .AddInstance(syncConfig)
+                .AddInstance<IBlockValidator>(blockValidator)
+                .AddInstance<ISealValidator>(sealValidator)
+                .AddInstance(Substitute.For<IProcessExitSource>())
+                .AddInstance(new ChainSpec())
+                .AddInstance<IGossipPolicy>(Policy.FullGossip)
+                .AddInstance<IStateReader>(stateReader)
+                .AddInstance<IReceiptStorage>(receiptStorage)
+                .AddInstance<ILogManager>(logManager);
             dbProvider.ConfigureServiceCollection(builder);
             builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
             IContainer container = builder.Build();

@@ -8,7 +8,7 @@ using System.Reflection;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Container;
 
 public static class ContainerBuilderExtensions
 {
@@ -50,7 +50,7 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddInstance<T>(this ContainerBuilder builder, T instance) where T : class
     {
         builder.RegisterInstance(instance)
             .As<T>()

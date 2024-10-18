@@ -15,6 +15,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -338,7 +339,7 @@ public class NetworkModule(INetworkConfig networkConfig, ISyncConfig syncConfig)
 
         builder
             .AddSingleton<IBetterPeerStrategy, TotalDifficultyBetterPeerStrategy>()
-            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+            .AddInstance<IBeaconSyncStrategy>(No.BeaconSync)
             .AddSingleton<IPivot, Pivot>()
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
             .AddSingleton<SyncedTxGossipPolicy>()

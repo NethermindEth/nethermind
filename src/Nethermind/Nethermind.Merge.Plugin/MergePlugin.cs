@@ -22,6 +22,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -394,8 +395,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         if (!MergeEnabled) return;
 
         builder
-            .AddSingleton<IBlockCacheService>(_blockCacheService)
-            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
+            .AddInstance<IBlockCacheService>(_blockCacheService)
+            .AddInstance<IInvalidChainTracker>(_invalidChainTracker);
 
         builder
             .RegisterModule(new MergeNetworkModule());
