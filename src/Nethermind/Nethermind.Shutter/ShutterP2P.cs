@@ -16,8 +16,6 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using System.Threading.Channels;
 using Google.Protobuf;
-using Nethermind.Db;
-using System.Text;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 
@@ -28,7 +26,6 @@ public class ShutterP2P : IShutterP2P
     private readonly ILogger _logger;
     private readonly IShutterConfig _cfg;
     private readonly Channel<byte[]> _msgQueue = Channel.CreateBounded<byte[]>(1000);
-    private static readonly byte[] _peerIdDbKey = Encoding.UTF8.GetBytes("shutterPeerIdPrivateKey");
     private readonly PubsubRouter _router;
     private readonly PubsubPeerDiscoveryProtocol _disc;
     private readonly PeerStore _peerStore;
