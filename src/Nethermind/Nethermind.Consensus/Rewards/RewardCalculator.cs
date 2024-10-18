@@ -11,17 +11,31 @@ namespace Nethermind.Consensus.Rewards
 {
     public class RewardCalculator : IRewardCalculator, IRewardCalculatorSource
     {
-        private readonly ISpecProvider _specProvider;
+        private readonly ISpecProvider? _specProvider;
+        private readonly UInt256? _blockReward;
 
         public RewardCalculator(ISpecProvider? specProvider)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
+        public RewardCalculator(UInt256? blockReward)
+        {
+            _blockReward = blockReward;
+        }
+
         private UInt256 GetBlockReward(Block block)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-            return spec.BlockReward;
+            if (_specProvider != null)
+            {
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+                return spec.BlockReward;
+            }
+            if (_blockReward.HasValue)
+            {
+                return _blockReward.Value;
+            }
+            throw new ArgumentNullException(nameof(_specProvider));
         }
 
         public BlockReward[] CalculateRewards(Block block)
