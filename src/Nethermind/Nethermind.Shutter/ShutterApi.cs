@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Multiformats.Address;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -15,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Facade.Find;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
 using Nethermind.State;
@@ -41,6 +44,8 @@ public class ShutterApi : IShutterApi
     private readonly ReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogManager _logManager;
+    private readonly IFileSystem _fileSystem;
+    private readonly IKeyStoreConfig _keyStoreConfig;
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _blockWaitCutoff;
 
@@ -54,6 +59,8 @@ public class ShutterApi : IShutterApi
         ISpecProvider specProvider,
         ITimestamper timestamper,
         IWorldStateManager worldStateManager,
+        IFileSystem fileSystem,
+        IKeyStoreConfig keyStoreConfig,
         IShutterConfig cfg,
         Dictionary<ulong, byte[]> validatorsInfo,
         TimeSpan slotLength
@@ -65,6 +72,8 @@ public class ShutterApi : IShutterApi
         _abiEncoder = abiEncoder;
         _logManager = logManager;
         _slotLength = slotLength;
+        _fileSystem = fileSystem;
+        _keyStoreConfig = keyStoreConfig;
         _blockUpToDateCutoff = slotLength;
         _blockWaitCutoff = _slotLength / 3;
 
@@ -92,11 +101,11 @@ public class ShutterApi : IShutterApi
 
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
-        InitP2P(_cfg, logManager);
+        InitP2P();
     }
 
-    public Task StartP2P(CancellationTokenSource? cancellationTokenSource = null)
-        => P2P!.Start(OnKeysReceived, cancellationTokenSource);
+    public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
+        => P2P!.Start(bootnodeP2PAddresses, OnKeysReceived, cancellationTokenSource);
 
     public ShutterBlockImprovementContextFactory GetBlockImprovementContextFactory(IBlockProducer blockProducer)
     {
@@ -138,9 +147,9 @@ public class ShutterApi : IShutterApi
         TxSource.LoadTransactions(head, parentHeader, keys.Value);
     }
 
-    protected virtual void InitP2P(IShutterConfig cfg, ILogManager logManager)
+    protected virtual void InitP2P()
     {
-        P2P = new ShutterP2P(cfg, logManager);
+        P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig);
     }
 
     protected virtual IShutterEon InitEon()
