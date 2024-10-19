@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
-internal class E2StoreStreamTests
+internal class E2StoreWriterTests
 {
     [TestCase(EntryTypes.Version)]
     [TestCase(EntryTypes.CompressedHeader)]
@@ -22,7 +22,7 @@ internal class E2StoreStreamTests
     public async Task WriteEntry_WritingAnEntry_WritesCorrectHeaderType(ushort type)
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
 
         await sut.WriteEntry(type, Array.Empty<byte>());
 
@@ -35,7 +35,7 @@ internal class E2StoreStreamTests
     public async Task WriteEntry_WritingAnEntry_WritesCorrectLengthInHeader(int length)
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
 
         await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[length]);
 
@@ -48,11 +48,11 @@ internal class E2StoreStreamTests
     public async Task WriteEntry_WritingAnEntry_ReturnCorrectNumberofBytesWritten(int length)
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
 
         int result = await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[length]);
 
-        Assert.That(result, Is.EqualTo(length + E2StoreStream.HeaderSize));
+        Assert.That(result, Is.EqualTo(length + E2StoreWriter.HeaderSize));
     }
 
 
@@ -60,7 +60,7 @@ internal class E2StoreStreamTests
     public async Task WriteEntry_WritingAnEntry_ZeroesAtCorrectIndexesInHeader()
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
 
         await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[] { 0xff, 0xff, 0xff, 0xff });
         byte[] bytes = stream.ToArray();
@@ -73,24 +73,24 @@ internal class E2StoreStreamTests
     public async Task WriteEntry_WritingEntryValue_BytesAreWrittenToStream()
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
 
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.CompressedHeader, bytes);
         byte[] result = stream.ToArray();
 
-        Assert.That(new ArraySegment<byte>(result, E2StoreStream.HeaderSize, bytes.Length), Is.EquivalentTo(bytes));
+        Assert.That(new ArraySegment<byte>(result, E2StoreWriter.HeaderSize, bytes.Length), Is.EquivalentTo(bytes));
     }
 
     [Test]
     public async Task WriteEntryAsSnappy_WritingEntryValue_WritesEncodedBytesToStream()
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
 
         await sut.WriteEntryAsSnappy(EntryTypes.CompressedHeader, bytes);
-        stream.Position = E2StoreStream.HeaderSize;
+        stream.Position = E2StoreWriter.HeaderSize;
         using var snappy = new SnappyStream(stream, System.IO.Compression.CompressionMode.Decompress);
         byte[] buffer = new byte[32];
 
@@ -101,7 +101,7 @@ internal class E2StoreStreamTests
     public async Task WriteEntryAsSnappy_WritingEntryValue_ReturnsCompressedSize()
     {
         using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        using E2StoreWriter sut = new E2StoreWriter(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
 
         int result = await sut.WriteEntryAsSnappy(EntryTypes.CompressedHeader, bytes);
@@ -113,12 +113,12 @@ internal class E2StoreStreamTests
     public async Task ReadEntryValue_ReadingValueBytesOfEntry_ReturnsBytes()
     {
         string tmpFile = Path.GetTempFileName();
-        E2StoreStream sut = new E2StoreStream(File.OpenWrite(tmpFile));
+        E2StoreWriter sut = new E2StoreWriter(File.OpenWrite(tmpFile));
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
         sut.Dispose();
 
-        using EraFileReader reader = new EraFileReader(tmpFile);
+        using E2StoreReader reader = new E2StoreReader(tmpFile);
         IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
         try
         {
@@ -135,12 +135,12 @@ internal class E2StoreStreamTests
     public async Task ReadEntryValue_ReadingValueBytesOfEntry_ReturnsBytesRead()
     {
         string tmpFile = Path.GetTempFileName();
-        E2StoreStream sut = new E2StoreStream(File.OpenWrite(tmpFile));
+        E2StoreWriter sut = new E2StoreWriter(File.OpenWrite(tmpFile));
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
         sut.Dispose();
 
-        using EraFileReader reader = new EraFileReader(tmpFile);
+        using E2StoreReader reader = new E2StoreReader(tmpFile);
         (var readBytes, long _) = reader.ReadEntryAndDecode(0, buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator);
         Assert.That(readBytes, Is.EquivalentTo(bytes));
 
@@ -151,7 +151,7 @@ internal class E2StoreStreamTests
     public async Task ReadEntryValueAsSnappy_ReadingValueBytesOfEntry_ReturnsDecompressedBytes()
     {
         string tmpFile = Path.GetTempFileName();
-        using E2StoreStream sut = new E2StoreStream(File.OpenWrite(tmpFile));
+        using E2StoreWriter sut = new E2StoreWriter(File.OpenWrite(tmpFile));
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         MemoryStream compressed = new();
         using SnappyStream snappy = new SnappyStream(compressed, System.IO.Compression.CompressionMode.Compress);
@@ -162,7 +162,7 @@ internal class E2StoreStreamTests
         await sut.WriteEntry(EntryTypes.CompressedHeader, compressedBytes);
         sut.Dispose();
 
-        using EraFileReader reader = new EraFileReader(tmpFile);
+        using E2StoreReader reader = new E2StoreReader(tmpFile);
         IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(32);
         try
         {

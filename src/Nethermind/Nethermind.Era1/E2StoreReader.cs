@@ -8,7 +8,7 @@ using Snappier;
 
 namespace Nethermind.Era1;
 
-public class EraFileReader : IDisposable
+public class E2StoreReader : IDisposable
 {
     internal const int HeaderSize = 8;
     internal const int ValueSizeLimit = 1024 * 1024 * 50;
@@ -17,13 +17,13 @@ public class EraFileReader : IDisposable
     private MemoryMappedViewAccessor _accessor;
     private IByteBufferAllocator _bufferAllocator = PooledByteBufferAllocator.Default;
 
-    public EraFileReader(MemoryMappedFile mmf)
+    public E2StoreReader(MemoryMappedFile mmf)
     {
         _mappedFile = mmf;
         _accessor = _mappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
     }
 
-    public EraFileReader(string filename): this(MemoryMappedFile.CreateFromFile(filename, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
+    public E2StoreReader(string filename): this(MemoryMappedFile.CreateFromFile(filename, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
     {
     }
 
@@ -157,7 +157,7 @@ public class EraFileReader : IDisposable
         }
     }
 
-    public long LastBlock => StartBlock + _blockCount;
+    public long LastBlock => StartBlock + _blockCount - 1;
 
     public long AccumulatorOffset
     {
@@ -169,7 +169,7 @@ public class EraFileReader : IDisposable
             int indexLength = 8 + 8 + 8 * (int)_blockCount + 8;
 
             // <header> + <the 32 byte hash> + <indexes>
-            int accumulatorFromLast = E2StoreStream.HeaderSize + 32 + indexLength;
+            int accumulatorFromLast = E2StoreWriter.HeaderSize + 32 + indexLength;
 
             return _accessor.Capacity - accumulatorFromLast;
         }

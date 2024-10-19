@@ -10,7 +10,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Era1.Test;
 
-public class EraFileReaderTests
+public class E2StoreReaderTests
 {
 
     [Test]
@@ -53,7 +53,7 @@ public class EraFileReaderTests
         {
             var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
 
-            using EraFileReader store = new EraFileReader(eraFile);
+            using E2StoreReader store = new E2StoreReader(eraFile);
             // var meta = store.CreateMetadata();
             // var offset = meta.BlockOffset(0);
 

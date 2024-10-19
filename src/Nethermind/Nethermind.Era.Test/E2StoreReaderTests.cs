@@ -164,7 +164,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile, true);
+        EraReader sut = new EraReader(_tmpFile);
 
         var enumerator = sut.GetAsyncEnumerator();
         for (int i = 2; i < 0; i--)

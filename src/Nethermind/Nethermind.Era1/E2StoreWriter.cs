@@ -11,36 +11,26 @@ using Nethermind.Serialization.Rlp;
 using Snappier;
 namespace Nethermind.Era1;
 
-internal class E2StoreStream : IDisposable
+internal class E2StoreWriter : IDisposable
 {
     internal const int HeaderSize = 8;
 
     private readonly Stream _stream;
     private bool _disposedValue;
-    private IByteBufferAllocator _bufferAllocator;
     private MemoryStream? _compressedData;
-
-    public long StreamLength => _stream.Length;
 
     public long Position => _stream.Position;
 
-    public static E2StoreStream ForWrite(Stream stream)
+    public static E2StoreWriter ForWrite(Stream stream)
     {
         if (!stream.CanWrite)
             throw new ArgumentException("Stream must be writeable.", nameof(stream));
         return new(stream);
     }
-    public static Task<E2StoreStream> ForRead(Stream stream, IByteBufferAllocator? bufferAllocator, CancellationToken cancellation)
-    {
-        if (!stream.CanRead)
-            throw new ArgumentException("Stream must be readable.", nameof(stream));
-        E2StoreStream storeStream = new(stream, bufferAllocator);
-        return Task.FromResult(storeStream);
-    }
-    internal E2StoreStream(Stream stream, IByteBufferAllocator? bufferAllocator = null)
+
+    internal E2StoreWriter(Stream stream)
     {
         _stream = stream;
-        _bufferAllocator = bufferAllocator ?? PooledByteBufferAllocator.Default;
     }
 
     public Task<int> WriteEntryAsSnappy(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
@@ -119,9 +109,5 @@ internal class E2StoreStream : IDisposable
         // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
-    }
-    internal long Seek(long offset, SeekOrigin origin)
-    {
-        return _stream.Seek(offset, origin);
     }
 }

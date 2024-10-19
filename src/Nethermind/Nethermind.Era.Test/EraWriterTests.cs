@@ -134,7 +134,7 @@ internal class EraWriterTests
 
         await sut.Finalize();
 
-        using EraFileReader fileReader = new EraFileReader(tmpFile.FilePath);
+        using E2StoreReader fileReader = new E2StoreReader(tmpFile.FilePath);
         fileReader.BlockOffset(0).Should().Be(8);
     }
 

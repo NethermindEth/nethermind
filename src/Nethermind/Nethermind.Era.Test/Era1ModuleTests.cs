@@ -100,7 +100,7 @@ public class Era1ModuleTests
             using var tmpFile = new TmpFile();
             using var builder = EraWriter.Create(tmpFile.FilePath, specProvider);
 
-            using var eraEnumerator = new EraReader(era, default);
+            using var eraEnumerator = new EraReader(era);
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
                 await builder.Add(b, r, td);
@@ -213,7 +213,7 @@ public class Era1ModuleTests
         byte[] buffer = new byte[1024];
 
         using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(tmpFile.FilePath, FileMode.Open);
-        using EraFileReader fileReader = new EraFileReader(mmf);
+        using E2StoreReader fileReader = new E2StoreReader(mmf);
         Assert.That(fileReader.StartBlock, Is.EqualTo(0));
         Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks + 1));
 

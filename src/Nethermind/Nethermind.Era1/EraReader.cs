@@ -21,35 +21,36 @@ namespace Nethermind.Era1;
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
 {
     private bool _disposedValue;
-    private long _currentBlockNumber;
     private ReceiptMessageDecoder _receiptDecoder = new();
     private BlockBodyDecoder _blockBodyDecoder = new();
-    private EraFileReader _fileReader;
-    private readonly bool _isDescendingOrder;
+    private E2StoreReader _fileReader;
 
-    public long CurrentBlockNumber => _currentBlockNumber;
-
-    public EraReader(string fileName, bool descendingOrder = false): this(new EraFileReader(fileName), descendingOrder)
+    public EraReader(string fileName): this(new E2StoreReader(fileName))
     {
     }
 
 
-    public EraReader(EraFileReader e2, bool descendingOrder = false)
+    public EraReader(E2StoreReader e2)
     {
         _fileReader = e2;
-        _isDescendingOrder = descendingOrder;
-        Reset(_isDescendingOrder);
     }
 
     public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        Reset(_isDescendingOrder);
-        EntryReadResult? result;
-        while (true)
+        foreach (var blockNumber in EnumerateBlockNumber())
         {
-            result = await Next(false, cancellation);
-            if (result == null) break;
-            yield return (result.Value.Block, result.Value.Receipts, result.Value.TotalDifficulty);
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
+            yield return (result.Block, result.Receipts, result.TotalDifficulty);
+        }
+    }
+
+    private IEnumerable<long> EnumerateBlockNumber()
+    {
+        long blockNumber = _fileReader.StartBlock;
+        while (blockNumber <= _fileReader.LastBlock)
+        {
+            yield return blockNumber;
+            blockNumber++;
         }
     }
 
@@ -62,14 +63,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
         UInt256 currentTd = await CalculateStartingTotalDiffulty(cancellation);
-        Reset(false);
 
-        int actualCount = 0;
         using AccumulatorCalculator calculator = new();
-        while (true)
+
+        foreach (var blockNumber in EnumerateBlockNumber())
         {
-            EntryReadResult? result = await Next(true, cancellation);
-            if (result == null) break;
+            EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
             EntryReadResult err = result.Value;
             if (err.Block.Header.Hash != err.ComputedHeaderHash)
             {
@@ -87,7 +86,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             }
             currentTd += err.Block.Difficulty;
             calculator.Add(err.Block.Header.Hash!, currentTd);
-            actualCount++;
         }
 
         return expectedAccumulator == calculator.ComputeRoot();
@@ -95,9 +93,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private async Task<UInt256> CalculateStartingTotalDiffulty(CancellationToken cancellation)
     {
-        EntryReadResult? result = await ReadBlockAndReceipts(_fileReader.StartBlock, true, cancellation);
-        if (result == null) throw new EraException("Invalid Era1 archive format.");
-        return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
+        EntryReadResult result = await ReadBlockAndReceipts(_fileReader.StartBlock, true, cancellation);
+        return result.TotalDifficulty - result.Block.Header.Difficulty;
     }
 
     public ValueHash256 ReadAccumulator()
@@ -116,34 +113,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}.");
         EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
         return (result.Block, result.Receipts, result.TotalDifficulty);
-    }
-    private async Task<EntryReadResult?> Next(bool computeHeaderHash, CancellationToken cancellationToken)
-    {
-        if (_isDescendingOrder)
-        {
-            if (_fileReader.StartBlock > _currentBlockNumber)
-            {
-                //TODO test enumerate more than once
-                Reset(_isDescendingOrder);
-                return null;
-            }
-        }
-        else
-        {
-            if (_fileReader.StartBlock + _fileReader.BlockCount <= _currentBlockNumber)
-            {
-                //TODO test enumerate more than once
-                Reset(_isDescendingOrder);
-                return null;
-            }
-        }
-
-        EntryReadResult result = await ReadBlockAndReceipts(_currentBlockNumber, computeHeaderHash, cancellationToken);
-        if (_isDescendingOrder)
-            _currentBlockNumber--;
-        else
-            _currentBlockNumber++;
-        return result;
     }
 
     private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
@@ -209,30 +178,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private TxReceipt[] DecodeReceipts(IByteBuffer buf)
     {
         return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Reset(bool descendingOrder)
-    {
-        if (descendingOrder)
-        {
-            _currentBlockNumber = _fileReader.StartBlock + _fileReader.BlockCount - 1;
-        }
-        else
-        {
-            _currentBlockNumber = _fileReader.StartBlock;
-        }
-    }
-
-    private static bool IsValidFilename(string file)
-    {
-        if (!Path.GetExtension(file).Equals(".era1", StringComparison.OrdinalIgnoreCase))
-            return false;
-        string[] parts = file.Split(new char[] { '-' });
-        uint epoch;
-        if (parts.Length != 3 || !uint.TryParse(parts[1], out epoch))
-            return false;
-        return true;
     }
 
     protected virtual void Dispose(bool disposing)

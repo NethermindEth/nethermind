@@ -54,7 +54,7 @@ public class EraStore : IEraStore
     public EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
-        return new EraReader(new EraFileReader(_epochs[epoch]));
+        return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
     public string GetReaderPath(long epoch)
