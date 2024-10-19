@@ -28,7 +28,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private readonly bool _isDescendingOrder;
 
     public long CurrentBlockNumber => _currentBlockNumber;
-    public EraMetadata EraMetadata { get; }
 
     public EraReader(string fileName, bool descendingOrder = false): this(new EraFileReader(fileName), descendingOrder)
     {
@@ -38,7 +37,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     public EraReader(EraFileReader e2, bool descendingOrder = false)
     {
         _fileReader = e2;
-        EraMetadata = e2.CreateMetadata();
         _isDescendingOrder = descendingOrder;
         Reset(_isDescendingOrder);
     }
@@ -97,7 +95,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private async Task<UInt256> CalculateStartingTotalDiffulty(CancellationToken cancellation)
     {
-        EntryReadResult? result = await ReadBlockAndReceipts(EraMetadata.Start, true, cancellation);
+        EntryReadResult? result = await ReadBlockAndReceipts(_fileReader.StartBlock, true, cancellation);
         if (result == null) throw new EraException("Invalid Era1 archive format.");
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
@@ -105,17 +103,17 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     public ValueHash256 ReadAccumulator()
     {
         return _fileReader.ReadEntryAndDecode<ValueHash256>(
-            EraMetadata.AccumulatorOffset,
+            _fileReader.AccumulatorOffset,
             (buffer) => new ValueHash256(buffer.ReadAllBytesAsArray()),
             EntryTypes.Accumulator).Item1;
     }
 
     public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
-        if (number < EraMetadata.Start)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {EraMetadata.Start}.");
-        if (number > EraMetadata.End)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {EraMetadata.End}.");
+        if (number < _fileReader.StartBlock)
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.StartBlock}.");
+        if (number > _fileReader.LastBlock)
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}.");
         EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
         return (result.Block, result.Receipts, result.TotalDifficulty);
     }
@@ -123,7 +121,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (_isDescendingOrder)
         {
-            if (EraMetadata.Start > _currentBlockNumber)
+            if (_fileReader.StartBlock > _currentBlockNumber)
             {
                 //TODO test enumerate more than once
                 Reset(_isDescendingOrder);
@@ -132,7 +130,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         }
         else
         {
-            if (EraMetadata.Start + EraMetadata.Count <= _currentBlockNumber)
+            if (_fileReader.StartBlock + _fileReader.BlockCount <= _currentBlockNumber)
             {
                 //TODO test enumerate more than once
                 Reset(_isDescendingOrder);
@@ -150,11 +148,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
-        if (blockNumber < EraMetadata.Start
-            || blockNumber > EraMetadata.Start + EraMetadata.Count)
+        if (blockNumber < _fileReader.StartBlock
+            || blockNumber > _fileReader.StartBlock + _fileReader.BlockCount)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
 
-        long position = EraMetadata.BlockOffset(blockNumber);
+        long position = _fileReader.BlockOffset(blockNumber);
 
         ((BlockHeader header, Hash256? currentComputedHeaderHash), long readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
             position,
@@ -218,11 +216,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (descendingOrder)
         {
-            _currentBlockNumber = EraMetadata.Start + EraMetadata.Count - 1;
+            _currentBlockNumber = _fileReader.StartBlock + _fileReader.BlockCount - 1;
         }
         else
         {
-            _currentBlockNumber = EraMetadata.Start;
+            _currentBlockNumber = _fileReader.StartBlock;
         }
     }
 
@@ -241,7 +239,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (!_disposedValue)
         {
-            EraMetadata.Dispose();
             _fileReader.Dispose();
             _disposedValue = true;
         }

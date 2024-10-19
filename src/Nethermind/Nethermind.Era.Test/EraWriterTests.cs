@@ -134,10 +134,8 @@ internal class EraWriterTests
 
         await sut.Finalize();
 
-        using EraFileReader storeStream = new EraFileReader(tmpFile.FilePath);
-        EraMetadata metadata = storeStream.CreateMetadata();
-
-        metadata.BlockOffset(0).Should().Be(8);
+        using EraFileReader fileReader = new EraFileReader(tmpFile.FilePath);
+        fileReader.BlockOffset(0).Should().Be(8);
     }
 
     [Test]

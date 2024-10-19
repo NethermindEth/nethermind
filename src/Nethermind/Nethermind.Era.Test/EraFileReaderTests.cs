@@ -54,8 +54,8 @@ public class EraFileReaderTests
             var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
 
             using EraFileReader store = new EraFileReader(eraFile);
-            var meta = store.CreateMetadata();
-            var offset = meta.BlockOffset(0);
+            // var meta = store.CreateMetadata();
+            // var offset = meta.BlockOffset(0);
 
 
             /*

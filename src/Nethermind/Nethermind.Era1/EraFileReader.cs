@@ -27,11 +27,6 @@ public class EraFileReader : IDisposable
     {
     }
 
-    public EraMetadata CreateMetadata()
-    {
-        return EraMetadata.CreateEraMetadata(_mappedFile);
-    }
-
     public (T, long) ReadEntryAndDecode<T>(long position, Func<IByteBuffer, T> decoder, ushort expectedType)
     {
         Entry entry = ReadEntry(position, expectedType);
@@ -116,4 +111,77 @@ public class EraFileReader : IDisposable
         _accessor.Dispose();
         _mappedFile.Dispose();
     }
+
+    public long BlockOffset(long blockNumber)
+    {
+        EnsureIndexAvailable();
+
+        if (blockNumber > _startBlock + _blockCount || blockNumber < _startBlock)
+            throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
+
+        // 8 * <offset> + <count>
+        int indexLength = 8 * (int)_blockCount + 8;
+        long offsetLocation = indexLength - (long)(blockNumber - _startBlock!) * 8;
+
+        // <header> + <start block> + <the rest of the index>
+        int sizeIncludingHeader = HeaderSize + 8 + indexLength;
+
+        long relativeOffset = _accessor.ReadInt64(_accessor.Capacity - offsetLocation);
+        return _accessor.Capacity - sizeIncludingHeader + relativeOffset;
+    }
+
+    private void EnsureIndexAvailable()
+    {
+        if (_startBlock != null) return;
+
+        // Read the block count
+        _blockCount = _accessor.ReadInt64(_accessor.Capacity - 8);
+
+        // <starting block> + 8 * <offset> + <count>
+        int indexLength = 8 + 8 * (int)_blockCount + 8;
+
+        _startBlock = _accessor.ReadInt64(_accessor.Capacity - indexLength);
+    }
+
+    // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
+    // the page fault when looking up.
+    private long? _startBlock;
+    private long _blockCount;
+
+    public long StartBlock
+    {
+        get
+        {
+            EnsureIndexAvailable();
+            return _startBlock!.Value;
+        }
+    }
+
+    public long LastBlock => StartBlock + _blockCount;
+
+    public long AccumulatorOffset
+    {
+        get
+        {
+            EnsureIndexAvailable();
+
+            // <index header> + <starting block> + 8 * <offset> + <count>
+            int indexLength = 8 + 8 + 8 * (int)_blockCount + 8;
+
+            // <header> + <the 32 byte hash> + <indexes>
+            int accumulatorFromLast = E2StoreStream.HeaderSize + 32 + indexLength;
+
+            return _accessor.Capacity - accumulatorFromLast;
+        }
+    }
+
+    public long BlockCount
+    {
+        get
+        {
+            EnsureIndexAvailable();
+            return _blockCount;
+        }
+    }
+
 }

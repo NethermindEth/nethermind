@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db.Blooms;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -212,13 +213,13 @@ public class Era1ModuleTests
         byte[] buffer = new byte[1024];
 
         using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(tmpFile.FilePath, FileMode.Open);
-        using EraMetadata metadata = EraMetadata.CreateEraMetadata(mmf);
-        Assert.That(metadata.Start, Is.EqualTo(0));
-        Assert.That(metadata.Count, Is.EqualTo(numOfBlocks + 1));
+        using EraFileReader fileReader = new EraFileReader(mmf);
+        Assert.That(fileReader.StartBlock, Is.EqualTo(0));
+        Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks + 1));
 
-        for (int i = 0; i < metadata.Count; i++)
+        for (int i = 0; i < fileReader.BlockCount; i++)
         {
-            long blockOffset = metadata.BlockOffset(i);
+            long blockOffset = fileReader.BlockOffset(i);
 
             using (var accessor = mmf.CreateViewAccessor(blockOffset, 2))
             {
