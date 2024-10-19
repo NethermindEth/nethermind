@@ -17,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -52,7 +53,7 @@ namespace Nethermind.Api
         /// <summary>
         /// PoS switcher for The Merge
         /// </summary>
-        IPoSSwitcher PoSSwitcher { get; set; }
+        IPoSSwitcher PoSSwitcher { get; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
@@ -93,20 +94,13 @@ namespace Nethermind.Api
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
-        IEthSyncingInfo? EthSyncingInfo { get; set; }
+        IEthSyncingInfo? EthSyncingInfo { get; }
 
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         INodeStorageFactory NodeStorageFactory { get; set; }
-        BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromApiWithStores(builder)
-                .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
-        }
     }
 }

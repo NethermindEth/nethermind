@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
@@ -26,17 +27,13 @@ namespace Nethermind.Api
         ILogFinder? LogFinder { get; set; }
         ISigner? EngineSigner { get; set; }
         ISignerStore? EngineSignerStore { get; set; }
+
+        [ComponentKey(ComponentKey.NodeKey)]
         ProtectedPrivateKey? NodeKey { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
         IBlockStore? BadBlocksStore { get; set; }
-
-        public ContainerBuilder ConfigureContainerBuilderFromApiWithStores(ContainerBuilder builder)
-        {
-            return ConfigureContainerBuilderFromBasicApi(builder)
-                .AddPropertiesFrom<IApiWithStores>(this);
-        }
     }
 }
