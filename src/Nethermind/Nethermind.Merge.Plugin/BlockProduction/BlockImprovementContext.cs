@@ -23,10 +23,12 @@ public class BlockImprovementContext : IBlockImprovementContext
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime)
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees)
     {
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
+        BlockFees = currentBlockFees;
         StartDateTime = startDateTime;
         ImprovementTask = blockProducer
             .BuildBlock(parentHeader, _feesTracer, payloadAttributes, _cancellationTokenSource.Token)
@@ -40,16 +42,24 @@ public class BlockImprovementContext : IBlockImprovementContext
 
     private Block? SetCurrentBestBlock(Task<Block?> task)
     {
+        Block? block = task.Result;
         if (task.IsCompletedSuccessfully)
         {
-            if (task.Result is not null)
+            if (block is not null)
             {
-                CurrentBestBlock = task.Result;
-                BlockFees = _feesTracer.Fees;
+                UInt256 fees = _feesTracer.Fees;
+                if (CurrentBestBlock is null ||
+                    fees > BlockFees ||
+                    (fees == BlockFees && block.GasUsed > CurrentBestBlock.GasUsed))
+                {
+                    // Only update block if block has actually improved.
+                    CurrentBestBlock = block;
+                    BlockFees = fees;
+                }
             }
         }
 
-        return task.Result;
+        return CurrentBestBlock;
     }
 
     public bool Disposed { get; private set; }

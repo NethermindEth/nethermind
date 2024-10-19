@@ -148,8 +148,8 @@ namespace Nethermind.Consensus.Producers
                             {
                                 if (t.Result is not null)
                                 {
-                                    if (Logger.IsInfo)
-                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                    if (Logger.IsDebug)
+                                        Logger.Debug($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     return t.Result;
                                 }

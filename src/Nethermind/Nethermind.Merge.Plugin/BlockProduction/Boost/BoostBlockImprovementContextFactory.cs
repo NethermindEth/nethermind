@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
@@ -28,6 +29,7 @@ public class BoostBlockImprovementContextFactory : IBlockImprovementContextFacto
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
-        DateTimeOffset startDateTime) =>
+        DateTimeOffset startDateTime,
+        UInt256 currentBlockFees) =>
         new BoostBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime);
 }

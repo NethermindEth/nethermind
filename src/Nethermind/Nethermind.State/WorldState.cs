@@ -110,6 +110,10 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resizeCollections);
             _transientStorageProvider.Reset(resizeCollections);
         }
+        public void ResetTransient()
+        {
+            _transientStorageProvider.Reset();
+        }
         public void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)

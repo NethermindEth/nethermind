@@ -39,7 +39,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
     {
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
@@ -50,6 +50,6 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             _payloadStorage.TryAdd(payloadId,
                 new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
         }
-        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees);
     }
 }

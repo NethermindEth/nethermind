@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -77,7 +79,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         if (!_payloadStorage.ContainsKey(payloadId))
         {
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow);
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default);
         }
         else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
@@ -92,9 +94,9 @@ public class PayloadPreparationService : IPayloadPreparationService
         return emptyBlock;
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees) =>
         _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime),
+            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees),
             (id, currentContext) =>
             {
                 // if there is payload improvement and its not yet finished leave it be
@@ -104,17 +106,26 @@ public class PayloadPreparationService : IPayloadPreparationService
                     return currentContext;
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentContext.CurrentBestBlock!, startDateTime, currentContext.BlockFees);
                 currentContext.Dispose();
                 return newContext;
             });
 
 
-    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime)
+    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime);
-        blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees);
+        blockImprovementContext.ImprovementTask.ContinueWith((b) =>
+        {
+            Block? block = b.Result;
+            if (!ReferenceEquals(block, currentBestBlock))
+            {
+                LogProductionResult(b, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
+            }
+            return block;
+        });
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             // if after delay we still have time to try producing the block in this slot
@@ -127,7 +138,7 @@ public class PayloadPreparationService : IPayloadPreparationService
                 if (!blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                 {
                     Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime);
+                    ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees);
                 }
                 else
                 {
@@ -172,14 +183,25 @@ public class PayloadPreparationService : IPayloadPreparationService
 
     }
 
-    private Block? LogProductionResult(Task<Block?> t)
+    private Block? LogProductionResult(Task<Block?> t, UInt256 blockFees, TimeSpan time)
     {
         if (t.IsCompletedSuccessfully)
         {
-            if (t.Result is not null)
+            Block? block = t.Result;
+            if (block is not null)
             {
-                BlockImproved?.Invoke(this, new BlockEventArgs(t.Result));
-                if (_logger.IsInfo) _logger.Info($"Improved post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                BlockImproved?.Invoke(this, new BlockEventArgs(block));
+                if (_logger.IsInfo)
+                {
+                    if (block.Difficulty != 0)
+                    {
+                        _logger.Info($"Built block {blockFees.ToDecimal(null) / 1_000_000_000_000_000_000,5:N3}Eth {block.ToString(Block.Format.HashNumberDiffAndTx)} | {time.TotalMilliseconds,7:N2} ms");
+                    }
+                    else
+                    {
+                        _logger.Info($"Built block {blockFees.ToDecimal(null) / 1_000_000_000_000_000_000,5:N3}Eth {block.ToString(Block.Format.HashNumberMGasAndTx)} | {time.TotalMilliseconds,7:N2} ms");
+                    }
+                }
             }
             else
             {
