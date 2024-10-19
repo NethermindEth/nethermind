@@ -14,7 +14,6 @@ namespace Nethermind.Era1;
 internal class E2StoreStream : IDisposable
 {
     internal const int HeaderSize = 8;
-    internal const int ValueSizeLimit = 1024 * 1024 * 50;
 
     private readonly Stream _stream;
     private bool _disposedValue;
@@ -24,11 +23,6 @@ internal class E2StoreStream : IDisposable
     public long StreamLength => _stream.Length;
 
     public long Position => _stream.Position;
-
-    public Task<EraMetadata> GetMetadata(CancellationToken token)
-    {
-        return EraMetadata.CreateEraMetadata(_stream, token);
-    }
 
     public static E2StoreStream ForWrite(Stream stream)
     {
@@ -93,96 +87,6 @@ internal class E2StoreStream : IDisposable
         }
 
         return length + HeaderSize;
-    }
-
-    public async Task<T> ReadEntryAndDecode<T>(Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
-    {
-        Entry entry = await ReadEntry(expectedType, token);
-        if (_stream.Position + entry.Length > StreamLength) throw new EraFormatException($"Entry has a length ({entry.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
-
-        IByteBuffer buffer = _bufferAllocator.Buffer((int)entry.Length);
-        try
-        {
-            await buffer.WriteBytesAsync(_stream, (int)entry.Length, token);
-            return decoder.Invoke(buffer);
-        }
-        finally
-        {
-            buffer.Release();
-        }
-    }
-
-    public async Task<T> ReadSnappyCompressedEntryAndDecode<T>(Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
-    {
-        Entry entry = await ReadEntry(expectedType, token);
-
-        IByteBuffer buffer = await ReadEntryValueAsSnappy(entry, token);
-        try
-        {
-            return decoder.Invoke(buffer);
-        }
-        finally
-        {
-            buffer.Release();
-        }
-    }
-
-    public async Task<Entry> ReadEntry(ushort? expectedType, CancellationToken token = default)
-    {
-        var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
-        try
-        {
-            var read = await _stream.ReadAsync(buf.AsMemory(0, HeaderSize), token);
-            if (read != HeaderSize)
-                throw new EraFormatException($"Entry header could not be read at position {_stream.Position}.");
-            Entry entry = new Entry(BinaryPrimitives.ReadUInt16LittleEndian(buf), BinaryPrimitives.ReadUInt32LittleEndian(buf.AsSpan().Slice(2)));
-            if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-            if (entry.Length + _stream.Position > StreamLength)
-                throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {_stream.Position}, which is longer than stream length of {StreamLength}.");
-            if (entry.Length > ValueSizeLimit)
-                throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
-            if (buf[6] != 0 || buf[7] != 0)
-                throw new EraFormatException($"Reserved header bytes has invalid values at position {_stream.Position}.");
-            return entry;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buf);
-        }
-    }
-
-    private async Task<IByteBuffer> ReadEntryValueAsSnappy(Entry e, CancellationToken cancellation = default)
-    {
-        if (_stream.Position + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({_stream.Position}) that would read beyond the length of the stream.");
-
-        using ArrayPoolList<byte> inBuffer = new ArrayPoolList<byte>((int)e.Length, (int)e.Length);
-        await _stream.ReadAsync(inBuffer.AsMemory());
-
-        IByteBuffer buffer = _bufferAllocator.Buffer((int)(e.Length * 4));
-        buffer.EnsureWritable((int)e.Length * 4, true);
-
-        // TODO: No ToArray()
-        using SnappyStream decompressor = new(new MemoryStream(inBuffer.AsMemory().ToArray()), CompressionMode.Decompress, true);
-
-        int read;
-        do
-        {
-            if (buffer.WritableBytes <= 0)
-            {
-                IByteBuffer newBuffer = _bufferAllocator.Buffer(buffer.ReadableBytes * 2);
-                newBuffer.WriteBytes(buffer);
-                buffer.Release();
-                buffer = newBuffer;
-            }
-
-            int before = buffer.WriterIndex;
-            //We don't know the uncompressed length
-            await buffer.WriteBytesAsync(decompressor, buffer.WritableBytes, cancellation);
-            read = buffer.WriterIndex - before;
-        }
-        while (read != 0);
-
-        return buffer;
     }
 
     private void EnsureCompressedStream(int minLength)

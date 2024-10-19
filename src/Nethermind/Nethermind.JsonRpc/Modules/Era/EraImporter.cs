@@ -101,7 +101,7 @@ public class EraImporter : IEraImporter
 
         for (long i = startEpoch; eraStore.HasEpoch(i); i++)
         {
-            using EraReader eraReader = await eraStore.GetReader(i, cancellation);
+            using EraReader eraReader = eraStore.GetReader(i);
 
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraReader)
             {

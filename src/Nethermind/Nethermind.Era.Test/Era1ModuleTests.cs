@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
+using System.IO.MemoryMappedFiles;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Era1;
@@ -30,8 +31,8 @@ public class Era1ModuleTests
     [Test]
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
-        using MemoryStream stream = new();
-        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using var tmpFile = new TmpFile();
+        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -56,7 +57,7 @@ public class Era1ModuleTests
         await builder.Add(block1, new[] { receipt1 });
         await builder.Finalize();
 
-        using EraReader reader = await EraReader.Create(stream);
+        using EraReader reader = new EraReader(tmpFile.FilePath);
 
         IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = reader.GetAsyncEnumerator();
         await enumerator.MoveNextAsync();
@@ -95,9 +96,10 @@ public class Era1ModuleTests
         {
             var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
 
-            using var eraEnumerator = await EraReader.Create(era, new FileSystem(), default);
-            using var destination = new MemoryStream();
-            using var builder = EraWriter.Create(destination, specProvider);
+            using var tmpFile = new TmpFile();
+            using var builder = EraWriter.Create(tmpFile.FilePath, specProvider);
+
+            using var eraEnumerator = new EraReader(era, default);
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
                 await builder.Add(b, r, td);
@@ -105,7 +107,7 @@ public class Era1ModuleTests
             }
             await builder.Finalize();
 
-            using EraReader exportedToImported = await EraReader.Create(destination);
+            using EraReader exportedToImported = new EraReader(tmpFile.FilePath);
             int i = 0;
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in exportedToImported)
             {
@@ -118,7 +120,7 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase("geth")]
+    [TestCase("testdata/mainnet")]
     public async Task VerifyAccumulatorsOnFiles(string dir)
     {
         var eraStore = new EraStore(dir, "mainnet", new FileSystem());
@@ -139,8 +141,7 @@ public class Era1ModuleTests
         testBlockchain.State.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
         testBlockchain.State.RecalculateStateRoot();
 
-        using MemoryStream stream = new();
-
+        using TmpFile tmpFile = new TmpFile();
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
         int numOfBlocks = 12;
@@ -170,7 +171,7 @@ public class Era1ModuleTests
 
         testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
-        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
 
         foreach (var block in blocks)
         {
@@ -179,9 +180,9 @@ public class Era1ModuleTests
 
         await builder.Finalize();
 
-        using EraReader eraReader = await EraReader.Create(stream);
+        using EraReader eraReader = new EraReader(tmpFile.FilePath);
 
-        var eraAccumulator = await eraReader.ReadAccumulator();
+        var eraAccumulator = eraReader.ReadAccumulator();
 
         Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, Substitute.For<ISpecProvider>()), Is.True);
     }
@@ -190,8 +191,8 @@ public class Era1ModuleTests
     public async Task TestEraBuilderCreatesCorrectIndex()
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        using MemoryStream stream = new();
-        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using var tmpFile = new TmpFile();
+        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
         TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
@@ -210,21 +211,22 @@ public class Era1ModuleTests
 
         byte[] buffer = new byte[1024];
 
-        EraMetadata metadata = await EraMetadata.CreateEraMetadata(stream, default);
+        using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(tmpFile.FilePath, FileMode.Open);
+        using EraMetadata metadata = EraMetadata.CreateEraMetadata(mmf);
         Assert.That(metadata.Start, Is.EqualTo(0));
         Assert.That(metadata.Count, Is.EqualTo(numOfBlocks + 1));
 
         for (int i = 0; i < metadata.Count; i++)
         {
             long blockOffset = metadata.BlockOffset(i);
-            stream.Seek(blockOffset, SeekOrigin.Begin);
 
-            stream.Read(buffer, 0, 2);
+            using (var accessor = mmf.CreateViewAccessor(blockOffset, 2))
+            {
+                ushort entryType = accessor.ReadUInt16(0);
 
-            ushort entryType = BinaryPrimitives.ReadUInt16LittleEndian(buffer);
-
-            //We expect to find a compressed header in this position
-            Assert.That(entryType, Is.EqualTo(EntryTypes.CompressedHeader));
+                //We expect to find a compressed header in this position
+                Assert.That(entryType, Is.EqualTo(EntryTypes.CompressedHeader));
+            }
         }
     }
 
@@ -235,8 +237,8 @@ public class Era1ModuleTests
         testBlockchain.State.AddToBalance(TestItem.AddressA, 10.Ether(), testBlockchain.SpecProvider.GenesisSpec);
         testBlockchain.State.RecalculateStateRoot();
 
-        using MemoryStream stream = new();
-        using EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using var tmpFile = new TmpFile();
+        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
@@ -279,7 +281,7 @@ public class Era1ModuleTests
 
         await builder.Finalize();
 
-        using EraReader iterator = await EraReader.Create(stream);
+        using EraReader iterator = new EraReader(tmpFile.FilePath);
 
         await using var enu = iterator.GetAsyncEnumerator();
         for (int i = 0; i < numOfBlocks; i++)
@@ -318,14 +320,16 @@ public class Era1ModuleTests
     public async Task EraExportAndImport()
     {
         const int ChainLength = 10000;
-        var fileSystem = new MockFileSystem();
+        var fileSystem = new FileSystem();
+        using var tmpDir = new TmpDirectory();
+
         BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(true);
         EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
-        await exporter.Export("test", 0, ChainLength - 1);
+        await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
 
         BlockTree importTree = Build.A.BlockTree()
             .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
@@ -339,7 +343,7 @@ public class Era1ModuleTests
             specProvider,
             LimboLogs.Instance,
             "abc");
-        await importer.ImportAsArchiveSync("test", CancellationToken.None);
+        await importer.ImportAsArchiveSync(tmpDir.DirectoryPath, CancellationToken.None);
 
         Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
         Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
@@ -351,7 +355,8 @@ public class Era1ModuleTests
     public async Task EraExportAndImportWithValidation()
     {
         const int ChainLength = EraWriter.MaxEra1Size * 3;
-        var fileSystem = new MockFileSystem();
+        var fileSystem = new FileSystem();
+        using var path = new TmpDirectory();
         BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
@@ -363,7 +368,7 @@ public class Era1ModuleTests
             specProvider,
             LimboLogs.Instance,
             "abc");
-        await exporter.Export("test", 0, ChainLength - 1);
+        await exporter.Export(path.DirectoryPath, 0, ChainLength - 1);
 
         BlockTree importTree = Build.A.BlockTree()
             .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
@@ -379,7 +384,7 @@ public class Era1ModuleTests
             specProvider,
             LimboLogs.Instance,
             "abc");
-        await importer.Import("test", 0, exportTree.Head!.Number, Path.Combine("test", "accumulators.txt"));
+        await importer.Import(path.DirectoryPath, 0, exportTree.Head!.Number, Path.Combine(path.DirectoryPath, "accumulators.txt"));
 
         Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
         Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
@@ -391,7 +396,9 @@ public class Era1ModuleTests
     public async Task EraExportAndImportNormal()
     {
         const int ChainLength = EraWriter.MaxEra1Size * 5;
-        var fileSystem = new MockFileSystem();
+        var fileSystem = new FileSystem();
+        using var tmpDir = new TmpDirectory();
+
         BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
@@ -403,7 +410,7 @@ public class Era1ModuleTests
             specProvider,
             LimboLogs.Instance,
             "abc");
-        await exporter.Export("test", 0, ChainLength - 1);
+        await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
 
         BlockTree importTree = Build.A.BlockTree()
             .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
@@ -417,7 +424,7 @@ public class Era1ModuleTests
             LimboLogs.Instance,
             "abc");
 
-        await importer.Import("test", 0, exportTree.Head!.Number, Path.Combine("test", "accumulators.txt"));
+        await importer.Import(tmpDir.DirectoryPath, 0, exportTree.Head!.Number, Path.Combine(tmpDir.DirectoryPath, "accumulators.txt"));
 
         Assert.That(importTree.LowestInsertedHeader, Is.Not.Null);
         Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));

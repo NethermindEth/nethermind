@@ -5,7 +5,7 @@ using Snappier;
 
 namespace Nethermind.Era1;
 
-internal readonly struct Entry
+public readonly struct Entry
 {
     public ushort Type { get; }
     public long Length { get; }

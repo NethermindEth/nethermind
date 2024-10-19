@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.IO.MemoryMappedFiles;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -111,16 +112,17 @@ internal class E2StoreStreamTests
     [Test]
     public async Task ReadEntryValue_ReadingValueBytesOfEntry_ReturnsBytes()
     {
-        using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        string tmpFile = Path.GetTempFileName();
+        E2StoreStream sut = new E2StoreStream(File.OpenWrite(tmpFile));
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
-        long originalPosition = stream.Position;
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
+        sut.Dispose();
+
+        using EraFileReader reader = new EraFileReader(tmpFile);
         IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
         try
         {
-            stream.Position = originalPosition;
-            var readBytes = await sut.ReadEntryAndDecode(buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator, default);
+            (var readBytes, _) = reader.ReadEntryAndDecode(0, buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator);
             Assert.That(readBytes, Is.EquivalentTo(bytes));
         }
         finally
@@ -132,14 +134,14 @@ internal class E2StoreStreamTests
     [Test]
     public async Task ReadEntryValue_ReadingValueBytesOfEntry_ReturnsBytesRead()
     {
-        using MemoryStream stream = new MemoryStream();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        string tmpFile = Path.GetTempFileName();
+        E2StoreStream sut = new E2StoreStream(File.OpenWrite(tmpFile));
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
-        long position = stream.Position;
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
-        stream.Position = position;
+        sut.Dispose();
 
-        var readBytes = await sut.ReadEntryAndDecode(buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator, default);
+        using EraFileReader reader = new EraFileReader(tmpFile);
+        (var readBytes, long _) = reader.ReadEntryAndDecode(0, buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator);
         Assert.That(readBytes, Is.EquivalentTo(bytes));
 
         Assert.That(readBytes.Length, Is.EqualTo(bytes.Length));
@@ -148,22 +150,23 @@ internal class E2StoreStreamTests
     [Test]
     public async Task ReadEntryValueAsSnappy_ReadingValueBytesOfEntry_ReturnsDecompressedBytes()
     {
-        using MemoryStream stream = new();
-        using E2StoreStream sut = new E2StoreStream(stream);
+        string tmpFile = Path.GetTempFileName();
+        using E2StoreStream sut = new E2StoreStream(File.OpenWrite(tmpFile));
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         MemoryStream compressed = new();
         using SnappyStream snappy = new SnappyStream(compressed, System.IO.Compression.CompressionMode.Compress);
         snappy.Write(bytes);
         snappy.Flush();
         byte[] compressedBytes = compressed.ToArray();
-        long originalPosition = stream.Position;
+        long position = sut.Position;
         await sut.WriteEntry(EntryTypes.CompressedHeader, compressedBytes);
+        sut.Dispose();
+
+        using EraFileReader reader = new EraFileReader(tmpFile);
         IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(32);
         try
         {
-            stream.Position = originalPosition;
-
-            var readBytes = await sut.ReadSnappyCompressedEntryAndDecode(buf => buf.ReadAllBytesAsArray(), EntryTypes.CompressedHeader, default);
+            (var readBytes, _) = await reader.ReadSnappyCompressedEntryAndDecode(position, buf => buf.ReadAllBytesAsArray(), EntryTypes.CompressedHeader, default);
             Assert.That(readBytes, Is.EquivalentTo(bytes));
         }
         finally

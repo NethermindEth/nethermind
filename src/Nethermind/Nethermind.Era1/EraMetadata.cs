@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.IO.MemoryMappedFiles;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Era1;
@@ -26,10 +27,11 @@ public class EraMetadata: IDisposable
         _blockIndex = blockIndex;
     }
 
-    public static async Task<EraMetadata> CreateEraMetadata(Stream stream, CancellationToken token)
+    public static EraMetadata CreateEraMetadata(MemoryMappedFile file)
     {
-        var blockIndex = await BlockIndex.InitializeIndex(stream, token);
-        return new EraMetadata(blockIndex.Start, blockIndex.Count, stream.Length, blockIndex);
+        var view = file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        var blockIndex = BlockIndex.InitializeIndex(view);
+        return new EraMetadata(blockIndex.Start, blockIndex.Count, view.Capacity, blockIndex);
     }
 
     public long BlockOffset(long blockNumber) => _blockIndex!.BlockOffset(blockNumber);
@@ -47,29 +49,20 @@ public class EraMetadata: IDisposable
         private bool _disposedValue;
         private readonly long _start;
         private readonly long _count;
-        private readonly long _eraLength;
-        private readonly ArrayPoolList<byte> _index;
+        private readonly long _indexLength;
+        private readonly MemoryMappedViewAccessor _index;
 
         public long Start => _start;
         public long Count => _count;
 
         public long SizeIncludingHeader =>  E2StoreStream.HeaderSize + CountValue + StartingBlockNumberValue + 8 * (int)_count;
 
-        private BlockIndex(Span<byte> index, long start, long count, long eraLength)
+        private BlockIndex(MemoryMappedViewAccessor index, long start, long count, long indexLength)
         {
-            try
-            {
-                _index = new ArrayPoolList<byte>(index.Length, index.Length);
-                index.CopyTo(_index.AsSpan()[..index.Length]);
-            }
-            catch
-            {
-                _index?.Dispose();
-                throw;
-            }
+            _index = index;
             _start = start;
             _count = count;
-            _eraLength = eraLength;
+            _indexLength = indexLength;
         }
 
         public long BlockOffset(long blockNumber)
@@ -79,41 +72,27 @@ public class EraMetadata: IDisposable
 
             int indexOffset = (int)(blockNumber - _start) * 8;
             int blockIndexOffset = 8 + indexOffset;
-            long relativeOffset = BinaryPrimitives.ReadInt64LittleEndian(_index.AsSpan()[blockIndexOffset..]);
-
-            return _eraLength - SizeIncludingHeader + relativeOffset;
+            long relativeOffset = _index.ReadInt64(_index.Capacity - _indexLength + blockIndexOffset);
+            return _index.Capacity - SizeIncludingHeader + relativeOffset;
         }
 
-        public static async Task<BlockIndex> InitializeIndex(Stream stream, CancellationToken cancellation)
+        public static BlockIndex InitializeIndex(MemoryMappedViewAccessor view)
         {
             using ArrayPoolList<byte> pooledBytes = new(8, 8);
-            Memory<byte> bytes = pooledBytes.AsMemory()[..8];
-
-            stream.Position = stream.Length - 8;
-            await stream.ReadAsync(bytes, cancellation);
-            long c = BinaryPrimitives.ReadInt64LittleEndian(bytes.Span);
-
+            long c = view.ReadInt64(view.Capacity - 8);
             int indexLength = CountValue + StartingBlockNumberValue + 8 * (int)c;
 
             if (indexLength < 16 || indexLength > EraWriter.MaxEra1Size * 8 + CountValue + StartingBlockNumberValue)
                 throw new EraFormatException("Index is in an invalid format.");
 
-            long startIndex = stream.Length - indexLength;
-            stream.Position = startIndex;
-
-            using ArrayPoolList<byte> blockIndex = new(indexLength, indexLength);
-            await stream.ReadAsync(blockIndex.AsMemory()[..indexLength], cancellation);
-            long s = BinaryPrimitives.ReadInt64LittleEndian(blockIndex.AsSpan()[..8]);
-            return new(blockIndex.AsSpan()[..indexLength], s, c, stream.Length);
+            long s = view.ReadInt64(view.Capacity - indexLength);
+            return new(view, s, c, indexLength);
         }
         private void Dispose(bool disposing)
         {
             if (!_disposedValue)
             {
-                if (disposing)
-                {
-                    _index?.Dispose();
-                }
+                _index.Dispose();
                 _disposedValue = true;
             }
         }

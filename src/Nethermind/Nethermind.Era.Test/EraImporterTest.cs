@@ -60,12 +60,13 @@ public class EraImporterTest
     public async Task ImportAsArchiveSync_BlockCannotBeValidated_ThrowEraImportException()
     {
         IBlockTree blockTree = Build.A.BlockTree().TestObject;
-        (IFileSystem fileSystem, IBlockTree sourceBlocktree) = await CreateEraFileSystem();
+        (TmpDirectory tmpDirectory, IBlockTree sourceBlocktree) = await CreateEraFileSystem();
+        using TmpDirectory _ = tmpDirectory;
         blockTree.SuggestBlock(sourceBlocktree.FindBlock(0)!, BlockTreeSuggestOptions.None);
 
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(false);
-        EraImporter sut = new(fileSystem,
+        EraImporter sut = new(new FileSystem(),
                               blockTree,
                               blockValidator,
                               Substitute.For<IReceiptStorage>(),
@@ -74,7 +75,7 @@ public class EraImporterTest
                               "abc"
                               );
 
-        Assert.That(() => sut.ImportAsArchiveSync("test", CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.ImportAsArchiveSync(tmpDirectory.DirectoryPath, CancellationToken.None), Throws.TypeOf<EraImportException>());
     }
 
     [Test]
@@ -83,9 +84,10 @@ public class EraImporterTest
         const int ChainLength = 128;
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         const string NetworkName = "test";
-        var fileSystem = new MockFileSystem();
+        var fileSystem = new FileSystem();
         EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
-        string destinationPath = "abc";
+        using var tmpDirectory = new TmpDirectory();
+        string destinationPath = tmpDirectory.DirectoryPath;
         await exporter.Export(destinationPath!, 0, ChainLength - 1, 16);
 
         var eraStore = new EraStore(destinationPath, NetworkName, fileSystem);
@@ -103,9 +105,11 @@ public class EraImporterTest
         const int ChainLength = 128;
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         const string NetworkName = "test";
-        var fileSystem = new MockFileSystem();
+        var fileSystem = new FileSystem();
         EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
-        string destinationPath = "abc";
+
+        using var tmpDirectory = new TmpDirectory();
+        string destinationPath = tmpDirectory.DirectoryPath;
         await exporter.Export(destinationPath!, 0, ChainLength - 1, 16);
 
         var accumulatorPath = Path.Combine(destinationPath, EraExporter.AccumulatorFileName);
@@ -121,9 +125,10 @@ public class EraImporterTest
         const int ChainLength = 64;
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
         const string NetworkName = "test";
-        var fileSystem = new MockFileSystem();
+        var fileSystem = new FileSystem();
         EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
-        var destinationPath = "abc";
+        using var tmpDirectory = new TmpDirectory();
+        var destinationPath = tmpDirectory.DirectoryPath;
         const int EpochSize = 16;
         await exporter.Export(destinationPath!, 0, ChainLength - 1, EpochSize);
 
@@ -139,14 +144,13 @@ public class EraImporterTest
             Throws.TypeOf<EraVerificationException>());
     }
 
-    private async Task<(IFileSystem, IBlockTree)> CreateEraFileSystem()
+    private async Task<(TmpDirectory, IBlockTree)> CreateEraFileSystem()
     {
-        IFileSystem fileSystem = new MockFileSystem();
         IBlockTree blockTree = Build.A.BlockTree().OfChainLength(512).TestObject;
-
-        var exporter = new EraExporter(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, "abc");
-        await exporter.Export("test", 0, 511, 16);
-        return (fileSystem, blockTree);
+        var dir = new TmpDirectory();
+        var exporter = new EraExporter(new FileSystem(), blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, "abc");
+        await exporter.Export(dir.DirectoryPath, 0, 511, 16);
+        return (dir, blockTree);
     }
 
 }

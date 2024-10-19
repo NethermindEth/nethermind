@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO.MemoryMappedFiles;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -41,7 +42,7 @@ internal class EraWriterTests
     public async Task Add_AddOneBlock_ReturnsTrue()
     {
         using MemoryStream stream = new();
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block1 = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -119,8 +120,8 @@ internal class EraWriterTests
     [Test]
     public async Task Finalize_AddOneBlock_WritesCorrectBlockIndex()
     {
-        using MemoryStream stream = new();
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter sut = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         byte[] buffer = new byte[40];
         await sut.Add(
             Keccak.Zero,
@@ -133,8 +134,8 @@ internal class EraWriterTests
 
         await sut.Finalize();
 
-        E2StoreStream storeStream = new E2StoreStream(stream);
-        EraMetadata metadata = await storeStream.GetMetadata(default);
+        using EraFileReader storeStream = new EraFileReader(tmpFile.FilePath);
+        EraMetadata metadata = storeStream.CreateMetadata();
 
         metadata.BlockOffset(0).Should().Be(8);
     }

@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.IO.Abstractions;
+using System.IO.MemoryMappedFiles;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using DotNetty.Buffers;
@@ -23,47 +24,25 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private long _currentBlockNumber;
     private ReceiptMessageDecoder _receiptDecoder = new();
     private BlockBodyDecoder _blockBodyDecoder = new();
-    private E2StoreStream _storeStream;
-    private IByteBufferAllocator _byteBufferAllocator;
+    private EraFileReader _fileReader;
     private readonly bool _isDescendingOrder;
 
     public long CurrentBlockNumber => _currentBlockNumber;
     public EraMetadata EraMetadata { get; }
 
-    private EraReader(E2StoreStream e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
+    public EraReader(string fileName, bool descendingOrder = false): this(new EraFileReader(fileName), descendingOrder)
     {
-        _storeStream = e2;
-        EraMetadata = e2.GetMetadata(default).GetAwaiter().GetResult();
-        _byteBufferAllocator = byteBufferAllocator;
+    }
+
+
+    public EraReader(EraFileReader e2, bool descendingOrder = false)
+    {
+        _fileReader = e2;
+        EraMetadata = e2.CreateMetadata();
         _isDescendingOrder = descendingOrder;
         Reset(_isDescendingOrder);
     }
-    public static Task<EraReader> Create(string file, IFileSystem fileSystem, in CancellationToken token = default)
-    {
-        return Create(file, fileSystem, false, null, token);
-    }
-    private static Task<EraReader> Create(string file, IFileSystem? fileSystem, bool descendingOrder = false, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
-    {
-        if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
-        if (fileSystem == null)
-            fileSystem = new FileSystem();
-        return Create(fileSystem.File.OpenRead(file), descendingOrder, allocator, token);
-    }
-    public static Task<EraReader> Create(Stream stream, CancellationToken token = default)
-    {
-        return Create(stream, false, null, token);
-    }
 
-    public static async Task<EraReader> Create(Stream stream, bool descendingOrder, IByteBufferAllocator? allocator = null, CancellationToken token = default)
-    {
-        if (stream == null) throw new ArgumentNullException(nameof(stream));
-        if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.", nameof(stream));
-
-        E2StoreStream e2 = await E2StoreStream.ForRead(stream, allocator ?? PooledByteBufferAllocator.Default, token);
-        EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default, descendingOrder);
-
-        return e;
-    }
     public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
         Reset(_isDescendingOrder);
@@ -123,12 +102,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    public Task<ValueHash256> ReadAccumulator(CancellationToken cancellation = default)
+    public ValueHash256 ReadAccumulator()
     {
-        _storeStream.Seek(EraMetadata.AccumulatorOffset, SeekOrigin.Begin);
-        return _storeStream.ReadEntryAndDecode<ValueHash256>(
+        return _fileReader.ReadEntryAndDecode<ValueHash256>(
+            EraMetadata.AccumulatorOffset,
             (buffer) => new ValueHash256(buffer.ReadAllBytesAsArray()),
-            EntryTypes.Accumulator, cancellation);
+            EntryTypes.Accumulator).Item1;
     }
 
     public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
@@ -174,25 +153,37 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (blockNumber < EraMetadata.Start
             || blockNumber > EraMetadata.Start + EraMetadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
-        SeekToBlock(blockNumber);
 
-        (BlockHeader header, Hash256? currentComputedHeaderHash) = await _storeStream.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
-            computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash, EntryTypes.CompressedHeader, cancellationToken);
+        long position = EraMetadata.BlockOffset(blockNumber);
 
-        BlockBody body = await _storeStream.ReadSnappyCompressedEntryAndDecode(
+        ((BlockHeader header, Hash256? currentComputedHeaderHash), long readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
+            position,
+            computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash,
+            EntryTypes.CompressedHeader,
+            cancellationToken);
+
+        position += readSize;
+
+        (BlockBody body, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+            position,
             DecodeBody,
             EntryTypes.CompressedBody, cancellationToken);
 
-        TxReceipt[] receipts  = await _storeStream.ReadSnappyCompressedEntryAndDecode(
+        position += readSize;
+
+        (TxReceipt[] receipts, readSize)  = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+            position,
             DecodeReceipts,
             EntryTypes.CompressedReceipts, cancellationToken);
 
-        UInt256 currentTotalDiffulty = await _storeStream.ReadEntryAndDecode(
+        position += readSize;
+
+        (UInt256 currentTotalDiffulty, readSize) = _fileReader.ReadEntryAndDecode(
+            position,
             (buffer) => new UInt256(buffer.AsSpan(), isBigEndian: false),
-            EntryTypes.TotalDifficulty, cancellationToken);
+            EntryTypes.TotalDifficulty);
 
         Block block = new Block(header, body);
-
         return new EntryReadResult(block, receipts, currentTotalDiffulty, currentComputedHeaderHash);
     }
 
@@ -220,15 +211,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private TxReceipt[] DecodeReceipts(IByteBuffer buf)
     {
         return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
-    }
-
-    private long SeekToBlock(long blockNumber)
-    {
-        long blockOffset = EraMetadata.BlockOffset(blockNumber);
-        long offset = blockOffset - _storeStream.Position;
-        if (offset == 0)
-            return 0;
-        return _storeStream.Seek(offset, SeekOrigin.Current);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -259,10 +241,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (!_disposedValue)
         {
-            if (disposing)
-            {
-                _storeStream?.Dispose();
-            }
+            EraMetadata.Dispose();
+            _fileReader.Dispose();
             _disposedValue = true;
         }
     }

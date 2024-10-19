@@ -51,10 +51,10 @@ public class EraStore : IEraStore
 
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
-    public Task<EraReader> GetReader(long epoch, CancellationToken cancellation = default)
+    public EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
-        return EraReader.Create(_epochs[epoch], _fileSystem, cancellation);
+        return new EraReader(new EraFileReader(_epochs[epoch]));
     }
 
     public string GetReaderPath(long epoch)
@@ -70,11 +70,10 @@ public class EraStore : IEraStore
         long partOfEpoch = number == 0 ? 0 : number / EraWriter.MaxEra1Size;
         if (!_epochs.ContainsKey(partOfEpoch))
             return null;
-        using (EraReader reader = await EraReader.Create(_fileSystem.File.OpenRead(_epochs[partOfEpoch]), cancellation))
-        {
-            (Block b, _, _) = await reader.GetBlockByNumber(number, cancellation);
-            return b;
-        }
+
+        using EraReader reader = GetReader(partOfEpoch);
+        (Block b, _, _) = await reader.GetBlockByNumber(number, cancellation);
+        return b;
     }
     public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, CancellationToken cancellation = default)
     {
@@ -83,11 +82,10 @@ public class EraStore : IEraStore
         long partOfEpoch = number == 0 ? 0 : number / EraWriter.MaxEra1Size;
         if (!_epochs.ContainsKey(partOfEpoch))
             return (null, null);
-        using (EraReader reader = await EraReader.Create(_fileSystem.File.OpenRead(_epochs[partOfEpoch]), cancellation))
-        {
-            (Block b, TxReceipt[] r, _) = await reader.GetBlockByNumber(number, cancellation);
-            return (b, r);
-        }
+
+        using EraReader reader = GetReader(partOfEpoch);
+        (Block b, TxReceipt[] r, _) = await reader.GetBlockByNumber(number, cancellation);
+        return (b, r);
     }
 
     public async Task VerifyAll(ISpecProvider specProvider, CancellationToken cancellationToken, HashSet<ValueHash256>? trustedAccumulators = null, Action<VerificationProgressArgs>? onProgress = null)
@@ -107,9 +105,9 @@ public class EraStore : IEraStore
 
             string era = kv.Value;
             using MemoryStream destination = new();
-            using EraReader eraReader = await EraReader.Create(era, _fileSystem, cancellationToken);
-            var eraAccumulator = await eraReader.ReadAccumulator();
-            if (trustedAccumulators == null || !trustedAccumulators.Contains(eraAccumulator))
+            using EraReader eraReader = GetReader(kv.Key);
+            var eraAccumulator = eraReader.ReadAccumulator();
+            if (trustedAccumulators != null && !trustedAccumulators.Contains(eraAccumulator))
             {
                 throw new EraVerificationException($"Accumulator {eraAccumulator} not trusted from era file {era}");
             }
@@ -137,9 +135,9 @@ public class EraStore : IEraStore
 
         foreach (var kv in _epochs)
         {
-            using (EraReader reader = await EraReader.Create(kv.Value, _fileSystem, cancellationToken))
+            using (EraReader reader = GetReader(kv.Key))
             {
-                string root = (await reader.ReadAccumulator(cancellationToken)).BytesAsSpan.ToHexString(true);
+                string root = (reader.ReadAccumulator()).BytesAsSpan.ToHexString(true);
                 if (!first)
                     root = Environment.NewLine + root;
                 else
