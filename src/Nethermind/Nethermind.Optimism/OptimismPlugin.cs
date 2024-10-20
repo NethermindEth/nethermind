@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
@@ -23,13 +25,12 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
-using Nethermind.Db;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;
 
@@ -151,42 +152,25 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-            _api.PoSSwitcher,
-            _beaconPivot,
-            _api.SpecProvider,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _syncConfig,
-            _api.BetterPeerStrategy!,
-            new FullStateFinder(_api.BlockTree, _api.StateReader!),
-            _api.LogManager);
+        ContainerBuilder builder = new ContainerBuilder();
+        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
+            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+            .AddSingleton(_beaconPivot)
+            .AddSingleton(_api.PoSSwitcher)
+            .AddSingleton(_mergeConfig)
+            .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
-        _api.Synchronizer = new MergeSynchronizer(
-            _api.DbProvider,
-            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-            _api.SpecProvider!,
-            _api.BlockTree!,
-            _api.ReceiptStorage!,
-            _api.SyncPeerPool,
-            _api.NodeStatsManager!,
-            _syncConfig,
-            blockDownloaderFactory,
-            _beaconPivot,
-            _api.PoSSwitcher,
-            _mergeConfig,
-            _invalidChainTracker,
-            _api.ProcessExit!,
-            _api.BetterPeerStrategy,
-            _api.ChainSpec,
-            _beaconSync,
-            _api.StateReader!,
-            _api.LogManager
-        );
+        builder.RegisterModule(new SynchronizerModule(_syncConfig));
+        builder.RegisterModule(new MergeSynchronizerModule());
+
+        IContainer container = builder.Build();
+
+        _api.ApiWithNetworkServiceContainer = container;
+        _api.DisposeStack.Append(container);
 
         _ = new PivotUpdator(
             _api.BlockTree,
-            _api.Synchronizer.SyncModeSelector,
+            _api.SyncModeSelector,
             _api.SyncPeerPool,
             _syncConfig,
             _blockCacheService,
