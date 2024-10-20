@@ -15,8 +15,5 @@ namespace Nethermind.Synchronization
         void Start();
 
         Task StopAsync();
-
-        ISyncProgressResolver SyncProgressResolver { get; }
-        ISyncModeSelector SyncModeSelector { get; }
     }
 }

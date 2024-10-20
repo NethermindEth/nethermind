@@ -11,10 +11,12 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Optimism.Rpc;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -25,6 +27,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override async Task InitBlockchain()
     {
+        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
+
         api.SpecHelper = new(api.ChainSpec.Optimism);
         api.L1CostHelper = new(api.SpecHelper, api.ChainSpec.Optimism.L1BlockAddress);
 
@@ -52,8 +56,14 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
     protected override IHeaderValidator CreateHeaderValidator()
     {
         if (api.InvalidChainTracker is null) throw new StepDependencyException(nameof(api.InvalidChainTracker));
+        if (api.BlockTree is null) throw new StepDependencyException(nameof(api.BlockTree));
+        if (api.SealValidator is null) throw new StepDependencyException(nameof(api.SealValidator));
+        if (api.SpecProvider is null) throw new StepDependencyException(nameof(api.SpecProvider));
+        if (api.SpecHelper is null) throw new StepDependencyException(nameof(api.SpecHelper));
+        if (api.LogManager is null) throw new StepDependencyException(nameof(api.LogManager));
 
         OptimismHeaderValidator opHeaderValidator = new(
+            api.PoSSwitcher,
             api.BlockTree,
             api.SealValidator,
             api.SpecProvider,
