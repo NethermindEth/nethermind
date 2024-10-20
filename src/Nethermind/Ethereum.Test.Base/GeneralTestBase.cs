@@ -177,7 +177,7 @@ namespace Ethereum.Test.Base
 
             blockReceiptsTracer.StartNewBlockTrace(block);
 
-            BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor);
+            BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
             if (!test.IsStateTest && test.ParentBeaconBlockRoot != null)
             {
                 beaconBlockRootHandler.StoreBeaconRoot(block, spec);
