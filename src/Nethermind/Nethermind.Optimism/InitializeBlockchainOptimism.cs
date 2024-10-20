@@ -90,7 +90,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.ReceiptStorage,
             transactionProcessor,
             new BlockhashStore(api.SpecProvider, api.WorldState),
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, api.WorldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,

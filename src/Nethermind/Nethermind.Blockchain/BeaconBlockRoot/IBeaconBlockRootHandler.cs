@@ -9,6 +9,6 @@ using Nethermind.State;
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 public interface IBeaconBlockRootHandler
 {
-    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, IWorldState stateProvider, bool includeStorageCells = true);
-    void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState stateProvider);
+    (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true);
+    void StoreBeaconRoot(Block block, IReleaseSpec spec);
 }

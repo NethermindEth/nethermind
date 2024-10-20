@@ -11,11 +11,11 @@ using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
-public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBlockRootHandler
+public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
     private const long GasLimit = 30_000_000L;
 
-    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, IWorldState stateProvider, bool includeStorageCells = true)
+    public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
     {
         BlockHeader? header = block.Header;
         bool canInsertBeaconRoot = spec.IsBeaconBlockRootAvailable
@@ -42,9 +42,9 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
         return (eip4788ContractAddress, builder.Build());
     }
 
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
-        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, stateProvider, includeStorageCells: false);
+        (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
         if (toAddress is not null)
         {

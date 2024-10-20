@@ -29,7 +29,7 @@ public class BeaconBlockRootHandlerTests
     {
         _worldState = Substitute.For<IWorldState>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
-        _beaconBlockRootHandler = new BeaconBlockRootHandler(_transactionProcessor);
+        _beaconBlockRootHandler = new BeaconBlockRootHandler(_transactionProcessor, _worldState);
     }
 
     [Test]
@@ -40,7 +40,7 @@ public class BeaconBlockRootHandlerTests
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Shanghai.Instance, _worldState);
+            .BeaconRootsAccessList(block, Shanghai.Instance);
 
         Assert.That(result.accessList, Is.Null);
         Assert.That(result.toAddress, Is.Null);
@@ -54,7 +54,7 @@ public class BeaconBlockRootHandlerTests
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance, _worldState);
+            .BeaconRootsAccessList(block, Cancun.Instance);
 
         Assert.That(result.accessList, Is.Null);
         Assert.That(result.toAddress, Is.Null);
@@ -68,7 +68,7 @@ public class BeaconBlockRootHandlerTests
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance, _worldState);
+            .BeaconRootsAccessList(block, Cancun.Instance);
 
         Assert.That(result.accessList, Is.Null);
         Assert.That(result.toAddress, Is.Null);
@@ -82,7 +82,7 @@ public class BeaconBlockRootHandlerTests
         _worldState.AccountExists(Arg.Any<Address>()).Returns(false);
 
         (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance, _worldState);
+            .BeaconRootsAccessList(block, Cancun.Instance);
 
         Assert.That(result.accessList, Is.Null);
         Assert.That(result.toAddress, Is.Null);
@@ -96,7 +96,7 @@ public class BeaconBlockRootHandlerTests
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance, _worldState);
+            .BeaconRootsAccessList(block, Cancun.Instance);
 
         Assert.That(result.accessList, Is.Not.Null);
         Assert.That(result.accessList.Count.AddressesCount, Is.EqualTo(1));
@@ -111,7 +111,7 @@ public class BeaconBlockRootHandlerTests
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         (Address? toAddress, AccessList? accessList) result = _beaconBlockRootHandler
-            .BeaconRootsAccessList(block, Cancun.Instance, _worldState, false);
+            .BeaconRootsAccessList(block, Cancun.Instance, false);
 
         Assert.That(result.accessList, Is.Not.Null);
         Assert.That(result.accessList.Count.AddressesCount, Is.EqualTo(1));
@@ -124,7 +124,7 @@ public class BeaconBlockRootHandlerTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, _worldState);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance);
 
         _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>());
     }
@@ -136,7 +136,7 @@ public class BeaconBlockRootHandlerTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, _worldState);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance);
 
         Transaction transaction = new()
         {
