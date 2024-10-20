@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
@@ -9,9 +8,10 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
-public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBlockRootHandler
+public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
     private const long GasLimit = 30_000_000L;
 
@@ -26,7 +26,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor) : IBeaconBl
             spec.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress :
             null;
 
-        if (eip4788ContractAddress is null)
+        if (eip4788ContractAddress is null || !stateProvider.AccountExists(eip4788ContractAddress))
         {
             return (null, null);
         }
