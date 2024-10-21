@@ -80,6 +80,11 @@ namespace Nethermind.Evm
             _destroyList.Add(address);
         }
 
+        public void WasCreated(Address address)
+        {
+            _createList.Add(address);
+        }
+
         public void TakeSnapshot()
         {
             _addressesSnapshots = _accessedAddresses.TakeSnapshot();

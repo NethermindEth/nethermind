@@ -2322,9 +2322,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, false, spec, false)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.AccessTracker.IsCold(executingAccount);
+        bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
-            vmState.AccessTracker.WarmUp(executingAccount);
+            vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         UInt256 result = _state.GetBalance(executingAccount);
         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
