@@ -46,7 +46,6 @@ jobs:
     needs: [setup-matrix]
     strategy:
       fail-fast: false
-      max-parallel: 5 
       matrix:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
@@ -59,7 +58,7 @@ jobs:
         
       - name: Create a Runner
         id: run-linode-action
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
@@ -278,7 +277,7 @@ jobs:
         if: always()
         continue-on-error: true
         id: run-linode-action
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
@@ -300,7 +299,7 @@ jobs:
     steps:    
       - name: Destroy VM (make sure is removed if by any unexpected reason it did not removed it on )
         continue-on-error: true
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
@@ -312,7 +311,7 @@ jobs:
           repo_name: "nethermind"  
 
       - name: Destroy Runner
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
