@@ -320,7 +320,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.ApiWithNetworkServiceContainer = container;
         _api.DisposeStack.Append(container);
 
-        PivotUpdator pivotUpdator = new(
+        UnsafePivotUpdator pivotUpdator = new(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool,

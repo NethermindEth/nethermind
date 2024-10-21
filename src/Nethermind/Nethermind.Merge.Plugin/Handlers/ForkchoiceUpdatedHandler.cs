@@ -200,6 +200,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             {
                 _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
                 // Debug as already output in Received ForkChoice
@@ -351,6 +352,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _beaconPivot.ProcessDestination = blockHeader;
         _peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
         _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+        _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
 
         if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }

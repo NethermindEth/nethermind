@@ -22,7 +22,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger;
-
+        public Hash256? GetHeadBlockHash()
+        {
+            return _blockCacheService.HeadBlockHash;
+        }
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
@@ -74,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         }
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
-
+        
         public bool IsBeaconSyncHeadersFinished()
         {
             BlockHeader? lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader;
