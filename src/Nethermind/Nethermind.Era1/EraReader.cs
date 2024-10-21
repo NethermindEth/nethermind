@@ -18,7 +18,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Era1;
-public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
+public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private bool _disposedValue;
     private ReceiptMessageDecoder _receiptDecoder = new();
@@ -35,13 +35,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         _fileReader = e2;
     }
 
-    public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellation = default)
+    public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
         foreach (var blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
-            result.Block.Header.TotalDifficulty = result.TotalDifficulty;
-            yield return (result.Block, result.Receipts, result.TotalDifficulty);
+            yield return (result.Block, result.Receipts);
         }
     }
 
@@ -63,7 +62,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     public async Task<bool> VerifyAccumulator(ValueHash256 expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
-        UInt256 currentTd = await CalculateStartingTotalDiffulty(cancellation);
+
+        UInt256? currentTd = null;
+        bool isFirst = true;
 
         using AccumulatorCalculator calculator = new();
 
@@ -85,17 +86,19 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             {
                 return false;
             }
+
+            if (isFirst)
+            {
+                currentTd = (err.Block.TotalDifficulty - err.Block.Difficulty);
+                isFirst = false;
+            }
+
             currentTd += err.Block.Difficulty;
-            calculator.Add(err.Block.Header.Hash!, currentTd);
+            err.Block.Header.TotalDifficulty = err.Block.TotalDifficulty;
+            calculator.Add(err.Block.Header.Hash!, currentTd!.Value);
         }
 
         return expectedAccumulator == calculator.ComputeRoot();
-    }
-
-    private async Task<UInt256> CalculateStartingTotalDiffulty(CancellationToken cancellation)
-    {
-        EntryReadResult result = await ReadBlockAndReceipts(_fileReader.StartBlock, true, cancellation);
-        return result.TotalDifficulty - result.Block.Header.Difficulty;
     }
 
     public ValueHash256 ReadAccumulator()
@@ -106,14 +109,14 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             EntryTypes.Accumulator).Item1;
     }
 
-    public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
+    public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
         if (number < _fileReader.StartBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.StartBlock}.");
         if (number > _fileReader.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}.");
         EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
-        return (result.Block, result.Receipts, result.TotalDifficulty);
+        return (result.Block, result.Receipts);
     }
 
     private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
@@ -150,9 +153,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             position,
             (buffer) => new UInt256(buffer.AsSpan(), isBigEndian: false),
             EntryTypes.TotalDifficulty);
+        header.TotalDifficulty = currentTotalDiffulty;
 
         Block block = new Block(header, body);
-        return new EntryReadResult(block, receipts, currentTotalDiffulty, currentComputedHeaderHash);
+        return new EntryReadResult(block, receipts, currentComputedHeaderHash);
     }
 
     private BlockBody DecodeBody(IByteBuffer buffer)
@@ -199,16 +203,14 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
 
     private struct EntryReadResult
     {
-        public EntryReadResult(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, Hash256? headerHash)
+        public EntryReadResult(Block block, TxReceipt[] receipts, Hash256? headerHash)
         {
             Block = block;
-            TotalDifficulty = totalDifficulty;
             ComputedHeaderHash = headerHash;
             Receipts = receipts;
         }
         public Block Block { get; }
         public TxReceipt[] Receipts { get; }
-        public UInt256 TotalDifficulty { get; }
         public Hash256? ComputedHeaderHash { get; }
     }
 }

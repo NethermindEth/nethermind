@@ -72,7 +72,7 @@ public class EraStore : IEraStore
             return null;
 
         using EraReader reader = GetReader(partOfEpoch);
-        (Block b, _, _) = await reader.GetBlockByNumber(number, cancellation);
+        (Block b, _) = await reader.GetBlockByNumber(number, cancellation);
         return b;
     }
     public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, CancellationToken cancellation = default)
@@ -84,7 +84,7 @@ public class EraStore : IEraStore
             return (null, null);
 
         using EraReader reader = GetReader(partOfEpoch);
-        (Block b, TxReceipt[] r, _) = await reader.GetBlockByNumber(number, cancellation);
+        (Block b, TxReceipt[] r) = await reader.GetBlockByNumber(number, cancellation);
         return (b, r);
     }
 

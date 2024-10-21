@@ -60,13 +60,11 @@ public class Era1ModuleTests
 
         using EraReader reader = new EraReader(tmpFile.FilePath);
 
-        IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = reader.GetAsyncEnumerator();
+        IAsyncEnumerator<(Block, TxReceipt[])> enumerator = reader.GetAsyncEnumerator();
         await enumerator.MoveNextAsync();
-        (Block importedBlock0, TxReceipt[] ImportedReceipts0, UInt256 td0) = enumerator.Current;
-        importedBlock0.Header.TotalDifficulty = td0;
+        (Block importedBlock0, TxReceipt[] ImportedReceipts0) = enumerator.Current;
         await enumerator.MoveNextAsync();
-        (Block importedBlock1, TxReceipt[] ImportedReceipts1, UInt256 td1) = enumerator.Current;
-        importedBlock1.Header.TotalDifficulty = td1;
+        (Block importedBlock1, TxReceipt[] ImportedReceipts1) = enumerator.Current;
         await enumerator.DisposeAsync();
 
         importedBlock0.Should().BeEquivalentTo(block0);
@@ -75,8 +73,8 @@ public class Era1ModuleTests
         ImportedReceipts0.Should().BeEquivalentTo(ImportedReceipts0);
         ImportedReceipts1.Should().BeEquivalentTo(ImportedReceipts1);
 
-        Assert.That(td0, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
-        Assert.That(td1, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
+        Assert.That(importedBlock0.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
+        Assert.That(importedBlock1.TotalDifficulty, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
     }
 
     [TestCase("holesky")]
@@ -95,27 +93,26 @@ public class Era1ModuleTests
 
         foreach (var era in eraFiles)
         {
-            var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
+            var readFromFile = new List<(Block b, TxReceipt[] r)>();
 
             using var tmpFile = new TmpFile();
             using var builder = EraWriter.Create(tmpFile.FilePath, specProvider);
 
             using var eraEnumerator = new EraReader(era);
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
+            await foreach ((Block b, TxReceipt[] r) in eraEnumerator)
             {
                 await builder.Add(b, r);
-                readFromFile.Add((b, r, td));
+                readFromFile.Add((b, r));
             }
             await builder.Finalize();
 
             using EraReader exportedToImported = new EraReader(tmpFile.FilePath);
             int i = 0;
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in exportedToImported)
+            await foreach ((Block b, TxReceipt[] r) in exportedToImported)
             {
                 Assert.That(i, Is.LessThan(readFromFile.Count()), "Exceeded the block count read from the file.");
                 b.ToString(Block.Format.Full).Should().BeEquivalentTo(readFromFile[i].b.ToString(Block.Format.Full));
                 r.Should().BeEquivalentTo(readFromFile[i].r);
-                Assert.That(td, Is.EqualTo(readFromFile[i].td));
                 i++;
             }
         }
@@ -288,8 +285,7 @@ public class Era1ModuleTests
         for (int i = 0; i < numOfBlocks; i++)
         {
             Assert.That(await enu.MoveNextAsync(), Is.True, $"Expected block {i} from the iterator, but it returned false.");
-            (Block b, TxReceipt[] r, UInt256 td) = enu.Current;
-            b.Header.TotalDifficulty = td;
+            (Block b, TxReceipt[] r) = enu.Current;
 
             Block expectedBlock = blocks[i] ?? throw new ArgumentException("Could not find required block?");
 

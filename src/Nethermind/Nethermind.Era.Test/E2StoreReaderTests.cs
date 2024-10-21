@@ -51,7 +51,7 @@ internal class EraReaderTests
         await builder.Finalize();
 
         using EraReader sut = new EraReader(tmpFile.FilePath);
-        (Block result, _, _) = await sut.GetBlockByNumber(number);
+        (Block result, _) = await sut.GetBlockByNumber(number);
         Assert.That(result.Number, Is.EqualTo(number));
     }
 
@@ -69,20 +69,17 @@ internal class EraReaderTests
         await builder.Finalize();
 
         using EraReader sut = new EraReader(tmpFile.FilePath);
-        IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = sut.GetAsyncEnumerator();
+        IAsyncEnumerator<(Block, TxReceipt[])> enumerator = sut.GetAsyncEnumerator();
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (Block block, _, UInt256 td) = enumerator.Current;
-        block.Header.TotalDifficulty = td;
+        (Block block, _) = enumerator.Current;
         block.Should().BeEquivalentTo(block0);
 
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (block, _, td) = enumerator.Current;
-        block.Header.TotalDifficulty = td;
+        (block, _) = enumerator.Current;
         block.Should().BeEquivalentTo(block1);
 
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (block, _, td) = enumerator.Current;
-        block.Header.TotalDifficulty = td;
+        (block, _) = enumerator.Current;
         block.Should().BeEquivalentTo(block2);
     }
 
@@ -101,17 +98,17 @@ internal class EraReaderTests
         await builder.Finalize();
         using EraReader sut = new EraReader(tmpFile.FilePath);
 
-        IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = sut.GetAsyncEnumerator();
+        IAsyncEnumerator<(Block, TxReceipt[])> enumerator = sut.GetAsyncEnumerator();
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (_, TxReceipt[] receipts, _) = enumerator.Current;
+        (_, TxReceipt[] receipts) = enumerator.Current;
         receipts.Should().BeEquivalentTo(receipt0);
 
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (_, receipts, _) = enumerator.Current;
+        (_, receipts) = enumerator.Current;
         receipts.Should().BeEquivalentTo(receipt1);
 
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (_, receipts, _) = enumerator.Current;
+        (_, receipts) = enumerator.Current;
         receipts.Should().BeEquivalentTo(receipt2);
     }
 

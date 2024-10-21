@@ -106,7 +106,7 @@ public class EraImporter : IEraImporter
             Console.Error.WriteLine($"Start nubmer 2 {i}");
             using EraReader eraReader = eraStore.GetReader(i);
 
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraReader)
+            await foreach ((Block b, TxReceipt[] r) in eraReader)
             {
                 cancellation.ThrowIfCancellationRequested();
 
