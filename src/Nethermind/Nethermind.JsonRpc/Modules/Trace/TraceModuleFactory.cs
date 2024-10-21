@@ -40,8 +40,7 @@ public class TraceModuleFactory(
     protected readonly IRewardCalculatorSource _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
     protected readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
 
-    private OverridableTxProcessingEnv CreateOverridableTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
-    protected virtual IReadOnlyTxProcessorSource CreateTxProcessingEnv() => CreateOverridableTxProcessingEnv();
+    protected virtual OverridableTxProcessingEnv CreateTxProcessingEnv() => new(_worldStateManager, _blockTree, _specProvider, _logManager);
 
     protected virtual ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor, IReadOnlyTxProcessingScope scope, IRewardCalculator rewardCalculator) => new(
                 scope,
@@ -57,7 +56,7 @@ public class TraceModuleFactory(
 
     public override ITraceRpcModule Create()
     {
-        OverridableTxProcessingEnv txProcessingEnv = CreateOverridableTxProcessingEnv();
+        OverridableTxProcessingEnv txProcessingEnv = CreateTxProcessingEnv();
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
         IRewardCalculator rewardCalculator =

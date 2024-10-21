@@ -16,11 +16,13 @@ namespace Nethermind.Consensus.Processing;
 
 public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource, IOverridableTxProcessorSource
 {
+    private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
+
     protected new OverridableWorldState StateProvider { get; }
     protected OverridableWorldStateManager WorldStateManager { get; }
     protected OverridableCodeInfoRepository CodeInfoRepository { get; }
     protected IVirtualMachine Machine { get; }
-    protected ITransactionProcessor TransactionProcessor { get; init; }
+    protected ITransactionProcessor TransactionProcessor => _transactionProcessorLazy.Value;
 
     public OverridableTxProcessingEnv(
         OverridableWorldStateManager worldStateManager,
@@ -34,10 +36,13 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnly
         StateProvider = (OverridableWorldState)base.StateProvider;
         CodeInfoRepository = new(new CodeInfoRepository((worldStateToWarmUp as IPreBlockCaches)?.Caches.PrecompileCache));
         Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
-        TransactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
+        _transactionProcessorLazy = new(CreateTransactionProcessor);
     }
 
     IReadOnlyTxProcessingScope IReadOnlyTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
+
+    protected virtual ITransactionProcessor CreateTransactionProcessor() =>
+        new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 
     IOverridableTxProcessingScope IOverridableTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
 

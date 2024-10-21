@@ -4,12 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -49,18 +47,15 @@ namespace Nethermind.Facade.Test
         private ISpecProvider _specProvider;
         private IDbProvider _dbProvider;
 
-        private class TestReadOnlyTxProcessingEnv : OverridableTxProcessingEnv
+        private class TestReadOnlyTxProcessingEnv(
+            OverridableWorldStateManager worldStateManager,
+            IReadOnlyBlockTree blockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            ITransactionProcessor transactionProcessor)
+            : OverridableTxProcessingEnv(worldStateManager, blockTree, specProvider, logManager)
         {
-            public TestReadOnlyTxProcessingEnv(
-                OverridableWorldStateManager worldStateManager,
-                IReadOnlyBlockTree blockTree,
-                ISpecProvider specProvider,
-                ILogManager logManager,
-                ITransactionProcessor transactionProcessor) :
-                base(worldStateManager, blockTree, specProvider, logManager)
-            {
-                TransactionProcessor = transactionProcessor;
-            }
+            protected override ITransactionProcessor CreateTransactionProcessor() => transactionProcessor;
         }
 
         [SetUp]
