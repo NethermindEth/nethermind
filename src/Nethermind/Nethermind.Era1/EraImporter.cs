@@ -8,19 +8,13 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Linq;
-using Nethermind.Era1;
+using Nethermind.Era1.Exceptions;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Nethermind.Core.Extensions;
-using Nethermind.Era1.Exceptions;
-using Nethermind.Logging;
 
-namespace Nethermind.JsonRpc.Modules;
+namespace Nethermind.Era1;
 public class EraImporter : IEraImporter
 {
     private const int MergeBlock = 15537393;
