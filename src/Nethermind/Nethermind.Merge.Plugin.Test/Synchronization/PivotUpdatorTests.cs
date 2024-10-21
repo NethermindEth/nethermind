@@ -60,22 +60,22 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _blockCacheService = new BlockCacheService();
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
             _metadataDb = new MemDb();
-
-            PivotUpdator pivotUpdator = new(
-              _blockTree,
-              _syncModeSelector,
-              _syncPeerPool,
-              _syncConfig,
-              _blockCacheService,
-              _beaconSyncStrategy,
-              _metadataDb,
-              LimboLogs.Instance
-            );
         }
 
         [Test]
-        public void TrySetFreshPivot_SavesFinalizedHashInDb()
+        public void TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
+            PivotUpdator pivotUpdator = new(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                _beaconSyncStrategy!,
+                _metadataDb!,
+                LimboLogs.Instance
+            );
+
             SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
             long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
@@ -91,5 +91,35 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             storedFinalizedHash.Should().Be(expectedFinalizedHash);
             expectedPivotBlockNumber.Should().Be(storedPivotBlockNumber);
         }
+
+        // [Test]
+        // public void TrySetFreshPivot_for_optimism_saves_HeadBlockHash_in_db()
+        // {
+        //     UnsafePivotUpdator unsafePivotUpdator = new(
+        //         _blockTree!,
+        //         _syncModeSelector!,
+        //         _syncPeerPool!,
+        //         _syncConfig!,
+        //         _blockCacheService!,
+        //         _beaconSyncStrategy!,
+        //         _metadataDb!,
+        //         LimboLogs.Instance
+        //     );
+        //
+        //     SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
+        //     Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
+        //     long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+        //     _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
+        //
+        //     _syncModeSelector!.Changed += Raise.EventWith(args);
+        //
+        //     byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
+        //     RlpStream pivotStream = new(storedData!);
+        //     long storedPivotBlockNumber = pivotStream.DecodeLong();
+        //     Hash256 storedHeadBlockHash = pivotStream.DecodeKeccak()!;
+        //
+        //     storedHeadBlockHash.Should().Be(expectedHeadBlockHash);
+        //     expectedPivotBlockNumber.Should().Be(storedPivotBlockNumber);
+        // }
     }
 }

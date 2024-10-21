@@ -124,6 +124,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             return _blockCacheService.FinalizedHash;
         }
+
+        public Hash256? GetHeadBlockHash()
+        {
+            return _blockCacheService.HeadBlockHash;
+        }
     }
 
     public interface IMergeSyncController
