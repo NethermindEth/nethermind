@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
+            tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, writeFlags: WriteFlags.DisableWAL);
+            tree.Commit(writeFlags: WriteFlags.DisableWAL);
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }

@@ -3,9 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -127,39 +131,22 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
+            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
+                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
-            _api.Synchronizer ??= new Synchronizer(
-                _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-                _api.SpecProvider!,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
-                _syncConfig,
-                blockDownloaderFactory,
-                _api.Pivot,
-                _api.ProcessExit!,
-                _api.BetterPeerStrategy,
-                _api.ChainSpec,
-                _api.StateReader!,
-                _api.LogManager);
+            ContainerBuilder builder = new ContainerBuilder();
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
+            builder.RegisterModule(new SynchronizerModule(_syncConfig));
+            IContainer container = builder.Build();
+
+            _api.ApiWithNetworkServiceContainer = container;
+            _api.DisposeStack.Append(container);
         }
 
-        _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
-        _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
-
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
-            _api.SyncModeSelector, _api.SyncProgressResolver, _api.LogManager);
+            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-        _api.DisposeStack.Push(_api.SyncModeSelector);
-        _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!.TrieNodeRlpStore,
