@@ -234,9 +234,9 @@ namespace Nethermind.Evm
             }
         }
 
-        public bool IsCold(Address? address) => !_accessTracker.AccessedAddresses.Contains(address);
+        public bool IsCold(Address? address) => _accessTracker.IsCold(address);
 
-        public bool IsCold(in StorageCell storageCell) => !_accessTracker.AccessedStorageCells.Contains(storageCell);
+        public bool IsCold(in StorageCell storageCell) => _accessTracker.IsCold(storageCell);
 
         public void WarmUp(Address address) => _accessTracker.WarmUp(address);
 
