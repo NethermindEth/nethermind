@@ -29,13 +29,11 @@ public class TransactionProcessorTests
     private IEthereumEcdsa _ethereumEcdsa;
     private TaikoTransactionProcessor _transactionProcessor;
     private WorldState _stateProvider;
-    private readonly Address _taikoL2Address;
 
     public TransactionProcessorTests()
     {
         _spec = new(Cancun.Instance);
         _specProvider = new TestSpecProvider(_spec);
-        _taikoL2Address = TaikoAddressHelper.GetTaikoL2ContractAddress(_specProvider);
     }
 
     private static readonly UInt256 AccountBalance = 1.Ether();
@@ -64,7 +62,7 @@ public class TransactionProcessorTests
     public void Fees_distributed_correctly(byte basefeeSharingPctg, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
     {
         long gasLimit = 100000;
-        Address benefeciaryAddress = TestItem.AddressB;
+        Address benefeciaryAddress = TestItem.AddressC;
 
         Transaction tx = Build.A.Transaction
             .WithValue(1)
@@ -84,7 +82,7 @@ public class TransactionProcessorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(_stateProvider.GetBalance(_taikoL2Address), Is.EqualTo(goesToTreasury));
+            Assert.That(_stateProvider.GetBalance(_spec.FeeCollector!), Is.EqualTo(goesToTreasury));
             Assert.That(_stateProvider.GetBalance(benefeciaryAddress), Is.EqualTo(goesToBeneficiary));
         });
     }

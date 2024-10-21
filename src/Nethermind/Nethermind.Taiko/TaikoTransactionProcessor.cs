@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -21,8 +22,6 @@ public class TaikoTransactionProcessor(
     ILogManager logManager
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
-    private readonly Address TaikoL2Address = TaikoAddressHelper.GetTaikoL2ContractAddress(specProvider);
-
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
         out long intrinsicGas)
         => base.ValidateStatic(tx, header, spec, tx.IsAnchorTx ? opts | ExecutionOptions.NoValidation : opts, out intrinsicGas);
@@ -45,7 +44,7 @@ public class TaikoTransactionProcessor(
 
             WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
 
-            if (!tx.IsAnchorTx && !baseFees.IsZero)
+            if (!tx.IsAnchorTx && !baseFees.IsZero && spec.FeeCollector is not null)
             {
                 if (spec.IsOntakeEnabled)
                 {
@@ -55,11 +54,11 @@ public class TaikoTransactionProcessor(
                     WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, feeCoinbase, spec);
 
                     UInt256 feeTreasury = baseFees - feeCoinbase;
-                    WorldState.AddToBalanceAndCreateIfNotExists(TaikoL2Address, feeTreasury, spec);
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, feeTreasury, spec);
                 }
                 else
                 {
-                    WorldState.AddToBalanceAndCreateIfNotExists(TaikoL2Address, baseFees, spec);
+                    WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, baseFees, spec);
                 }
             }
 

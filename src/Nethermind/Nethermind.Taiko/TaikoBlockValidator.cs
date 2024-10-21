@@ -26,8 +26,6 @@ public class TaikoBlockValidator(
 
     private static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
-    private readonly Address TaikoL2Address = TaikoAddressHelper.GetTaikoL2ContractAddress(specProvider);
-
     private const long AnchorGasLimit = 250_000;
 
     private readonly IEthereumEcdsa _ecdsa = ecdsa;
@@ -55,7 +53,7 @@ public class TaikoBlockValidator(
                 return false;
             }
 
-            if (!ValidateAnchorTransaction(block.Transactions[0], block, out errorMessage))
+            if (!ValidateAnchorTransaction(block.Transactions[0], block, spec, out errorMessage))
                 return false;
         }
 
@@ -63,7 +61,7 @@ public class TaikoBlockValidator(
         return base.ValidateTransactions(block, spec, out errorMessage);
     }
 
-    private bool ValidateAnchorTransaction(Transaction tx, Block block, out string? errorMessage)
+    private bool ValidateAnchorTransaction(Transaction tx, Block block, IReleaseSpec spec, out string? errorMessage)
     {
         if (tx.Type != TxType.EIP1559)
         {
@@ -71,7 +69,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.To != TaikoL2Address)
+        if (tx.To != spec.FeeCollector)
         {
             errorMessage = "Anchor transaction must target Taiko L2 address";
             return false;
