@@ -12,6 +12,10 @@ on:
         description: "Docker image to be used by action"
         default: ""
         required: false
+      network_filter:
+        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        default: ""
+        required: false    
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -29,7 +33,14 @@ jobs:
           path: nethermind
       - name: Set Matrix
         id: set-matrix
-        run: echo "matrix=$(jq -c . nethermind/scripts/workflow_config/sync_testnets_matrix.json)" >> $GITHUB_OUTPUT
+        run: |
+          matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+
+          if [ -n "${{ github.event.inputs.network_filter }}" ]; then
+            matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
+          fi
+
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
 
   create_a_runner:
     needs: [setup-matrix]
@@ -188,7 +199,7 @@ jobs:
           required_count["Processed"]=20
 
           network="${{ matrix.config.network }}"
-          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" ]]; then
+          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" && "$network" != "linea-mainnet" && "$network" != "linea-sepolia" ]]; then
             good_logs["Synced Chain Head"]=0
             required_count["Synced Chain Head"]=20
           fi
@@ -250,7 +261,7 @@ jobs:
           done
           
       - name: Get Consensus Logs
-        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet'
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
@@ -265,6 +276,7 @@ jobs:
 
       - name: Destroy VM
         if: always()
+        continue-on-error: true
         id: run-linode-action
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:

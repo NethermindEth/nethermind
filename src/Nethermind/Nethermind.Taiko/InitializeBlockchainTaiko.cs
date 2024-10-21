@@ -87,7 +87,7 @@ public class InitializeBlockchainTaiko(TaikoNethermindApi api) : InitializeBlock
             _api.WorldState,
             _api.ReceiptStorage,
             _api.TransactionProcessor,
-            new BeaconBlockRootHandler(_api.TransactionProcessor),
+            new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldState),
             new BlockhashStore(_api.SpecProvider, _api.WorldState),
             _api.LogManager,
             new BlockProductionWithdrawalProcessor(new NullWithdrawalProcessor()),

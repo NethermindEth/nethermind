@@ -171,7 +171,7 @@ public abstract class BlockchainTestBase
             stateProvider,
             receiptStorage,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(specProvider, stateProvider),
             _logManager);
 

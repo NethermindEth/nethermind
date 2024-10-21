@@ -159,7 +159,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 scope.WorldState,
                 _api.ReceiptStorage,
                 _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.WorldState),
                 new BlockhashStore(_api.SpecProvider, scope.WorldState),
                 _api.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(scope.WorldState, _api.LogManager)));
