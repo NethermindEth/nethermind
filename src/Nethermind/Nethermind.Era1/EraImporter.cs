@@ -68,6 +68,7 @@ public class EraImporter : IEraImporter
 
     public Task ImportAsArchiveSync(string src, CancellationToken cancellation)
     {
+        _logger.Info($"Starting full archive import from '{src}'");
         return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, true, cancellation);
     }
 

@@ -19,13 +19,13 @@ public class ImportEraStep: IStep
 {
     protected readonly IApiWithBlockchain _api;
     private readonly ILogger _logger;
-    protected readonly ISyncConfig _syncConfig;
+    protected readonly IEraConfig _eraConfig;
 
     public ImportEraStep(IApiWithBlockchain api)
     {
         _api = api;
         _logger = api.LogManager.GetClassLogger<ImportEraStep>();
-        _syncConfig = api.Config<ISyncConfig>();
+        _eraConfig = api.Config<IEraConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -39,24 +39,23 @@ public class ImportEraStep: IStep
         if (_api.SpecProvider is null)
             throw new StepDependencyException(nameof(_api.SpecProvider));
 
-        ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-        if (string.IsNullOrEmpty(syncConfig.ImportDirectory))
+        if (string.IsNullOrEmpty(_eraConfig.ImportDirectory))
         {
             return;
         }
-        if (!_api.FileSystem.Directory.Exists(syncConfig.ImportDirectory))
+        if (!_api.FileSystem.Directory.Exists(_eraConfig.ImportDirectory))
         {
-            _logger.Warn($"The directory given for import '{syncConfig.ImportDirectory}' does not exist.");
+            _logger.Warn($"The directory given for import '{_eraConfig.ImportDirectory}' does not exist.");
             return;
         }
 
         var networkName = BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId);
-        _logger.Info($"Checking for unimported blocks '{syncConfig.ImportDirectory}'");
+        _logger.Info($"Checking for unimported blocks '{_eraConfig.ImportDirectory}'");
 
-        var eraFiles = EraPathUtils.GetAllEraFiles(syncConfig.ImportDirectory, networkName).ToArray();
+        var eraFiles = EraPathUtils.GetAllEraFiles(_eraConfig.ImportDirectory, networkName).ToArray();
         if (eraFiles.Length == 0)
         {
-            _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");
+            _logger.Warn($"No files for '{networkName}' import was found in '{_eraConfig.ImportDirectory}'.");
             return;
         }
 
@@ -71,16 +70,7 @@ public class ImportEraStep: IStep
 
         try
         {
-            if (_syncConfig.FastSync)
-            {
-                return;
-            }
-            else
-            {
-                //Import as a full archive
-                _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
-                await eraImport.ImportAsArchiveSync(syncConfig.ImportDirectory, _api.ProcessExit!.Token);
-            }
+            await eraImport.ImportAsArchiveSync(_eraConfig.ImportDirectory, _api.ProcessExit!.Token);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {
