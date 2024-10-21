@@ -17,24 +17,11 @@ using NSubstitute;
 namespace Nethermind.Era1.Test;
 internal class EraReaderTests
 {
-    private string _tmpFile;
-
-    [SetUp]
-    public void Setup()
-    {
-        _tmpFile = Path.GetTempFileName();
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        File.Delete(_tmpFile);
-    }
-
     [Test]
     public async Task ReadAccumulator_DoesNotThrow()
     {
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         byte[] dummy = new byte[] { 0x0 };
         await builder.Add(
             Keccak.Zero,
@@ -45,7 +32,7 @@ internal class EraReaderTests
             0,
             0);
         await builder.Finalize();
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
         Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
     }
 
@@ -54,7 +41,8 @@ internal class EraReaderTests
     [TestCase(2)]
     public async Task GetBlockByNumber_DifferentNumber_ReturnsBlockWithCorrectNumber(int number)
     {
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -63,17 +51,16 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile);
-
+        using EraReader sut = new EraReader(tmpFile.FilePath);
         (Block result, _, _) = await sut.GetBlockByNumber(number);
-
         Assert.That(result.Number, Is.EqualTo(number));
     }
 
     [Test]
     public async Task GetAsyncEnumerator_EnumerateAll_ReadsAllAddedBlocks()
     {
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -82,8 +69,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile);
-
+        using EraReader sut = new EraReader(tmpFile.FilePath);
         IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = sut.GetAsyncEnumerator();
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
         (Block block, _, UInt256 td) = enumerator.Current;
@@ -104,7 +90,8 @@ internal class EraReaderTests
     [Test]
     public async Task GetAsyncEnumerator_EnumerateAll_ReadsAllAddedReceipts()
     {
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         TxReceipt[] receipt0 = new[] { Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject };
         TxReceipt[] receipt1 = new[] { Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject };
@@ -113,7 +100,7 @@ internal class EraReaderTests
         await builder.Add(block0, receipt1);
         await builder.Add(block0, receipt2);
         await builder.Finalize();
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
 
         IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = sut.GetAsyncEnumerator();
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
@@ -132,7 +119,8 @@ internal class EraReaderTests
     [Test]
     public async Task GetAsyncEnumerator_EnumerateAll_EnumeratesCorrectAmountOfBlocks()
     {
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -141,7 +129,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
         int result = 0;
         await foreach (var item in sut)
         {
@@ -154,7 +142,8 @@ internal class EraReaderTests
     [Test]
     public async Task GetAsyncEnumerator_EnumerateAllInReverse_BlocksAreReturnedInReverseOrder()
     {
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(0).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(0).TestObject;
@@ -164,7 +153,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
 
         var enumerator = sut.GetAsyncEnumerator();
         for (int i = 2; i < 0; i--)
@@ -179,7 +168,8 @@ internal class EraReaderTests
     public async Task VerifyAccumulator_CreateBlocks_AccumulatorMatches()
     {
         using AccumulatorCalculator calculator = new();
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(block0.Difficulty + block0.TotalDifficulty).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(block1.Difficulty + block1.TotalDifficulty).TestObject;
@@ -191,7 +181,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
         bool result = await sut.VerifyAccumulator(calculator.ComputeRoot(), Substitute.For<ISpecProvider>());
 
         Assert.That(result, Is.True);
@@ -200,7 +190,8 @@ internal class EraReaderTests
     public async Task VerifyAccumulator_FirstVerifyThenEnumerateAll_AllBlocksEnumerated()
     {
         using AccumulatorCalculator calculator = new();
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(block0.Difficulty + block0.TotalDifficulty).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(block1.Difficulty + block1.TotalDifficulty).TestObject;
@@ -212,7 +203,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
         int count = 0;
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
 
         await sut.VerifyAccumulator(calculator.ComputeRoot(), Substitute.For<ISpecProvider>());
         await foreach (var item in sut)
@@ -227,7 +218,8 @@ internal class EraReaderTests
     public async Task ReadAccumulator_CalculateWithAccumulatorCalculator_AccumulatorMatches()
     {
         using AccumulatorCalculator calculator = new();
-        EraWriter builder = EraWriter.Create(_tmpFile, Substitute.For<ISpecProvider>());
+        using TmpFile tmpFile = new TmpFile();
+        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -239,7 +231,7 @@ internal class EraReaderTests
         await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
 
-        EraReader sut = new EraReader(_tmpFile);
+        using EraReader sut = new EraReader(tmpFile.FilePath);
         var result = sut.ReadAccumulator();
 
         Assert.That(result, Is.EqualTo(calculator.ComputeRoot()));
