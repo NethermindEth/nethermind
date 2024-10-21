@@ -154,7 +154,7 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayloadV4 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV4>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot, requests: requests);
             blockRequestV4.TryGetBlock(out Block? block);
 
-            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor);
+            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
             beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header));
             Snapshot before = chain.State.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
