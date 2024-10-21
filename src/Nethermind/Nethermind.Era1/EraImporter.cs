@@ -163,7 +163,6 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"Invalid block in Era1 archive. {error}");
         }
 
-        Console.Error.WriteLine($"Block 0 is {block.Number}");
         var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         var addResult = await _blockTree.SuggestBlockAsync(block, options);
         switch (addResult)
