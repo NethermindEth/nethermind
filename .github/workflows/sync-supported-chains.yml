@@ -58,7 +58,7 @@ jobs:
         
       - name: Create a Runner
         id: run-linode-action
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
@@ -275,9 +275,8 @@ jobs:
 
       - name: Destroy VM
         if: always()
-        continue-on-error: true
         id: run-linode-action
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
@@ -296,22 +295,9 @@ jobs:
       matrix:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
-    steps:    
-      - name: Destroy VM (make sure is removed if by any unexpected reason it did not removed it on )
-        continue-on-error: true
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
-        with:
-          linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
-          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
-          organization: "NethermindEth"
-          repo_name: "nethermind"  
-
+    steps:
       - name: Destroy Runner
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@kch/add429handling
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
