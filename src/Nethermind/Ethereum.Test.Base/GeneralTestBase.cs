@@ -126,6 +126,12 @@ namespace Ethereum.Test.Base
                 codeInfoRepository,
                 _logManager);
 
+            // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
+            if (test.CurrentCoinbase != null && !stateProvider.AccountExists(test.CurrentCoinbase))
+            {
+                stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+            }
+
             InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -228,17 +234,7 @@ namespace Ethereum.Test.Base
             stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-            stateProvider.CommitTree(1);
-
-            // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
-            if (!stateProvider.AccountExists(test.CurrentCoinbase))
-            {
-                stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-            }
-
-            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-
-            stateProvider.RecalculateStateRoot();
+            stateProvider.CommitTree(test.CurrentNumber);
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
