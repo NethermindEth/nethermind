@@ -11,13 +11,13 @@ public enum ParityTraceTypes
 {
     [Description("None.")]
     None = 0,
-    [Description("Virtual Machine execution trace. Provides a full trace of the VM’s state throughout the execution of transactions at each op-code, including for any subcalls.")]
+    [Description("Provides a full trace of the EVM state throughout the execution of transactions at each op-code, including subcalls.")]
     VmTrace = 1,
-    [Description("State difference. Provides information detailing all altered portions of the Ethereum state made due to the execution of transactions.")]
+    [Description("Provides Ethereum state difference detailing all altered portions of the state made due to the execution of transactions.")]
     StateDiff = 2,
-    [Description("Transaction trace including subcalls.")]
+    [Description("Provides transaction trace, including subcalls.")]
     Trace = 4,
-    [Description("Includes block rewards in trace when tracing full blocks.")]
+    [Description("Includes block rewards in the trace when tracing full blocks.")]
     Rewards = 8,
     [Description($"Combines the `{nameof(Rewards)}` `{nameof(StateDiff)}` `{nameof(Trace)}` `{nameof(VmTrace)}` options.")]
     All = VmTrace | StateDiff | Trace | Rewards,
