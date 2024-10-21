@@ -122,7 +122,7 @@ internal class EraReaderTests
 
         ValueHash256 root = calculator.ComputeRoot();
         using EraReader sut = new EraReader(tmpFile.FilePath);
-        bool result = await sut.VerifyAccumulator(root, Substitute.For<ISpecProvider>());
-        Assert.That(result, Is.True);
+        ValueHash256 fileRoot = await sut.ReadAndVerifyAccumulator(Substitute.For<ISpecProvider>(), default);
+        root.Should().BeEquivalentTo(fileRoot);
     }
 }

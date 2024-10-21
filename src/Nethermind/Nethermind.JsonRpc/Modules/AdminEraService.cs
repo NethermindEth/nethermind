@@ -12,6 +12,7 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules;
 public class AdminEraService : IAdminEraService

@@ -97,7 +97,6 @@ public class EraWriter : IDisposable
             _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
         }
 
-        Console.Error.WriteLine($"Wrote TC {block.Hash} {block.TotalDifficulty}");
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
 
         return true;

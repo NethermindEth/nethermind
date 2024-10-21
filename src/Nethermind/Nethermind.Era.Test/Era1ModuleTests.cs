@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -21,6 +22,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
@@ -167,9 +169,8 @@ public class Era1ModuleTests
                                     .WithParent(blocks[i]).TestObject);
         }
 
-        testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
-
-        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        blocks = testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
+        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, testBlockchain.SpecProvider);
 
         foreach (var block in blocks)
         {
@@ -180,9 +181,8 @@ public class Era1ModuleTests
 
         using EraReader eraReader = new EraReader(tmpFile.FilePath);
 
-        var eraAccumulator = eraReader.ReadAccumulator();
-
-        Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, Substitute.For<ISpecProvider>()), Is.True);
+        Func<Task> verifyTask = () => eraReader.ReadAndVerifyAccumulator(testBlockchain.SpecProvider, default);
+        await verifyTask.Should().NotThrowAsync();
     }
 
     [Test]

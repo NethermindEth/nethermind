@@ -13,6 +13,7 @@ using NSubstitute;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using Nethermind.Core;
+using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.Era1.Test;

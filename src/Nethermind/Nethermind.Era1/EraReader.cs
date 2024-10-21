@@ -1,18 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
-using System.IO.Abstractions;
-using System.IO.MemoryMappedFiles;
-using System.Runtime.CompilerServices;
-using System.Threading;
+using System.Diagnostics;
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+using Nethermind.Era1.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -59,15 +54,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<bool> VerifyAccumulator(ValueHash256 expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
+    public async Task<ValueHash256> ReadAndVerifyAccumulator(ISpecProvider specProvider, CancellationToken cancellation = default)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
         ValueHash256 accumulator = ReadAccumulator();
-        if (accumulator != expectedAccumulator)
-        {
-            return false;
-        }
 
         using AccumulatorCalculator calculator = new();
 
@@ -75,25 +66,31 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         {
             EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
             EntryReadResult err = result.Value;
-            if (err.Block.Header.Hash != err.ComputedHeaderHash)
-            {
-                return false;
-            }
+
+            // This should never happen as the hash itself is not stored. Its computed by the decoder.
+            Debug.Assert(err.Block.Header.Hash == err.ComputedHeaderHash, "Mismatched header hash");
+
             Hash256 txRoot = new TxTrie(err.Block.Transactions).RootHash;
             if (err.Block.Header.TxRoot != txRoot)
             {
-                return false;
+                throw new EraVerificationException("Mismatched tx root");
             }
+
             Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder).RootHash;
             if (err.Block.Header.ReceiptsRoot != receiptRoot)
             {
-                return false;
+                throw new EraVerificationException("Mismatched receipt root");
             }
 
             calculator.Add(err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
         }
 
-        return expectedAccumulator == calculator.ComputeRoot();
+        if (accumulator != calculator.ComputeRoot())
+        {
+            throw new EraVerificationException("Computed accumulator does not match stored accumulator");
+        }
+
+        return accumulator;
     }
 
     public ValueHash256 ReadAccumulator()

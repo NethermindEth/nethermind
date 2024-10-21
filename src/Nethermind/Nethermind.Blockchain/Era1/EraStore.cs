@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1;
+using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Blockchain;
 public class EraStore : IEraStore
@@ -106,15 +107,10 @@ public class EraStore : IEraStore
             string era = kv.Value;
             using MemoryStream destination = new();
             using EraReader eraReader = GetReader(kv.Key);
-            var eraAccumulator = eraReader.ReadAccumulator();
+            var eraAccumulator = await eraReader.ReadAndVerifyAccumulator(specProvider, cancellationToken);
             if (trustedAccumulators != null && !trustedAccumulators.Contains(eraAccumulator))
             {
                 throw new EraVerificationException($"Accumulator {eraAccumulator} not trusted from era file {era}");
-            }
-
-            if (!await eraReader.VerifyAccumulator(eraAccumulator, specProvider))
-            {
-                throw new EraVerificationException($"Failed to verify accumulator {eraAccumulator} from era file {era}");
             }
 
             fileCount++;

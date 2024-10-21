@@ -18,6 +18,7 @@ using Nethermind.Era1;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Core.Extensions;
+using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules;
