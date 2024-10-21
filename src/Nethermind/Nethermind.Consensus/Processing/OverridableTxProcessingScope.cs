@@ -13,7 +13,7 @@ public class OverridableTxProcessingScope(
     ITransactionProcessor transactionProcessor,
     OverridableWorldState worldState,
     Hash256 originalStateRoot
-) : IReadOnlyTxProcessingScope, IOverridableTxProcessingScope
+) : IOverridableTxProcessingScope
 {
     public void Dispose()
     {

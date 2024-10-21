@@ -150,8 +150,9 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            CallOutputTracer callOutputTracer = new();
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
+
+            CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken), scope);
             return new CallOutput
@@ -198,7 +199,8 @@ namespace Nethermind.Facade
                 header,
                 tx,
                 true,
-                estimateGasTracer.WithCancellation(cancellationToken));
+                estimateGasTracer.WithCancellation(cancellationToken),
+                scope);
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
@@ -220,7 +222,8 @@ namespace Nethermind.Facade
                 : new(header.GasBeneficiary);
 
             TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken),
+                _processingEnv.Build(header.StateRoot!));
 
             return new CallOutput
             {
@@ -237,12 +240,11 @@ namespace Nethermind.Facade
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer,
-            IOverridableTxProcessingScope? scope = null)
+            IOverridableTxProcessingScope scope)
         {
             try
             {
-                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer,
-                    scope ?? _processingEnv.Build(blockHeader.StateRoot!));
+                return CallAndRestore(blockHeader, transaction, treatBlockHeaderAsParentBlock, tracer, scope);
             }
             catch (InsufficientBalanceException ex)
             {
