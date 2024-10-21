@@ -687,7 +687,7 @@ internal class P01CDLP01SHRD01P04 : InstructionChunk
 
         ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 8, 4);
 
-        stack.PushLeftPaddedBytes(fourByteSpan,4);
+        stack.PushLeftPaddedBytes(fourByteSpan, 4);
 
         programCounter += 12;
 
@@ -716,7 +716,7 @@ internal class P00CDLP01SHRD01P04 : InstructionChunk
         if (!spec.ShiftOpcodesEnabled) result.ExceptionType = EvmExceptionType.BadInstruction;
 
         if (!spec.IncludePush0Instruction)
-            result.ExceptionType = EvmExceptionType.BadInstruction;;
+            result.ExceptionType = EvmExceptionType.BadInstruction; ;
 
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
@@ -731,7 +731,7 @@ internal class P00CDLP01SHRD01P04 : InstructionChunk
 
         stack.PushUInt256(rightShift);
         stack.PushUInt256(rightShift);
-        stack.PushLeftPaddedBytes(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 7, 4),4);
+        stack.PushLeftPaddedBytes(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 7, 4), 4);
 
         programCounter += 1 + 1 + 2 + 1 + 1 + 5;
 
@@ -811,7 +811,7 @@ internal class P20ANDP20ANDD02 : InstructionChunk
         twentyByteSpan.CopyTo(paddedSpan2.Slice(12, 20));
         Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref paddedSpan[0]);
         Vector256<byte> cVec = ReadUnaligned<Vector256<byte>>(ref paddedSpan2[0]);
-        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(Vector256.BitwiseAnd(aVec, bVec),cVec));
+        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(Vector256.BitwiseAnd(aVec, bVec), cVec));
         stack.Dup(2);
         programCounter += 21 + 1 + 21 + 1 + 1;
 
@@ -1019,7 +1019,7 @@ internal class D02D02ADDMLD04D03ADDMST : InstructionChunk
 
     }
 }
-internal class D02S01SHRD03D02MUL: InstructionChunk
+internal class D02S01SHRD03D02MUL : InstructionChunk
 {
     public string Name => nameof(D02S01SHRD03D02MUL);
     public byte[] Pattern => [(byte)Instruction.DUP2, (byte)Instruction.SWAP1, (byte)Instruction.SHR, (byte)Instruction.DUP3, (byte)Instruction.DUP2, (byte)Instruction.MUL];
@@ -1071,7 +1071,7 @@ internal class D02S01SHRD03D02MUL: InstructionChunk
 
     }
 }
-internal class S04S01S04ADDS03P01ADD: InstructionChunk
+internal class S04S01S04ADDS03P01ADD : InstructionChunk
 {
     public string Name => nameof(S04S01S04ADDS03P01ADD);
     public byte[] Pattern => [(byte)Instruction.SWAP4, (byte)Instruction.SWAP1, (byte)Instruction.SWAP4, (byte)Instruction.ADD, (byte)Instruction.SWAP3, (byte)Instruction.PUSH1, (byte)Instruction.ADD];
@@ -1110,19 +1110,3 @@ internal class S04S01S04ADDS03P01ADD: InstructionChunk
 
     }
 }
-/*
-PUSH1 MLOAD DUP1 SWAP2 SUB
-CALLDATALOAD PUSH1 SHR DUP1 PUSH4
-DUP4 DUP2 LT ISZERO PUSH2
-PUSH20 AND PUSH20 AND DUP2
----DUP2 DUP2 ADD MLOAD ... cont
-DUP2 DUP2 ADD MLOAD DUP4 DUP3 ADD MSTORE PUSH1 ADD PUSH2
----DUP4 DUP3 ADD MSTORE PUSH1 ADD PUSH2
-GAS PUSH1 PUSH1 MSTORE PUSH1 CALLDATASIZE LT
-DUP2 SWAP1 SHR DUP3 DUP2 MUL -- SWAP4 SWAP1 SWAP4 ADD SWAP3 PUSH1 ADD
-
-"GAS PUSH1 PUSH1 MSTORE CALLVALUE"
- MSTORE PUSH1 SWAP1 KECCAK256 SLOAD
-SHL SUB DUP2 AND DUP2 EQ
-
-*/
