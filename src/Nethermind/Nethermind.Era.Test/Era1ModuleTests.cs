@@ -103,7 +103,7 @@ public class Era1ModuleTests
             using var eraEnumerator = new EraReader(era);
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
-                await builder.Add(b, r, td);
+                await builder.Add(b, r);
                 readFromFile.Add((b, r, td));
             }
             await builder.Finalize();

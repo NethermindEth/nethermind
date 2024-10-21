@@ -95,13 +95,19 @@ public class EraExporter : IEraExporter
                 TxReceipt[]? receipts = _receiptStorage.Get(block);
                 if (receipts is null)
                 {
-                    //Can this even happen?
+                    // Can this even happen?
+                    // Well yea... it happens a lot unfortunately
                     throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
                 }
 
-                UInt256 td = block.TotalDifficulty ?? _blockTree.GetInfo(block.Number, block.Hash).Info?.TotalDifficulty ?? block.Difficulty;
+                // TODO: Check why
+                // UInt256 td = block.TotalDifficulty ?? _blockTree.GetInfo(block.Number, block.Hash).Info?.TotalDifficulty ?? block.Difficulty;
+                if (block.TotalDifficulty is null)
+                {
+                    throw new EraException($"Block does not have total difficulty specified");
+                }
 
-                if (!await builder.Add(block, receipts, td, cancellation) || y == i + size || y == end)
+                if (!await builder.Add(block, receipts, cancellation) || y == i + size || y == end)
                 {
                     byte[] root = await builder.Finalize();
                     builder.Dispose();

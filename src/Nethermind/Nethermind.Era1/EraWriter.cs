@@ -53,11 +53,7 @@ public class EraWriter : IDisposable
         _entryIndexes = new(MaxEra1Size);
     }
 
-    public Task<bool> Add(Block block, TxReceipt[] receipts, in CancellationToken cancellation = default)
-    {
-        return Add(block, receipts, block.TotalDifficulty ?? block.Difficulty, cancellation);
-    }
-    public async Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
+    public async Task<bool> Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
         if (_finalized)
             throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
@@ -77,11 +73,11 @@ public class EraWriter : IDisposable
             _firstBlock = false;
         }
 
-        if (totalDifficulty < block.Difficulty)
-            throw new ArgumentOutOfRangeException(nameof(totalDifficulty), $"Cannot be less than the block difficulty.");
+        if (block.TotalDifficulty < block.Difficulty)
+            throw new ArgumentOutOfRangeException(nameof(block.TotalDifficulty), $"Cannot be less than the block difficulty.");
 
         _entryIndexes.Add(_totalWritten);
-        _accumulatorCalculator.Add(block.Hash, totalDifficulty);
+        _accumulatorCalculator.Add(block.Hash, block.TotalDifficulty!.Value);
 
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
@@ -100,7 +96,7 @@ public class EraWriter : IDisposable
             _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
         }
 
-        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
+        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
 
         return true;
     }

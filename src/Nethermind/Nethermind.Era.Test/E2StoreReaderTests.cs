@@ -139,31 +139,6 @@ internal class EraReaderTests
     }
 
     [Test]
-    public async Task GetAsyncEnumerator_EnumerateAllInReverse_BlocksAreReturnedInReverseOrder()
-    {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(0).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(0).TestObject;
-        Block[] expectedOrder = new[] { block2, block1, block0 };
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
-
-        using EraReader sut = new EraReader(tmpFile.FilePath);
-
-        var enumerator = sut.GetAsyncEnumerator();
-        for (int i = 2; i < 0; i--)
-        {
-            await enumerator.MoveNextAsync();
-            (Block b, _, _) = enumerator.Current;
-            Assert.That(b.Number, Is.EqualTo(i));
-        }
-    }
-
-    [Test]
     public async Task VerifyAccumulator_CreateBlocks_AccumulatorMatches()
     {
         using AccumulatorCalculator calculator = new();

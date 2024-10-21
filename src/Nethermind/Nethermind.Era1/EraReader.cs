@@ -40,6 +40,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         foreach (var blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
+            result.Block.Header.TotalDifficulty = result.TotalDifficulty;
             yield return (result.Block, result.Receipts, result.TotalDifficulty);
         }
     }
