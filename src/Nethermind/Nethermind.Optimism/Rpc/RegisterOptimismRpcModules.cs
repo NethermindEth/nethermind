@@ -93,6 +93,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     protected override void RegisterTraceRpcModule(IRpcModuleProvider rpcModuleProvider)
     {
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
@@ -103,6 +104,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
         OptimismTraceModuleFactory traceModuleFactory = new(
             _api.WorldStateManager,
+            _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,
