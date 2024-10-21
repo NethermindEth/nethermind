@@ -115,6 +115,8 @@ namespace Nethermind.Serialization.Rlp
         /// <returns></returns>
         public Span<byte> AsSpan() => _buffer.AsSpan(_initialPosition);
 
+        public Memory<byte> AsMemory() => _buffer.AsMemory(_initialPosition);
+
         public void Dispose()
         {
             _buffer.SafeRelease();
