@@ -57,92 +57,48 @@ public class EraWriter : IDisposable
     {
         return Add(block, receipts, block.TotalDifficulty ?? block.Difficulty, cancellation);
     }
-    public Task<bool> Add(Block block, TxReceipt[] receipts, in UInt256 totalDifficulty, in CancellationToken cancellation = default)
+    public async Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
     {
+        if (_finalized)
+            throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
+
         if (block.Header == null)
             throw new ArgumentException("The block must have a header.", nameof(block));
         if (block.Hash == null)
             throw new ArgumentException("The block must have a hash.", nameof(block));
 
-        int headerLength = _headerDecoder.GetLength(block.Header, RlpBehaviors.None);
-        int bodyLength = _blockBodyDecoder.GetLength(block.Body, RlpBehaviors.None);
-        RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-        int receiptsLength = _receiptDecoder.GetLength(receipts, behaviors);
-
-        IByteBuffer byteBuffer = _byteBufferAllocator.Buffer(headerLength + bodyLength + receiptsLength);
-        try
-        {
-            byteBuffer.EnsureWritable(headerLength + bodyLength + receiptsLength);
-
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            rlpStream.Encode(block.Header);
-            Memory<byte> headerBytes = byteBuffer.ReadAllBytesAsMemory();
-
-            rlpStream.Encode(block.Body);
-            Memory<byte> bodyBytes = byteBuffer.ReadAllBytesAsMemory();
-
-            //Geth implementation has a byte array representing both TxPostState and StatusCode, and serializes whatever is set
-            rlpStream.Encode(receipts, behaviors);
-            Memory<byte> receiptBytes = byteBuffer.ReadAllBytesAsMemory();
-
-            return Add(block.Hash, headerBytes, bodyBytes, receiptBytes, block.Number, block.Difficulty, totalDifficulty, cancellation);
-        }
-        finally
-        {
-            byteBuffer.Release();
-        }
-    }
-    /// <summary>
-    /// Write RLP encoded data to the underlying stream.
-    /// </summary>
-    /// <param name="blockHash"></param>
-    /// <param name="blockHeader"></param>
-    /// <param name="blockBody"></param>
-    /// <param name="receiptsArray"></param>
-    /// <param name="blockNumber"></param>
-    /// <param name="blockDifficulty"></param>
-    /// <param name="totalDifficulty"></param>
-    /// <param name="cancellation"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentNullException"></exception>
-    /// <exception cref="ArgumentOutOfRangeException"></exception>
-    /// <exception cref="EraException"></exception>
-    public async Task<bool> Add(
-        Hash256 blockHash,
-        Memory<byte> blockHeader,
-        Memory<byte> blockBody,
-        Memory<byte> receiptsArray,
-        long blockNumber,
-        UInt256 blockDifficulty,
-        UInt256 totalDifficulty,
-        CancellationToken cancellation = default)
-    {
-        if (blockHash is null) throw new ArgumentNullException(nameof(blockHash));
-        if (blockHeader.Length == 0) throw new ArgumentException("Rlp encoded data cannot be empty.", nameof(blockHeader));
-        if (blockBody.Length == 0) throw new ArgumentException("Rlp encoded data cannot be empty.", nameof(blockBody));
-        if (receiptsArray.Length == 0) throw new ArgumentException("Rlp encoded data cannot be empty.", nameof(receiptsArray));
-        if (totalDifficulty < blockDifficulty)
-            throw new ArgumentOutOfRangeException(nameof(totalDifficulty), $"Cannot be less than the block difficulty.");
-        if (_finalized)
-            throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
+        if (_entryIndexes.Count >= MaxEra1Size)
+            return false;
 
         if (_firstBlock)
         {
-            _startNumber = blockNumber;
+            _startNumber = block.Number;
             _totalWritten += await WriteVersion();
             _firstBlock = false;
         }
 
-        if (_entryIndexes.Count >= MaxEra1Size)
-            return false;
+        if (totalDifficulty < block.Difficulty)
+            throw new ArgumentOutOfRangeException(nameof(totalDifficulty), $"Cannot be less than the block difficulty.");
 
         _entryIndexes.Add(_totalWritten);
-        _accumulatorCalculator.Add(blockHash, totalDifficulty);
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, blockHeader, cancellation);
+        _accumulatorCalculator.Add(block.Hash, totalDifficulty);
 
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, blockBody, cancellation);
+        RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptsArray, cancellation);
+        using (NettyRlpStream headerBytes = _headerDecoder.EncodeToNewNettyStream(block.Header, behaviors))
+        {
+            _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedHeader, headerBytes.AsMemory(), cancellation);
+        }
+
+        using (NettyRlpStream bodyBytes = _blockBodyDecoder.EncodeToNewNettyStream(block.Body, behaviors))
+        {
+            _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedBody, bodyBytes.AsMemory(), cancellation);
+        }
+
+        using (NettyRlpStream receiptBytes = _receiptDecoder.EncodeToNewNettyStream(receipts, behaviors))
+        {
+            _totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptBytes.AsMemory(), cancellation);
+        }
 
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
 

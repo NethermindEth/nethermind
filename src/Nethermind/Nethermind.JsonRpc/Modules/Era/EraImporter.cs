@@ -99,8 +99,11 @@ public class EraImporter : IEraImporter
         long totalblocks = 0;
         int blocksProcessed = 0;
 
+        Console.Error.WriteLine($"Start nubmer {startNumber}");
+
         for (long i = startEpoch; eraStore.HasEpoch(i); i++)
         {
+            Console.Error.WriteLine($"Start nubmer 2 {i}");
             using EraReader eraReader = eraStore.GetReader(i);
 
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraReader)
@@ -166,6 +169,7 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"Invalid block in Era1 archive. {error}");
         }
 
+        Console.Error.WriteLine($"Block 0 is {block.Number}");
         var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         var addResult = await _blockTree.SuggestBlockAsync(block, options);
         switch (addResult)

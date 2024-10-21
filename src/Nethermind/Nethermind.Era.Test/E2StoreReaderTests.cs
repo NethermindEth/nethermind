@@ -22,16 +22,15 @@ internal class EraReaderTests
     {
         using TmpFile tmpFile = new TmpFile();
         EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        byte[] dummy = new byte[] { 0x0 };
-        await builder.Add(
-            Keccak.Zero,
-            dummy,
-            dummy,
-            dummy,
-            0,
-            0,
-            0);
+        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        await builder.Add(block0, Array.Empty<TxReceipt>());
+        await builder.Add(block1, Array.Empty<TxReceipt>());
+        await builder.Add(block2, Array.Empty<TxReceipt>());
         await builder.Finalize();
+        await builder.Finalize();
+
         using EraReader sut = new EraReader(tmpFile.FilePath);
         Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
     }

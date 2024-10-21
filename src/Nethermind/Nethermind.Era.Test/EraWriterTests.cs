@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
+using System.Runtime.InteropServices.JavaScript;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -26,16 +27,14 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
-        byte[] dummyData = new[] { (byte)0x00 };
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        block.Header.TotalDifficulty = 0;
 
         Assert.That(async () => await sut.Add(
-            Keccak.Zero,
-            dummyData,
-            dummyData,
-            dummyData,
-            1,
-            1,
-            0), Throws.TypeOf<ArgumentOutOfRangeException>());
+            block,
+            Array.Empty<TxReceipt>()), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
@@ -61,8 +60,8 @@ internal class EraWriterTests
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         for (int i = 0; i < EraWriter.MaxEra1Size; i++)
         {
-            Block block = Build.A.Block.WithNumber(0)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            Block block = Build.A.Block.WithNumber(i)
+                .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             await sut.Add(block, Array.Empty<TxReceipt>());
         }
 
@@ -101,14 +100,10 @@ internal class EraWriterTests
         using MemoryStream stream = new();
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         byte[] buffer = new byte[40];
-        await sut.Add(
-            Keccak.Zero,
-            buffer.AsMemory(0, 1),
-            buffer.AsMemory(0, 1),
-            buffer.AsMemory(0, 1),
-            0,
-            0,
-            0);
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        await sut.Add(block, Array.Empty<TxReceipt>());
 
         await sut.Finalize();
         stream.Seek(-buffer.Length - 4 * 8, SeekOrigin.End);
@@ -122,15 +117,10 @@ internal class EraWriterTests
     {
         using TmpFile tmpFile = new TmpFile();
         EraWriter sut = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        byte[] buffer = new byte[40];
-        await sut.Add(
-            Keccak.Zero,
-            buffer.AsMemory(0, 1),
-            buffer.AsMemory(0, 1),
-            buffer.AsMemory(0, 1),
-            0,
-            0,
-            0);
+
+        Block block = Build.A.Block.WithNumber(0)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        await sut.Add(block, Array.Empty<TxReceipt>());
 
         await sut.Finalize();
 
