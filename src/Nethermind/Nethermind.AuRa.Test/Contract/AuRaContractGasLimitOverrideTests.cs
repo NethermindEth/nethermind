@@ -17,6 +17,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -81,8 +82,11 @@ public class AuRaContractGasLimitOverrideTests
 
         protected override BlockProcessor CreateBlockProcessor()
         {
-            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>().BlockGasLimitContractTransitions
+                .First();
+            BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
+                blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
                     WorldStateManager,
                     BlockTree.AsReadOnly(), SpecProvider, LimboLogs.Instance));
@@ -114,8 +118,10 @@ public class AuRaContractGasLimitOverrideTests
     {
         protected override BlockProcessor CreateBlockProcessor()
         {
-            KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-            ChainSpec.AuRa.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
+            var parameters = ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+            KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
+            parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
             return base.CreateBlockProcessor();
         }
     }

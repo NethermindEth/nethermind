@@ -22,14 +22,14 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IValidatorStore _validatorStore;
         private readonly bool _forSealing;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
-        private readonly IDictionary<long, AuRaParameters.Validator> _validators;
+        private readonly IDictionary<long, Validator> _validators;
         private readonly ILogger _logger;
         private IAuRaValidator _currentValidator;
-        private AuRaParameters.Validator _currentValidatorPrototype;
+        private Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;
 
         public MultiValidator(
-            AuRaParameters.Validator validator,
+            Validator validator,
             IAuRaValidatorFactory validatorFactory,
             IBlockTree blockTree,
             IValidatorStore validatorStore,
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             bool forSealing = false)
         {
             ArgumentNullException.ThrowIfNull(validator);
-            if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
+            if (validator.ValidatorType != ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _lastProcessedBlock = blockNumber;
         }
 
-        private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator> validator)
+        private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, Validator> validator)
         {
             var headNumber = _blockTree.Head?.Number ?? 0;
 
@@ -104,7 +104,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (!block.IsGenesis)
             {
-                bool ValidatorWasAlreadyFinalized(KeyValuePair<long, AuRaParameters.Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
+                bool ValidatorWasAlreadyFinalized(KeyValuePair<long, Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
 
                 bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
                 long previousBlockNumber = block.Number - 1;
@@ -142,7 +142,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _currentValidator?.OnBlockProcessingStart(block, options);
         }
 
-        private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
+        private bool TryGetValidator(long blockNumber, out Validator validator) => _validators.TryGetValue(blockNumber, out validator);
 
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
@@ -178,12 +178,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
         }
 
-        private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo, BlockHeader parentHeader)
+        private void SetCurrentValidator(KeyValuePair<long, Validator> validatorInfo, BlockHeader parentHeader)
         {
             SetCurrentValidator(validatorInfo.Key, validatorInfo.Value, parentHeader);
         }
 
-        private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader)
+        private void SetCurrentValidator(long finalizedAtBlockNumber, Validator validatorPrototype, BlockHeader parentHeader)
         {
             if (validatorPrototype != _currentValidatorPrototype)
             {
@@ -205,7 +205,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) =>
+        private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, Validator validatorPrototype, BlockHeader parentHeader) =>
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
 
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)

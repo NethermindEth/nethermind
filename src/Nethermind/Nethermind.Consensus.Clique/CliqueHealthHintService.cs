@@ -10,21 +10,21 @@ namespace Nethermind.Consensus.Clique
     internal class CliqueHealthHintService : IHealthHintService
     {
         private readonly ISnapshotManager _snapshotManager;
-        private readonly ChainSpec _chainSpec;
+        private readonly CliqueChainSpecEngineParameters _chainSpec;
 
-        public CliqueHealthHintService(ISnapshotManager snapshotManager, ChainSpec chainSpec)
+        public CliqueHealthHintService(ISnapshotManager snapshotManager, CliqueChainSpecEngineParameters chainSpec)
         {
             _snapshotManager = snapshotManager;
             _chainSpec = chainSpec;
         }
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
-            return _chainSpec.Clique.Period * HealthHintConstants.ProcessingSafetyMultiplier;
+            return _chainSpec.Period * HealthHintConstants.ProcessingSafetyMultiplier;
         }
 
         public ulong? MaxSecondsIntervalForProducingBlocksHint()
         {
-            return Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Clique.Period *
+            return Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Period *
                 HealthHintConstants.ProducingSafetyMultiplier;
         }
     }

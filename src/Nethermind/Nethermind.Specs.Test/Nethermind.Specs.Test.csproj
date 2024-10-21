@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -26,11 +26,11 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaAdditionalBlockProcessorFactoryTests
     {
-        [TestCase(AuRaParameters.ValidatorType.List, typeof(ListBasedValidator))]
-        [TestCase(AuRaParameters.ValidatorType.Contract, typeof(ContractBasedValidator))]
-        [TestCase(AuRaParameters.ValidatorType.ReportingContract, typeof(ReportingContractBasedValidator))]
-        [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
-        public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
+        [TestCase(ValidatorType.List, typeof(ListBasedValidator))]
+        [TestCase(ValidatorType.Contract, typeof(ContractBasedValidator))]
+        [TestCase(ValidatorType.ReportingContract, typeof(ReportingContractBasedValidator))]
+        [TestCase(ValidatorType.Multi, typeof(MultiValidator))]
+        public void returns_correct_validator_type(ValidatorType validatorType, Type expectedType)
         {
             AuRaValidatorFactory factory = new(Substitute.For<IAbiEncoder>(),
                 Substitute.For<IWorldState>(),
@@ -50,16 +50,16 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IGasPriceOracle>(),
                 new ReportingContractBasedValidator.Cache(), long.MaxValue);
 
-            AuRaParameters.Validator validator = new()
+            Validator validator = new()
             {
                 ValidatorType = validatorType,
                 Addresses = new[] { Address.Zero },
-                Validators = new Dictionary<long, AuRaParameters.Validator>()
+                Validators = new Dictionary<long, Validator>()
                 {
                     {
-                        0, new AuRaParameters.Validator()
+                        0, new Validator()
                         {
-                            ValidatorType = AuRaParameters.ValidatorType.List, Addresses = new[] {Address.SystemUser}
+                            ValidatorType = ValidatorType.List, Addresses = new[] {Address.SystemUser}
                         }
                     }
                 }

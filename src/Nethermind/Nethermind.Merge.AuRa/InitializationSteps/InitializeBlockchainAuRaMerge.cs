@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Withdrawals;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
@@ -21,18 +22,21 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
     public class InitializeBlockchainAuRaMerge : InitializeBlockchainAuRa
     {
         private readonly AuRaNethermindApi _api;
+        private readonly AuthorityRoundChainSpecEngineParameters _parameters;
 
         public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
         {
             _api = api;
+            _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
         }
 
         protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
         {
-            IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
+            IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec!.AuRa, _api.AbiEncoder);
+            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_parameters, _api.AbiEncoder);
             IWorldState worldState = _api.WorldState!;
             ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 

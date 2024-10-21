@@ -2,10 +2,8 @@
   "name": "A Testnet",
   "dataDir": "testspecdir",
   "engine": {
-    "clique": {
+    "NethDev": {
       "params": {
-        "period": 15,
-        "epoch": 30000
       }
     }
   },

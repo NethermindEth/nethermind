@@ -267,10 +267,10 @@ public class TxPermissionFilterTest
 
         protected override BlockProcessor CreateBlockProcessor()
         {
-            AuRaParameters.Validator validator = new()
+            Validator validator = new()
             {
                 Addresses = TestItem.Addresses,
-                ValidatorType = AuRaParameters.ValidatorType.List
+                ValidatorType = ValidatorType.List
             };
 
             TransactionPermissionContractVersions =

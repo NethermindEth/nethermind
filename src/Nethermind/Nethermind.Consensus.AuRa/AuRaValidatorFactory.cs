@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.AuRa
             _specProvider = specProvider;
         }
 
-        public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
+        public IAuRaValidator CreateValidatorProcessor(Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
             IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.AuRa
 
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List =>
+                ValidatorType.List =>
                     new ListBasedValidator(
                         validator,
                         validSealerStrategy,
@@ -111,9 +111,9 @@ namespace Nethermind.Consensus.AuRa
                         startBlockNumber,
                         _forSealing),
 
-                AuRaParameters.ValidatorType.Contract => GetContractBasedValidator(),
+                ValidatorType.Contract => GetContractBasedValidator(),
 
-                AuRaParameters.ValidatorType.ReportingContract =>
+                ValidatorType.ReportingContract =>
                     new ReportingContractBasedValidator(
                         GetContractBasedValidator(),
                         GetReportingValidatorContract(),
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.AuRa
                         _gasPriceOracle,
                         _logManager),
 
-                AuRaParameters.ValidatorType.Multi =>
+                ValidatorType.Multi =>
                     new MultiValidator(
                         validator,
                         this,
