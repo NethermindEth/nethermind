@@ -66,7 +66,6 @@ namespace Nethermind.Blockchain.Synchronization
         public bool? SnapServingEnabled { get; set; } = null;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public bool TrieHealing { get; set; } = true;
-        public string ImportDirectory { get; set; }
 
         public override string ToString()
         {
