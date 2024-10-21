@@ -122,55 +122,61 @@ public static class IlAnalyzer
                 return;
             }
 
-            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address.ToString()})[{segmentRange.Start}..{segmentRange.End}]";
-
-            int[] statefulOpcodeindex = new int[1 + (codeData.Item1.Length / 5)];
-
-            int j = 0;
-            for (int i = 0; i < codeData.Item1.Length; i++)
+            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
+            void HandleSegment(int start, int end)
             {
-                if (codeData.Item1[i].Operation.IsStateful())
+                if (start >= end)
                 {
-                    statefulOpcodeindex[j++] = i;
-                }
-            }
-
-            long segmentAvgSize = 0;
-            for (int i = -1; i < j; i++)
-            {
-                int start = i == -1 ? 0 : statefulOpcodeindex[i] + 1;
-                int end = i == j - 1 || i + 1 == statefulOpcodeindex.Length ? codeData.Item1.Length : statefulOpcodeindex[i + 1];
-                if (start > end)
-                {
-                    continue;
+                    return;
                 }
 
                 var segment = codeData.Item1[start..end];
-                if (segment.Length == 0)
-                {
-                    continue;
-                }
                 var firstOp = segment[0];
                 var lastOp = segment[^1];
                 var segmentName = GenerateName(firstOp.ProgramCounter..(lastOp.ProgramCounter + lastOp.Metadata.AdditionalBytes));
 
-                segmentAvgSize += segment.Length;
-
                 var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2, vmConfig);
-                if (vmConfig.AggressiveJitMode)
-                {
-                    ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
-                    for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
-                    {
-                        ilinfo.Segments.GetOrAdd(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
-                    }
-                }
-                else
-                {
-                    ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
-                }
+                ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
+            }
 
-                Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
+            int nextStart = 0;
+            int currentEnd = codeData.Item1.Length; // non inclusive
+            for (int i = 0; i < codeData.Item1.Length; i++)
+            {
+                int currentStart = nextStart; // inclusive
+                currentEnd = codeData.Item1.Length; // non inclusive
+                if (codeData.Item1[i].Operation.IsStateful())
+                {
+                    // will start at current start and stop at opcode before the current one
+                    currentEnd = i;
+                    // next start will be the opcode after the current one
+                    nextStart = i + 1;
+
+                    HandleSegment(currentStart, currentEnd);
+                }
+                else if (codeData.Item1[i].Operation.IsJumpOrJumpdest())
+                {
+                    if(codeData.Item1[i].Operation is Instruction.JUMPDEST)
+                    {
+                        // current end will be the opcode before the jumpdest
+                        currentEnd = i;
+                        // next start will be the jumpdest
+                        nextStart = i;
+                    } else
+                    {
+                        // the end will be the jump opcode itself
+                        currentEnd = i + 1;
+                        // next start will be the opcode after the jump
+                        nextStart = i + 1;
+                    }
+
+                    HandleSegment(currentStart, currentEnd);
+                }
+            }
+
+            if(nextStart != currentEnd && !ilinfo.Segments.ContainsKey(codeData.Item1[nextStart].ProgramCounter))
+            {
+                HandleSegment(nextStart, codeData.Item1.Length);
             }
 
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);

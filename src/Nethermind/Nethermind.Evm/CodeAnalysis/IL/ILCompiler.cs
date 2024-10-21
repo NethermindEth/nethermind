@@ -37,7 +37,6 @@ internal class ILCompiler
         public string Name => PrecompiledSegment.Method.Name;
         public ExecuteSegment PrecompiledSegment;
         public byte[][] Data;
-        public ushort[] JumpDestinations;
     }
     public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
@@ -47,26 +46,24 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
-        ushort[] jumpdests = Array.Empty<ushort>();
         if (code.Length == 0)
         {
             method.Return();
         }
         else
         {
-            jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
+            EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
         }
 
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
             PrecompiledSegment = dynEmitedDelegate,
-            Data = data,
-            JumpDestinations = jumpdests
+            Data = data
         };
     }
 
-    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code, bool bakeInTracerCalls)
+    private static void EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -105,6 +102,7 @@ internal class ILCompiler
         using Local stack = method.DeclareLocal(typeof(Span<Word>));
         using Local head = method.DeclareLocal(typeof(int));
 
+        Local isEphemeralJump = method.DeclareLocal<bool>();
 
         Dictionary<EvmExceptionType, Label> evmExceptionLabels = new();
 
@@ -114,8 +112,6 @@ internal class ILCompiler
         }
 
         Label exit = method.DefineLabel(); // the label just before return
-        Label jumpTable = method.DefineLabel(); // jump table
-        Label isContinuation = method.DefineLabel(); // jump table
         Label ret = method.DefineLabel();
 
         // allocate stack
@@ -138,14 +134,6 @@ internal class ILCompiler
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
         method.StoreLocal(programCounter);
 
-        // if last ilvmstate was a jump
-        method.LoadLocal(programCounter);
-        method.LoadConstant(code[0].ProgramCounter);
-        method.CompareEqual();
-        method.BranchIfFalse(isContinuation);
-
-        Dictionary<ushort, Label> jumpDestinations = new();
-
         var costs = BuildCostLookup(code);
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
@@ -155,8 +143,6 @@ internal class ILCompiler
             if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
-                jumpDestinations[op.ProgramCounter] = method.DefineLabel();
-                method.MarkLabel(jumpDestinations[op.ProgramCounter]);
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
             }
@@ -260,36 +246,47 @@ internal class ILCompiler
                     break;
                 case Instruction.JUMP:
                     {
+                        method.LoadArgument(VMSTATE_INDEX);
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.Call(Word.GetUInt0);
+                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
+                        method.StackPop(head, 1);
+
+                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadConstant(true);
+                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
+
+                        method.LoadConstant(true);
+                        method.StoreLocal(isEphemeralJump);
+
                         // we jump into the jump table
                         if (bakeInTracerCalls)
                         {
                             EmitCallToEndInstructionTrace(method, gasAvailable);
                         }
-                        method.FakeBranch(jumpTable);
                     }
                     break;
                 case Instruction.JUMPI:
-                    {// consume the jump condition
-                        Label noJump = method.DefineLabel();
+                    {
+
+                        method.LoadArgument(VMSTATE_INDEX);
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.Call(Word.GetUInt0);
+                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
+
+                        method.LoadArgument(VMSTATE_INDEX);
                         method.StackLoadPrevious(stack, head, 2);
                         method.Call(Word.GetIsZero);
-                        // if the jump condition is false, we do not jump
-                        method.BranchIfTrue(noJump);
+                        method.Duplicate();
+                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
+                        method.StoreLocal(isEphemeralJump);
 
-                        // load the jump address
-                        method.LoadConstant(1);
-                        method.StoreLocal(consumeJumpCondition);
-
-                        // we jump into the jump table
+                        method.StackPop(head, 2);
 
                         if (bakeInTracerCalls)
                         {
                             EmitCallToEndInstructionTrace(method, gasAvailable);
                         }
-                        method.Branch(jumpTable);
-
-                        method.MarkLabel(noJump);
-                        method.StackPop(head, 2);
                     }
                     break;
                 case Instruction.PUSH0:
@@ -1914,7 +1911,6 @@ internal class ILCompiler
         }
 
         Label skipProgramCounterSetting = method.DefineLabel();
-        Local isEphemeralJump = method.DeclareLocal<bool>();
         // prepare ILEvmState
         // check if returnState is null
         method.MarkLabel(ret);
@@ -1955,100 +1951,6 @@ internal class ILCompiler
         // go to return
         method.Branch(exit);
 
-        Label jumpIsLocal = method.DefineLabel();
-        Label jumpIsNotLocal = method.DefineLabel();
-
-        // isContinuation
-        method.MarkLabel(isContinuation);
-        method.LoadLocal(programCounter);
-        method.StoreLocal(jmpDestination);
-        method.Branch(jumpIsLocal);
-
-        // jump table
-        method.MarkLabel(jumpTable);
-        method.StackLoadPrevious(stack, head, 1);
-        method.Call(Word.GetInt0);
-        method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
-        method.StoreLocal(jmpDestination);
-        method.StackPop(head);
-
-        method.StackPop(head, consumeJumpCondition);
-        method.LoadConstant(0);
-        method.StoreLocal(consumeJumpCondition);
-
-        //check if jump crosses segment boundaies
-        int maxJump = code[^1].ProgramCounter + code[^1].Metadata.AdditionalBytes;
-        int minJump = code[0].ProgramCounter;
-
-        // if (jumpDest <= maxJump)
-        method.LoadLocal(jmpDestination);
-        method.LoadConstant(maxJump);
-        method.BranchIfGreater(jumpIsNotLocal);
-
-        // if (jumpDest >= minJump)
-        method.LoadLocal(jmpDestination);
-        method.LoadConstant(minJump);
-        method.BranchIfLess(jumpIsNotLocal);
-
-        method.Branch(jumpIsLocal);
-
-        method.MarkLabel(jumpIsNotLocal);
-        method.LoadArgument(VMSTATE_INDEX);
-        method.Duplicate();
-        method.LoadConstant(true);
-        method.StoreLocal(isEphemeralJump);
-        method.LoadConstant(true);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
-        method.LoadLocal(jmpDestination);
-        method.Convert<ushort>();
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
-        method.Branch(ret);
-
-        method.MarkLabel(jumpIsLocal);
-
-
-        // if (jumpDest > uint.MaxValue)
-        method.Print(jmpDestination);
-        method.LoadConstant(uint.MaxValue);
-        method.LoadLocal(jmpDestination);
-        // goto invalid address
-        method.BranchIfGreater(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
-        // else
-
-        const int length = 1 << 8;
-        const int bitMask = length - 1; // 128
-        Label[] jumps = new Label[length];
-        for (int i = 0; i < length; i++)
-        {
-            jumps[i] = method.DefineLabel();
-        }
-
-        // we get first Word.Size bits of the jump destination since it is less than int.MaxValue
-
-        method.LoadLocal(jmpDestination);
-        method.LoadConstant(bitMask);
-        method.And();
-
-
-        // switch on the first 7 bits
-        method.Switch(jumps);
-
-        for (int i = 0; i < length; i++)
-        {
-            method.MarkLabel(jumps[i]);
-            // for each destination matching the bit mask emit check for the equality
-            foreach (ushort dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
-            {
-                method.LoadLocal(jmpDestination);
-                method.LoadConstant(dest);
-                method.Duplicate();
-                method.StoreLocal(uint32A);
-                method.BranchIfEqual(jumpDestinations[dest]);
-            }
-            // each bucket ends with a jump to invalid access to do not fall through to another one
-            method.Branch(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
-        }
-
         foreach (var kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
@@ -2067,7 +1969,7 @@ internal class ILCompiler
         method.MarkLabel(exit);
         method.Return();
 
-        return jumpDestinations.Keys.ToArray();
+        return;
     }
 
     private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)

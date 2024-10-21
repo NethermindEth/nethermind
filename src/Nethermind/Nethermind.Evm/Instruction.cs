@@ -474,6 +474,13 @@ namespace Nethermind.Evm
             _ => false,
         };
 
+        public static bool IsJumpOrJumpdest(this Instruction instruction) => instruction switch
+        {
+            Instruction.JUMP or Instruction.JUMPI => true,
+            Instruction.JUMPDEST => true,
+            _ => false,
+        };
+
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
             instruction switch
             {

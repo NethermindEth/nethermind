@@ -474,37 +474,46 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             yield return (Instruction.COINBASE, Prepare.EvmCode
                     .COINBASE()
+                    .COINBASE()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.TIMESTAMP, Prepare.EvmCode
+                    .TIMESTAMP()
                     .TIMESTAMP()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.NUMBER, Prepare.EvmCode
                     .NUMBER()
+                    .NUMBER()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.GASLIMIT, Prepare.EvmCode
+                    .GASLIMIT()
                     .GASLIMIT()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLER, Prepare.EvmCode
                     .CALLER()
+                    .CALLER()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.ADDRESS, Prepare.EvmCode
+                    .ADDRESS()
                     .ADDRESS()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.ORIGIN, Prepare.EvmCode
                     .ORIGIN()
+                    .ORIGIN()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLVALUE, Prepare.EvmCode
                     .CALLVALUE()
+                    .CALLVALUE()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.CHAINID, Prepare.EvmCode
+                    .CHAINID()
                     .CHAINID()
                     .Done, EvmExceptionType.None);
 
@@ -522,10 +531,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             yield return (Instruction.RETURNDATASIZE, Prepare.EvmCode
                     .RETURNDATASIZE()
+                    .RETURNDATASIZE()
+                    .EQ()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.BASEFEE, Prepare.EvmCode
                     .BASEFEE()
+                    .BASEFEE()
+                    .EQ()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.RETURN, Prepare.EvmCode
@@ -540,6 +553,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             yield return (Instruction.CALLDATASIZE, Prepare.EvmCode
                     .CALLDATASIZE()
+                    .CALLDATASIZE()
+                    .EQ()
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.JUMPI | Instruction.JUMPDEST, Prepare.EvmCode
@@ -720,9 +735,26 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             yield return (Instruction.INVALID, Prepare.EvmCode
                 .INVALID()
+                .INVALID()
+                .INVALID()
+                .INVALID()
+                .INVALID()
+                .INVALID()
+                .INVALID()
                 .Done, EvmExceptionType.BadInstruction);
 
             yield return (Instruction.STOP, Prepare.EvmCode
+                .PushData(23)
+                .POP()
+                .PushData(23)
+                .POP()
+                .PushData(23)
+                .POP()
+                .PushData(23)
+                .POP()
+                .PushData(23)
+                .POP()
+                .PushData(23)
                 .STOP()
                 .Done, EvmExceptionType.None);
 
@@ -908,19 +940,25 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             byte[] bytecode =
                 Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(1000)
+                    .GAS()
+                    .LT()
+                    .PUSHx([0, 26])
+                    .JUMPI()
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
+                    .POP()
                     .PushSingle(42)
                     .PushSingle(5)
                     .ADD()
+                    .POP()
                     .Call(Address.FromNumber(23), 10000)
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
+                    .POP()
+                    .PUSHx([0, 0])
+                    .JUMP()
+                    .JUMPDEST()
                     .STOP()
                     .Done;
 
@@ -928,7 +966,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, config, NullLogger.Instance);
 
-            codeInfo.IlInfo.Segments.Count.Should().Be(2);
+            codeInfo.IlInfo.Segments.Count.Should().Be(4);
         }
 
         [Test]
@@ -1420,12 +1458,27 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
 
+            IlAnalyzer.StartAnalysis(codeInfo, ILMode.JIT_MODE, config, NullLogger.Instance);
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
-            var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2, config);
-            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ctx.Data);
 
+            if(testcase.bytecode.Length != 0)
+            {
+                ushort pc = 0;
+                while(pc < testcase.bytecode.Length && iLEvmState.ShouldStop != false && iLEvmState.ShouldReturn != false && iLEvmState.ShouldRevert != false && iLEvmState.EvmException == EvmExceptionType.None)
+                {
+                    if(codeInfo.IlInfo.Segments.TryGetValue(pc, out var segmentCtx))
+                    {
+                        segmentCtx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, segmentCtx.Data);
+                        pc = iLEvmState.ProgramCounter;
+                    } else
+                    {
+                        throw new Exception("Segment not found");
+                    }
+
+                }
+            } 
             Assert.That(iLEvmState.EvmException == testcase.exceptionType);
+
         }
 
 
