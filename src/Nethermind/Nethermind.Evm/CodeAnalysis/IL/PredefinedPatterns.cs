@@ -12,8 +12,11 @@ using System.Text;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using Nethermind.Evm.Tracing;
-
+using System.Runtime.Intrinsics;
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 namespace Nethermind.Evm.CodeAnalysis.IL.Patterns;
+using static System.Runtime.CompilerServices.Unsafe;
 
 internal class MethodSelector : InstructionChunk
 {
@@ -219,6 +222,7 @@ internal class P01P01SHL : InstructionChunk
     {
         CallCount++;
 
+        if (!spec.ShiftOpcodesEnabled) result.ExceptionType = EvmExceptionType.BadInstruction;
         if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
@@ -605,3 +609,520 @@ internal class P01ADDS01D02MST : InstructionChunk
 
     }
 }
+internal class P01MLD01S02SUB : InstructionChunk
+{
+    public string Name => nameof(P01MLD01S02SUB);
+    public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.MLOAD, (byte)Instruction.DUP1, (byte)Instruction.SWAP2, (byte)Instruction.SUB];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 5 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+
+        stack.PopUInt256(out UInt256 a);
+
+        var value = (UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
+        var bytes = vmState.Memory.LoadSpan(in value);
+        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, in value, 32))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+        var b = new UInt256(bytes, true);
+        UInt256.Subtract(in a, in b, out var c);
+        stack.PushBytes(bytes);
+        stack.PushUInt256(c);
+        programCounter += 6;
+
+    }
+}
+internal class P01CDLP01SHRD01P04 : InstructionChunk
+{
+    public string Name => nameof(P01CDLP01SHRD01P04);
+    public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.CALLDATALOAD, (byte)Instruction.PUSH1, (byte)Instruction.SHR, (byte)Instruction.DUP1, (byte)Instruction.PUSH4];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 6 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!spec.ShiftOpcodesEnabled) result.ExceptionType = EvmExceptionType.BadInstruction;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+
+        byte pos = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
+        UInt256 _pos = new UInt256(pos);
+        byte a = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 4];
+        var data = vmState.Env.InputData.SliceWithZeroPadding(_pos, 32).Span;
+        Span<byte> paddedSpan = stackalloc byte[32];
+
+        data.CopyTo(paddedSpan);
+        var b = new UInt256(paddedSpan, true);
+        var rightShift = b >> (int)a;
+        stack.PushUInt256(rightShift);
+        stack.PushUInt256(rightShift);
+
+        ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 8, 4);
+
+        stack.PushLeftPaddedBytes(fourByteSpan,4);
+
+        programCounter += 12;
+
+    }
+}
+internal class P00CDLP01SHRD01P04 : InstructionChunk
+{
+    public string Name => nameof(P00CDLP01SHRD01P04);
+    public byte[] Pattern => [(byte)Instruction.PUSH0, (byte)Instruction.CALLDATALOAD, (byte)Instruction.PUSH1, (byte)Instruction.SHR, (byte)Instruction.DUP1, (byte)Instruction.PUSH4];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = GasCostOf.Base + (5 * GasCostOf.VeryLow);
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!spec.ShiftOpcodesEnabled) result.ExceptionType = EvmExceptionType.BadInstruction;
+
+        if (!spec.IncludePush0Instruction)
+            result.ExceptionType = EvmExceptionType.BadInstruction;;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        byte a = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
+        var data = vmState.Env.InputData.SliceWithZeroPadding(0, 32).Span;
+
+        Span<byte> paddedSpan = stackalloc byte[32];
+        data.CopyTo(paddedSpan);
+        var b = new UInt256(paddedSpan, true);
+        var rightShift = b >> (int)a;
+
+        stack.PushUInt256(rightShift);
+        stack.PushUInt256(rightShift);
+        stack.PushLeftPaddedBytes(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 7, 4),4);
+
+        programCounter += 1 + 1 + 2 + 1 + 1 + 5;
+
+    }
+}
+internal class D04D02LTIZP02 : InstructionChunk
+{
+    public string Name => nameof(D04D02LTIZP02);
+    public byte[] Pattern => [(byte)Instruction.DUP4, (byte)Instruction.DUP2, (byte)Instruction.LT, (byte)Instruction.ISZERO, (byte)Instruction.PUSH2];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 5 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        stack.Dup(4);
+        stack.PopUInt256(out var rhs);
+        UInt256 lhs = new UInt256(stack.PeekWord256(), true);
+
+        if (lhs < rhs)
+        {
+            stack.PushZero();
+        }
+        else
+        {
+            stack.PushOne();
+        }
+
+        stack.PushLeftPaddedBytes(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 5, 2), 2);
+
+        programCounter += 4 + 3;
+    }
+}
+internal class P20ANDP20ANDD02 : InstructionChunk
+{
+    public string Name => nameof(P20ANDP20ANDD02);
+    public byte[] Pattern => [(byte)Instruction.PUSH20, (byte)Instruction.AND, (byte)Instruction.PUSH20, (byte)Instruction.AND, (byte)Instruction.DUP2];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 5 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        ref byte bytesRef = ref stack.PopBytesByRef();
+        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+        var twentyByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 1, 20);
+        Span<byte> paddedSpan = stackalloc byte[32];
+        Span<byte> paddedSpan2 = stackalloc byte[32];
+        twentyByteSpan.CopyTo(paddedSpan.Slice(12, 20));
+        twentyByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 23, 20);
+        twentyByteSpan.CopyTo(paddedSpan2.Slice(12, 20));
+        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref paddedSpan[0]);
+        Vector256<byte> cVec = ReadUnaligned<Vector256<byte>>(ref paddedSpan2[0]);
+        WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(Vector256.BitwiseAnd(aVec, bVec),cVec));
+        stack.Dup(2);
+        programCounter += 21 + 1 + 21 + 1 + 1;
+
+    }
+}
+internal class GASP01MSTP01CDSLT : InstructionChunk
+{
+    public string Name => nameof(GASP01MSTP01CDSLT);
+    public byte[] Pattern => [(byte)Instruction.GAS, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.PUSH1, (byte)Instruction.CALLDATASIZE, (byte)Instruction.LT];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = (2 * GasCostOf.Base) + (4 * GasCostOf.VeryLow);
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        var gasAvailableAtPC = gasAvailable - GasCostOf.Base;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        var location = (UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+
+        Span<byte> wordSpan = stackalloc byte[32];
+        wordSpan.Clear();
+
+        Span<byte> longSpan = stackalloc byte[8];
+
+        BitConverter.TryWriteBytes(longSpan, gasAvailableAtPC);
+
+        if (BitConverter.IsLittleEndian)
+        {
+            longSpan.Reverse();
+        }
+
+        longSpan.CopyTo(wordSpan.Slice(24, 8));
+
+        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        vmState.Memory.SaveWord(location, wordSpan);
+
+        var a = (UInt256)vmState.Env.InputData.Length;
+        var b = (UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 5];
+
+        if (a < b)
+        {
+            stack.PushOne();
+        }
+        else
+        {
+            stack.PushZero();
+        }
+
+        programCounter += 1 + 2 + 1 + 2 + 1 + 1;
+
+    }
+}
+internal class GASP01P01MSTCV : InstructionChunk
+{
+    public string Name => nameof(GASP01P01MSTCV);
+    public byte[] Pattern => [(byte)Instruction.GAS, (byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = (2 * GasCostOf.Base) + (3 * GasCostOf.VeryLow);
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        var gasAvailableAtPC = gasAvailable - GasCostOf.Base;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        stack.PushUInt256((UInt256)gasAvailableAtPC);
+
+        byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+        byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 4];
+
+        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        vmState.Memory.SaveByte((UInt256)location + 31, value);
+
+        stack.PushUInt256(vmState.Env.Value);
+        programCounter += 1 + 2 + 2 + 1 + 1;
+
+    }
+}
+internal class MSTP01S01KECSL : InstructionChunk
+{
+    public string Name => nameof(MSTP01S01KECSL);
+    public byte[] Pattern => [(byte)Instruction.MSTORE, (byte)Instruction.PUSH1, (byte)Instruction.SWAP1, (byte)Instruction.KECCAK256, (byte)Instruction.SLOAD];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 3 * GasCostOf.VeryLow + GasCostOf.Sha3 + spec.GetSLoadCost();
+        if (spec.UseHotAndColdStorage)
+        {
+            gasCost += GasCostOf.WarmStateRead;
+        }
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        stack.PopUInt256(out var location);
+        var bytes = stack.PopWord256();
+
+        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        vmState.Memory.SaveWord(in location, bytes);
+
+        stack.PopUInt256(out location);
+        var length = (UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
+
+        bytes = vmState.Memory.LoadSpan(in location, length);
+
+        var cost = GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length, out bool outOfGas);
+        if (outOfGas) result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        if (!VirtualMachine<T>.UpdateGas(cost, ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        Span<byte> hash = stackalloc byte[32];
+        KeccakCache.ComputeTo(bytes, out As<byte, ValueHash256>(ref hash[0]));
+
+        StorageCell storageCell = new(vmState.Env.ExecutingAccount, new UInt256(hash, true));
+        ReadOnlySpan<byte> value = worldState.Get(in storageCell);
+        stack.PushBytes(value);
+
+        programCounter += 1 + 2 + 1 + 1 + 1;
+
+    }
+}
+internal class D02D02ADDMLD04D03ADDMST : InstructionChunk
+{
+    public string Name => nameof(D02D02ADDMLD04D03ADDMST);
+    public byte[] Pattern => [(byte)Instruction.DUP2, (byte)Instruction.DUP2, (byte)Instruction.ADD, (byte)Instruction.MLOAD, (byte)Instruction.DUP4, (byte)Instruction.DUP3, (byte)Instruction.ADD, (byte)Instruction.MSTORE];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 8 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+        stack.Dup(1);
+        stack.PopUInt256(out UInt256 stackItem1);
+        stack.Dup(2);
+        stack.PopUInt256(out UInt256 stackItem2);
+        stack.Dup(3);
+        stack.PopUInt256(out UInt256 stackItem3);
+
+        var mloadLocation = stackItem1 + stackItem2;
+        var mstoreLocation = stackItem1 + stackItem3;
+
+        if (!(VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, mloadLocation, 32)
+                    && VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, mstoreLocation, 32)))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+        var bytes = vmState.Memory.LoadSpan(in mloadLocation);
+        vmState.Memory.SaveWord(mstoreLocation, bytes);
+
+        programCounter += 8;
+
+    }
+}
+internal class D02S01SHRD03D02MUL: InstructionChunk
+{
+    public string Name => nameof(D02S01SHRD03D02MUL);
+    public byte[] Pattern => [(byte)Instruction.DUP2, (byte)Instruction.SWAP1, (byte)Instruction.SHR, (byte)Instruction.DUP3, (byte)Instruction.DUP2, (byte)Instruction.MUL];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 6 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+
+        stack.PopUInt256(out UInt256 stackItem1);
+        stack.Dup(1);
+        stack.PopUInt256(out UInt256 stackItem2);
+        stack.Dup(2);
+        stack.PopUInt256(out UInt256 stackItem3);
+
+        UInt256 shrValue;
+
+        if (!spec.ShiftOpcodesEnabled) result.ExceptionType = EvmExceptionType.BadInstruction;
+
+        if (stackItem1 >= 256)
+        {
+            stack.PopLimbo();
+            shrValue = 0;
+        }
+        else
+        {
+            shrValue = stackItem2 >> (int)stackItem1.u0;
+        }
+
+        stack.PushUInt256(shrValue);
+        stack.PushUInt256(shrValue * stackItem3);
+
+        programCounter += 6;
+
+    }
+}
+internal class S04S01S04ADDS03P01ADD: InstructionChunk
+{
+    public string Name => nameof(S04S01S04ADDS03P01ADD);
+    public byte[] Pattern => [(byte)Instruction.SWAP4, (byte)Instruction.SWAP1, (byte)Instruction.SWAP4, (byte)Instruction.ADD, (byte)Instruction.SWAP3, (byte)Instruction.PUSH1, (byte)Instruction.ADD];
+    public byte CallCount { get; set; } = 0;
+
+    public long GasCost(EvmState vmState, IReleaseSpec spec)
+    {
+        long gasCost = 7 * GasCostOf.VeryLow;
+        return gasCost;
+    }
+
+    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+        ref int programCounter,
+        ref long gasAvailable,
+        ref EvmStack<T> stack,
+        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    {
+        CallCount++;
+
+        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            result.ExceptionType = EvmExceptionType.OutOfGas;
+
+
+        var a = (UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 6];
+        stack.PopUInt256(out UInt256 stackItem1);
+        stack.PopUInt256(out UInt256 stackItem2);
+        stack.PopUInt256(out UInt256 stackItem3);
+        stack.PopUInt256(out UInt256 stackItem4);
+        stack.PopUInt256(out UInt256 stackItem5);
+        stack.PushUInt256(stackItem5 + stackItem1);
+        stack.PushUInt256(stackItem4);
+        stack.PushUInt256(stackItem3);
+        stack.PushUInt256(a + stackItem2);
+
+        programCounter += 8;
+
+    }
+}
+/*
+PUSH1 MLOAD DUP1 SWAP2 SUB
+CALLDATALOAD PUSH1 SHR DUP1 PUSH4
+DUP4 DUP2 LT ISZERO PUSH2
+PUSH20 AND PUSH20 AND DUP2
+---DUP2 DUP2 ADD MLOAD ... cont
+DUP2 DUP2 ADD MLOAD DUP4 DUP3 ADD MSTORE PUSH1 ADD PUSH2
+---DUP4 DUP3 ADD MSTORE PUSH1 ADD PUSH2
+GAS PUSH1 PUSH1 MSTORE PUSH1 CALLDATASIZE LT
+DUP2 SWAP1 SHR DUP3 DUP2 MUL -- SWAP4 SWAP1 SWAP4 ADD SWAP3 PUSH1 ADD
+
+"GAS PUSH1 PUSH1 MSTORE CALLVALUE"
+ MSTORE PUSH1 SWAP1 KECCAK256 SLOAD
+SHL SUB DUP2 AND DUP2 EQ
+
+*/

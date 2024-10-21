@@ -146,6 +146,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             IlAnalyzer.AddPattern<P01D02>();
             IlAnalyzer.AddPattern<P01D03>();
             IlAnalyzer.AddPattern<S02S01>();
+            IlAnalyzer.AddPattern<P01MLD01S02SUB>();
+            IlAnalyzer.AddPattern<P01CDLP01SHRD01P04>();
+            IlAnalyzer.AddPattern<P00CDLP01SHRD01P04>();
+            IlAnalyzer.AddPattern<D04D02LTIZP02>();
+            IlAnalyzer.AddPattern<P20ANDP20ANDD02>();
+            IlAnalyzer.AddPattern<GASP01MSTP01CDSLT>();
+            IlAnalyzer.AddPattern<GASP01P01MSTCV>();
+            IlAnalyzer.AddPattern<MSTP01S01KECSL>();
+            IlAnalyzer.AddPattern<D02D02ADDMLD04D03ADDMST>();
+            IlAnalyzer.AddPattern<D02S01SHRD03D02MUL>();
+            IlAnalyzer.AddPattern<S04S01S04ADDS03P01ADD>();
         }
 
         public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000)
@@ -205,6 +216,195 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static IEnumerable<(Type, byte[])> GePatBytecodesSamples()
         {
 
+            yield return (null, Prepare.EvmCode
+                        .Done);
+            yield return (typeof(S04S01S04ADDS03P01ADD), Prepare.EvmCode
+                     .PUSHx([5])
+                     .PUSHx([4])
+                     .PUSHx([3])
+                     .PUSHx([2])
+                     .PUSHx([1])
+                     .SWAPx(4)
+                     .SWAPx(1)
+                     .SWAPx(4)
+                     .ADD()
+                     .SWAPx(3)
+                     .PUSHx([2])
+                     .ADD()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x3)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x4)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(D02S01SHRD03D02MUL), Prepare.EvmCode
+                     .PUSHx([3])
+                     .PUSHx([1])
+                     .PUSHx([1])
+                     .DUPx(2)
+                     .SWAPx(1)
+                     .SHR()
+                     .DUPx(3)
+                     .DUPx(2)
+                     .MUL()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x3)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x4)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(D02D02ADDMLD04D03ADDMST), Prepare.EvmCode
+                     .PUSHx([3])
+                     .PUSHx([2])
+                     .PUSHx([1])
+                     .DUPx(2)
+                     .DUPx(2)
+                     .ADD()
+                     .MLOAD()
+                     .DUPx(4)
+                     .DUPx(3)
+                     .ADD()
+                     .MSTORE()
+                     .DUPx(3)
+                     .DUPx(2)
+                     .ADD()
+                     .MLOAD()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x3)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x4)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(MSTP01S01KECSL), Prepare.EvmCode
+                     .PushData(1000)
+                     .PUSHx([32]) //length
+                     .PUSHx([1]) //location
+                     .KECCAK256()
+                     .SSTORE()
+                     .PUSHx([1]) //location
+                     .PushData(100)
+                     .PUSHx([20])
+                     .MSTORE()
+                     .PUSHx([32]) //length
+                     .SWAPx(1)
+                     .KECCAK256()
+                     .SLOAD()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PUSHx([20])
+                     .MLOAD()
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(GASP01P01MSTCV), Prepare.EvmCode
+                     .GAS()
+                     .PUSHx([10])
+                     .PUSHx([1])
+                     .MSTORE()
+                     .CALLVALUE()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .PUSHx([1])
+                     .MLOAD()
+                     .PushData(0x3)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(GASP01MSTP01CDSLT), Prepare.EvmCode
+                     .GAS()
+                     .PUSHx([10])
+                     .MSTORE()
+                     .PUSHx([5])
+                     .CALLDATASIZE()
+                     .LT()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PUSHx([10])
+                     .MLOAD()
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(P20ANDP20ANDD02), Prepare.EvmCode
+                     .PushData(1000)
+                     .PUSHx([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20])
+                     .PUSHx([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,1])
+                     .AND()
+                     .PUSHx([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,1,20])
+                     .AND()
+                     .DUPx(2)
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(D04D02LTIZP02), Prepare.EvmCode
+                     .PUSHx([100])
+                     .PUSHx([1])
+                     .PUSHx([1])
+                     .PUSHx([1])
+                     .DUPx(4)
+                     .DUPx(2)
+                     .LT()
+                     .ISZERO()
+                     .PUSHx([1,2])
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(P00CDLP01SHRD01P04), Prepare.EvmCode
+                     .PUSHx()
+                     .CALLDATALOAD()
+                     .PUSHx([1])
+                     .SHR()
+                     .DUPx(1)
+                     .PUSHx([1,2,3,4])
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x3)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(P01CDLP01SHRD01P04), Prepare.EvmCode
+                     .PUSHx([10])
+                     .CALLDATALOAD()
+                     .PUSHx([1])
+                     .SHR()
+                     .DUPx(1)
+                     .PUSHx([1,2,3,4])
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x3)
+                     .Op(Instruction.SSTORE)
+                     .Done);
+            yield return (typeof(P01MLD01S02SUB), Prepare.EvmCode
+                     .PushData(300)
+                     .PUSHx([1])
+                     .MSTORE()
+                     .PushData(1000)
+                     .PUSHx([1])
+                     .MLOAD()
+                     .DUPx(1)
+                     .SWAPx(2)
+                     .SUB()
+                     .PushData(0x1)
+                     .Op(Instruction.SSTORE)
+                     .PushData(0x2)
+                     .Op(Instruction.SSTORE)
+                     .Done);
             yield return (typeof(D01P04EQ), Prepare.EvmCode
                      .PUSHx([1, 2, 3, 4])
                      .DUPx(1)
@@ -1065,7 +1265,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var bytecode =
                 Prepare.EvmCode
                     .JUMPDEST()
-                    .Call(address, 100000)
+                    .PushData(UInt256.MaxValue)
+                    .PUSHx([2])
+                    .MSTORE()
+                    .PushData(0)
+                    .PushData(0)
+                    .PushData(32) // length
+                    .PushData(2) // offset
+                    .PushData(0) // value
+                    .PushData(address)
+                    .PushData(250000)
+                    .Op(Instruction.CALL)
                     .POP()
                     .GAS()
                     .PushData(1000)
@@ -1074,14 +1284,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
+
+            var fork = (ForkActivation)MainnetSpecProvider.CancunActivation;
+
             for (var i = 0; i < repeatCount * 2; i++)
             {
-                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
+                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, fork);
             }
 
             for (var i = 0; i < repeatCount * 2; i++)
             {
-                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, fork);
             }
 
             var normal_traces = tracer1.BuildResult();
