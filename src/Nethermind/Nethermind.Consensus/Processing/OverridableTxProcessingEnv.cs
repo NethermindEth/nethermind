@@ -14,7 +14,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource, IOverridableTxProcessorSource
+public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverridableTxProcessorSource
 {
     private readonly Lazy<ITransactionProcessor> _transactionProcessorLazy;
 
@@ -39,7 +39,6 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnly
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }
 
-    IReadOnlyTxProcessingScope IReadOnlyTxProcessorSource.Build(Hash256 stateRoot) => Build(stateRoot);
 
     protected virtual ITransactionProcessor CreateTransactionProcessor() =>
         new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
