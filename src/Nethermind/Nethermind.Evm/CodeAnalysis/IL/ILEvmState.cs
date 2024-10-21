@@ -47,6 +47,7 @@ internal ref struct ILEvmState
     public ref readonly ReadOnlyMemory<byte> InputBuffer;
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
+
     public ILEvmState(ulong chainId, EvmState evmState, EvmExceptionType evmException, ushort programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
     {
         ChainId = chainId;

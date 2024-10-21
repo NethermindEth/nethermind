@@ -36,5 +36,15 @@ public interface IVMConfig : IConfig
         DefaultValue = "false")]
     public bool AggressiveJitMode { get; set; }
 
+    [ConfigItem(
+        Description = "Activates or Deactivates traces in JIT optimizations",
+        DefaultValue = "false")]
+    public bool BakeInTracingInJitMode { get; set; }
+
+    [ConfigItem(
+        Description = "Sets Analysis Queue Max Size", 
+        DefaultValue = "8")]
+    public int AnalysisQueueMaxSize { get; set; }
+
     public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsJitEnabled;
 }

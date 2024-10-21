@@ -12,7 +12,6 @@ using Nethermind.Evm.Config;
 using Nethermind.Logging;
 using ILMode = int;
 using Nethermind.Core;
-
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -25,7 +24,7 @@ namespace Nethermind.Evm.CodeAnalysis
         // IL-EVM
         private int _callCount;
 
-        public async void NoticeExecution(IVMConfig vmConfig, ILogger logger)
+        public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
             if (_callCount > Math.Max(vmConfig.JittingThreshold, vmConfig.PatternMatchingThreshold))
@@ -43,7 +42,8 @@ namespace Nethermind.Evm.CodeAnalysis
             if (mode == IlInfo.ILMode.NO_ILVM)
                 return;
 
-            await IlAnalyzer.StartAnalysis(this, mode, logger, vmConfig).ConfigureAwait(false);
+            IlAnalyzer.Enqueue(this, mode, vmConfig, logger);
+
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());

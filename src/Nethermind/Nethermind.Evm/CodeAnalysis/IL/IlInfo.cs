@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
@@ -28,6 +29,20 @@ internal class IlInfo
         public bool ShouldReturn;
         public object ReturnData;
         public EvmExceptionType ExceptionType;
+
+
+        public static explicit operator ILChunkExecutionResult(ILEvmState state)
+        {
+            return new ILChunkExecutionResult
+            {
+                ShouldJump = state.ShouldJump,
+                ShouldStop = state.ShouldStop,
+                ShouldRevert = state.ShouldRevert,
+                ShouldReturn = state.ShouldReturn,
+                ReturnData = state.ReturnBuffer,
+                ExceptionType = state.EvmException
+            };
+        }
     }
 
     public static class ILMode
@@ -73,7 +88,6 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue || Mode == ILMode.NO_ILVM)
             return false;
 
-        var executionResult = new ILChunkExecutionResult();
         if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
         {
             Metrics.IlvmPrecompiledSegmentsExecutions++;
@@ -84,25 +98,21 @@ internal class IlInfo
             vmState.DataStackHead = stack.Head;
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
 
-            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, ctx.Data);
+            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer, ctx.Data);
 
             gasAvailable = ilvmState.GasAvailable;
             programCounter = ilvmState.ProgramCounter;
-
-            executionResult.ShouldReturn = ilvmState.ShouldReturn;
-            executionResult.ShouldRevert = ilvmState.ShouldRevert;
-            executionResult.ShouldStop = ilvmState.ShouldStop;
-            executionResult.ShouldJump = ilvmState.ShouldJump;
-            executionResult.ExceptionType = ilvmState.EvmException;
-            executionResult.ReturnData = ilvmState.ReturnBuffer;
-
+            result = (ILChunkExecutionResult)ilvmState;
             stack.Head = ilvmState.StackHead;
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
+
+            return true;
         }
         else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
+            var executionResult = new ILChunkExecutionResult();
             Metrics.IlvmPredefinedPatternsExecutions++;
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -113,14 +123,11 @@ internal class IlInfo
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
-        }
-        else
-        {
-            return false;
-        }
 
-        result = executionResult;
-        return true;
+            result = executionResult;
+            return true;
+        }
+        return false;
     }
 
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
