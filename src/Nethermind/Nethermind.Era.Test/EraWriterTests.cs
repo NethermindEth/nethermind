@@ -1,22 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.IO.MemoryMappedFiles;
-using System.Linq;
-using System.Runtime.InteropServices.JavaScript;
-using System.Text;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
-using NUnit.Framework.Internal;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Org.BouncyCastle.Utilities.Encoders;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Era1.Test;
@@ -84,6 +74,7 @@ internal class EraWriterTests
 
         Assert.That(async () => await sut.Add(block, Array.Empty<TxReceipt>()), Throws.TypeOf<EraException>());
     }
+
     [Test]
     public void Finalize_NoBlocksAdded_ThrowsException()
     {
