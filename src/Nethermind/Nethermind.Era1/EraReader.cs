@@ -63,8 +63,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
-        UInt256? currentTd = null;
-        bool isFirst = true;
+        ValueHash256 accumulator = ReadAccumulator();
+        if (accumulator != expectedAccumulator)
+        {
+            return false;
+        }
 
         using AccumulatorCalculator calculator = new();
 
@@ -87,15 +90,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 return false;
             }
 
-            if (isFirst)
-            {
-                currentTd = (err.Block.TotalDifficulty - err.Block.Difficulty);
-                isFirst = false;
-            }
-
-            currentTd += err.Block.Difficulty;
-            err.Block.Header.TotalDifficulty = err.Block.TotalDifficulty;
-            calculator.Add(err.Block.Header.Hash!, currentTd!.Value);
+            calculator.Add(err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
         }
 
         return expectedAccumulator == calculator.ComputeRoot();

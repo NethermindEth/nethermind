@@ -7,29 +7,82 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.ClearScript.JavaScript;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.Era1.Test;
 internal class EraReaderTests
 {
+    private class PopulatedTestFile : IDisposable
+    {
+        private TmpFile _tmpFile;
+        public string FilePath => _tmpFile.FilePath;
+        public List<(Block, TxReceipt[])> AddedContents { get; }
+
+        public static async Task<PopulatedTestFile> Create()
+        {
+            TmpFile tmpFile = new TmpFile();
+            EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+            List<(Block, TxReceipt[])> addedContents = new List<(Block, TxReceipt[])>();
+            HeaderDecoder headerDecoder = new HeaderDecoder();
+
+            async Task AddBlock(Block block, TxReceipt[] receipts)
+            {
+                Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, MainnetSpecProvider.Instance.GetSpec(block.Header), block.ReceiptsRoot);
+                block.Header.ReceiptsRoot = root;
+                block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
+                addedContents.Add((block, receipts));
+                await builder.Add(block, receipts);
+            }
+
+            await AddBlock(
+                Build.A.Block.WithNumber(0)
+                    .WithDifficulty(0)
+                    .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
+                [ Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject ]);
+
+            await AddBlock(
+                Build.A.Block.WithNumber(1)
+                    .WithDifficulty(0)
+                    .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
+                [ Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject ]);
+
+            await AddBlock(
+                Build.A.Block.WithNumber(2)
+                    .WithDifficulty(0)
+                    .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
+                [ Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject ]);
+
+            await builder.Finalize();
+
+            return new PopulatedTestFile(tmpFile, addedContents);
+        }
+
+        private PopulatedTestFile(TmpFile tmpFile, List<(Block, TxReceipt[]e)> addedContents)
+        {
+            _tmpFile = tmpFile;
+            AddedContents = addedContents;
+        }
+
+        public void Dispose()
+        {
+            _tmpFile.Dispose();
+        }
+    }
+
     [Test]
     public async Task ReadAccumulator_DoesNotThrow()
     {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
-        await builder.Finalize();
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
         using EraReader sut = new EraReader(tmpFile.FilePath);
         Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
@@ -40,15 +93,7 @@ internal class EraReaderTests
     [TestCase(2)]
     public async Task GetBlockByNumber_DifferentNumber_ReturnsBlockWithCorrectNumber(int number)
     {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
         using EraReader sut = new EraReader(tmpFile.FilePath);
         (Block result, _) = await sut.GetBlockByNumber(number);
@@ -56,155 +101,28 @@ internal class EraReaderTests
     }
 
     [Test]
-    public async Task GetAsyncEnumerator_EnumerateAll_ReadsAllAddedBlocks()
+    public async Task GetAsyncEnumerator_EnumerateAll_ReadsAllAddedContents()
     {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
         using EraReader sut = new EraReader(tmpFile.FilePath);
-        IAsyncEnumerator<(Block, TxReceipt[])> enumerator = sut.GetAsyncEnumerator();
-        Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (Block block, _) = enumerator.Current;
-        block.Should().BeEquivalentTo(block0);
-
-        Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (block, _) = enumerator.Current;
-        block.Should().BeEquivalentTo(block1);
-
-        Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (block, _) = enumerator.Current;
-        block.Should().BeEquivalentTo(block2);
-    }
-
-    [Test]
-    public async Task GetAsyncEnumerator_EnumerateAll_ReadsAllAddedReceipts()
-    {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        TxReceipt[] receipt0 = new[] { Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject };
-        TxReceipt[] receipt1 = new[] { Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject };
-        TxReceipt[] receipt2 = new[] { Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject };
-        await builder.Add(block0, receipt0);
-        await builder.Add(block0, receipt1);
-        await builder.Add(block0, receipt2);
-        await builder.Finalize();
-        using EraReader sut = new EraReader(tmpFile.FilePath);
-
-        IAsyncEnumerator<(Block, TxReceipt[])> enumerator = sut.GetAsyncEnumerator();
-        Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (_, TxReceipt[] receipts) = enumerator.Current;
-        receipts.Should().BeEquivalentTo(receipt0);
-
-        Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (_, receipts) = enumerator.Current;
-        receipts.Should().BeEquivalentTo(receipt1);
-
-        Assert.That(await enumerator.MoveNextAsync(), Is.True);
-        (_, receipts) = enumerator.Current;
-        receipts.Should().BeEquivalentTo(receipt2);
-    }
-
-    [Test]
-    public async Task GetAsyncEnumerator_EnumerateAll_EnumeratesCorrectAmountOfBlocks()
-    {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
-
-        using EraReader sut = new EraReader(tmpFile.FilePath);
-        int result = 0;
-        await foreach (var item in sut)
-        {
-            result++;
-        }
-
-        Assert.That(result, Is.EqualTo(3));
+        List<(Block, TxReceipt[])> reEnumerated = await sut.ToListAsync();
+        reEnumerated.Should().BeEquivalentTo(tmpFile.AddedContents);
     }
 
     [Test]
     public async Task VerifyAccumulator_CreateBlocks_AccumulatorMatches()
     {
         using AccumulatorCalculator calculator = new();
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(block0.Difficulty + block0.TotalDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(block1.Difficulty + block1.TotalDifficulty).TestObject;
-        calculator.Add(block0.Hash!, block0.TotalDifficulty!.Value);
-        calculator.Add(block1.Hash!, block1.TotalDifficulty!.Value);
-        calculator.Add(block2.Hash!, block2.TotalDifficulty!.Value);
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
-
-        using EraReader sut = new EraReader(tmpFile.FilePath);
-        bool result = await sut.VerifyAccumulator(calculator.ComputeRoot(), Substitute.For<ISpecProvider>());
-
-        Assert.That(result, Is.True);
-    }
-    [Test]
-    public async Task VerifyAccumulator_FirstVerifyThenEnumerateAll_AllBlocksEnumerated()
-    {
-        using AccumulatorCalculator calculator = new();
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(block0.Difficulty + block0.TotalDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(block1.Difficulty + block1.TotalDifficulty).TestObject;
-        calculator.Add(block0.Hash!, block0.TotalDifficulty!.Value);
-        calculator.Add(block1.Hash!, block1.TotalDifficulty!.Value);
-        calculator.Add(block2.Hash!, block2.TotalDifficulty!.Value);
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
-        int count = 0;
-        using EraReader sut = new EraReader(tmpFile.FilePath);
-
-        await sut.VerifyAccumulator(calculator.ComputeRoot(), Substitute.For<ISpecProvider>());
-        await foreach (var item in sut)
+        using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
+        foreach (var tmpFileAddedContent in tmpFile.AddedContents)
         {
-            count++;
+            calculator.Add(tmpFileAddedContent.Item1.Hash!, tmpFileAddedContent.Item1.TotalDifficulty!.Value);
         }
 
-        Assert.That(count, Is.EqualTo(3));
-    }
-
-    [Test]
-    public async Task ReadAccumulator_CalculateWithAccumulatorCalculator_AccumulatorMatches()
-    {
-        using AccumulatorCalculator calculator = new();
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-        calculator.Add(block0.Hash!, BlockHeaderBuilder.DefaultDifficulty);
-        calculator.Add(block1.Hash!, BlockHeaderBuilder.DefaultDifficulty);
-        calculator.Add(block2.Hash!, BlockHeaderBuilder.DefaultDifficulty);
-        await builder.Add(block0, Array.Empty<TxReceipt>());
-        await builder.Add(block1, Array.Empty<TxReceipt>());
-        await builder.Add(block2, Array.Empty<TxReceipt>());
-        await builder.Finalize();
-
+        ValueHash256 root = calculator.ComputeRoot();
         using EraReader sut = new EraReader(tmpFile.FilePath);
-        var result = sut.ReadAccumulator();
-
-        Assert.That(result, Is.EqualTo(calculator.ComputeRoot()));
+        bool result = await sut.VerifyAccumulator(root, Substitute.For<ISpecProvider>());
+        Assert.That(result, Is.True);
     }
 }
