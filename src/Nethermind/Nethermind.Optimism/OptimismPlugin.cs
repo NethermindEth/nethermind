@@ -103,7 +103,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _api.ChainSpec.Optimism.BedrockBlockNumber);
+        var chainSpecParams = _api.ChainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
+        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, chainSpecParams.BedrockBlockNumber!.Value);
 
         _blockCacheService = new BlockCacheService();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
