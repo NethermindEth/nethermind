@@ -117,10 +117,10 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = $"Whether to operate as a non-validator. If `true`, the `{nameof(DownloadReceiptsInFastSync)}` and `{nameof(DownloadBodiesInFastSync)}` can be set to `false`.", DefaultValue = "false")]
     public bool NonValidatorNode { get; set; }
 
-    [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = "HeavyWrite")]
+    [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = "HeavyWrite", HiddenFromDocs = true)]
     public ITunableDb.TuneType TuneDbMode { get; set; }
 
-    [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = "EnableBlobFiles")]
+    [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = "EnableBlobFiles", HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
     [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
