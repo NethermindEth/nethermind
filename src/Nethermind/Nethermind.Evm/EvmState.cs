@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.State;
 
 namespace Nethermind.Evm
@@ -166,7 +167,7 @@ namespace Nethermind.Evm
             }
             if (executionType.IsAnyCreate())
             {
-                _accessTracker.WarmUp(env.ExecutingAccount);
+                _accessTracker.WasCreated(env.ExecutingAccount);
             }
             _accessTracker.TakeSnapshot();
         }
