@@ -13,6 +13,9 @@ using Nethermind.Core;
 using System.Linq;
 using System.Collections.Generic;
 using NSubstitute;
+using Nethermind.Db;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -38,7 +41,10 @@ public class TxPoolSourceTests
 
         TestEip4844Config eip4844Config = new(customMaxBlobGasPerBlock);
 
-        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, eip4844Config);
+        MemDb stateDb = new();
+        MemDb codeDb = new();
+        StateReader stateReader = new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+        TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, stateReader, eip4844Config);
 
         IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader { }, long.MaxValue);
         int blobsCount = txs.Sum(tx => tx.BlobVersionedHashes?.Length ?? 0);

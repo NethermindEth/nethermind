@@ -49,11 +49,6 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (currentTx.GasLimit > gasRemaining)
-                {
-                    return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
-                }
-
                 if (transactionsInBlock.Contains(currentTx))
                 {
                     return args.Set(TxAction.Skip, "Transaction already in block");
@@ -62,12 +57,12 @@ namespace Nethermind.Consensus.Processing
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 if (currentTx.IsAboveInitCode(spec))
                 {
-                    return args.Set(TxAction.Skip, $"EIP-3860 - transaction size over max init code size");
+                    return args.Set(TxAction.Invalid, $"EIP-3860 - transaction size over max init code size");
                 }
 
                 if (!_ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
-                    return args.Set(TxAction.Skip, $"Sender is contract");
+                    return args.Set(TxAction.Invalid, $"Sender is contract");
                 }
 
                 UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
@@ -123,6 +118,7 @@ namespace Nethermind.Consensus.Processing
         {
             Add,
             Skip,
+            Invalid,
             Stop
         }
     }

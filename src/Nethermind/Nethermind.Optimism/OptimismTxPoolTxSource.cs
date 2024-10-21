@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -19,8 +20,8 @@ public class OptimismTxPoolTxSource : ITxSource
         _baseTxSource = baseTxSource;
     }
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, CancellationToken token = default) =>
         payloadAttributes is OptimismPayloadAttributes { NoTxPool: true }
             ? Enumerable.Empty<Transaction>()
-            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes);
+            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes, token);
 }

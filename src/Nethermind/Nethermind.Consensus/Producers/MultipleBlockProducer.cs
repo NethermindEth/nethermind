@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
+            PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
             Task<Block?>[] produceTasks = new Task<Block?>[_blockProducers.Length];
             for (int i = 0; i < _blockProducers.Length; i++)

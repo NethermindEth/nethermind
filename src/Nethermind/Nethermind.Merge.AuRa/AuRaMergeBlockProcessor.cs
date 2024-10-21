@@ -18,6 +18,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using System.Threading;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -57,8 +58,8 @@ public class AuRaMergeBlockProcessor(
         preWarmer,
         consensusRequestsProcessor)
 {
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, CancellationToken token) =>
         block.IsPostMerge
-            ? PostMergeProcessBlock(block, blockTracer, options)
-            : base.ProcessBlock(block, blockTracer, options);
+            ? PostMergeProcessBlock(block, blockTracer, options, token)
+            : base.ProcessBlock(block, blockTracer, options, token);
 }

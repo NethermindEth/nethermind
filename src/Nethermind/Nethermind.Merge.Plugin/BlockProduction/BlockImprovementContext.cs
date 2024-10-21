@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class BlockImprovementContext : IBlockImprovementContext
 {
-    private CancellationTokenSource? _cancellationTokenSource;
+    private CancellationTokenSource? _timedCancellation;
     private readonly FeesTracer _feesTracer = new();
 
     public BlockImprovementContext(Block currentBestBlock,
@@ -24,15 +24,18 @@ public class BlockImprovementContext : IBlockImprovementContext
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        UInt256 currentBlockFees)
+        UInt256 currentBlockFees,
+        CancellationToken token)
     {
-        _cancellationTokenSource = new CancellationTokenSource(timeout);
+        _timedCancellation = new CancellationTokenSource(timeout);
+        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _timedCancellation.Token);
+
         CurrentBestBlock = currentBestBlock;
         BlockFees = currentBlockFees;
         StartDateTime = startDateTime;
-        ImprovementTask = blockProducer
-            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, _cancellationTokenSource.Token)
-            .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
+        ImprovementTask = Task.Run(() => blockProducer
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, cancellationTokenSource.Token)
+            .ContinueWith(SetCurrentBestBlock, cancellationTokenSource.Token), token);
     }
 
     public Task<Block?> ImprovementTask { get; }
@@ -68,6 +71,6 @@ public class BlockImprovementContext : IBlockImprovementContext
     public void Dispose()
     {
         Disposed = true;
-        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _timedCancellation);
     }
 }

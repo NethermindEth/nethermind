@@ -56,16 +56,16 @@ namespace Nethermind.Consensus.AuRa
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
+            Block block = base.PrepareBlock(parent, payloadAttributes, token);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
             return block;
         }
 
-        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer, token);
 
             if (processedBlock is not null)
             {

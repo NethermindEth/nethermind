@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -49,7 +50,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
         _payloadAttrsTxSource = payloadAttrsTxSource;
     }
 
-    public override Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+    public override Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
     {
         OptimismPayloadAttributes attrs = (payloadAttributes as OptimismPayloadAttributes)
             ?? throw new InvalidOperationException("Payload attributes are not set");
@@ -66,7 +67,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
             {
                 if (TrySetState(parent.StateRoot))
                 {
-                    return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                    return ProcessPreparedBlock(block, null, token) ?? throw new EmptyBlockProductionException("Block processing failed");
                 }
                 else
                 {

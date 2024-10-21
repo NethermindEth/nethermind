@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -12,7 +13,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismPayloadTxSource : ITxSource
 {
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, CancellationToken token = default)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayloadAttributes)
         {

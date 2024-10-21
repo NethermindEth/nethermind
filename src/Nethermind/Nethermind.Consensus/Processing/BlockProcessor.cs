@@ -82,7 +82,7 @@ public partial class BlockProcessor(
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token)
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
@@ -124,10 +124,10 @@ public partial class BlockProcessor(
                 bool skipPrewarming = preWarmer is null || suggestedBlock.Transactions.Length < 3;
                 if (!skipPrewarming)
                 {
-                    using CancellationTokenSource cancellationTokenSource = new();
+                    using CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
                     (_, AccessList? accessList) = _beaconBlockRootHandler.BeaconRootsAccessList(suggestedBlock, _specProvider.GetSpec(suggestedBlock.Header));
                     preWarmTask = preWarmer.PreWarmCaches(suggestedBlock, preBlockStateRoot, accessList, cancellationTokenSource.Token);
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
                     // Block is processed, we can cancel the prewarm task
                     cancellationTokenSource.Cancel();
                 }
@@ -138,7 +138,7 @@ public partial class BlockProcessor(
                         if (_logger.IsWarn) _logger.Warn("Low txs, caches are not empty. Clearing them.");
                     }
                     // Even though we skip prewarming we still need to ensure the caches are cleared
-                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                    (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer, token);
                 }
 
                 processedBlocks[i] = processedBlock;
@@ -180,7 +180,7 @@ public partial class BlockProcessor(
         }
         catch (Exception ex) // try to restore at all cost
         {
-            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            if (ex is not OperationCanceledException && _logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             QueueClearCaches(preWarmer, preWarmTask);
             preWarmTask?.GetAwaiter().GetResult();
             RestoreBranch(previousBranchStateRoot);
@@ -248,13 +248,13 @@ public partial class BlockProcessor(
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -284,7 +284,8 @@ public partial class BlockProcessor(
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
-        ProcessingOptions options)
+        ProcessingOptions options,
+        CancellationToken token)
     {
         BlockHeader header = block.Header;
         IReleaseSpec spec = _specProvider.GetSpec(header);
@@ -296,7 +297,7 @@ public partial class BlockProcessor(
         _blockhashStore.ApplyBlockhashStateChanges(header);
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec, token);
         CalculateBlooms(receipts);
 
         if (spec.IsEip4844Enabled)

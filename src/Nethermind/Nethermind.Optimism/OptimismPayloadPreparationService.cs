@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -23,8 +24,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         ILogManager logManager,
         TimeSpan timePerSlot,
         int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null,
-        TimeSpan? minTimeForProduction = null)
+        TimeSpan? improvementDelay = null)
         : base(
             blockProducer,
             blockImprovementContextFactory,
@@ -32,14 +32,13 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             logManager,
             timePerSlot,
             slotsPerOldPayloadCleanup,
-            improvementDelay,
-            minTimeForProduction)
+            improvementDelay)
     {
         _logger = logManager.GetClassLogger();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
-        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees)
+        PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationToken token)
     {
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
@@ -50,6 +49,6 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             _payloadStorage.TryAdd(payloadId,
                 new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
         }
-        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees);
+        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, token);
     }
 }

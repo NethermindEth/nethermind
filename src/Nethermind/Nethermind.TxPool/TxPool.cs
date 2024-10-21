@@ -170,6 +170,7 @@ namespace Nethermind.TxPool
         }
 
         public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
+        public Transaction[] GetPendingBlobTransactions() => _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot();
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
@@ -387,9 +388,11 @@ namespace Nethermind.TxPool
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
                 if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
                 {
-                    _broadcaster.AnnounceOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
-                    _broadcaster.AnnounceOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());
-                    if (_logger.IsTrace) _logger.Trace($"Announced {_transactionSnapshot.Length} txs and {_blobTransactionSnapshot.Length} blob txs to peer {peer}");
+                    Transaction[] transactionSnapshot = GetPendingTransactions();
+                    Transaction[] blobTransactionSnapshot = GetPendingBlobTransactions();
+                    _broadcaster.AnnounceOnce(peer, transactionSnapshot);
+                    _broadcaster.AnnounceOnce(peer, blobTransactionSnapshot);
+                    if (_logger.IsTrace) _logger.Trace($"Announced {transactionSnapshot.Length} txs and {blobTransactionSnapshot.Length} blob txs to peer {peer}");
                 }
                 else
                 {
