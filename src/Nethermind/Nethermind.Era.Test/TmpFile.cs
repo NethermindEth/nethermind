@@ -3,7 +3,7 @@
 
 namespace Nethermind.Era1.Test;
 
-public class TmpFile: IDisposable
+public class TmpFile : IDisposable
 {
     public string FilePath { get; }
 

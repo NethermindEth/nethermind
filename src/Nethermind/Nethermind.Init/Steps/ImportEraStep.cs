@@ -15,7 +15,7 @@ using Nethermind.Logging;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeBlockchain))]
-public class ImportEraStep: IStep
+public class ImportEraStep : IStep
 {
     protected readonly IApiWithBlockchain _api;
     private readonly ILogger _logger;

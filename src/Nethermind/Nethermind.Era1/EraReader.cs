@@ -20,7 +20,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     private BlockBodyDecoder _blockBodyDecoder = new();
     private E2StoreReader _fileReader;
 
-    public EraReader(string fileName): this(new E2StoreReader(fileName))
+    public EraReader(string fileName) : this(new E2StoreReader(fileName))
     {
     }
 
@@ -134,7 +134,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         position += readSize;
 
-        (TxReceipt[] receipts, readSize)  = await _fileReader.ReadSnappyCompressedEntryAndDecode(
+        (TxReceipt[] receipts, readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             position,
             DecodeReceipts,
             EntryTypes.CompressedReceipts, cancellationToken);

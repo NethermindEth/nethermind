@@ -3,7 +3,7 @@
 
 namespace Nethermind.Era1.Test;
 
-public class TmpDirectory: IDisposable
+public class TmpDirectory : IDisposable
 {
     public string DirectoryPath { get; }
 

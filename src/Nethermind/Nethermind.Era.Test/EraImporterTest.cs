@@ -141,7 +141,7 @@ public class EraImporterTest
         EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
 
         Assert.That(
-            () => sut.VerifyEraFiles(destinationPath,  accumulatorPath),
+            () => sut.VerifyEraFiles(destinationPath, accumulatorPath),
             Throws.TypeOf<EraVerificationException>());
     }
 

@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Era1;
 
-public class EraConfig: IEraConfig
+public class EraConfig : IEraConfig
 {
     public string? ImportDirectory { get; set; } = null;
 }

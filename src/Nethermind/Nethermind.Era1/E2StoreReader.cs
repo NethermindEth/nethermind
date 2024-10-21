@@ -23,7 +23,7 @@ public class E2StoreReader : IDisposable
         _accessor = _mappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
     }
 
-    public E2StoreReader(string filename): this(MemoryMappedFile.CreateFromFile(filename, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
+    public E2StoreReader(string filename) : this(MemoryMappedFile.CreateFromFile(filename, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
     {
     }
 

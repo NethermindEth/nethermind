@@ -149,7 +149,8 @@ public class AdminEraService : IAdminEraService
 
     private async Task StartImportTask(string source, string accumulatorFile, long from, long to)
     {
-        try {
+        try
+        {
             await _eraImporter.Import(
                 source,
                 from,

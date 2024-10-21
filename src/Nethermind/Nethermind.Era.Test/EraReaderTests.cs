@@ -48,26 +48,26 @@ internal class EraReaderTests
                 Build.A.Block.WithNumber(0)
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
-                [ Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject ]);
+                [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await AddBlock(
                 Build.A.Block.WithNumber(1)
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
-                [ Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject ]);
+                [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await AddBlock(
                 Build.A.Block.WithNumber(2)
                     .WithDifficulty(0)
                     .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject,
-                [ Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject ]);
+                [Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject]);
 
             await builder.Finalize();
 
             return new PopulatedTestFile(tmpFile, addedContents);
         }
 
-        private PopulatedTestFile(TmpFile tmpFile, List<(Block, TxReceipt[]e)> addedContents)
+        private PopulatedTestFile(TmpFile tmpFile, List<(Block, TxReceipt[] e)> addedContents)
         {
             _tmpFile = tmpFile;
             AddedContents = addedContents;

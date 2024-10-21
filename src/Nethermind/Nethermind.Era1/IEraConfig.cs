@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Era1;
 
-public interface IEraConfig: IConfig
+public interface IEraConfig : IConfig
 {
     [ConfigItem(Description = "Directory of era1 archives to be imported before starting in full sync mode.", DefaultValue = "", HiddenFromDocs = false)]
     public string? ImportDirectory { get; set; }
