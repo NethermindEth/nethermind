@@ -21,7 +21,7 @@ namespace Nethermind.AuRa.Test.Validators
 {
     public class MultiValidatorTests
     {
-        private AuRaParameters.Validator _validator;
+        private Validator _validator;
         private IAuRaValidatorFactory _factory;
         private ILogManager _logManager;
         private IDictionary<long, IAuRaValidator> _innerValidators;
@@ -33,7 +33,7 @@ namespace Nethermind.AuRa.Test.Validators
         [SetUp]
         public void SetUp()
         {
-            _validator = GetValidator(AuRaParameters.ValidatorType.List);
+            _validator = GetValidator(ValidatorType.List);
             _innerValidators = new SortedList<long, IAuRaValidator>();
             _factory = Substitute.For<IAuRaValidatorFactory>();
             _logManager = LimboLogs.Instance;
@@ -80,7 +80,7 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void throws_ArgumentException_on_wrong_validator_type()
         {
-            _validator.ValidatorType = AuRaParameters.ValidatorType.Contract;
+            _validator.ValidatorType = ValidatorType.Contract;
             Action act = () => new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             act.Should().Throw<ArgumentException>();
         }
@@ -96,7 +96,7 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void creates_inner_validators()
         {
-            _validator = GetValidator(AuRaParameters.ValidatorType.Contract);
+            _validator = GetValidator(ValidatorType.Contract);
             MultiValidator validator = new(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             validator.SetFinalizationManager(_finalizationManager, null);
 
@@ -109,15 +109,15 @@ namespace Nethermind.AuRa.Test.Validators
             _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(x => x == 0 ? 1 : x + 2));
         }
 
-        [TestCase(AuRaParameters.ValidatorType.Contract, 1)]
-        [TestCase(AuRaParameters.ValidatorType.List, 0)]
-        [TestCase(AuRaParameters.ValidatorType.ReportingContract, 2)]
-        public void correctly_consecutively_calls_inner_validators(AuRaParameters.ValidatorType validatorType, int blocksToFinalization)
+        [TestCase(ValidatorType.Contract, 1)]
+        [TestCase(ValidatorType.List, 0)]
+        [TestCase(ValidatorType.ReportingContract, 2)]
+        public void correctly_consecutively_calls_inner_validators(ValidatorType validatorType, int blocksToFinalization)
         {
             // Arrange
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
-            Dictionary<AuRaParameters.Validator, long> innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
+            Dictionary<Validator, long> innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
             long maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
 
             // Act
@@ -165,17 +165,17 @@ namespace Nethermind.AuRa.Test.Validators
             return _innerValidators.Keys.Last();
         }
 
-        [TestCase(16L, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11)]
-        [TestCase(21L, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21)]
-        [TestCase(16L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15)]
-        [TestCase(23L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22)]
-        [TestCase(16L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1)]
-        [TestCase(21L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11)]
-        public long initializes_validator_when_on_nonconsecutive_block(long blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
+        [TestCase(16L, ValidatorType.List, true, ExpectedResult = 11)]
+        [TestCase(21L, ValidatorType.List, false, ExpectedResult = 21)]
+        [TestCase(16L, ValidatorType.Contract, true, ExpectedResult = 15)]
+        [TestCase(23L, ValidatorType.Contract, true, ExpectedResult = 22)]
+        [TestCase(16L, ValidatorType.Contract, false, ExpectedResult = 1)]
+        [TestCase(21L, ValidatorType.Contract, false, ExpectedResult = 11)]
+        public long initializes_validator_when_on_nonconsecutive_block(long blockNumber, ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
         {
             _validator = GetValidator(validatorType);
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
-            _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, (l, pair) => l.CompareTo(pair.Key), out KeyValuePair<long, AuRaParameters.Validator> validatorInfo);
+            _validator.Validators.ToList().TryGetSearchedItem(in blockNumber, (l, pair) => l.CompareTo(pair.Key), out KeyValuePair<long, Validator> validatorInfo);
             _finalizationManager.GetFinalizationLevel(validatorInfo.Key).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?)null);
             _block.Header.Number = blockNumber;
             validator.OnBlockProcessingStart(_block);
@@ -212,21 +212,21 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
 
-        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
+        private Dictionary<Validator, long> GetInnerValidatorsFirstBlockCalls(Validator validator)
         {
             return validator.Validators.ToDictionary(x => x.Value, x => Math.Max(x.Key + 1, 1));
         }
 
-        private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType)
+        private static Validator GetValidator(ValidatorType validatorType)
         {
             return new()
             {
-                ValidatorType = AuRaParameters.ValidatorType.Multi,
-                Validators = new SortedList<long, AuRaParameters.Validator>()
+                ValidatorType = ValidatorType.Multi,
+                Validators = new SortedList<long, Validator>()
                 {
                     {
                         0,
-                        new AuRaParameters.Validator()
+                        new Validator()
                         {
                             ValidatorType = validatorType,
                             Addresses = new[] {Address.FromNumber(0)}
@@ -234,7 +234,7 @@ namespace Nethermind.AuRa.Test.Validators
                     },
                     {
                         10,
-                        new AuRaParameters.Validator()
+                        new Validator()
                         {
                             ValidatorType = validatorType,
                             Addresses = new[] {Address.FromNumber(10)}
@@ -242,7 +242,7 @@ namespace Nethermind.AuRa.Test.Validators
                     },
                     {
                         20,
-                        new AuRaParameters.Validator()
+                        new Validator()
                         {
                             ValidatorType = validatorType,
                             Addresses = new[] {Address.FromNumber(20)}

@@ -5,13 +5,13 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public static class ValidatorTypeExtensions
     {
-        public static bool CanChangeImmediately(this AuRaParameters.ValidatorType validatorType) =>
+        public static bool CanChangeImmediately(this ValidatorType validatorType) =>
             validatorType switch
             {
-                AuRaParameters.ValidatorType.Contract => false,
-                AuRaParameters.ValidatorType.ReportingContract => false,
-                AuRaParameters.ValidatorType.List => true,
-                AuRaParameters.ValidatorType.Multi => true,
+                ValidatorType.Contract => false,
+                ValidatorType.ReportingContract => false,
+                ValidatorType.List => true,
+                ValidatorType.Multi => true,
                 _ => false
             };
     }

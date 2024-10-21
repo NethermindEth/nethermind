@@ -1,0 +1,285 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Core;
+using Nethermind.Int256;
+using Nethermind.Serialization.Json;
+
+namespace Nethermind.Specs.ChainSpecStyle;
+
+public class AuthorityRoundChainSpecEngineParameters : IChainSpecEngineParameters
+{
+    public string? SealEngineType { get; } = "AuRa";
+
+    [JsonConverter(typeof(StepDurationJsonConverter))]
+    public SortedDictionary<long, long> StepDuration { get; set; }
+
+    [JsonConverter(typeof(BlockRewardJsonConverter))]
+    public SortedDictionary<long, UInt256> BlockReward { get; set; }
+
+    public long? MaximumUncleCountTransition { get; set; }
+
+    public long? MaximumUncleCount { get; set; }
+
+    public Address BlockRewardContractAddress { get; set; }
+
+    public long? BlockRewardContractTransition { get; set; }
+
+    public IDictionary<long, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<long, Address>();
+
+    public long ValidateScoreTransition { get; set; }
+
+    public long ValidateStepTransition { get; set; }
+
+    [JsonPropertyName("Validators")]
+    private AuRaValidatorJson _validatorsJson { get; set; }
+
+    public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
+
+    public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
+
+    public long? TwoThirdsMajorityTransition { get; set; }
+
+    public long? PosdaoTransition { get; set; }
+
+    public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
+
+    public Address WithdrawalContractAddress { get; set; }
+
+    private Validator? _validators;
+    public Validator Validators
+    {
+        get => _validators ??= LoadValidator(_validatorsJson);
+    }
+
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+    }
+
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    {
+    }
+
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    {
+        spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? long.MaxValue) ? MaximumUncleCount ?? 2 : 2);
+    }
+
+    static Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
+    {
+        ValidatorType validatorType = validatorJson.GetValidatorType();
+        Validator validator = new() { ValidatorType = validatorType };
+        switch (validator.ValidatorType)
+        {
+            case ValidatorType.List:
+                validator.Addresses = validatorJson.List;
+                break;
+            case ValidatorType.Contract:
+                validator.Addresses = new[] { validatorJson.SafeContract };
+                break;
+            case ValidatorType.ReportingContract:
+                validator.Addresses = new[] { validatorJson.Contract };
+                break;
+            case ValidatorType.Multi:
+                if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
+                validator.Validators = validatorJson.Multi
+                    .ToDictionary(kvp => kvp.Key, kvp => LoadValidator(kvp.Value, level + 1))
+                    .ToImmutableSortedDictionary();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
+        return validator;
+    }
+
+    private class BlockRewardJsonConverter : JsonConverter<SortedDictionary<long, UInt256>>
+    {
+        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value, JsonSerializerOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = new SortedDictionary<long, UInt256>();
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+                value.Add(0, blockReward);
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, new UInt256(reader.GetUInt64()));
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+                    var property = UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+                    var key = (long)property;
+                    reader.Read();
+                    if (reader.TokenType != JsonTokenType.String)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    var blockReward = UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+                    value.Add(key, blockReward);
+
+                    reader.Read();
+                }
+            }
+            else
+            {
+                throw new ArgumentException("Cannot deserialize BlockReward.");
+            }
+
+            return value;
+        }
+    }
+
+    private class StepDurationJsonConverter : JsonConverter<SortedDictionary<long, long>>
+    {
+        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, long> value, JsonSerializerOptions options)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = new SortedDictionary<long, long>();
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, reader.GetInt64());
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+                    var key = long.Parse(reader.GetString());
+                    reader.Read();
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        value.Add(key, long.Parse(reader.GetString()));
+                    }
+                    else if (reader.TokenType == JsonTokenType.Number)
+                    {
+                        value.Add(key, reader.GetInt64());
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    reader.Read();
+                }
+            }
+            else
+            {
+                throw new ArgumentException("Cannot deserialize BlockReward.");
+            }
+
+            return value;
+        }
+    }
+
+    private class AuRaValidatorJson
+    {
+        public Address[] List { get; set; }
+        public Address Contract { get; set; }
+        public Address SafeContract { get; set; }
+        public Dictionary<long, AuRaValidatorJson> Multi { get; set; }
+
+        public ValidatorType GetValidatorType()
+        {
+            if (List is not null)
+            {
+                return ValidatorType.List;
+            }
+            else if (Contract is not null)
+            {
+                return ValidatorType.ReportingContract;
+            }
+            else if (SafeContract is not null)
+            {
+                return ValidatorType.Contract;
+            }
+            else if (Multi is not null)
+            {
+                return ValidatorType.Multi;
+            }
+            else
+            {
+                throw new NotSupportedException("AuRa validator type not supported.");
+            }
+        }
+    }
+}
+
+public enum ValidatorType
+{
+    List,
+    Contract,
+    ReportingContract,
+    Multi
+}
+
+public class Validator
+{
+    public ValidatorType ValidatorType { get; set; }
+
+    /// <summary>
+    /// Dictionary of Validators per their starting block.
+    /// </summary>
+    /// <remarks>
+    /// Only Valid for <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/>.
+    ///
+    /// This has to sorted in order of starting blocks.
+    /// </remarks>
+    public IDictionary<long, Validator> Validators { get; set; }
+
+    /// <summary>
+    /// Addresses for validator.
+    /// </summary>
+    /// <remarks>
+    /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.List"/> should contain at least one address.
+    /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Contract"/> and <see cref="AuRaParameters.ValidatorType.ReportingContract"/> should contain exactly one address.
+    /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/> will be empty.
+    /// </remarks>
+    public Address[] Addresses { get; set; }
+
+    public Address GetContractAddress()
+    {
+        switch (ValidatorType)
+        {
+            case ValidatorType.Contract:
+            case ValidatorType.ReportingContract:
+                return Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses));
+            default:
+                throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address.");
+        }
+
+    }
+}

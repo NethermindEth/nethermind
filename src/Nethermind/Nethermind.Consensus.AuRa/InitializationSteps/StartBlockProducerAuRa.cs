@@ -34,6 +34,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 public class StartBlockProducerAuRa
 {
     private readonly AuRaNethermindApi _api;
+    private readonly AuthorityRoundChainSpecEngineParameters _parameters;
 
     private BlockProducerEnv? _blockProducerContext;
     private INethermindApi NethermindApi => _api;
@@ -48,6 +49,8 @@ public class StartBlockProducerAuRa
     public StartBlockProducerAuRa(AuRaNethermindApi api)
     {
         _api = api;
+        _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
         _auraConfig = NethermindApi.Config<IAuraConfig>();
     }
 
@@ -55,7 +58,7 @@ public class StartBlockProducerAuRa
     {
         get
         {
-            return _stepCalculator ??= new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
+            return _stepCalculator ??= new AuRaStepCalculator(_parameters.StepDuration, _api.Timestamper, _api.LogManager);
         }
     }
 
@@ -114,8 +117,6 @@ public class StartBlockProducerAuRa
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
 
-        var chainSpecAuRa = _api.ChainSpec.AuRa;
-
         ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
             _api,
             new LocalTxFilter(_api.EngineSigner));
@@ -136,16 +137,16 @@ public class StartBlockProducerAuRa
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
-                chainSpecAuRa.PosdaoTransition,
+                _parameters.PosdaoTransition!.Value,
                 true)
-            .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
+            .CreateValidatorProcessor(_parameters.Validators, _api.BlockTree.Head?.Header);
 
         if (_validator is IDisposable disposableValidator)
         {
             _api.DisposeStack.Push(disposableValidator);
         }
 
-        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
+        IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _parameters.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
         return new AuRaBlockProcessor(
@@ -277,7 +278,8 @@ public class StartBlockProducerAuRa
     {
         bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
         {
-            if (auRaPosdaoTransition < AuRaParameters.TransitionDisabled && _validator is ITxSource validatorSource)
+            const long transitionDisabled = long.MaxValue;
+            if (auRaPosdaoTransition < transitionDisabled && _validator is ITxSource validatorSource)
             {
                 list.Insert(0, validatorSource);
                 return true;
@@ -332,8 +334,8 @@ public class StartBlockProducerAuRa
         {
             txSources.Insert(0, additionalTxSource);
         }
-        needSigner |= CheckAddPosdaoTransactions(txSources, _api.ChainSpec.AuRa.PosdaoTransition);
-        needSigner |= CheckAddRandomnessTransactions(txSources, _api.ChainSpec.AuRa.RandomnessContractAddress, _api.EngineSigner);
+        needSigner |= CheckAddPosdaoTransactions(txSources, _parameters.PosdaoTransition!.Value);
+        needSigner |= CheckAddRandomnessTransactions(txSources, _parameters.RandomnessContractAddress, _api.EngineSigner);
 
         ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 
@@ -356,7 +358,8 @@ public class StartBlockProducerAuRa
     private static IGasLimitCalculator CreateGasLimitCalculator(AuRaNethermindApi api)
     {
         if (api.ChainSpec is null) throw new StepDependencyException(nameof(api.ChainSpec));
-        var blockGasLimitContractTransitions = api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
+        var blockGasLimitContractTransitions = api.ChainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>().BlockGasLimitContractTransitions;
 
         IGasLimitCalculator gasLimitCalculator =
             new TargetAdjustedGasLimitCalculator(api.SpecProvider, api.Config<IBlocksConfig>());

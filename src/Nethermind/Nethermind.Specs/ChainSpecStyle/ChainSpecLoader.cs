@@ -210,12 +210,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
         chainSpec.HomesteadBlockNumber = 0;
-
-        // IEnumerable<long?> difficultyBombDelaysBlockNumbers = chainSpec.Ethash?.DifficultyBombDelays
-        //     .Keys
-        //     .Cast<long?>()
-        //     .ToArray();
-
         chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
         chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
         chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
@@ -228,9 +222,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
         chainSpec.BerlinBlockNumber = chainSpec.Parameters.Eip2929Transition;
         chainSpec.LondonBlockNumber = chainSpec.Parameters.Eip1559Transition;
-        // chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
-        // chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
-        // chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
 
@@ -252,103 +243,23 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        static AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
-        {
-            AuRaParameters.ValidatorType validatorType = validatorJson.GetValidatorType();
-            AuRaParameters.Validator validator = new() { ValidatorType = validatorType };
-            switch (validator.ValidatorType)
-            {
-                case AuRaParameters.ValidatorType.List:
-                    validator.Addresses = validatorJson.List;
-                    break;
-                case AuRaParameters.ValidatorType.Contract:
-                    validator.Addresses = new[] { validatorJson.SafeContract };
-                    break;
-                case AuRaParameters.ValidatorType.ReportingContract:
-                    validator.Addresses = new[] { validatorJson.Contract };
-                    break;
-                case AuRaParameters.ValidatorType.Multi:
-                    if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
-                    validator.Validators = validatorJson.Multi
-                        .ToDictionary(kvp => kvp.Key, kvp => LoadValidator(kvp.Value, level + 1))
-                        .ToImmutableSortedDictionary();
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            return validator;
-        }
-
-        if (chainSpecJson.Engine?.AuthorityRound is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.AuRa;
-            chainSpec.AuRa = new AuRaParameters
-            {
-                MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
-                MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition,
-                StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration,
-                BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
-                BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
-                BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
-                BlockRewardContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransitions,
-                ValidateScoreTransition = chainSpecJson.Engine.AuthorityRound.ValidateScoreTransition,
-                ValidateStepTransition = chainSpecJson.Engine.AuthorityRound.ValidateStepTransition,
-                Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator),
-                RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
-                BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
-                TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? AuRaParameters.TransitionDisabled,
-                PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? AuRaParameters.TransitionDisabled,
-                RewriteBytecode = chainSpecJson.Engine.AuthorityRound.RewriteBytecode,
-                WithdrawalContractAddress = chainSpecJson.Engine.AuthorityRound.WithdrawalContractAddress,
-            };
-        }
-        // else if (chainSpecJson.Engine?.Ethash is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Ethash;
-
-            // chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();
-            // if (chainSpecJson.Engine.Ethash.DifficultyBombDelays is not null)
-            // {
-            //     foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
-            //     {
-            //         long key = reward.Key.StartsWith("0x") ?
-            //             long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
-            //             long.Parse(reward.Key);
-            //
-            //         chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
-            //     }
-            // }
-        }
-
-        var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
-
-        if (!string.IsNullOrEmpty(customEngineType))
-        {
-            chainSpec.SealEngineType = customEngineType;
-        }
-
         Dictionary<string, JsonElement> engineParameters = new();
-        // TODO remove null check
-        if (chainSpecJson.Engine.CustomEngineData is not null)
+        foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
         {
-            foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
+            if (engine.Value.TryGetProperty("params", out JsonElement value))
             {
-                if (engine.Value.TryGetProperty("params", out JsonElement value))
-                {
-                    engineParameters.Add(engine.Key, value);
-                }
-                else
-                {
-                    engineParameters.Add(engine.Key, engine.Value);
-                }
+                engineParameters.Add(engine.Key, value);
             }
+            else
+            {
+                engineParameters.Add(engine.Key, engine.Value);
+            }
+        }
 
-            chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
-            if (string.IsNullOrEmpty(chainSpec.SealEngineType))
-            {
-                chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
-            }
+        chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
+        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        {
+            chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
         }
 
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))

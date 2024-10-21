@@ -34,9 +34,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public string SealEngineType { get; set; }
 
-        public AuRaParameters AuRa { get; set; }
-
-        // public EthashParameters Ethash { get; set; }
+        // public AuRaParameters AuRa { get; set; }
 
         public ChainParameters Parameters { get; set; }
 

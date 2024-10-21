@@ -472,6 +472,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Chain_id_is_set_correctly()
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters(), NetworkId = 2, ChainId = 5 };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.NetworkId, Is.EqualTo(2));
@@ -482,6 +483,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Dao_block_number_is_set_correctly()
     {
         ChainSpec chainSpec = new();
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
         chainSpec.Parameters = new ChainParameters();
         chainSpec.DaoForkBlockNumber = 23;
 
@@ -492,7 +494,6 @@ public class ChainSpecBasedSpecProviderTests
     [Test]
     public void Bound_divisors_set_correctly()
     {
-        // TODO: fix test
         // ChainSpec chainSpec = new()
         // {
         //     Parameters = new ChainParameters { GasLimitBoundDivisor = 17 },
@@ -546,6 +547,7 @@ public class ChainSpecBasedSpecProviderTests
                 MaxCodeSize = maxCodeSize
             }
         };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
@@ -557,6 +559,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Eip2200_is_set_correctly_directly()
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters { Eip2200Transition = 5 } };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
@@ -567,6 +570,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         ChainSpec chainSpec =
             new() { Parameters = new ChainParameters { Eip1706Transition = 5, Eip1283Transition = 5 } };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
@@ -585,6 +589,7 @@ public class ChainSpecBasedSpecProviderTests
                 Eip1283ReenableTransition = 5
             }
         };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
@@ -602,6 +607,7 @@ public class ChainSpecBasedSpecProviderTests
                 Eip1283DisableTransition = 4
             }
         };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeFalse();
@@ -619,6 +625,7 @@ public class ChainSpecBasedSpecProviderTests
                 MaxCodeSize = 1
             }
         };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
 
@@ -645,6 +652,7 @@ public class ChainSpecBasedSpecProviderTests
                 MaxCodeSize = 1
             }
         };
+        chainSpec.EngineChainSpecParametersProvider = TestChainSpecParametersProvider.Instance;
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
 
