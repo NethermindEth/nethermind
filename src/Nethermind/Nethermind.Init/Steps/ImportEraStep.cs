@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain.Era1;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Era1;

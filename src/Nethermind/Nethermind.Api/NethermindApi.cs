@@ -57,6 +57,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
 using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Era1;
 using Nethermind.Facade.Find;
 
 namespace Nethermind.Api

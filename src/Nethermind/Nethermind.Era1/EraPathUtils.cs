@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
-using Nethermind.Era1;
 
-namespace Nethermind.Blockchain.Era1;
+namespace Nethermind.Era1;
 
 public class EraPathUtils
 {

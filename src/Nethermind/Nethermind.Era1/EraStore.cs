@@ -1,25 +1,16 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.ClearScript.Util.Web;
-using Nethermind.Blockchain.Era1;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Era1;
 using Nethermind.Era1.Exceptions;
 
-namespace Nethermind.Blockchain;
+namespace Nethermind.Era1;
 public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];

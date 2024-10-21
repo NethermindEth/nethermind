@@ -29,6 +29,7 @@ using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.Serialization.Json;
 using Nethermind.Blockchain;
+using Nethermind.Era1;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Init.Steps;

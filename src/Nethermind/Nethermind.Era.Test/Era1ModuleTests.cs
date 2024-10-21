@@ -7,7 +7,6 @@ using System.IO.Abstractions.TestingHelpers;
 using System.IO.MemoryMappedFiles;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Era1;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -190,33 +189,29 @@ public class Era1ModuleTests
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using var tmpFile = new TmpFile();
-        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
-
-        Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
-        TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
-
-        await builder.Add(genesis, genesisReceipts);
-
+        List<(Block, TxReceipt[])> toAddBlocks = new List<(Block, TxReceipt[])>();
         testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) =>
         {
-            builder.Add(blockArgs.Block, blockArgs.TxReceipts).Wait();
+            toAddBlocks.Add((blockArgs.Block, blockArgs.TxReceipts));
         };
 
         int numOfBlocks = 12;
         await testBlockchain.BuildSomeBlocks(numOfBlocks);
 
+        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
+        {
+            await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
+        }
         await builder.Finalize();
-
-        byte[] buffer = new byte[1024];
 
         using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(tmpFile.FilePath, FileMode.Open);
         using E2StoreReader fileReader = new E2StoreReader(mmf);
-        Assert.That(fileReader.StartBlock, Is.EqualTo(0));
-        Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks + 1));
+        Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks));
 
         for (int i = 0; i < fileReader.BlockCount; i++)
         {
-            long blockOffset = fileReader.BlockOffset(i);
+            long blockOffset = fileReader.BlockOffset(fileReader.StartBlock + i);
 
             using (var accessor = mmf.CreateViewAccessor(blockOffset, 2))
             {

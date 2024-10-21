@@ -124,7 +124,6 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
-
         sut.Dispose();
 
         Assert.That(() => stream.ReadByte(), Throws.TypeOf<ObjectDisposedException>());

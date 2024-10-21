@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -37,9 +36,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
-using System.Linq;
-using Nethermind.Blockchain.Era1;
-using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.Init.Steps;
 

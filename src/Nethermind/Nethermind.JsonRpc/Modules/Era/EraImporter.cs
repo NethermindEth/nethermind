@@ -13,7 +13,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
-using Nethermind.Blockchain.Era1;
 using Nethermind.Era1;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;

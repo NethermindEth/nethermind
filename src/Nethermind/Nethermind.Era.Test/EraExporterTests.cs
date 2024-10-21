@@ -12,7 +12,6 @@ using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
-using Nethermind.Blockchain.Era1;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;

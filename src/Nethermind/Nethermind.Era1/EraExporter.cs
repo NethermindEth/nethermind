@@ -2,23 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using System;
-using System.Threading;
-using System.IO;
-using System.Threading.Tasks;
-using Nethermind.Era1;
-using System.Linq;
-using Nethermind.Blockchain.Era1;
-using System.Collections.Generic;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
-namespace Nethermind.Blockchain;
+namespace Nethermind.Era1;
 public class EraExporter : IEraExporter
 {
     private const int MergeBlock = 15537393;

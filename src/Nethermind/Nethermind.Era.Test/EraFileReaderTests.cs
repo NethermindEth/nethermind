@@ -3,7 +3,6 @@
 
 using System.IO.MemoryMappedFiles;
 using DotNetty.Buffers;
-using Nethermind.Blockchain.Era1;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;

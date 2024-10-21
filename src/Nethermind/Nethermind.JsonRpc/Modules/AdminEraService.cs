@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Era1;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Era1;
