@@ -62,7 +62,8 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.SpecProvider,
                 getFromApi.TransactionComparerProvider!,
                 getFromApi.LogManager,
-                txFilterPipeline);
+                txFilterPipeline,
+                getFromApi.StateReader);
 
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");

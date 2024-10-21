@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -25,7 +25,8 @@ namespace Nethermind.Consensus.Processing
             Hash256 newBranchStateRoot,
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
-            IBlockTracer blockTracer);
+            IBlockTracer blockTracer,
+            CancellationToken token);
 
         /// <summary>
         /// Fired when a branch is being processed.
@@ -49,7 +50,7 @@ namespace Nethermind.Consensus.Processing
 
         public interface IBlockTransactionsExecutor
         {
-            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec);
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token);
             event EventHandler<TxProcessedEventArgs> TransactionProcessed;
         }
     }

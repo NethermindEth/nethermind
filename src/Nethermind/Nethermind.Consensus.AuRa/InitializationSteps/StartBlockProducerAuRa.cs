@@ -268,7 +268,7 @@ public class StartBlockProducerAuRa
             .WithCustomTxFilter(txSourceFilter)
             .WithBaseFeeFilter(_api.SpecProvider)
             .Build;
-        return new TxPoolTxSource(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline);
+        return new TxPoolTxSource(_api.TxPool, _api.SpecProvider, _api.TransactionComparerProvider, _api.LogManager, txFilterPipeline, _api.StateReader);
     }
 
     private ITxFilter CreateAuraTxFilterForProducer() => TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(_api, _minGasPricesContractDataStore);

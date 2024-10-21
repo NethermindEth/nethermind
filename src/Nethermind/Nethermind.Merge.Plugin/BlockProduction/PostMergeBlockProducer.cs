@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Evm;
+using System.Threading;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
@@ -46,7 +47,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
         }
 
-        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
@@ -56,11 +57,13 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
             if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
             {
+                if (token.IsCancellationRequested) return block;
+
                 try
                 {
                     if (TrySetState(parent.StateRoot))
                     {
-                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                        return ProcessPreparedBlock(block, null, token) ?? throw new EmptyBlockProductionException("Block processing failed");
                     }
                 }
                 finally
@@ -72,9 +75,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
+            Block block = base.PrepareBlock(parent, payloadAttributes, token);
             AmendHeader(block.Header, parent);
             return block;
         }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -223,9 +224,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, CancellationToken token = default) =>
             _currentValidator is ITxSource txSource
-                ? txSource.GetTransactions(parent, gasLimit, payloadAttributes)
+                ? txSource.GetTransactions(parent, gasLimit, payloadAttributes, token)
                 : Enumerable.Empty<Transaction>();
 
         public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";

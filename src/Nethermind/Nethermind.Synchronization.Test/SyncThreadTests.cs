@@ -342,7 +342,7 @@ namespace Nethermind.Synchronization.Test
                 MinGasPrice = 0
             };
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider, blocksConfig);
-            TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);
+            TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline, stateReader);
             DevBlockProducer producer = new(
                 transactionSelector,
                 devChainProcessor,

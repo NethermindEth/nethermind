@@ -364,11 +364,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     int IBlockProcessingQueue.Count => _queueCount;
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
-        return Process(suggestedBlock, options, tracer, out _);
+        return Process(suggestedBlock, options, tracer, out _, token);
     }
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error, CancellationToken token = default)
     {
         error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
@@ -384,7 +384,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             || _blockTree.IsBetterThanHead(suggestedBlock.Header)
             || options.ContainsFlag(ProcessingOptions.ForceProcessing);
 
-        if (!shouldProcess)
+        if (!shouldProcess || token.IsCancellationRequested)
         {
             if (_logger.IsDebug)
                 _logger.Debug(
@@ -396,7 +396,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error, token);
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
@@ -465,7 +465,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     processingBranch.Root,
                     processingBranch.BlocksToProcess,
                     options,
-                    blockTracer);
+                    blockTracer,
+                    CancellationToken.None);
             }
             catch (InvalidBlockException ex)
             {
@@ -483,7 +484,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error, CancellationToken token)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -507,7 +508,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.Root,
                 processingBranch.BlocksToProcess,
                 options,
-                tracer);
+                tracer,
+                token);
             error = null;
         }
         catch (InvalidBlockException ex)

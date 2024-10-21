@@ -188,6 +188,10 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitStorageRoots: !spec.IsEip658Enabled);
             }
+            else
+            {
+                WorldState.ResetTransient();
+            }
 
             if (tracer.IsTracingReceipt)
             {

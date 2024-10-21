@@ -141,7 +141,8 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.SpecProvider,
                 transactionComparerProvider,
                 getFromApi.LogManager,
-                txFilterPipeline);
+                txFilterPipeline,
+                getFromApi.StateReader);
 
             IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 

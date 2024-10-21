@@ -58,6 +58,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     protected ManualBlockFinalizationManager _blockFinalizationManager = null!;
     private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
+    private PayloadPreparationService? _payloadPreparationService = null;
 
     public virtual string Name => "Merge";
     public virtual string Description => "Merge plugin for ETH1-ETH2";
@@ -266,7 +267,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _blocksConfig);
             _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
             _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
-            _api.FinalizationManager = InitializeMergeFinilizationManager();
+            _api.FinalizationManager = InitializeMergeFinalizationManager();
 
             // Need to do it here because blockprocessor is not available in init
             _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
@@ -275,7 +276,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    protected virtual IBlockFinalizationManager InitializeMergeFinilizationManager()
+    protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()
     {
         return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
     }
@@ -320,7 +321,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             IBlockImprovementContextFactory improvementContextFactory = _api.BlockImprovementContextFactory ??= CreateBlockImprovementContextFactory();
 
-            PayloadPreparationService payloadPreparationService = new(
+            _payloadPreparationService = new(
                 _postMergeBlockProducer,
                 improvementContextFactory,
                 _api.TimerFactory,
@@ -330,10 +331,10 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
             IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
-                new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
-                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+                new GetPayloadV1Handler(_payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV2Handler(_payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV3Handler(_payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
+                new GetPayloadV4Handler(_payloadPreparationService, _api.SpecProvider, _api.LogManager, _api.CensorshipDetector),
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
@@ -347,12 +348,13 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconSync,
                     _api.LogManager,
                     TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
-                    _api.Config<IReceiptConfig>().StoreReceipts),
+                    _api.Config<IReceiptConfig>().StoreReceipts,
+                    payloadPreparationService: _payloadPreparationService),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
                     _blockFinalizationManager,
                     _poSSwitcher,
-                    payloadPreparationService,
+                    _payloadPreparationService,
                     _api.BlockProcessingQueue,
                     _blockCacheService,
                     _invalidChainTracker,
@@ -471,7 +473,11 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         return Task.CompletedTask;
     }
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        _payloadPreparationService?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     public bool MustInitialize { get => true; }
 }
