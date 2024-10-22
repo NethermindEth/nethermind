@@ -17,7 +17,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
@@ -36,6 +38,7 @@ public class DebugBridge : IDebugBridge
     private readonly IBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
+    private readonly IStateReader _stateReader;
 
     public DebugBridge(
         IConfigProvider configProvider,
@@ -46,7 +49,8 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore)
+        IBlockStore badBlockStore,
+        IStateReader stateReader)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -56,12 +60,14 @@ public class DebugBridge : IDebugBridge
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
+        
 
         _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
         {
@@ -212,4 +218,38 @@ public class DebugBridge : IDebugBridge
         CancellationToken cancellationToken,
         GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBadBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter blockParameter)
+    {
+        SearchResult<BlockHeader> headerSearch = _blockTree.SearchForHeader(blockParameter);
+        if (headerSearch.IsError)
+        {
+            return headerSearch;
+        }
+
+        BlockHeader header = headerSearch.Object;
+        if (header!.IsGenesis)
+        {
+            UInt256 baseFee = header.BaseFeePerGas;
+            header = new BlockHeader(
+                header.Hash!,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                header.Difficulty,
+                header.Number + 1,
+                header.GasLimit,
+                header.Timestamp + 1,
+                header.ExtraData,
+                header.BlobGasUsed,
+                header.ExcessBlobGas);
+
+            header.TotalDifficulty = 2 * header.Difficulty;
+            header.BaseFeePerGas = baseFee;
+        }
+
+        return new SearchResult<BlockHeader>(header);
+    }
+
+    public bool HasStateForBlock(BlockHeader header) => _stateReader.HasStateForBlock(header);
+    
 }
