@@ -1337,6 +1337,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
+            _logger.Warn($"Flushing db {Name}");
             _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
         catch (RocksDbSharpException e)

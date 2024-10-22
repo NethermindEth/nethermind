@@ -673,9 +673,7 @@ namespace Nethermind.Trie.Pruning
         private ConcurrentQueue<BlockCommitSet> CommitSetQueue =>
             (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue));
 
-#if DEBUG
         private BlockCommitSet? _lastCommitSet = null;
-#endif
 
         private long _memoryUsedByDirtyCache;
 
@@ -703,18 +701,20 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
-            // TODO: this throws on reorgs, does it not? let us recreate it in test
-#if DEBUG
-            Debug.Assert(_lastCommitSet == null || blockNumber == _lastCommitSet.BlockNumber + 1 || _lastCommitSet.BlockNumber == 0, $"Newly begun block is not a successor of the last one.");
-            Debug.Assert(_lastCommitSet == null || _lastCommitSet.IsSealed, "Not sealed when beginning new block");
-#endif
+            if (_lastCommitSet is {} lastCommitSet)
+            {
+                Debug.Assert(lastCommitSet.IsSealed, "Not sealed when beginning new block");
+
+                if (lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && lastCommitSet.BlockNumber != 0)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
+                }
+            }
 
             BlockCommitSet commitSet = new(blockNumber);
             CommitSetQueue.Enqueue(commitSet);
 
-#if DEBUG
             _lastCommitSet = commitSet;
-#endif
 
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
             // Why are we announcing **before** committing next block??
@@ -757,7 +757,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
 
             long start = Stopwatch.GetTimestamp();
 
