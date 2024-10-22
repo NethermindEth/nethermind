@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Producers
         private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly ITxFilterPipeline _txFilterPipeline;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateReader _stateReader;
+        private readonly IStateReader? _stateReader;
         protected readonly ILogger _logger;
         private readonly IEip4844Config _eip4844Config;
 
@@ -38,15 +38,15 @@ namespace Nethermind.Consensus.Producers
             ITransactionComparerProvider? transactionComparerProvider,
             ILogManager? logManager,
             ITxFilterPipeline? txFilterPipeline,
-            IStateReader stateReader,
+            IStateReader? stateReader = null,
             IEip4844Config? eip4844ConstantsProvider = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
             _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
+            _stateReader = stateReader;
             _eip4844Config = eip4844ConstantsProvider ?? ConstantEip4844Config.Instance;
         }
 
@@ -163,7 +163,8 @@ namespace Nethermind.Consensus.Producers
                 if (token.IsCancellationRequested) return;
 
                 // Retrieve the sender's account to get the first expected nonce
-                _stateReader.TryGetAccount(parent.StateRoot, group.Key, out var account);
+                AccountStruct account = default;
+                _stateReader?.TryGetAccount(parent.StateRoot, group.Key, out account);
                 UInt256 expectedNonce = account.Nonce;
 
                 bool removeTx = false;
