@@ -156,6 +156,10 @@ public class PayloadPreparationService : IPayloadPreparationService
             // Estimate when the next improvement attempt would complete if started now
             DateTimeOffset estimatedNextImprovementCompletion = DateTimeOffset.UtcNow + estimatedNextImprovementDuration;
             // Determine when we should have a good block built by (e.g., 85% of the slot duration)
+            // If we are in the last 85% of the block we will stop waiting between
+            // improvements as inclusion is very time sensitive and we don't know when
+            // GetPayload will be called; and instead we will rely on cancellation
+            // to stop improving.
             DateTimeOffset slotImprovementDeadline = startDateTime + _timePerSlot * 0.85;
             if (!token.IsCancellationRequested)
             {
@@ -163,17 +167,9 @@ public class PayloadPreparationService : IPayloadPreparationService
                 try
                 {
                     // Calculate the remaining time in the slot after the estimated completion of the next improvement
-                    TimeSpan remainingSlotTime = slotImprovementDeadline - estimatedNextImprovementCompletion;
-                    if (remainingSlotTime < TimeSpan.Zero)
-                    {
-                        // If we are in the last 85% of the block we will stop waiting between
-                        // improvements as inclusion is very time sensitive and we don't know when
-                        // GetPayload will be called; and instead we will rely on cancellation
-                        // to stop improving.
-                        remainingSlotTime = TimeSpan.Zero;
-                    }
+                    TimeSpan remainingSlotTime = PositiveOrZero(slotImprovementDeadline - estimatedNextImprovementCompletion);
                     // Calculate the remaining delay before starting the next improvement attempt
-                    TimeSpan remainingImprovementDelay = _improvementDelay - elapsedTimeSinceStart;
+                    TimeSpan remainingImprovementDelay = PositiveOrZero(_improvementDelay - elapsedTimeSinceStart);
                     // Adjust the wait time to be the lesser of the remaining slot time and the remaining improvement delay
                     TimeSpan adjustedWaitTime = remainingSlotTime > remainingImprovementDelay ? remainingImprovementDelay : remainingSlotTime;
 
@@ -211,6 +207,9 @@ public class PayloadPreparationService : IPayloadPreparationService
 
         return context;
     }
+
+    private static TimeSpan PositiveOrZero(TimeSpan t)
+        => t < TimeSpan.Zero ? TimeSpan.Zero : t;
 
     private void CleanupOldPayloads(object? sender, EventArgs e)
     {
