@@ -360,6 +360,9 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
+        // Used in testing to not have to wait for condition.
+        public event EventHandler OnMemoryPruneCompleted;
+
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
         {
             nodeStorage ??= _nodeStorage;
@@ -464,7 +467,8 @@ namespace Nethermind.Trie.Pruning
                             if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
                             long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
-                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
+                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested &&
+                                _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
                             {
                                 // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
                                 // usually faster to just SaveSnapshot causing most of the entry to be persisted.
@@ -496,6 +500,11 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
+                });
+
+                _pruningTask.ContinueWith((_) =>
+                {
+                    OnMemoryPruneCompleted?.Invoke(this, null!);
                 });
             }
         }
