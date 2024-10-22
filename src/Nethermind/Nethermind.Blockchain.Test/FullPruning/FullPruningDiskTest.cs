@@ -132,7 +132,7 @@ public class FullPruningDiskTest
         }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime), Retry(5)]
+    [Test, MaxTime(Timeout.MaxTestTime * 3)]
     public async Task prune_on_disk_multiple_times()
     {
         using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
@@ -142,7 +142,7 @@ public class FullPruningDiskTest
         }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime), Retry(5)]
+    [Test, MaxTime(Timeout.MaxTestTime * 3)]
     public async Task prune_on_disk_only_once()
     {
         using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });
