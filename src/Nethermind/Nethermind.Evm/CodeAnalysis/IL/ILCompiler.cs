@@ -47,16 +47,7 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
-        ushort[] jumpdests = Array.Empty<ushort>();
-        if (code.Length == 0)
-        {
-            method.Return();
-        }
-        else
-        {
-            jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
-        }
-
+        ushort[] jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
