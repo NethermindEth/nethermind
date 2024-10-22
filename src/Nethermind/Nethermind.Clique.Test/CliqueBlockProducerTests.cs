@@ -140,7 +140,7 @@ public class CliqueBlockProducerTests
                 stateProvider,
                 NullReceiptStorage.Instance,
                 transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(goerliSpecProvider, stateProvider),
                 nodeLogManager);
 
@@ -161,7 +161,7 @@ public class CliqueBlockProducerTests
                 minerStateProvider,
                 NullReceiptStorage.Instance,
                 minerTransactionProcessor,
-                new BeaconBlockRootHandler(minerTransactionProcessor),
+                new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
                 new BlockhashStore(goerliSpecProvider, minerStateProvider),
                 nodeLogManager);
 
