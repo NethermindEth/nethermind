@@ -510,13 +510,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             bool result = true;
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
-                vmState.WarmUp(address);
+                vmState.AccessTracker.WarmUp(address);
             }
 
-            if (vmState.IsCold(address) && !address.IsPrecompile(spec))
+            if (vmState.AccessTracker.IsCold(address) && !address.IsPrecompile(spec))
             {
                 result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
-                vmState.WarmUp(address);
+                vmState.AccessTracker.WarmUp(address);
             }
             else if (chargeForWarm)
             {
@@ -546,13 +546,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
-                vmState.WarmUp(in storageCell);
+                vmState.AccessTracker.WarmUp(in storageCell);
             }
 
-            if (vmState.IsCold(in storageCell))
+            if (vmState.AccessTracker.IsCold(in storageCell))
             {
                 result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
-                vmState.WarmUp(in storageCell);
+                vmState.AccessTracker.WarmUp(in storageCell);
             }
             else if (storageAccessType == StorageAccessType.SLOAD)
             {
@@ -2435,7 +2435,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
-            vmState.WarmUp(contractAddress);
+            vmState.AccessTracker.WarmUp(contractAddress);
         }
 
         _state.IncrementNonce(env.ExecutingAccount);

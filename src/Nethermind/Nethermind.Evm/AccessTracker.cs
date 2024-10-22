@@ -56,7 +56,7 @@ namespace Nethermind.Evm
             _accessedAddresses.Add(address);
         }
 
-        public void WarmUp(StorageCell storageCell)
+        public void WarmUp(in StorageCell storageCell)
         {
             _accessedStorageCells.Add(storageCell);
         }

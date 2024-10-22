@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.State;
 
 namespace Nethermind.Evm
@@ -234,14 +233,6 @@ namespace Nethermind.Evm
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
-
-        public bool IsCold(Address? address) => _accessTracker.IsCold(address);
-
-        public bool IsCold(in StorageCell storageCell) => _accessTracker.IsCold(storageCell);
-
-        public void WarmUp(Address address) => _accessTracker.WarmUp(address);
-
-        public void WarmUp(in StorageCell storageCell) => _accessTracker.WarmUp(storageCell);
 
         public void CommitToParent(EvmState parentState)
         {
