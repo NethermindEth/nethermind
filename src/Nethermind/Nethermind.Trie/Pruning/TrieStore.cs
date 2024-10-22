@@ -457,7 +457,7 @@ namespace Nethermind.Trie.Pruning
                         // otherwise, it may not fit the whole dirty cache.
                         // Additionally, if (WriteBufferSize * (WriteBufferNumber - 1)) is already more than 20% of pruning
                         // cache, it is likely that there are enough space for it on most time, except for syncing maybe.
-                        _nodeStorage.Flush();
+                        _nodeStorage.Flush(onlyWal: false);
                         lock (_dirtyNodesLock)
                         {
                             long start = Stopwatch.GetTimestamp();
@@ -793,8 +793,9 @@ namespace Nethermind.Trie.Pruning
             disposeQueue.CompleteAdding();
             Task.WaitAll(_disposeTasks);
 
-            // Dispose top level last in case something goes wrong, at least the root wont be stored
+            // Dispose top level last in case something goes wrong, at least the root won't be stored
             topLevelWriteBatch.Dispose();
+            _nodeStorage.Flush(onlyWal: true);
 
             long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             Metrics.SnapshotPersistenceTime = elapsedMilliseconds;

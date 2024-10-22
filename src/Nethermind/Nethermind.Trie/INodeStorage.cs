@@ -30,7 +30,8 @@ public interface INodeStorage
     /// <summary>
     /// Used by StateSync to make sure values are flushed.
     /// </summary>
-    void Flush();
+    /// <param name="onlyWal"></param>
+    void Flush(bool onlyWal);
     void Compact();
 
     public enum KeyScheme

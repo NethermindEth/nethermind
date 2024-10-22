@@ -86,7 +86,8 @@ namespace Nethermind.Db
             return _cache.ContainsKey(key);
         }
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear()
         {
             File.Delete(DbPath);

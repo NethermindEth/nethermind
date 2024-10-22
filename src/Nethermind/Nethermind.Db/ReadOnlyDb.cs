@@ -67,10 +67,10 @@ namespace Nethermind.Db
 
         public bool KeyExists(ReadOnlySpan<byte> key) => _memDb.KeyExists(key) || wrappedDb.KeyExists(key);
 
-        public void Flush()
+        public void Flush(bool onlyWal)
         {
-            wrappedDb.Flush();
-            _memDb.Flush();
+            wrappedDb.Flush(onlyWal);
+            _memDb.Flush(onlyWal);
         }
 
         public void Clear() => throw new InvalidOperationException();

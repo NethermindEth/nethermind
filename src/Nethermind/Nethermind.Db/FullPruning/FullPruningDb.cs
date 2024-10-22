@@ -145,11 +145,11 @@ namespace Nethermind.Db.FullPruning
         public IDb Innermost => this;
 
         // we need to flush both DB's
-        public void Flush()
+        public void Flush(bool onlyWal)
         {
-            _currentDb.Flush();
+            _currentDb.Flush(onlyWal);
             IDb? cloningDb = _pruningContext?.CloningDb;
-            cloningDb?.Flush();
+            cloningDb?.Flush(onlyWal);
         }
 
         // we need to clear both DB's
