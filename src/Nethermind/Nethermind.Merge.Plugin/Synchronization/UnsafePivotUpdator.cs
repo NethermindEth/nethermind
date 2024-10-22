@@ -47,7 +47,8 @@ public class UnsafePivotUpdator(
             {
                 long potentialPivotBlockNumber = (long)headBlockNumber - NumberOfBlocksBehindHeadForSettingPivot;
 
-                Hash256? potentialPivotBlockHash = await TryGetPotentialPivotBlockHashFromPeers(potentialPivotBlockNumber, cancellationToken);
+                Hash256? potentialPivotBlockHash = TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockNumber);
+                potentialPivotBlockHash ??= await TryGetPotentialPivotBlockHashFromPeers(potentialPivotBlockNumber, cancellationToken);
 
                 if (potentialPivotBlockHash is not null
                     && potentialPivotBlockHash != Keccak.Zero)
@@ -108,6 +109,23 @@ public class UnsafePivotUpdator(
         }
 
         return 0;
+    }
+
+    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(long potentialPivotBlockNumber)
+    {
+        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in block cache");
+
+        foreach (Block block in _blockCacheService.BlockCache.Values)
+        {
+            if (block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
+            {
+                if (_logger.IsInfo) _logger.Info($"Loaded potential pivot block {potentialPivotBlockNumber} from block cache. Hash: {block.Hash}");
+                return block.Hash;
+            }
+        }
+
+        if (_logger.IsDebug) _logger.Debug("Header of pivot block not found in block cache");
+        return null;
     }
 
     private async Task<Hash256?> TryGetPotentialPivotBlockHashFromPeers(long potentialPivotBlockNumber, CancellationToken cancellationToken)
