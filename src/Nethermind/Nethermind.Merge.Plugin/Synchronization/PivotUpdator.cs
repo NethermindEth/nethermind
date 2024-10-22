@@ -126,21 +126,12 @@ public class PivotUpdator
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        Hash256? potentialPivotBlockHash = await TryGetPotentialPivotBlockHash(cancellationToken);
+        (Hash256 Hash, long Number)? potentialPivotData = await TryCollectPivotData(cancellationToken);
 
-        if (potentialPivotBlockHash is null || potentialPivotBlockHash == Keccak.Zero)
-        {
-            return false;
-        }
-
-        long? potentialPivotBlockNumber = TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockHash);
-        potentialPivotBlockNumber ??= TryGetPotentialPivotBlockNumberFromBlockTree(potentialPivotBlockHash);
-        potentialPivotBlockNumber ??= await TryGetPotentialPivotBlockNumberFromPeers(potentialPivotBlockHash, cancellationToken);
-
-        return potentialPivotBlockNumber is not null && TryOverwritePivot(potentialPivotBlockHash, (long)potentialPivotBlockNumber);
+        return potentialPivotData is not null && TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
     }
 
-    protected virtual Task<Hash256?> TryGetPotentialPivotBlockHash(CancellationToken cancellationToken)
+    protected virtual async Task<(Hash256 Hash, long Number)?> TryCollectPivotData(CancellationToken cancellationToken)
     {
         // getting finalized block hash as it is safe, because can't be reorganized
         Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
@@ -148,47 +139,52 @@ public class PivotUpdator
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
             PrintWaitingForMessageFromCl();
-            return Task.FromResult<Hash256?>(null);
+            return null;
         }
 
         UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
-        return Task.FromResult<Hash256?>(finalizedBlockHash);
+
+        long? finalizedBlockNumber = TryGetFinalizedBlockNumberFromBlockCache(finalizedBlockHash);
+        finalizedBlockNumber ??= TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash);
+        finalizedBlockNumber ??= await TryGetFinalizedBlockNumberFromPeers(finalizedBlockHash, cancellationToken);
+
+        return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
     }
 
-    private long? TryGetPotentialPivotBlockNumberFromBlockCache(Hash256 potentialPivotBlockHash)
+    private long? TryGetFinalizedBlockNumberFromBlockCache(Hash256 finalizedBlockHash)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
-        if (_blockCacheService.BlockCache.TryGetValue(potentialPivotBlockHash, out Block? potentialPivotBlock))
+        if (_logger.IsDebug) _logger.Debug("Looking for finalized block in block cache");
+        if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
         {
-            if (HeaderValidator.ValidateHash(potentialPivotBlock.Header))
+            if (HeaderValidator.ValidateHash(finalizedBlock.Header))
             {
-                if (_logger.IsDebug) _logger.Debug("Found pivot block in block cache");
-                return potentialPivotBlock.Header.Number;
+                if (_logger.IsDebug) _logger.Debug("Found finalized block in block cache");
+                return finalizedBlock.Header.Number;
             }
-            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {potentialPivotBlock.Header.Hash} when expecting {potentialPivotBlockHash}");
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
         }
 
         return null;
     }
 
-    private long? TryGetPotentialPivotBlockNumberFromBlockTree(Hash256 potentialPivotBlockHash)
+    private long? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
-        BlockHeader? potentialPivotBlock = _blockTree.FindHeader(potentialPivotBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (potentialPivotBlock is not null)
+        if (_logger.IsDebug) _logger.Debug("Looking for header of finalized block in blockTree");
+        BlockHeader? finalizedBlock = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (finalizedBlock is not null)
         {
-            if (HeaderValidator.ValidateHash(potentialPivotBlock))
+            if (HeaderValidator.ValidateHash(finalizedBlock))
             {
-                if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
-                return potentialPivotBlock.Number;
+                if (_logger.IsDebug) _logger.Debug("Found header of finalized block in block tree");
+                return finalizedBlock.Number;
             }
-            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {potentialPivotBlock.Hash} when expecting {potentialPivotBlockHash}");
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedBlock.Hash} when expecting {finalizedBlockHash}");
         }
 
         return null;
     }
 
-    private async Task<long?> TryGetPotentialPivotBlockNumberFromPeers(Hash256 potentialPivotBlockHash, CancellationToken cancellationToken)
+    private async Task<long?> TryGetFinalizedBlockNumberFromPeers(Hash256 finalizedBlockHash, CancellationToken cancellationToken)
     {
         foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
         {
@@ -198,26 +194,26 @@ public class PivotUpdator
             }
             try
             {
-                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of pivot block {potentialPivotBlockHash}");
-                BlockHeader? potentialPivotBlock = await peer.SyncPeer.GetHeadBlockHeader(potentialPivotBlockHash, cancellationToken);
-                if (potentialPivotBlock is not null)
+                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of finalized block {finalizedBlockHash}");
+                BlockHeader? finalizedBlock = await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken);
+                if (finalizedBlock is not null)
                 {
-                    if (HeaderValidator.ValidateHash(potentialPivotBlock))
+                    if (HeaderValidator.ValidateHash(finalizedBlock))
                     {
-                        if (_logger.IsInfo) _logger.Info($"Received header of pivot block from peer {peer.SyncPeer.Node.ClientId}");
-                        return potentialPivotBlock.Number;
+                        if (_logger.IsInfo) _logger.Info($"Received header of finalized block from peer {peer.SyncPeer.Node.ClientId}");
+                        return finalizedBlock.Number;
                     }
-                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {potentialPivotBlock.Hash} when expecting {potentialPivotBlockHash}");
+                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedBlock.Hash} when expecting {finalizedBlockHash}");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
             {
-                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of pivot block {potentialPivotBlockHash}");
+                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of finalized block {finalizedBlockHash}");
                 if (_logger.IsDebug) _logger.Debug($"Exception in GetHeadBlockHeader request to peer {peer.SyncPeer.Node.ClientId}. {exception}");
             }
         }
 
-        PrintPotentialNewPivotAndWaiting(potentialPivotBlockHash.ToString());
+        PrintPotentialNewPivotAndWaiting(finalizedBlockHash.ToString());
         return null;
     }
 
