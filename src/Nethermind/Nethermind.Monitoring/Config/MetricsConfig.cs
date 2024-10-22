@@ -8,9 +8,12 @@ namespace Nethermind.Monitoring.Config
         public string ExposeHost { get; set; } = "+";
         public int? ExposePort { get; set; } = null;
         public bool Enabled { get; set; } = false;
+
         public bool CountersEnabled { get; set; } = false;
         public string PushGatewayUrl { get; set; } = "";
         public int IntervalSeconds { get; set; } = 5;
+
+        public int MinimalIntervalSeconds { get; set; } = 2;
         public string NodeName { get; set; } = "Nethermind";
         public bool EnableDbSizeMetrics { get; set; } = true;
     }

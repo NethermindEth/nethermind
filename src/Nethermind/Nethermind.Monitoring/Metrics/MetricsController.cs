@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -21,10 +22,18 @@ using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
+    /// <summary>
+    /// The metrics controller handles gathering metrics every <see cref="IMetricsConfig.IntervalSeconds"/>.
+    /// Additionally, it allows forcing an update by calling <see cref="ForceUpdate"/> that makes the wait interrupted and reporting executed immediately.
+    /// To do not flood the endpoint, <see cref="IMetricsConfig.MinimalIntervalSeconds"/> is configured so that report happens with a gap that is at least that big.
+    /// </summary>
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalSeconds;
-        private Timer _timer;
+        private readonly int _minIntervalSeconds;
+        private CancellationTokenSource _cts;
+        private TaskCompletionSource _wait = new();
+        private readonly object _waitLock = new();
         private readonly Dictionary<Type, (MemberInfo, string, Func<double>)[]> _membersCache = new();
         private readonly Dictionary<Type, DictionaryMetricInfo[]> _dictionaryCache = new();
         private readonly HashSet<Type> _metricTypes = new();
@@ -190,14 +199,85 @@ namespace Nethermind.Monitoring.Metrics
         public MetricsController(IMetricsConfig metricsConfig)
         {
             _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
+            _minIntervalSeconds = metricsConfig.MinimalIntervalSeconds == 0 ? 2 : metricsConfig.MinimalIntervalSeconds;
             _useCounters = metricsConfig.CountersEnabled;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+        public void StartUpdating(Action metricsUpdated)
+        {
+            _cts = new CancellationTokenSource();
+            Task.Run(() => RunLoop(_cts.Token));
 
-        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
+            return;
+            async Task RunLoop(CancellationToken ct)
+            {
+                var minDelay = TimeSpan.FromSeconds(_minIntervalSeconds);
+                TimeSpan waitTime = TimeSpan.FromSeconds(_intervalSeconds) - minDelay;
 
-        public void UpdateMetrics(object state)
+                while (ct.IsCancellationRequested == false)
+                {
+                    Task wait = GetForceUpdateWait();
+
+                    try
+                    {
+                        await Task.WhenAny(wait, Task.Delay(waitTime, ct));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+
+                    ResetForceUpdate();
+
+                    UpdateMetrics();
+
+                    // Inform about metrics updated
+                    metricsUpdated?.Invoke();
+
+                    if (ct.IsCancellationRequested == false)
+                    {
+                        // Always wait a minimal amount of time so that the metrics are not flooded
+                        try
+                        {
+                            await Task.Delay(minDelay, ct).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                        }
+                    }
+                }
+            }
+        }
+
+        public void ForceUpdate()
+        {
+            lock (_waitLock)
+            {
+                _wait.TrySetResult();
+            }
+        }
+
+        private Task GetForceUpdateWait()
+        {
+            lock (_waitLock)
+            {
+                return _wait.Task;
+            }
+        }
+
+        private void ResetForceUpdate()
+        {
+            lock (_waitLock)
+            {
+                if (_wait.Task.IsCompleted)
+                {
+                    _wait = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+            }
+        }
+
+        public void StopUpdating() => _cts.Cancel();
+
+        public void UpdateMetrics()
         {
             foreach (Action callback in _callbacks)
             {
@@ -229,12 +309,12 @@ namespace Nethermind.Monitoring.Metrics
                 if (info.LabelNames is null)
                 {
                     IDictionary dict = info.Dictionary;
-                    // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
-                    // impact the performance of whatever is updating the metrics.
-                    foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
+                    // It's fine that the key here need to call `ToString()`.
+                    // Better here then in the metrics, where it might impact the performance of whatever is updating the metrics.
+                    foreach (DictionaryEntry kvp in dict)
                     {
-                        string keyStr = keyObj.ToString();
-                        double value = Convert.ToDouble(dict[keyObj]);
+                        string keyStr = kvp.Key.ToString();
+                        double value = Convert.ToDouble(kvp.Value);
                         string gaugeName = GetGaugeNameKey(info.DictionaryName, keyStr);
 
                         if (ReplaceValueIfChanged(value, gaugeName) is null)
@@ -250,10 +330,10 @@ namespace Nethermind.Monitoring.Metrics
                 {
                     IDictionary dict = info.Dictionary;
                     string gaugeName = info.GaugeName;
-                    foreach (object key in dict.Keys)
+                    foreach (DictionaryEntry kvp in dict)
                     {
-                        double value = Convert.ToDouble(dict[key]);
-                        switch (key)
+                        double value = Convert.ToDouble(kvp.Value);
+                        switch (kvp.Key)
                         {
                             case IMetricLabels label:
                                 ReplaceValueIfChanged(value, gaugeName, label.Labels);
@@ -270,7 +350,7 @@ namespace Nethermind.Monitoring.Metrics
                                     break;
                                 }
                             default:
-                                ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                                ReplaceValueIfChanged(value, gaugeName, kvp.Key.ToString());
                                 break;
                         }
                     }

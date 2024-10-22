@@ -9,7 +9,6 @@ using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
 using Prometheus;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Monitoring
 {
@@ -22,7 +21,6 @@ namespace Nethermind.Monitoring
         private readonly string _exposeHost;
         private readonly int? _exposePort;
         private readonly string _nodeName;
-        private readonly bool _pushEnabled;
         private readonly string _pushGatewayUrl;
         private readonly int _intervalSeconds;
 
@@ -34,7 +32,6 @@ namespace Nethermind.Monitoring
             int? exposePort = metricsConfig.ExposePort;
             string nodeName = metricsConfig.NodeName;
             string pushGatewayUrl = metricsConfig.PushGatewayUrl;
-            bool pushEnabled = metricsConfig.Enabled;
             int intervalSeconds = metricsConfig.IntervalSeconds;
 
             _exposeHost = exposeHost;
@@ -43,7 +40,6 @@ namespace Nethermind.Monitoring
                 ? throw new ArgumentNullException(nameof(nodeName))
                 : nodeName;
             _pushGatewayUrl = pushGatewayUrl;
-            _pushEnabled = pushEnabled;
             _intervalSeconds = intervalSeconds <= 0
                 ? throw new ArgumentException($"Invalid monitoring push interval: {intervalSeconds}s")
                 : intervalSeconds;
@@ -54,8 +50,10 @@ namespace Nethermind.Monitoring
             _options = GetOptions();
         }
 
-        public async Task StartAsync()
+        public Task StartAsync()
         {
+            MetricPusher pusher = null;
+
             if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
             {
                 MetricPusherOptions pusherOptions = new MetricPusherOptions
@@ -78,16 +76,20 @@ namespace Nethermind.Monitoring
                         if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
                     }
                 };
-                MetricPusher metricPusher = new MetricPusher(pusherOptions);
 
-                metricPusher.Start();
+                pusher = new MetricPusher(pusherOptions);
+                pusher.Start();
             }
             if (_exposePort is not null)
             {
                 new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
             }
-            await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
+
+            _metricsController.StartUpdating(pusher != null ? pusher.ScheduleUpdatePush : null);
+
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+
+            return Task.CompletedTask;
         }
 
         public void AddMetricsUpdateAction(Action callback)
@@ -95,10 +97,14 @@ namespace Nethermind.Monitoring
             _metricsController.AddMetricsUpdateAction(callback);
         }
 
+        public void ForceUpdate()
+        {
+            _metricsController.ForceUpdate();
+        }
+
         public Task StopAsync()
         {
             _metricsController.StopUpdating();
-
             return Task.CompletedTask;
         }
 
