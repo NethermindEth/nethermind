@@ -710,7 +710,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
-            if (_lastCommitSet is {} lastCommitSet)
+            if (_lastCommitSet is { } lastCommitSet)
             {
                 Debug.Assert(lastCommitSet.IsSealed, "Not sealed when beginning new block");
 
