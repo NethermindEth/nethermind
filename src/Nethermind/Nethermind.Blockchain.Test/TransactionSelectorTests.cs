@@ -241,6 +241,9 @@ namespace Nethermind.Blockchain.Test
             Dictionary<AddressAsKey, Transaction[]> blobTransactions = GroupTransactions(true);
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
+            transactionPool.GetPendingTransactions().Returns(transactions.SelectMany((group) => group.Value).ToArray());
+            transactionPool.GetPendingBlobTransactions().Returns(blobTransactions.SelectMany((group) => group.Value).ToArray());
+
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
                 transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
