@@ -2,209 +2,584 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
-using System.Text.Json;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
-using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.Synchronization.ParallelSync;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
+using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
+// Tests with mocked IDebugBridge
 [Parallelizable(ParallelScope.Self)]
 public class DebugModuleTests
 {
-    private class Context : IDisposable
+    private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
+    private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+    private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+    private readonly MemDb _blocksDb = new();
+
+    [Test]
+    public async Task Get_from_db()
     {
-        public IDebugRpcModule DebugRpcModule { get; }
-        public TestRpcBlockchain Blockchain { get; }
+        byte[] key = new byte[] { 1, 2, 3 };
+        byte[] value = new byte[] { 4, 5, 6 };
+        debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
 
-        private Context(TestRpcBlockchain blockchain, IDebugRpcModule debugRpcModule)
-        {
-            DebugRpcModule = debugRpcModule;
-            Blockchain = blockchain;
-        }
 
-        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
-        {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+        IConfigProvider configProvider = Substitute.For<IConfigProvider>();
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response =
+            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as JsonRpcSuccessResponse;
 
-            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();
-            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            var factory = new DebugModuleFactory(
-                blockchain.WorldStateManager,
-                blockchain.DbProvider,
-                blockchain.BlockTree,
-                blockchain.RpcConfig,
-                blockchain.BlockValidator,
-                blockchain.BlockPreprocessorStep,
-                NoBlockRewards.Instance,
-                blockchain.ReceiptStorage,
-                receiptsMigration,
-                configProvider,
-                blockchain.SpecProvider,
-                syncModeSelector,
-                new BlockStore(blockchain.BlocksDb),
-                new FileSystem(),
-                blockchain.LogManager
-            );
-
-            IDebugRpcModule debugRpcModule = factory.Create();
-
-            return new(blockchain, debugRpcModule);
-        }
-
-        public void Dispose() => Blockchain.Dispose();
+        byte[]? result = response?.Result as byte[];
     }
 
     [Test]
-    public async Task Debug_traceCall_fails_when_not_enough_balance()
+    public async Task Get_from_db_null_value()
     {
-        using Context ctx = await Context.Create();
+        debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null!);
 
-        Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether(), send = balance / 2;
+        IConfigProvider configProvider = Substitute.For<IConfigProvider>();
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        byte[] key = new byte[] { 1, 2, 3 };
+        using var response =
+            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as
+                JsonRpcSuccessResponse;
 
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
-        );
+        Assert.That(response, Is.Not.Null);
+    }
 
-        response.Should().BeOfType<JsonRpcErrorResponse>()
-            .Which.Error?.Message?.Should().Contain("insufficient funds");
+    [TestCase(1)]
+    [TestCase(0x1)]
+    public async Task Get_chain_level(object parameter)
+    {
+        debugBridge.GetLevelInfo(1).Returns(
+            new ChainLevelInfo(
+                true,
+                new[]
+                {
+                    new BlockInfo(TestItem.KeccakA, 1000),
+                    new BlockInfo(TestItem.KeccakB, 1001),
+                }));
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
+        var chainLevel = response?.Result as ChainLevelForRpc;
+        Assert.That(chainLevel, Is.Not.Null);
+        Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
+        Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
     }
 
     [Test]
-    public async Task Debug_traceCall_runs_on_top_of_specified_block()
+    public async Task Get_block_rlp_by_hash()
     {
-        using Context ctx = await Context.Create();
-        TestRpcBlockchain blockchain = ctx.Blockchain;
+        BlockDecoder decoder = new();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
-        Address address = Build.An.Address.TestObject;
-        UInt256 balance = 100.Ether();
-
-        await blockchain.AddFunds(address, balance / 2);
-        await blockchain.AddFunds(address, balance / 2);
-        Hash256 lastBlockHash = blockchain.BlockTree.Head!.Hash!;
-
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { from = $"{address}", to = $"{TestItem.AddressC}", value = balance.ToString("X") },
-            $"{lastBlockHash}"
-        );
-
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcSuccessResponse;
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
-    [TestCase(
-        "Nonce override doesn't cause failure",
-        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""",
-        """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"nonce":"0x123"}}"""
-    )]
-    [TestCase(
-        "Uses account balance from state override",
-        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","value":"0x100"}""",
-        """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"0x100"}}"""
-    )]
-    [TestCase(
-        "Executes code from state override",
-        """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000","input":"0xf8b2cb4f000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099"}""",
-        """{"0xc200000000000000000000000000000000000000":{"code":"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033"}}""",
-        "00000000000000000000000000000000000000000000003635c9adc5de9f09e5"
-    )]
-    [TestCase(
-        "Executes precompile using overriden address",
-        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"}""",
-        """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}""",
-        "000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099"
-    )]
-    public async Task Debug_traceCall_with_state_override(string name, string transactionJson, string stateOverrideJson, string? expectedValue = null)
+    [Test]
+    public async Task Get_raw_Header()
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        HeaderDecoder decoder = new();
+        Block blk = Build.A.Block.WithNumber(0).TestObject;
+        Rlp rlp = decoder.Encode(blk.Header);
+        debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
-        using Context ctx = await Context.Create();
-
-        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_traceCall",
-            transaction, null, new { stateOverrides = stateOverride }
-        );
-
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
-
-        if (expectedValue != null)
-            Convert.ToHexString(trace.ReturnValue).Should().BeEquivalentTo(expectedValue);
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", 0) as JsonRpcSuccessResponse;
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
-    [TestCase(
-        "When balance is overriden",
-        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f","value":"0x100"}""",
-        """{"0x7f554713be84160fdf0178cc8df86f5aabd33397":{"balance":"0x100"}}"""
-    )]
-    [TestCase(
-        "When address code is overriden",
-        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xf8b2cb4f000000000000000000000000b7705ae4c6f81b66cdb323c65f4e8133690fc099"}""",
-        """{"0xc200000000000000000000000000000000000000":{"code":"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033"}}"""
-    )]
-    [TestCase(
-        "When precompile address is changed",
-        """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"}""",
-        """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}"""
-    )]
-    public async Task debug_traceCall_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
+    [Test]
+    public async Task Get_block_rlp()
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        BlockDecoder decoder = new();
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        using Context ctx = await Context.Create();
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcSuccessResponse;
 
-        var resultOverrideBefore = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
+    public async Task Get_rawblock()
+    {
+        BlockDecoder decoder = new();
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcSuccessResponse;
+
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
+    public async Task Get_block_rlp_when_missing()
+    {
+        debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", 1) as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+    }
+
+    [Test]
+    public async Task Get_rawblock_when_missing()
+    {
+        debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", 1) as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+    }
+
+    [Test]
+    public async Task Get_block_rlp_by_hash_when_missing()
+    {
+        BlockDecoder decoder = new();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+    }
+
+    [Test]
+    public async Task Get_trace()
+    {
+        GethTxTraceEntry entry = new()
         {
-            stateOverrides = stateOverride,
-            enableMemory = false,
-            disableStorage = true,
-            disableStack = true,
-            tracer = "callTracer",
-            tracerConfig = new { withLog = false }
+            Storage = new Dictionary<string, string>
+            {
+                {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+                {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+            },
+            Memory = new string[]
+            {
+                "5".PadLeft(64, '0'),
+                "6".PadLeft(64, '0')
+            },
+            Stack = new string[]
+            {
+                "7".PadLeft(64, '0'),
+                "8".PadLeft(64, '0')
+            },
+            Opcode = "STOP",
+            Gas = 22000,
+            GasCost = 1,
+            Depth = 1
+        };
+
+        var trace = new GethLikeTxTrace();
+        trace.ReturnValue = Bytes.FromHexString("a2");
+        trace.Entries.Add(entry);
+
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new object());
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Get_js_trace()
+    {
+        GethLikeTxTrace trace = new() { CustomTracerResult = new GethLikeCustomTrace() { Value = new { CustomProperty = 1 } } };
+
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new object());
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"customProperty\":1},\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Get_trace_with_options()
+    {
+        GethTxTraceEntry entry = new()
+        {
+            Storage = new Dictionary<string, string>
+            {
+                {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+                {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+            },
+            Memory = new string[]
+            {
+                "5".PadLeft(64, '0'),
+                "6".PadLeft(64, '0')
+            },
+            Stack = new string[]
+            {
+            },
+            Opcode = "STOP",
+            Gas = 22000,
+            GasCost = 1,
+            Depth = 1
+        };
+
+
+        GethLikeTxTrace trace = new() { ReturnValue = Bytes.FromHexString("a2") };
+        trace.Entries.Add(entry);
+
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new { disableStack = true });
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
+    }
+
+    private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithBlocksDb(_blocksDb).WithBlockStore(new BlockStore(_blocksDb));
+        builder = builderOptions?.Invoke(builder) ?? builder;
+        return builder.TestObject;
+    }
+
+    [Test]
+    public void Debug_getBadBlocks_test()
+    {
+        IBlockStore badBlocksStore = null!;
+        BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BlockStore(b.BadBlocksDb)));
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+        Block block3 = Build.A.Block.WithNumber(2).WithDifficulty(4).WithParent(block2).TestObject;
+
+        blockTree.SuggestBlock(block0);
+        blockTree.SuggestBlock(block1);
+        blockTree.SuggestBlock(block2);
+        blockTree.SuggestBlock(block3);
+
+        blockTree.DeleteInvalidBlock(block1);
+
+        BlockDecoder decoder = new();
+        _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
+
+        debugBridge.GetBadBlocks().Returns(badBlocksStore.GetAll());
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+        Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        ResultWrapper<IEnumerable<BadBlock>> blocks = rpcModule.debug_getBadBlocks();
+        Assert.That(blocks.Data.Count, Is.EqualTo(1));
+        Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
+        Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+    }
+
+    [Test]
+    public async Task Get_trace_with_javascript_setup()
+    {
+        GethTraceOptions passedOption = null!;
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Do<GethTraceOptions>(arg => passedOption = arg))
+            .Returns(new GethLikeTxTrace());
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA, new { disableStack = true, tracerConfig = new { a = true } });
+        passedOption.TracerConfig!.ToString().Should().Be("{\"a\":true}");
+    }
+
+    [Test]
+    public void Debug_traceCall_test()
+    {
+        GethTxTraceEntry entry = new();
+
+        entry.Storage = new Dictionary<string, string>
+        {
+            {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+            {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+        };
+
+        entry.Memory = new string[]
+        {
+            "5".PadLeft(64, '0'),
+            "6".PadLeft(64, '0')
+        };
+
+        entry.Stack = new string[] { };
+        entry.Opcode = "STOP";
+        entry.Gas = 22000;
+        entry.GasCost = 1;
+        entry.Depth = 1;
+
+        var trace = new GethLikeTxTrace();
+        trace.ReturnValue = Bytes.FromHexString("a2");
+        trace.Entries.Add(entry);
+
+        GethTraceOptions gtOptions = new();
+
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
+        TransactionForRpc txForRpc = TransactionForRpc.FromTransaction(transaction);
+
+        debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
+        var expected = ResultWrapper<GethLikeTxTrace>.Success(
+            new GethLikeTxTrace()
+            {
+                Failed = false,
+                Entries = new List<GethTxTraceEntry>()
+                {
+                    new GethTxTraceEntry()
+                    {
+                        Gas = 22000,
+                        GasCost = 1,
+                        Depth = 1,
+                        Memory = new string[]
+                        {
+                            "0000000000000000000000000000000000000000000000000000000000000005",
+                            "0000000000000000000000000000000000000000000000000000000000000006"
+                        },
+                        Opcode = "STOP",
+                        ProgramCounter = 0,
+                        Stack = Array.Empty<string>(),
+                        Storage = new Dictionary<string, string>()
+                        {
+                            {
+                                "0000000000000000000000000000000000000000000000000000000000000001",
+                                "0000000000000000000000000000000000000000000000000000000000000002"
+                            },
+                            {
+                                "0000000000000000000000000000000000000000000000000000000000000003",
+                                "0000000000000000000000000000000000000000000000000000000000000004"
+                            },
+                        }
+                    }
+                },
+                Gas = 0,
+                ReturnValue = new byte[] { 162 }
+            }
+        );
+
+        debugTraceCall.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public async Task Migrate_receipts()
+    {
+        debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
+        IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        string response = await RpcTest.TestSerializedRequest(rpcModule, "debug_migrateReceipts", 100);
+        Assert.That(response, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Update_head_block()
+    {
+        debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
+        IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        await RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem.KeccakA);
+        debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
+    }
+
+    [Test]
+    public void TraceBlock_Success()
+    {
+        var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
+        var tracesClone = TestItem.CloneObject(traces);
+        var blockRlp = new Rlp(TestItem.RandomDataA);
+
+        debugBridge
+            .GetBlockTrace(blockRlp, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(traces);
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
+        var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void TraceBlock_Fail()
+    {
+        var blockRlp = new Rlp(TestItem.RandomDataA);
+
+        debugBridge
+            .GetBlockTrace(blockRlp, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(default(GethLikeTxTrace[]));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_traceBlock(blockRlp.Bytes);
+        var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.Bytes.ToHexString()}", ErrorCodes.ResourceNotFound);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void StandardTraceBlockToFile()
+    {
+        var blockHash = Keccak.EmptyTreeHash;
+
+        static IEnumerable<string> GetFileNames(Hash256 hash) =>
+            new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+
+        debugBridge
+            .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(c => GetFileNames(c.ArgAt<Hash256>(0)));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
+        var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void StandardTraceBadBlockToFile()
+    {
+        var blockHash = Keccak.EmptyTreeHash;
+
+        static IEnumerable<string> GetFileNames(Hash256 hash) =>
+            new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
+
+        debugBridge
+            .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(c => GetFileNames(c.ArgAt<Hash256>(0)));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_standardTraceBadBlockToFile(blockHash);
+        var expected = ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash));
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void TraceBlockByHash_Success()
+    {
+        var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
+        var tracesClone = TestItem.CloneObject(traces);
+        var blockHash = TestItem.KeccakA;
+
+        debugBridge
+            .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(traces);
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_traceBlockByHash(blockHash);
+        var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void TraceBlockByHash_Fail()
+    {
+        var blockHash = TestItem.KeccakA;
+
+        debugBridge
+            .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(default(GethLikeTxTrace[]));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_traceBlockByHash(blockHash);
+        var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void TraceBlockByNumber_Success()
+    {
+        var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
+        var tracesClone = TestItem.CloneObject(traces);
+        var blockNumber = BlockParameter.Latest;
+
+        debugBridge
+            .GetBlockTrace(blockNumber, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(traces);
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_traceBlockByNumber(blockNumber);
+        var expected = ResultWrapper<GethLikeTxTrace[]>.Success(tracesClone);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void TraceBlockByNumber_Fail()
+    {
+        var blockNumber = BlockParameter.Latest;
+
+        debugBridge
+            .GetBlockTrace(blockNumber, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(default(GethLikeTxTrace[]));
+
+        var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
+        var actual = rpcModule.debug_traceBlockByNumber(blockNumber);
+        var expected = ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
+
+        actual.Should().BeEquivalentTo(expected);
+    }
+
+    private static GethLikeTxTrace MockGethLikeTrace()
+    {
+        var trace = new GethLikeTxTrace { ReturnValue = new byte[] { 0xA2 } };
+
+        trace.Entries.Add(new GethTxTraceEntry
+        {
+            Depth = 1,
+            Gas = 22000,
+            GasCost = 1,
+            Memory = new string[]
+            {
+                "5".PadLeft(64, '0'),
+                "6".PadLeft(64, '0')
+            },
+            Opcode = "STOP",
+            ProgramCounter = 32,
+            Stack = new string[]
+            {
+                "7".PadLeft(64, '0'),
+                "8".PadLeft(64, '0')
+            },
+            Storage = new Dictionary<string, string>
+            {
+                {"1".PadLeft(64, '0'), "2".PadLeft(64, '0')},
+                {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
+            }
         });
 
-        var resultNoOverride = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
-        {
-            // configuration to minimize number of fields being compared
-            enableMemory = false,
-            disableStorage = true,
-            disableStack = true,
-            tracer = "callTracer",
-            tracerConfig = new { withLog = false }
-        });
-
-        var resultOverrideAfter = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", transaction, null, new
-        {
-            stateOverrides = stateOverride,
-            enableMemory = false,
-            disableStorage = true,
-            disableStack = true,
-            tracer = "callTracer",
-            tracerConfig = new { withLog = false }
-        });
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(resultOverrideBefore, Is.EqualTo(resultOverrideAfter), resultOverrideBefore.Replace("\"", "\\\""));
-            Assert.That(resultNoOverride, Is.Not.EqualTo(resultOverrideAfter), resultNoOverride.Replace("\"", "\\\""));
-        });
+        return trace;
     }
 }
