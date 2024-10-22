@@ -121,7 +121,7 @@ namespace Nethermind.Evm.Test
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.IsCold(storageCell).Should().BeFalse();
+            parentEvmState.AccessTracker.IsCold(storageCell).Should().BeFalse();
         }
 
         [Test]
@@ -170,7 +170,7 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.AccessTracker.WarmUp(Address.Zero);
+                evmState.AccessTracker.ToBeDestroyed(Address.Zero);
                 evmState.CommitToParent(parentEvmState);
             }
 
