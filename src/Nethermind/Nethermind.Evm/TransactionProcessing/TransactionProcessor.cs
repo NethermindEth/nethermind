@@ -278,7 +278,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
                     return false;
-                }                                
+                }
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))

@@ -16,7 +16,7 @@ namespace Nethermind.Evm
         public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
         public ICollection<LogEntry> Logs => _logs;
         public IReadOnlySet<Address> DestroyList => _destroyList;
-        public IReadOnlySet<AddressAsKey> CreateList => _createList; 
+        public IReadOnlySet<AddressAsKey> CreateList => _createList;
         private JournalSet<Address> _accessedAddresses { get; }
         private JournalSet<StorageCell> _accessedStorageCells { get; }
         private JournalCollection<LogEntry> _logs { get; }
