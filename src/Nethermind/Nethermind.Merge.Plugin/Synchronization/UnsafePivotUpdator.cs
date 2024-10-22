@@ -33,7 +33,7 @@ public class UnsafePivotUpdator(
 
     private const int NumberOfBlocksBehindHeadForSettingPivot = 64;
 
-    protected override async Task<(Hash256 Hash, long Number)?> TryCollectPivotData(CancellationToken cancellationToken)
+    protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
         Hash256? headBlockHash = _beaconSyncStrategy.GetHeadBlockHash();

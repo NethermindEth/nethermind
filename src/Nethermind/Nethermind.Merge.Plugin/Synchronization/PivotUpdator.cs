@@ -126,12 +126,12 @@ public class PivotUpdator
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        (Hash256 Hash, long Number)? potentialPivotData = await TryCollectPivotData(cancellationToken);
+        (Hash256 Hash, long Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
 
         return potentialPivotData is not null && TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
     }
 
-    protected virtual async Task<(Hash256 Hash, long Number)?> TryCollectPivotData(CancellationToken cancellationToken)
+    protected virtual async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting finalized block hash as it is safe, because can't be reorganized
         Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
