@@ -534,14 +534,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.SenderAddress!);
 
                 if (spec.UseTxAccessLists)
-                {
                     accessTracker.WarmUp(tx.AccessList); // eip-2930
-                }
 
                 if (spec.AddCoinbaseToTxAccessList)
-                {
                     accessTracker.WarmUp(blCtx.Header.GasBeneficiary!);
-                }
 
                 //We assume eip-7702 must be active if it is a delegation 
                 if (delegationAddress is not null)

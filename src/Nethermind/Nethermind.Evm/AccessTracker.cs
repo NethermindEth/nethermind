@@ -27,6 +27,7 @@ namespace Nethermind.Evm
         private int _storageKeysSnapshots;
         private int _destroyListSnapshots;
         private int _logsSnapshots;
+
         public AccessTracker(AccessTracker? accessTracker = null)
         {
             if (accessTracker is not null)
