@@ -41,10 +41,11 @@ public class UnsafePivotUpdator(
         if (headBlockHash is not null
             && headBlockHash != Keccak.Zero)
         {
-            long headBlockNumber = await TryGetHeadBlockNumberFromPeers(headBlockHash, cancellationToken);
+            long? headBlockNumber = TryGetHeadBlockNumberFromBlockCache(headBlockHash);
+            headBlockNumber ??= await TryGetHeadBlockNumberFromPeers(headBlockHash, cancellationToken);
             if (headBlockNumber > NumberOfBlocksBehindHeadForSettingPivot)
             {
-                long potentialPivotBlockNumber = headBlockNumber - NumberOfBlocksBehindHeadForSettingPivot;
+                long potentialPivotBlockNumber = (long)headBlockNumber - NumberOfBlocksBehindHeadForSettingPivot;
 
                 Hash256? potentialPivotBlockHash = await TryGetPotentialPivotBlockHashFromPeers(potentialPivotBlockNumber, cancellationToken);
 
@@ -58,6 +59,22 @@ public class UnsafePivotUpdator(
         }
 
         PrintWaitingForMessageFromCl();
+        return null;
+    }
+
+    private long? TryGetHeadBlockNumberFromBlockCache(Hash256 headBlockHash)
+    {
+        if (_logger.IsDebug) _logger.Debug("Looking for head block in block cache");
+        if (_blockCacheService.BlockCache.TryGetValue(headBlockHash, out Block? headBlock))
+        {
+            if (HeaderValidator.ValidateHash(headBlock.Header))
+            {
+                if (_logger.IsDebug) _logger.Debug("Found head block in block cache");
+                return headBlock.Header.Number;
+            }
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {headBlock.Header.Hash} when expecting {headBlockHash}");
+        }
+
         return null;
     }
 

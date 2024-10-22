@@ -26,7 +26,7 @@ public class PivotUpdator
     private readonly ISyncModeSelector _syncModeSelector;
     protected readonly ISyncPeerPool _syncPeerPool;
     private readonly ISyncConfig _syncConfig;
-    private readonly IBlockCacheService _blockCacheService;
+    protected readonly IBlockCacheService _blockCacheService;
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
     protected readonly ILogger _logger;
