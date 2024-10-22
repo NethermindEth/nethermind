@@ -6,8 +6,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -17,21 +15,16 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Tracing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -44,42 +37,10 @@ public class TraceRpcModuleTests
         {
             JsonRpcConfig = new JsonRpcConfig();
             Blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
+
             await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
-            ReceiptsRecovery receiptsRecovery =
-                new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
-            IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
-            OverridableTxProcessingEnv txProcessingEnv =
-                new(Blockchain.OverridableWorldStateManager, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
-            IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
-
-            RewardCalculator rewardCalculatorSource = new(Blockchain.SpecProvider);
-
-            IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(scope.TransactionProcessor);
-
-            RpcBlockTransactionsExecutor rpcBlockTransactionsExecutor = new(scope.TransactionProcessor, scope.WorldState);
-            BlockProcessor.BlockValidationTransactionsExecutor executeBlockTransactionsExecutor = new(scope.TransactionProcessor,
-                scope.WorldState);
-
-            ReadOnlyChainProcessingEnv CreateChainProcessingEnv(IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor) => new(
-                scope,
-                Always.Valid,
-                Blockchain.BlockPreprocessorStep,
-                rewardCalculator,
-                Blockchain.ReceiptStorage,
-                Blockchain.SpecProvider,
-                Blockchain.BlockTree,
-                Blockchain.StateReader,
-                Blockchain.LogManager,
-                transactionsExecutor);
-
-            ReadOnlyChainProcessingEnv traceProcessingEnv = CreateChainProcessingEnv(rpcBlockTransactionsExecutor);
-            ReadOnlyChainProcessingEnv executeProcessingEnv = CreateChainProcessingEnv(executeBlockTransactionsExecutor);
-
-            Tracer tracer = new(scope.WorldState, traceProcessingEnv.ChainProcessor, executeProcessingEnv.ChainProcessor,
-                traceOptions: ProcessingOptions.TraceTransactions);
-            TraceRpcModule = new TraceRpcModule(receiptFinder, tracer, Blockchain.BlockFinder, JsonRpcConfig, txProcessingEnv);
 
             for (int i = 1; i < 10; i++)
             {
@@ -93,13 +54,30 @@ public class TraceRpcModuleTests
                 }
                 await Blockchain.AddBlock(transactions.ToArray());
             }
+
+            Factory = new(
+                Blockchain.OverridableWorldStateManager,
+                Blockchain.DbProvider,
+                Blockchain.BlockTree,
+                JsonRpcConfig,
+                Blockchain.BlockPreprocessorStep,
+                new RewardCalculator(Blockchain.SpecProvider),
+                Blockchain.ReceiptStorage,
+                Blockchain.SpecProvider,
+                Blockchain.PoSSwitcher,
+                Blockchain.LogManager
+            );
+
+            TraceRpcModule = Factory.Create();
         }
 
         public ITraceRpcModule TraceRpcModule { get; private set; } = null!;
+        public TraceModuleFactory Factory { get; private set; } = null!;
         public IJsonRpcConfig JsonRpcConfig { get; private set; } = null!;
         public TestRpcBlockchain Blockchain { get; set; } = null!;
 
     }
+
     [Test]
     public async Task Tx_positions_are_fine()
     {
