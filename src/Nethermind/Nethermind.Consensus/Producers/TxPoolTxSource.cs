@@ -23,7 +23,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class TxPoolTxSource : ITxSource
+    public class TxPoolTxSource : ITxSource, ITxSourceNotifier
     {
         private readonly ITxPool _transactionPool;
         private readonly ITransactionComparerProvider _transactionComparerProvider;
@@ -32,6 +32,8 @@ namespace Nethermind.Consensus.Producers
         private readonly IStateReader? _stateReader;
         protected readonly ILogger _logger;
         private readonly IEip4844Config _eip4844Config;
+
+        public event EventHandler<TxEventArgs> NewPendingTransactions;
 
         public TxPoolTxSource(
             ITxPool? transactionPool,
@@ -49,7 +51,14 @@ namespace Nethermind.Consensus.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
             _stateReader = stateReader;
             _eip4844Config = eip4844ConstantsProvider ?? ConstantEip4844Config.Instance;
+            _transactionPool.NewPending += TransactionPool_NewPending;
         }
+
+        private void TransactionPool_NewPending(object? sender, TxEventArgs e)
+            => NewPendingTransactions?.Invoke(sender, e);
+
+        public bool IsInterestingTx(Transaction tx, BlockHeader parent)
+            => _txFilterPipeline.Execute(tx, parent);
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
@@ -165,9 +174,15 @@ namespace Nethermind.Consensus.Producers
                 if (token.IsCancellationRequested) return;
 
                 // Retrieve the sender's account to get the first expected nonce
-                AccountStruct account = default;
-                _stateReader?.TryGetAccount(parent.StateRoot, group.Key, out account);
-                UInt256 expectedNonce = account.Nonce;
+                UInt256 expectedNonce;
+                if (_stateReader is not null && _stateReader.TryGetAccount(parent.StateRoot, group.Key, out AccountStruct account))
+                {
+                    expectedNonce = account.Nonce;
+                }
+                else
+                {
+                    expectedNonce = order[0].Nonce;
+                }
 
                 bool removeTx = false;
                 // Iterate over the transactions to validate nonce sequence and remove invalid ones

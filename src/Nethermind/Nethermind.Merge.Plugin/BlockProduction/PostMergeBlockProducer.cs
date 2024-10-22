@@ -18,8 +18,10 @@ using System.Threading;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
-    public class PostMergeBlockProducer : BlockProducerBase
+    public class PostMergeBlockProducer : BlockProducerBase, ITxSourceNotifier
     {
+        private readonly ITxSourceNotifier? _notifier;
+
         public PostMergeBlockProducer(
             ITxSource txSource,
             IBlockchainProcessor processor,
@@ -45,7 +47,25 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 miningConfig
             )
         {
+            if (txSource is ITxSourceNotifier notifier)
+            {
+                _notifier = notifier;
+                notifier.NewPendingTransactions += Notifier_NewPending;
+                SupportsNotifications = true;
+            }
         }
+
+        public bool SupportsNotifications { get; }
+
+        private void Notifier_NewPending(object? sender, TxPool.TxEventArgs e)
+        {
+            NewPendingTransactions?.Invoke(sender, e);
+        }
+
+        public bool IsInterestingTx(Transaction tx, BlockHeader parent)
+            => _notifier?.IsInterestingTx(tx, parent) ?? true;
+
+        public event EventHandler<TxPool.TxEventArgs>? NewPendingTransactions;
 
         public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {

@@ -42,6 +42,7 @@ public class PayloadPreparationService : IPayloadPreparationService
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
     private CancellationTokenSource _tokenSource = new();
+    TaskCompletionSource _newPendingTxWaiter = new TaskCompletionSource();
     private bool _isDisposed;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
@@ -66,7 +67,23 @@ public class PayloadPreparationService : IPayloadPreparationService
         timer.Elapsed += CleanupOldPayloads;
         timer.Start();
 
+        if (blockProducer.SupportsNotifications)
+        {
+            blockProducer.NewPendingTransactions += BlockProducer_NewPendingTransactions;
+        }
+
         _logger = logManager.GetClassLogger();
+    }
+
+    private BlockHeader? _currentParent;
+
+    private void BlockProducer_NewPendingTransactions(object? sender, TxPool.TxEventArgs e)
+    {
+        // Ignore tx if gas is too low to run
+        if (_currentParent is null || _blockProducer.IsInterestingTx(e.Transaction, _currentParent))
+        {
+            _newPendingTxWaiter.TrySetResult();
+        }
     }
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
@@ -75,7 +92,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         if (!_isDisposed && !_payloadStorage.ContainsKey(payloadId))
         {
             CancellationTokenSource tokenSource = CancelOngoingImprovements();
-
+            _currentParent = parentHeader;
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes, tokenSource.Token);
             ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, _tokenSource.Token);
         }
@@ -162,6 +179,13 @@ public class PayloadPreparationService : IPayloadPreparationService
 
                     // Wait for the adjusted time or until cancellation is requested
                     await Task.Delay(adjustedWaitTime, token);
+                    if (_blockProducer.SupportsNotifications)
+                    {
+                        await Task.WhenAny(_newPendingTxWaiter.Task, token.AsTask());
+                        // Rearm the txPool listener
+                        _newPendingTxWaiter = new TaskCompletionSource();
+                    }
+
                     // Proceed if not cancelled and the context is still valid
                     if (!token.IsCancellationRequested && !context.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
                     {
