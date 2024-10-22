@@ -2751,25 +2751,29 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         stack.PopUInt256(out UInt256 dataOffset);
         stack.PopUInt256(out UInt256 dataLength);
 
+        UInt256 transferValue;
         UInt256 callValue;
         switch (instruction)
         {
             case Instruction.EXTSTATICCALL:
+                transferValue = UInt256.Zero;
                 callValue = UInt256.Zero;
                 break;
             case Instruction.EXTDELEGATECALL:
+                transferValue = UInt256.Zero;
                 callValue = env.Value;
                 break;
             default: // Instruction.EXTCALL
-                stack.PopUInt256(out callValue);
+                stack.PopUInt256(out transferValue);
+                callValue = transferValue;
                 break;
         }
 
         // 3. If value is non-zero:
         //  a: Halt with exceptional failure if the current frame is in static-mode.
-        if (vmState.IsStatic && !callValue.IsZero) return EvmExceptionType.StaticCallViolation;
+        if (vmState.IsStatic && !transferValue.IsZero) return EvmExceptionType.StaticCallViolation;
         //  b. Charge CALL_VALUE_COST gas.
-        if (!callValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        if (instruction == Instruction.EXTCALL && !transferValue.IsZero && !UpdateGas(GasCostOf.CallValue, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         // 4. If target_address has any of the high 12 bytes set to a non-zero value
         // (i.e. it does not contain a 20-byte address)
@@ -2792,7 +2796,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, false, spec)) return EvmExceptionType.OutOfGas;
 
         if ((!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(codeSource))
-            || (spec.ClearEmptyAccountWhenTouched && callValue != 0 && _state.IsDeadAccount(codeSource)))
+            || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(codeSource)))
         {
             // 7. If target_address is not in the state and the call configuration would result in account creation,
             //    charge ACCOUNT_CREATION_COST (25000) gas. (The only such case in this EIP is if value is non-zero.)
@@ -2807,7 +2811,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         //  b: Balance of the current account is less than value.
         //  c: Current call stack depth equals 1024.
         if (callGas < GasCostOf.CallStipend ||
-            (!callValue.IsZero && _state.GetBalance(env.ExecutingAccount) < callValue) ||
+            (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue) ||
             env.CallDepth >= MaxCallDepth)
         {
             returnData = CallResult.BoxedEmpty;
@@ -2832,7 +2836,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             _logger.Trace($"caller {caller}");
             _logger.Trace($"target {codeSource}");
-            _logger.Trace($"value {callValue}");
+            _logger.Trace($"transferValue {transferValue}");
+            _logger.Trace($"callValue {callValue}");
         }
 
         ICodeInfo targetCodeInfo = vmState.Env.TxExecutionContext.CodeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec);
@@ -2858,7 +2863,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = _state.TakeSnapshot();
-        _state.SubtractFromBalance(caller, callValue, spec);
+        _state.SubtractFromBalance(caller, transferValue, spec);
 
         ExecutionEnvironment callEnv = new
         (
@@ -2867,7 +2872,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             caller: caller,
             codeSource: codeSource,
             executingAccount: target,
-            transferValue: callValue,
+            transferValue: transferValue,
             value: callValue,
             inputData: callData,
             codeInfo: targetCodeInfo
