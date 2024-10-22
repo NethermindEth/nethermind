@@ -90,7 +90,7 @@ public class PaprikaStateFactory : IStateFactory
         GetKey(index, bytes);
 
         bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(bytes), bytes);
-        return Materialize(bytes);
+        return MaterializeStorageValue(bytes);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
@@ -125,7 +125,11 @@ public class PaprikaStateFactory : IStateFactory
     }
 
     //TODO: optimize by removing materialization and replacing it with value capturing construct like Vector256
-    private static ReadOnlySpan<byte> Materialize(scoped ReadOnlySpan<byte> source) => source.ToArray();
+    private static ReadOnlySpan<byte> MaterializeStorageValue(scoped ReadOnlySpan<byte> value)
+    {
+        return value.IsEmpty ? StorageTree.EmptyBytes : value.ToArray();
+    }
+
     static PaprikaStateFactory()
     {
         Span<byte> buffer = stackalloc byte[32];
@@ -181,14 +185,14 @@ public class PaprikaStateFactory : IStateFactory
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
             bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return Materialize(bytes);
+            return MaterializeStorageValue(bytes);
         }
 
         public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
             bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return Materialize(bytes);
+            return MaterializeStorageValue(bytes);
         }
 
         public Hash256 StateRoot => Convert(wrapped.Hash);
@@ -226,7 +230,7 @@ public class PaprikaStateFactory : IStateFactory
             GetKey(cell.Index, bytes);
 
             bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return Materialize(bytes);
+            return MaterializeStorageValue(bytes);
         }
 
         [SkipLocalsInit]
@@ -234,7 +238,7 @@ public class PaprikaStateFactory : IStateFactory
         {
             Span<byte> bytes = stackalloc byte[32];
             bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return Materialize(bytes);
+            return MaterializeStorageValue(bytes);
         }
 
         [SkipLocalsInit]
@@ -243,6 +247,11 @@ public class PaprikaStateFactory : IStateFactory
             Span<byte> key = stackalloc byte[32];
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
+
+            // mimics StorageTree.SetInternal
+            if (value.IsZero())
+                value = ReadOnlySpan<byte>.Empty;
+
             wrapped.SetStorage(converted, new PaprikaKeccak(key), value);
         }
 

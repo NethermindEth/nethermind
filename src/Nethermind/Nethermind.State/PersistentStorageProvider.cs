@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -296,8 +297,10 @@ namespace Nethermind.State
         {
             Db.Metrics.IncrementStorageTreeReads();
 
+            ReadOnlySpan<byte> value = _owner.State.GetStorageAt(storageCell);
+
             // TODO: remove ToArray materialization
-            return _owner.State.GetStorageAt(storageCell).ToArray();
+            return value.ToArray();
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
