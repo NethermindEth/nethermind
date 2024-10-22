@@ -687,7 +687,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _logger.Warn($"Flushing initiated");
                 _nodeStorage.Flush(onlyWal: false);
                 _codeDb.Flush();
 
