@@ -16,6 +16,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -58,10 +59,8 @@ public class MergePluginTests
             _context.LogManager!);
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
-        var chainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>();
-        chainSpecParametersProvider.GetChainSpecParameters<CliqueChainSpecEngineParameters>()
-            .Returns(
-                new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
+        var chainSpecParametersProvider = new TestChainSpecParametersProvider(new CliqueChainSpecEngineParameters
+            { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
         _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
         _plugin = new MergePlugin();
 

@@ -34,6 +34,7 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -118,17 +119,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             return base.Build(specProvider, initialValues, addBlockOnStart);
         }
 
-        [Ignore("FIX Later")]
         protected override IBlockProcessor CreateBlockProcessor()
         {
-            // TODO: fix later
             _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
                     new ChainSpec
                     {
-                        // AuRa = new()
-                        // {
-                        //     WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                        // },
+                        EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev,
                         Parameters = new()
                     })
             {
@@ -139,6 +135,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
             };
+            _api.ChainSpec.EngineChainSpecParametersProvider
+                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>().Returns(
+                    new AuthorityRoundChainSpecEngineParameters
+                    {
+                        WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                    });
 
             WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>(), _api.AbiEncoder);
