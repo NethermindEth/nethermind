@@ -496,7 +496,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         worldState.Restore(previousState.Snapshot);
                         _returnDataBuffer = callResult.Output.Bytes;
-                        previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.RevertBytes : StatusCode.FailureBytes;
+                        previousCallResult = previousState.ExecutionType.IsAnyCallEof()
+                            ? (callResult.PrecompileSuccess is not null ? EofStatusCode.FailureBytes : EofStatusCode.RevertBytes)
+                            : StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
