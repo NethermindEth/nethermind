@@ -279,10 +279,13 @@ public partial class EngineModuleTests
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
+        
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await Task.Delay(timePerSlot / 3);
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await Task.Delay(timePerSlot / 3);
 
-        await Task.Delay(timePerSlot / 2);
-
-        improvementContextFactory.CreatedContexts.Count.Should().BeInRange(3, 5);
+        improvementContextFactory.CreatedContexts.Count.Should().Be(3);
         improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(i => i.Disposed);
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
