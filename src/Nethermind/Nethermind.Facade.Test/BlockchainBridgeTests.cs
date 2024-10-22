@@ -72,11 +72,9 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
-            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
-            OverridableWorldStateManager worldStateManager =
-                new OverridableWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+            OverridableWorldStateManager worldStateManager = new(_dbProvider, trieStore, LimboLogs.Instance);
 
             IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
             TestReadOnlyTxProcessingEnv processingEnv = new(
@@ -209,11 +207,10 @@ namespace Nethermind.Facade.Test
         [TestCase(0)]
         public void Bridge_head_is_correct(long headNumber)
         {
-            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
             OverridableWorldStateManager worldStateManager =
-                new(dbProvider, trieStore, LimboLogs.Instance);
+                new(_dbProvider, trieStore, LimboLogs.Instance);
             IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
             OverridableTxProcessingEnv processingEnv = new(
                 worldStateManager,

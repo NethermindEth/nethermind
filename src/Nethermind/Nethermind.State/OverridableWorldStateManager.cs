@@ -10,7 +10,7 @@ namespace Nethermind.State;
 
 public class OverridableWorldStateManager : IWorldStateManager
 {
-    private readonly IDb _codeDb;
+    private readonly IReadOnlyDb _codeDb;
     private readonly StateReader _reader;
     private readonly WorldState _state;
 
@@ -23,7 +23,7 @@ public class OverridableWorldStateManager : IWorldStateManager
         OverlayTrieStore overlayTrieStore = new(dbProvider.StateDb, trieStore, logManager);
 
         _logManager = logManager;
-        _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
+        _codeDb = (IReadOnlyDb)dbProvider.GetDb<IDb>(DbNames.Code);
         _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
         _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
         _overlayTrieStore = overlayTrieStore;
