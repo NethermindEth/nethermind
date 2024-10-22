@@ -36,9 +36,16 @@ namespace Nethermind.Core.Extensions
                 source = Interlocked.CompareExchange(ref cancellationTokenSource, null, source);
                 if (source is not null)
                 {
-                    source.Cancel();
-                    source.Dispose();
-                    return true;
+                    try
+                    {
+                        source.Cancel();
+                        source.Dispose();
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
                 }
             }
 
