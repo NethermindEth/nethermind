@@ -110,6 +110,7 @@ public class PivotUpdator
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                _beaconSyncStrategy.AllowBeaconHeaderSync();
                 if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
             }
         }
@@ -249,6 +250,7 @@ public class PivotUpdator
         _syncConfig.PivotHash = finalizedBlockHash.ToString();
         _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
+        _beaconSyncStrategy.AllowBeaconHeaderSync();
     }
 
     protected void PrintWaitingForMessageFromCl()
