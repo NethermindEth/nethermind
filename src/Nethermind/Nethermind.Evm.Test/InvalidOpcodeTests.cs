@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -75,19 +76,8 @@ namespace Nethermind.Evm.Test
             ConstantinopleFixInstructions.Union(
                 new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
-        private static readonly Instruction[] BerlinInstructions =
-            IstanbulInstructions.Union(
-                // new[]
-                // {
-                //     Instruction.BEGINSUB,
-                //     Instruction.JUMPSUB,
-                //     Instruction.RETURNSUB
-                // }
-                new Instruction[] { }
-            ).ToArray();
-
         private static readonly Instruction[] LondonInstructions =
-            BerlinInstructions.Union(
+            IstanbulInstructions.Union(
                 new Instruction[]
                 {
                     Instruction.BASEFEE
@@ -114,7 +104,7 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
-        private static readonly Instruction[] PragueInstructions =
+        private static readonly Instruction[] OsakaInstructions =
             CancunInstructions.Union(
                 new Instruction[]
                 {
@@ -150,12 +140,13 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
                 {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
+                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
-                {MainnetSpecProvider.PragueActivation, PragueInstructions},
-                {(long.MaxValue, ulong.MaxValue), PragueInstructions}
+                {MainnetSpecProvider.PragueActivation, CancunInstructions},
+                {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
+                {(long.MaxValue, ulong.MaxValue), OsakaInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";

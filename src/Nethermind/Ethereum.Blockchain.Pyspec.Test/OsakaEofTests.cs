@@ -10,7 +10,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class PragueEofTests : EofTestBase
+public class OsakaEofTests : EofTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(EofTest test) => RunCITest(test);
@@ -19,9 +19,9 @@ public class PragueEofTests : EofTestBase
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
-            ArchiveName = "fixtures_eip7692.tar.gz",
-            ArchiveVersion = "eip7692@v1.1.1"
-        }, $"fixtures/eof_tests/prague");
+            ArchiveName = "fixtures_eip7692-osaka.tar.gz",
+            ArchiveVersion = "eip7692@v2.0.0"
+        }, $"fixtures/eof_tests/osaka");
         return loader.LoadTests().Cast<EofTest>().Select(t => new TestCaseData(t)
             .SetName(t.Name)
             .SetCategory(t.Category));

@@ -32,7 +32,7 @@ public class EofTestsRunner(ITestSourceLoader testsSource, string? filter) : Eof
             }
             else
             {
-                var result = new EthereumTestResult(test.Name, "Prague", RunTest(test));
+                var result = new EthereumTestResult(test.Name, "Osaka", RunTest(test));
                 testResults.Add(result);
                 if (result.Pass)
                     WriteGreen("PASS");
