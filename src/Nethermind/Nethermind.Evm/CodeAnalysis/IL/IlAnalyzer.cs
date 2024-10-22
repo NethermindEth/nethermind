@@ -156,6 +156,11 @@ public static class IlAnalyzer
 
                 segmentAvgSize += segment.Length;
 
+                if(segment.Length <= 1)
+                {
+                    continue;
+                }
+
                 var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2, vmConfig);
                 if (vmConfig.AggressiveJitMode)
                 {
@@ -169,8 +174,6 @@ public static class IlAnalyzer
                 {
                     ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
                 }
-
-                Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
             }
 
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
