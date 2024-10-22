@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 stateProvider,
                 NullReceiptStorage.Instance,
                 transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor),
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
                 LimboLogs.Instance);
 
