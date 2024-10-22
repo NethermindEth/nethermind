@@ -69,7 +69,7 @@ public class UnsafePivotUpdator(
         {
             if (HeaderValidator.ValidateHash(headBlock.Header))
             {
-                if (_logger.IsDebug) _logger.Debug("Found head block in block cache");
+                if (_logger.IsInfo) _logger.Info($"Loaded head block {headBlockHash} from block cache. Head block number: {headBlock.Header.Number}");
                 return headBlock.Header.Number;
             }
             if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {headBlock.Header.Hash} when expecting {headBlockHash}");
