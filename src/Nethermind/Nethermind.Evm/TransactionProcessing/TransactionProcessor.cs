@@ -252,17 +252,33 @@ namespace Nethermind.Evm.TransactionProcessing
                 AccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
-                if (authorizationTuple.Authority is null)
+                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                if (authorizationTuple.Authority is null
+                    || s > Secp256K1Curve.HalfN
+                    || (authorizationTuple.AuthoritySignature.V > 28 && authorizationTuple.AuthoritySignature.V < 37))
                 {
                     error = "Bad signature.";
                     return false;
                 }
-                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
+                if ((authorizationTuple.ChainId != 0
+                    && SpecProvider.ChainId != authorizationTuple.ChainId)
+                    )
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
                     return false;
                 }
 
+                if (authorizationTuple.AuthoritySignature.ChainId is not null && authorizationTuple.AuthoritySignature.ChainId != authorizationTuple.ChainId)
+                {
+                    error = "Bad signature.";
+                    return false;
+                }
+
+                if (authorizationTuple.Nonce == ulong.MaxValue)
+                {
+                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
+                    return false;
+                }
                 accessTracker.WarmUp(authorizationTuple.Authority);
 
                 if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(WorldState, authorizationTuple.Authority, out _))
@@ -539,7 +555,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (spec.AddCoinbaseToTxAccessList)
                     accessTracker.WarmUp(blCtx.Header.GasBeneficiary!);
 
-                //We assume eip-7702 must be active if it is a delegation 
+                //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)
                     accessTracker.WarmUp(delegationAddress);
             }
