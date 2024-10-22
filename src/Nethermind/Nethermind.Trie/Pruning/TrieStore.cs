@@ -699,14 +699,21 @@ namespace Nethermind.Trie.Pruning
             return prior ?? instance;
         }
 
+#if DEBUG
+        protected virtual void VerifyNewCommitSet(long blockNumber)
+        {
+            // TODO: this throws on reorgs, does it not? let us recreate it in test
+            Debug.Assert(_lastCommitSet == null || blockNumber == _lastCommitSet.BlockNumber + 1 || _lastCommitSet.BlockNumber == 0, "Newly begun block is not a successor of the last one.");
+            Debug.Assert(_lastCommitSet == null || _lastCommitSet.IsSealed, "Not sealed when beginning new block");
+        }
+#endif
+
         private BlockCommitSet CreateCommitSet(long blockNumber)
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
-            // TODO: this throws on reorgs, does it not? let us recreate it in test
 #if DEBUG
-            Debug.Assert(_lastCommitSet == null || blockNumber == _lastCommitSet.BlockNumber + 1 || _lastCommitSet.BlockNumber == 0, $"Newly begun block is not a successor of the last one.");
-            Debug.Assert(_lastCommitSet == null || _lastCommitSet.IsSealed, "Not sealed when beginning new block");
+            VerifyNewCommitSet(blockNumber);
 #endif
 
             BlockCommitSet commitSet = new(blockNumber);
