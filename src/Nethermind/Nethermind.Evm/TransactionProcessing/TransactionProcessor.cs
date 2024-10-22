@@ -546,11 +546,11 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (spec.UseHotAndColdStorage)
             {
-                accessTracker.WarmUp(recipient);
-                accessTracker.WarmUp(tx.SenderAddress!);
-
                 if (spec.UseTxAccessLists)
                     accessTracker.WarmUp(tx.AccessList); // eip-2930
+
+                accessTracker.WarmUp(recipient);
+                accessTracker.WarmUp(tx.SenderAddress!);
 
                 if (spec.AddCoinbaseToTxAccessList)
                     accessTracker.WarmUp(blCtx.Header.GasBeneficiary!);
