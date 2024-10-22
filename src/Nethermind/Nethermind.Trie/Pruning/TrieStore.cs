@@ -673,6 +673,10 @@ namespace Nethermind.Trie.Pruning
         private ConcurrentQueue<BlockCommitSet> CommitSetQueue =>
             (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue));
 
+#if DEBUG
+        private BlockCommitSet? _lastCommitSet = null;
+#endif
+
         private long _memoryUsedByDirtyCache;
 
         private int _committedNodesCount;
@@ -700,11 +704,18 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
             // TODO: this throws on reorgs, does it not? let us recreate it in test
-            Debug.Assert(!CommitSetQueue.TryPeek(out BlockCommitSet lastSet) || blockNumber == lastSet.BlockNumber + 1, $"Newly begun block is not a successor of the last one.");
-            Debug.Assert(!CommitSetQueue.TryPeek(out lastSet) || lastSet.IsSealed, "Not sealed when beginning new block");
+#if DEBUG
+            Debug.Assert(_lastCommitSet == null || blockNumber == _lastCommitSet.BlockNumber + 1 || _lastCommitSet.BlockNumber == 0, $"Newly begun block is not a successor of the last one.");
+            Debug.Assert(_lastCommitSet == null || _lastCommitSet.IsSealed, "Not sealed when beginning new block");
+#endif
 
             BlockCommitSet commitSet = new(blockNumber);
             CommitSetQueue.Enqueue(commitSet);
+
+#if DEBUG
+            _lastCommitSet = commitSet;
+#endif
+
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
             // Why are we announcing **before** committing next block??
             // Should it be after commit?
