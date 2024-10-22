@@ -2127,14 +2127,21 @@ internal class ILCompiler
 
         il.LoadLocalAddress(locals[0]);
         il.LoadConstant(Word.Size * sizeof(byte));
-        il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
-        il.BranchIfTrue(skipPop);
+        il.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
+        il.BranchIfFalse(skipPop);
 
-        il.LoadLocalAddress(locals[0]);
         il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[1]);
+        il.LoadLocalAddress(locals[1]);
+
+        il.LoadLocal(locals[0]);
         il.Call(Word.GetInt0);
+
         il.LoadLocalAddress(uint256R);
+
         il.Call(shiftOp);
+
         il.StackPop(stack.idx, 2);
         il.CleanWord(stack.span, stack.idx);
         il.Load(stack.span, stack.idx);
