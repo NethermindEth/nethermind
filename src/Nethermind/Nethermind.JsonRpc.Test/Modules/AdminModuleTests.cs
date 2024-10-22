@@ -96,8 +96,8 @@ public class AdminModuleTests
     {
         string unused0 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
         string unused1 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
-        string unused2 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, "true");
-        string unused3 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, "true");
+        string unused2 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, true);
+        string unused3 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, true);
         string unused4 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
     }
 }
