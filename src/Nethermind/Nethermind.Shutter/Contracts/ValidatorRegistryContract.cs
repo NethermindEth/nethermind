@@ -45,7 +45,14 @@ public class ValidatorRegistryContract(
         for (uint i = 0; i < updates; i++)
         {
             Update update = GetUpdate(header, updates - i - 1);
-            Message msg = new(update.Message.AsSpan()[..46]);
+
+            if (update.Message.Length != 46 || update.Signature.Length != 96)
+            {
+                if (_logger.IsDebug) _logger.Debug("Registration message was wrong length.");
+                continue;
+            }
+
+            Message msg = new(update.Message.AsSpan());
 
             // skip untracked validators
             if (!validatorsInfo.ContainsKey(msg.ValidatorIndex))
