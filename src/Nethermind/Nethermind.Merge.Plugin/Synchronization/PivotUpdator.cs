@@ -153,12 +153,12 @@ public class PivotUpdator
 
     private long? TryGetFinalizedBlockNumberFromBlockCache(Hash256 finalizedBlockHash)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for finalized block in block cache");
+        if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
         if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
         {
             if (HeaderValidator.ValidateHash(finalizedBlock.Header))
             {
-                if (_logger.IsDebug) _logger.Debug("Found finalized block in block cache");
+                if (_logger.IsDebug) _logger.Debug("Found pivot block in block cache");
                 return finalizedBlock.Header.Number;
             }
             if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
@@ -169,16 +169,16 @@ public class PivotUpdator
 
     private long? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for header of finalized block in blockTree");
-        BlockHeader? finalizedBlock = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (finalizedBlock is not null)
+        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
+        BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (finalizedHeader is not null)
         {
-            if (HeaderValidator.ValidateHash(finalizedBlock))
+            if (HeaderValidator.ValidateHash(finalizedHeader))
             {
-                if (_logger.IsDebug) _logger.Debug("Found header of finalized block in block tree");
-                return finalizedBlock.Number;
+                if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
+                return finalizedHeader.Number;
             }
-            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedBlock.Hash} when expecting {finalizedBlockHash}");
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
         }
 
         return null;
@@ -194,21 +194,21 @@ public class PivotUpdator
             }
             try
             {
-                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of finalized block {finalizedBlockHash}");
-                BlockHeader? finalizedBlock = await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken);
-                if (finalizedBlock is not null)
+                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of pivot block {finalizedBlockHash}");
+                BlockHeader? finalizedHeader = await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken);
+                if (finalizedHeader is not null)
                 {
-                    if (HeaderValidator.ValidateHash(finalizedBlock))
+                    if (HeaderValidator.ValidateHash(finalizedHeader))
                     {
-                        if (_logger.IsInfo) _logger.Info($"Received header of finalized block from peer {peer.SyncPeer.Node.ClientId}");
-                        return finalizedBlock.Number;
+                        if (_logger.IsInfo) _logger.Info($"Received header of pivot block from peer {peer.SyncPeer.Node.ClientId}");
+                        return finalizedHeader.Number;
                     }
-                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedBlock.Hash} when expecting {finalizedBlockHash}");
+                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
             {
-                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of finalized block {finalizedBlockHash}");
+                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of pivot block {finalizedBlockHash}");
                 if (_logger.IsDebug) _logger.Debug($"Exception in GetHeadBlockHeader request to peer {peer.SyncPeer.Node.ClientId}. {exception}");
             }
         }
