@@ -39,7 +39,6 @@ public class OverridableTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IOverrida
         _transactionProcessorLazy = new(CreateTransactionProcessor);
     }
 
-
     protected virtual ITransactionProcessor CreateTransactionProcessor() =>
         new TransactionProcessor(SpecProvider, StateProvider, Machine, CodeInfoRepository, LogManager);
 

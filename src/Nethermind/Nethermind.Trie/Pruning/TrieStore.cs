@@ -634,9 +634,6 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
-        /// <summary>
-        /// This method is here to support testing.
-        /// </summary>
         public void ClearCache()
         {
             foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)

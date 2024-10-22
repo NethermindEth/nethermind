@@ -31,6 +31,5 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOn
     }
 #endif
 
-    // TODO clarify is ClearCache is reliable enough to use
     public void ResetOverrides() => ClearCache();
 }
