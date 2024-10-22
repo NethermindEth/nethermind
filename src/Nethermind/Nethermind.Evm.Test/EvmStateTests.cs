@@ -26,8 +26,8 @@ namespace Nethermind.Evm.Test
         {
             EvmState evmState = CreateEvmState();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            evmState.IsCold(TestItem.AddressA).Should().BeTrue();
-            evmState.IsCold(storageCell).Should().BeTrue();
+            evmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeTrue();
+            evmState.AccessTracker.IsCold(storageCell).Should().BeTrue();
         }
 
         [Test]
@@ -35,9 +35,9 @@ namespace Nethermind.Evm.Test
         {
             EvmState evmState = CreateEvmState();
             Address address = TestItem.AddressA;
-            evmState.WarmUp(address);
-            evmState.WarmUp(address);
-            evmState.IsCold(address).Should().BeFalse();
+            evmState.AccessTracker.WarmUp(address);
+            evmState.AccessTracker.WarmUp(address);
+            evmState.AccessTracker.IsCold(address).Should().BeFalse();
         }
 
         [Test]
@@ -46,14 +46,14 @@ namespace Nethermind.Evm.Test
             EvmState evmState = CreateEvmState();
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                evmState.WarmUp(TestItem.Addresses[i]);
-                evmState.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
+                evmState.AccessTracker.WarmUp(TestItem.Addresses[i]);
+                evmState.AccessTracker.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
             }
 
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                evmState.IsCold(TestItem.Addresses[i]).Should().BeFalse();
-                evmState.IsCold(new StorageCell(TestItem.Addresses[i], 1)).Should().BeFalse();
+                evmState.AccessTracker.IsCold(TestItem.Addresses[i]).Should().BeFalse();
+                evmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)).Should().BeFalse();
             }
         }
 
@@ -63,9 +63,9 @@ namespace Nethermind.Evm.Test
             EvmState evmState = CreateEvmState();
             Address address = TestItem.AddressA;
             StorageCell storageCell = new(address, 1);
-            evmState.WarmUp(storageCell);
-            evmState.WarmUp(storageCell);
-            evmState.IsCold(storageCell).Should().BeFalse();
+            evmState.AccessTracker.WarmUp(storageCell);
+            evmState.AccessTracker.WarmUp(storageCell);
+            evmState.AccessTracker.IsCold(storageCell).Should().BeFalse();
         }
 
         [Test]
@@ -91,11 +91,11 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(TestItem.AddressA);
+                evmState.AccessTracker.WarmUp(TestItem.AddressA);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.IsCold(TestItem.AddressA).Should().BeFalse();
+            parentEvmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeFalse();
         }
 
         [Test]
@@ -104,10 +104,10 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(TestItem.AddressA);
+                evmState.AccessTracker.WarmUp(TestItem.AddressA);
             }
 
-            parentEvmState.IsCold(TestItem.AddressA).Should().BeTrue();
+            parentEvmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeTrue();
         }
 
         [Test]
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test
             StorageCell storageCell = new(TestItem.AddressA, 1);
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(storageCell);
+                evmState.AccessTracker.WarmUp(storageCell);
                 evmState.CommitToParent(parentEvmState);
             }
 
@@ -131,10 +131,10 @@ namespace Nethermind.Evm.Test
             StorageCell storageCell = new(TestItem.AddressA, 1);
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(storageCell);
+                evmState.AccessTracker.WarmUp(storageCell);
             }
 
-            parentEvmState.IsCold(storageCell).Should().BeTrue();
+            parentEvmState.AccessTracker.IsCold(storageCell).Should().BeTrue();
         }
 
         [Test]
