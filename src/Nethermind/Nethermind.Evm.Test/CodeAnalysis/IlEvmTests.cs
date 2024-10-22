@@ -1515,5 +1515,51 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Assert.That(tracedOpcodes.Count, Is.EqualTo(0));
         }
+
+        [Test]
+        public void Extra()
+        {
+            var bytecode = Prepare.EvmCode
+                .PushData("0x2213bc0b00000000000000000000000070bf6634ee8cb27d04478f184b9b8bb1")
+                .PushData("0xe0")
+                .SHR()
+                .Done;
+
+            var codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
+            var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
+            var txExCtx = new TxExecutionContext(blkExCtx, TestItem.AddressA, 23, [TestItem.KeccakH.Bytes.ToArray()], CodeInfoRepository);
+            var envExCtx = new ExecutionEnvironment(codeInfo, Recipient, Sender, Contract, new ReadOnlyMemory<byte>([1, 2, 3, 4, 5, 6, 7]), txExCtx, 23, 7);
+            var stack = new byte[1024 * 32];
+            var inputBuffer = envExCtx.InputData;
+            var returnBuffer =
+                new ReadOnlyMemory<byte>(Enumerable.Range(0, 32)
+                .Select(i => (byte)i).ToArray());
+
+            TestState.CreateAccount(Address.FromNumber(1), 1000000);
+            TestState.InsertCode(Address.FromNumber(1), bytecode, Prague.Instance);
+
+            var state = new EvmState(
+                1_000_000,
+                new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
+                ExecutionType.CALL,
+                isTopLevel: false,
+                Snapshot.Empty,
+                isContinuation: false);
+
+            IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
+
+            state.InitStacks();
+
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
+            var metadata = IlAnalyzer.StripByteCode(bytecode);
+            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2, config);
+            ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ctx.Data);
+
+            var tracedOpcodes = tracer.BuildResult().Entries;
+
+            Assert.That(tracedOpcodes.Count, Is.GreaterThan(0));
+        }
     }
 }

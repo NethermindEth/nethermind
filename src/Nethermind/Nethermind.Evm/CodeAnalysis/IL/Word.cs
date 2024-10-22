@@ -23,6 +23,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal struct Word
 {
     public const int Size = 32;
+    public const int FullSize = 256;
 
     [FieldOffset(0)] public unsafe fixed byte _buffer[Size];
 
@@ -178,7 +179,14 @@ internal struct Word
     {
         get
         {
-            return _uInt0;
+            if (BitConverter.IsLittleEndian)
+            {
+                return BinaryPrimitives.ReverseEndianness(_uInt0);
+            }
+            else
+            {
+                return _uInt0;
+            }
         }
         set
         {
@@ -197,7 +205,14 @@ internal struct Word
     {
         get
         {
-            return _sInt0;
+            if (BitConverter.IsLittleEndian)
+            {
+                return BinaryPrimitives.ReverseEndianness(_sInt0);
+            }
+            else
+            {
+                return _sInt0;
+            }
         }
         set
         {
@@ -216,7 +231,14 @@ internal struct Word
     {
         get
         {
-            return _ulong0;
+            if (BitConverter.IsLittleEndian)
+            {
+                return BinaryPrimitives.ReverseEndianness(_ulong0);
+            }
+            else
+            {
+                return _ulong0;
+            }
         }
         set
         {

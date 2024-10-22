@@ -45,7 +45,7 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
         ushort[] jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
@@ -2121,12 +2121,18 @@ internal class ILCompiler
 
         // Note: Use Vector256 directoly if UInt256 does not use it internally
         // we the two uint256 from the stack
+        Local shiftBit = il.DeclareLocal<uint>();
+
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
+        il.Duplicate();
+        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+        il.Convert<uint>();
+        il.StoreLocal(shiftBit);
         il.StoreLocal(locals[0]);
 
         il.LoadLocalAddress(locals[0]);
-        il.LoadConstant(Word.Size * sizeof(byte));
+        il.LoadConstant(Word.FullSize);
         il.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfFalse(skipPop);
 
@@ -2135,12 +2141,22 @@ internal class ILCompiler
         il.StoreLocal(locals[1]);
         il.LoadLocalAddress(locals[1]);
 
-        il.LoadLocal(locals[0]);
-        il.Call(Word.GetInt0);
+        il.LoadLocal(shiftBit);
 
         il.LoadLocalAddress(uint256R);
 
         il.Call(shiftOp);
+
+
+        string message = "I am here";
+
+        Local str = il.DeclareLocal<string>();
+        il.LoadConstant(message);
+        il.StoreLocal(str);
+        il.Print(locals[1]);
+        il.Print(shiftBit);
+        il.Print(uint256R);
+        il.Print(str);
 
         il.StackPop(stack.idx, 2);
         il.CleanWord(stack.span, stack.idx);
@@ -2151,6 +2167,7 @@ internal class ILCompiler
         il.Branch(endOfOpcode);
 
         il.MarkLabel(skipPop);
+
         il.StackPop(stack.idx, 2);
         il.CleanWord(stack.span, stack.idx);
         il.StackPush(stack.idx, 1);
@@ -2171,7 +2188,7 @@ internal class ILCompiler
         il.StoreLocal(locals[0]);
 
         il.LoadLocalAddress(locals[0]);
-        il.LoadConstant(Word.Size * sizeof(byte));
+        il.LoadConstant(Word.FullSize);
         il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfTrue(skipPop);
 
