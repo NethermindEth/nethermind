@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -72,10 +73,11 @@ namespace Nethermind.Consensus.Producers
             // Add valid blob transactions to the selected list
             selectedTxs.AddRange(blobTransactionSnapshot
                 .Where(tx =>
-                    tx.NetworkWrapper is not null && // Ensure the transaction has the blob
                     tx.SenderAddress is not null && // Ensure the transaction has a sender address
                     _txFilterPipeline.Execute(tx, parent) && // Pass the transaction through the filter pipeline
                     !tx.IsAboveInitCode(spec)) // Exclude transactions that exceed the init code size limit
+                .Select(tx => TryGetFullBlobTx(tx, out Transaction fullBlobTx) ? fullBlobTx : null) // Ensure the transaction has the blob
+                .Where(tx => tx is not null)
                 .DistinctBy((tx) => tx, ByHashTxComparer.Instance)); // Remove duplicate transactions based on their hash
 
             int checkedTransactions = selectedTxs.Count;
@@ -223,6 +225,8 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
+                checkedBlobTransactions++;
+
                 if (blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
@@ -234,8 +238,6 @@ namespace Nethermind.Consensus.Producers
                     selectedTxs[i] = null;
                     continue;
                 }
-
-                checkedBlobTransactions++;
 
                 ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
                 if (txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
@@ -281,6 +283,18 @@ namespace Nethermind.Consensus.Producers
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedBlobTransactions} out of {checkedBlobTransactions} pending blob transactions checked.");
+        }
+
+        private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
+        {
+            if (blobTx.NetworkWrapper is not null)
+            {
+                fullBlobTx = blobTx;
+                return true;
+            }
+
+            fullBlobTx = null;
+            return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
 
         private bool TryUpdateFeePerBlobGas(Transaction lightBlobTx, BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
