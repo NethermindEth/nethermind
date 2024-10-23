@@ -288,6 +288,8 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0,
             };
+        result.MaxBlobCount = parent.MaxBlobCount;
+        result.TargetBlobCount = parent.TargetBlobCount;
         result.Timestamp = parent.Timestamp + 1;
         result.BaseFeePerGas = block.BlockOverrides is { BaseFeePerGas: not null }
             ? block.BlockOverrides.BaseFeePerGas.Value
@@ -295,7 +297,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 ? 0
                 : BaseFeeCalculator.Calculate(parent, spec);
 
-        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
+        result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec, result) : (ulong?)0;
 
         return result;
     }
