@@ -71,7 +71,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         _logger = logManager.GetClassLogger();
     }
 
-    public virtual string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))

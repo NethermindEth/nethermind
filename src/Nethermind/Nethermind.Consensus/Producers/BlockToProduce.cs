@@ -13,7 +13,7 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Consensus.Producers
 {
-    public class BlockToProduce : Block
+    internal class BlockToProduce : Block
     {
         private IEnumerable<Transaction>? _transactions;
 

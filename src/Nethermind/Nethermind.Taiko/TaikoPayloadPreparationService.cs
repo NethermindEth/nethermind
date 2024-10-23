@@ -32,37 +32,38 @@ public class TaikoPayloadPreparationService(
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
 
-    public virtual string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         TaikoPayloadAttributes attrs = (payloadAttributes as TaikoPayloadAttributes)
             ?? throw new InvalidOperationException("Payload attributes have incorrect type. Expected TaikoPayloadAttributes.");
 
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
 
-        if (_payloadStorage.ContainsKey(payloadId))
-        {
-            if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
-        }
-        else
-        {
-            Block block = BuildBlock(parentHeader, attrs);
-            Hash256 parentStateRoot = parentHeader.StateRoot ?? throw new InvalidOperationException("Parent state root is null");
-            block = ProcessBlock(block, parentStateRoot);
+        _payloadStorage.AddOrUpdate(payloadId, (payloadId) =>
+            {
+                Block block = BuildBlock(parentHeader, attrs);
+                Hash256 parentStateRoot = parentHeader.StateRoot ?? throw new InvalidOperationException("Parent state root is null");
+                block = ProcessBlock(block, parentStateRoot);
 
-            // L1Origin **MUST NOT** be null, it's a required field in PayloadAttributes.
-            L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
+                // L1Origin **MUST NOT** be null, it's a required field in PayloadAttributes.
+                L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
 
-            // Set the block hash before inserting the L1Origin into database.
-            l1Origin.L2BlockHash = block.Hash;
+                // Set the block hash before inserting the L1Origin into database.
+                l1Origin.L2BlockHash = block.Hash;
 
-            // Write L1Origin.
-            l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
-            // Write the head L1Origin.
-            l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+                // Write L1Origin.
+                l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+                // Write the head L1Origin.
+                l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
 
-            // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
-            _payloadStorage.TryAdd(payloadId, new NoBlockProductionContext(block, UInt256.Zero));
-        }
+                // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
+                return new NoBlockProductionContext(block, UInt256.Zero);
+            },
+            (payloadId, existing) =>
+            {
+                if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+                return existing;
+            });
 
         return payloadId;
     }
