@@ -38,7 +38,6 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV
             else
             {
                 yield return null;
-
             }
         }
     }
