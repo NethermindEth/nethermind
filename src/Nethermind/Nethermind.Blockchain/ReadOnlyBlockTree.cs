@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -110,7 +109,7 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
-        public bool IsMainChain(Hash256 blockHash) => _wrapped.IsMainChain(blockHash);
+        public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) => _wrapped.IsMainChain(blockHash, throwOnMissingHash);
 
         public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 

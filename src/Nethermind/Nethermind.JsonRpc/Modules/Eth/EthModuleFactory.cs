@@ -2,21 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -33,7 +29,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IReceiptStorage receiptStorage,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle)
+        IFeeHistoryOracle feeHistoryOracle,
+        ulong secondsPerSlot)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
@@ -65,7 +62,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _specProvider,
                 _gasPriceOracle,
                 _ethSyncingInfo,
-                _feeHistoryOracle);
+                _feeHistoryOracle,
+                secondsPerSlot);
         }
     }
 }

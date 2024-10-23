@@ -9,7 +9,6 @@ ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 
-COPY .git .git
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \

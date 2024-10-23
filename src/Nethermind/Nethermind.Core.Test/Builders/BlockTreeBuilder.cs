@@ -383,7 +383,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
-            _ecdsa = new EthereumEcdsa(BlockTree.ChainId, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(BlockTree.ChainId);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

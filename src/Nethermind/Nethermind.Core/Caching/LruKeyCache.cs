@@ -78,16 +78,20 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        public void Delete(TKey key)
+        public bool Delete(TKey key)
         {
             using var lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
+                return _cacheMap.Remove(key);
             }
+
+            return false;
         }
+
+        public int Count => _cacheMap.Count;
 
         private void Replace(TKey key)
         {

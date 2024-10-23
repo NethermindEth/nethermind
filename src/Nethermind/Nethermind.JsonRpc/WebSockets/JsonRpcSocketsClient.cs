@@ -48,6 +48,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         base.Dispose();
         _sendSemaphore.Dispose();
+        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -57,7 +58,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public override async Task ProcessAsync(ArraySegment<byte> data)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
         IncrementBytesReceivedMetric(data.Count);
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data.Array!, data.Offset, data.Count));
         int allResponsesSize = 0;
@@ -66,23 +66,21 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             using (result)
             {
-                stopwatch.Restart();
-
                 int singleResponseSize = await SendJsonRpcResult(result);
                 allResponsesSize += singleResponseSize;
 
+                long startTime = Stopwatch.GetTimestamp();
+
                 if (result.IsCollection)
                 {
-                    long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                     _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
                 }
                 else
                 {
-                    long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                    long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                     _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
                 }
-
-                stopwatch.Restart();
             }
         }
 
@@ -137,7 +135,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                             responseSize += 1;
                         }
                         isFirst = false;
-                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                        responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, entry.Response, indented: false);
                         _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                         // We reached the limit and don't want to responded to more request in the batch

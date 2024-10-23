@@ -192,6 +192,14 @@ public class NodeStorage : INodeStorage
         }
     }
 
+    public void Compact()
+    {
+        if (_keyValueStore is IDb db)
+        {
+            db.Compact();
+        }
+    }
+
     private class WriteBatch : INodeStorage.WriteBatch
     {
         private readonly IWriteBatch _writeBatch;

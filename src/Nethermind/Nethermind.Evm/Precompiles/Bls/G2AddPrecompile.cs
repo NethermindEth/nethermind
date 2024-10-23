@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G2 = Nethermind.Crypto.Bls.P2;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -13,7 +15,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 {
-    public static G2AddPrecompile Instance = new G2AddPrecompile();
+    public static readonly G2AddPrecompile Instance = new();
 
     private G2AddPrecompile()
     {
@@ -21,37 +23,39 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0e);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 800L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 800L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    [SkipLocalsInit]
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 8 * BlsParams.LenFp;
+        Metrics.BlsG2AddPrecompile++;
+
+        const int expectedInputLength = 2 * BlsConst.LenG2;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
-        Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = Pairings.BlsG2Add(inputData.Span, output);
-        if (success)
+        G2 x = new(stackalloc long[G2.Sz]);
+        G2 y = new(stackalloc long[G2.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG2].Span) || !y.TryDecodeRaw(inputData[BlsConst.LenG2..].Span))
         {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
-        return result;
+        if (x.IsInf())
+        {
+            return (inputData[BlsConst.LenG2..], true);
+        }
+
+        if (y.IsInf())
+        {
+            return (inputData[..BlsConst.LenG2], true);
+        }
+
+        G2 res = x.Add(y);
+        return (res.EncodeRaw(), true);
     }
 }

@@ -9,8 +9,8 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Config;
@@ -99,12 +99,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
-
-        if (_perTableDbConfig.AdditionalRocksDbOptions is not null)
-        {
-            ApplyOptions(_perTableDbConfig.AdditionalRocksDbOptions);
-        }
-
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
     }
 
@@ -708,6 +702,20 @@ public class DbOnTheRocks : IDb, ITunableDb
             options.EnableStatistics();
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
+
+        if (dbConfig.AdditionalRocksDbOptions is not null)
+        {
+            IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
+            try
+            {
+                _rocksDbNative.rocksdb_get_options_from_string(options.Handle, optsPtr, options.Handle);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(optsPtr);
+            }
+        }
+
         #endregion
 
         #region read-write options
@@ -1491,7 +1499,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
                 // Its unclear if it improve or slow down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions((ulong)4.GiB()));
+                ApplyOptions(GetHeavyWriteOptions((ulong)2.GiB()));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // For when, you are desperate, but don't wanna disable compaction completely, because you don't want
@@ -1600,8 +1608,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         // but no io, only cpu.
         // bufferSize*maxBufferNumber = 128MB, which is the max memory used, which tend to be the case as its now
         // stalled by compaction instead of flush.
-        ulong bufferSize = (ulong)16.MiB();
-        ulong l0FileSize = bufferSize * (ulong)_perTableDbConfig.MinWriteBufferNumberToMerge;
+        // The buffer is not compressed unlike l0File, so to account for it, its size need to be slightly larger.
+        ulong targetFileSize = (ulong)16.MiB();
+        ulong bufferSize = (ulong)(targetFileSize / _perTableDbConfig.CompressibilityHint);
+        ulong l0FileSize = targetFileSize * (ulong)_perTableDbConfig.MinWriteBufferNumberToMerge;
         ulong maxBufferNumber = 8;
 
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,

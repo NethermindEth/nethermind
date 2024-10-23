@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection.Metadata;
 using System.Text;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -25,6 +24,10 @@ namespace Nethermind.Config
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+
+        public int BlockProductionTimeoutMs { get; set; } = 4_000;
+
+        public int GenesisTimeoutMs { get; set; } = 40_000;
 
         public string ExtraData
         {

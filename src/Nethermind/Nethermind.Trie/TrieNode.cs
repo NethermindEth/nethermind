@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -89,7 +88,7 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public long? LastSeen { get; set; }
+        public long LastSeen { get; set; } = -1;
 
         public byte[]? Key
         {
@@ -784,34 +783,20 @@ namespace Nethermind.Trie
             int nodeTypeSize = 1;
             /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
 
-            for (int i = 0; i < (_data?.Length ?? 0); i++)
+            object?[] data = _data;
+            if (data is not null)
             {
-                if (_data![i] is null)
+                for (int i = 0; i < data.Length; i++)
                 {
-                    continue;
-                }
-
-                if (_data![i] is Hash256)
-                {
-                    dataSize += Hash256.MemorySize;
-                }
-
-                if (_data![i] is byte[] array)
-                {
-                    dataSize += MemorySizes.ArrayOverhead + array.Length;
-                }
-
-                if (_data![i] is CappedArray<byte> cappedArray)
-                {
-                    dataSize += MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead;
-                }
-
-                if (recursive)
-                {
-                    if (_data![i] is TrieNode node)
+                    var child = data[i];
+                    dataSize += child switch
                     {
-                        dataSize += node.GetMemorySize(true);
-                    }
+                        null => 0,
+                        Hash256 => Hash256.MemorySize,
+                        byte[] array => MemorySizes.ArrayOverhead + array.Length,
+                        CappedArray<byte> cappedArray => MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead,
+                        _ => recursive && child is TrieNode node ? node.GetMemorySize(true) : 0
+                    };
                 }
             }
 
@@ -895,11 +880,18 @@ namespace Nethermind.Trie
             ITrieNodeResolver resolver,
             bool skipPersisted,
             in ILogger logger,
+            int maxPathLength = Int32.MaxValue,
             bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)
             {
                 if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
+                return;
+            }
+
+            if (currentPath.Length >= maxPathLength)
+            {
+                action(this, storageAddress, currentPath);
                 return;
             }
 
@@ -914,7 +906,7 @@ namespace Nethermind.Trie
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                             int previousLength = AppendChildPath(ref currentPath, i);
-                            child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger);
+                            child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger, maxPathLength, resolveStorageRoot);
                             currentPath.TruncateMut(previousLength);
                         }
                     }

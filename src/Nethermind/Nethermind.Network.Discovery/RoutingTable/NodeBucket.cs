@@ -44,9 +44,9 @@ public class NodeBucket
 
     public struct BondedItemsEnumerator : IEnumerator<NodeBucketItem>, IEnumerable<NodeBucketItem>
     {
-        private NodeBucket _nodeBucket;
+        private readonly NodeBucket _nodeBucket;
         private LinkedListNode<NodeBucketItem>? _currentNode;
-        private DateTime _referenceTime;
+        private readonly DateTime _referenceTime;
 
         public BondedItemsEnumerator(NodeBucket nodeBucket)
         {
@@ -61,7 +61,7 @@ public class NodeBucket
 
         public NodeBucketItem Current { get; private set; }
 
-        object IEnumerator.Current => Current;
+        readonly object IEnumerator.Current => Current;
 
         public bool MoveNext()
         {
@@ -84,15 +84,15 @@ public class NodeBucket
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose()
+        public readonly void Dispose()
         {
         }
-        public BondedItemsEnumerator GetEnumerator() => this;
+        public readonly BondedItemsEnumerator GetEnumerator() => this;
 
-        IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
+        readonly IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
             => GetEnumerator();
 
-        IEnumerator IEnumerable.GetEnumerator()
+        readonly IEnumerator IEnumerable.GetEnumerator()
             => GetEnumerator();
     }
 

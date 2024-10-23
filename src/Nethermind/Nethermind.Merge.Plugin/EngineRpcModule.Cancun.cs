@@ -14,13 +14,17 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV3Result?> _getPayloadHandlerV3;
+    private readonly IAsyncHandler<byte[][], GetBlobsV1Result> _getBlobsHandler;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Cancun);
 
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
-        NewPayload(new ExecutionPayloadV3Params(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Cancun);
+        NewPayload(new ExecutionPayloadParams<ExecutionPayloadV3>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Cancun);
 
     public async Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId) =>
         await _getPayloadHandlerV3.HandleAsync(payloadId);
+
+    public async Task<ResultWrapper<GetBlobsV1Result>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
+        await _getBlobsHandler.HandleAsync(blobVersionedHashes);
 }

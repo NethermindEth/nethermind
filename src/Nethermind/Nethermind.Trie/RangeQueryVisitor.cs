@@ -17,14 +17,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
 
@@ -40,8 +38,8 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private readonly ILeafValueCollector _valueCollector;
 
     // For determining proofs
-    private TrieNode?[] _leftmostNodes = new TrieNode?[65];
-    private TrieNode?[] _rightmostNodes = new TrieNode?[65];
+    private readonly TrieNode?[] _leftmostNodes = new TrieNode?[65];
+    private readonly TrieNode?[] _rightmostNodes = new TrieNode?[65];
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;

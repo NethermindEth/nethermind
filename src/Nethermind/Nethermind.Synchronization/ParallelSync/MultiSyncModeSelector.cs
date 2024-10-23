@@ -8,8 +8,10 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 
@@ -80,8 +82,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBetterPeerStrategy betterPeerStrategy,
-            ILogManager logManager,
-            bool needToWaitForHeaders = false)
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -89,7 +90,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
-            _needToWaitForHeaders = needToWaitForHeaders;
+            _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
             {
@@ -223,7 +224,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (IsTheModeSwitchWorthMentioning(current, newModes))
                             {
                                 if (_logger.IsInfo)
-                                    _logger.Info($"Changing state {current} to {newModes} at {BuildStateString(best)}");
+                                    _logger.Info($"Changing sync {current} to {newModes} at {BuildStateString(best)}");
                             }
                         }
                         catch (InvalidAsynchronousStateException)
@@ -288,8 +289,9 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
-        private static string BuildStateString(Snapshot best) =>
-            $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | target block: {best.TargetBlock} | peer block: {best.Peer.Block}";
+        private static string BuildStateString(Snapshot best) => best.Block == best.Header ?
+            $"block: {best.Block} | target: {best.TargetBlock} | peer: {best.Peer.Block}" :
+            $"block: {best.Block} | header: {best.Header} | target: {best.TargetBlock} | peer: {best.Peer.Block}";
 
         private static string BuildStateStringDebug(Snapshot best) =>
             $"processed: {best.Processed} | state: {best.State} | block: {best.Block} | header: {best.Header} | chain difficulty: {best.ChainDifficulty} | target block: {best.TargetBlock} | peer block: {best.Peer.Block} | peer total difficulty: {best.Peer.TotalDifficulty}";

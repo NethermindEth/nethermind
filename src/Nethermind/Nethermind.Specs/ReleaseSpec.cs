@@ -51,15 +51,16 @@ namespace Nethermind.Specs
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
-        public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
 
         // used only in testing
-        public ReleaseSpec Clone()
+        public ReleaseSpec Clone() => (ReleaseSpec)MemberwiseClone();
+
+        public bool IsEip1559Enabled
         {
-            return (ReleaseSpec)MemberwiseClone();
+            get => _isEip1559Enabled || IsEip4844Enabled;
+            set => _isEip1559Enabled = value;
         }
 
-        public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
         public bool IsEip3607Enabled { get; set; }
@@ -69,7 +70,7 @@ namespace Nethermind.Specs
         public long Eip1559TransitionBlock { get; set; }
         public ulong WithdrawalTimestamp { get; set; }
         public ulong Eip4844TransitionTimestamp { get; set; }
-        public Address Eip1559FeeCollector { get; set; }
+        public Address FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
@@ -80,9 +81,28 @@ namespace Nethermind.Specs
         public bool IsEip3860Enabled { get; set; }
         public bool IsEip4895Enabled { get; set; }
         public bool IsEip4844Enabled { get; set; }
+        public bool IsRip7212Enabled { get; set; }
+        public bool IsOpGraniteEnabled { get; set; }
         public bool IsEip5656Enabled { get; set; }
         public bool IsEip6780Enabled { get; set; }
         public bool IsEip4788Enabled { get; set; }
+        public bool IsEip7702Enabled { get; set; }
+        public bool IsEip4844FeeCollectorEnabled { get; set; }
+        public bool IsEip7002Enabled { get; set; }
+        public bool IsEip7251Enabled { get; set; }
+
+        private Address _eip7251ContractAddress;
+        public Address Eip7251ContractAddress
+        {
+            get => IsEip7251Enabled ? _eip7251ContractAddress : null;
+            set => _eip7251ContractAddress = value;
+        }
+        private Address _eip7002ContractAddress;
+        public Address Eip7002ContractAddress
+        {
+            get => IsEip7002Enabled ? _eip7002ContractAddress : null;
+            set => _eip7002ContractAddress = value;
+        }
 
         private Address _eip4788ContractAddress;
         public Address Eip4788ContractAddress
@@ -91,14 +111,24 @@ namespace Nethermind.Specs
             set => _eip4788ContractAddress = value;
         }
 
+        public bool IsEip6110Enabled { get; set; }
+
+        private Address _depositContractAddress;
+        public Address DepositContractAddress
+        {
+            get => IsEip6110Enabled ? _depositContractAddress : null;
+            set => _depositContractAddress = value;
+        }
         public bool IsEip2935Enabled { get; set; }
+        public bool IsEip7709Enabled { get; set; }
 
         private Address _eip2935ContractAddress;
+        private bool _isEip1559Enabled;
+
         public Address Eip2935ContractAddress
         {
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
-
     }
 }

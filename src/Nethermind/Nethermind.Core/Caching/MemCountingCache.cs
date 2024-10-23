@@ -196,5 +196,6 @@ namespace Nethermind.Core.Caching
         }
 
         public long MemorySize { get; private set; } = PreInitMemorySize;
+        public int Count => _cacheMap.Count;
     }
 }

@@ -45,5 +45,6 @@ namespace Nethermind.Db.Rpc
         {
             return new InMemoryColumnWriteBatch<T>(this);
         }
+        public void Dispose() { }
     }
 }

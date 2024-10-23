@@ -22,5 +22,5 @@ public class OptimismNethermindApi : NethermindApi
 
     public IInvalidChainTracker? InvalidChainTracker { get; set; }
     public OPL1CostHelper? L1CostHelper { get; set; }
-    public OPSpecHelper? SpecHelper { get; set; }
+    public OptimismSpecHelper? SpecHelper { get; set; }
 }

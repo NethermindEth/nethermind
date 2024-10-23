@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 
@@ -132,6 +131,8 @@ namespace Nethermind.Core.Caching
 
             return _cacheMap.ContainsKey(key);
         }
+
+        public int Count => _cacheMap.Count;
 
         public IDictionary<TKey[], TValue> Clone()
         {

@@ -142,11 +142,12 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
+            // TODO: .Net 9 stackalloc
             Task[]? tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
-                .Select((_) => Task.Run(BatchedThread))
+                .Select(_ => Task.Run(BatchedThread))
                 .ToArray();
 
-            Task.WhenAll(tasks).Wait();
+            Task.WaitAll(tasks);
         }
         catch (Exception)
         {
@@ -429,7 +430,7 @@ public interface ITreePathContextWithStorage
     public Hash256? Storage { get; }
 }
 
-public struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
+public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
 {
     public TreePath Path { get; init; } = TreePath.Empty;
     public Hash256? Storage { get; init; } = null; // Not using ValueHash as value is shared with many context.
@@ -472,12 +473,12 @@ public struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeCon
 /// </summary>
 public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
 {
-    public NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public readonly NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
     {
         return this;
     }
 
-    public NoopTreePathContextWithStorage Add(byte nibble)
+    public readonly NoopTreePathContextWithStorage Add(byte nibble)
     {
         return this;
     }
@@ -487,8 +488,8 @@ public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INod
         return this;
     }
 
-    public TreePath Path => TreePath.Empty;
-    public Hash256? Storage => null;
+    public readonly TreePath Path => TreePath.Empty;
+    public readonly Hash256? Storage => null;
 }
 
 

@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism;
@@ -19,10 +20,10 @@ public class OptimismTransactionsExecutorFactory : IBlockTransactionsExecutorFac
         _logManager = logManager;
     }
 
-    public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
+    public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessingScope readOnlyTxProcessingEnv)
     {
         return new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv.TransactionProcessor,
-            readOnlyTxProcessingEnv.StateProvider, new OptimismBlockProductionTransactionPicker(_specProvider),
+            readOnlyTxProcessingEnv.WorldState, new OptimismBlockProductionTransactionPicker(_specProvider),
             _logManager);
     }
 }

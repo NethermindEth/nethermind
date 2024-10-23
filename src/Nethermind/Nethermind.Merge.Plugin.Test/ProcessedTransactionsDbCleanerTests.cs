@@ -35,7 +35,7 @@ public class ProcessedTransactionsDbCleanerTests
                 .WithMaxFeePerGas(UInt256.One)
                 .WithMaxPriorityFeePerGas(UInt256.One)
                 .WithNonce(UInt256.Zero)
-                .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId, _logManager), sender).TestObject;
+                .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId), sender).TestObject;
         }
 
         IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);

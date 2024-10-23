@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void RoundTrip_hash()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage
+            using var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage
             {
                 StartBlockHash = new Hash256("0x00000000000000000000000000000000000000000000000000000000deadc0de"),
                 StartBlockNumber = 0,

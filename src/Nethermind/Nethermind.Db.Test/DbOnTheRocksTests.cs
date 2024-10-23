@@ -47,7 +47,7 @@ namespace Nethermind.Db.Test
         public void WriteOptions_is_correct()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
@@ -144,6 +144,29 @@ namespace Nethermind.Db.Test
 
             {
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+            }
+        }
+
+        [TestCase("compaction_pri=kByCompensatedSize", true)]
+        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true)]
+        [TestCase("compaction_pri=kSomethingElse", false)]
+        public void CanOpenWithAdditionalConfig(string opts, bool success)
+        {
+            IDbConfig config = new DbConfig();
+            config.AdditionalRocksDbOptions = opts;
+
+            Action act = () =>
+            {
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+            };
+
+            if (success)
+            {
+                act.Should().NotThrow();
+            }
+            else
+            {
+                act.Should().Throw<RocksDbException>();
             }
         }
 

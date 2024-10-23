@@ -6,17 +6,16 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test.Rewards
+namespace Nethermind.Blockchain.Test.Rewards;
+
+public class NoBlockRewardsTests
 {
-    public class NoBlockRewardsTests
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void No_rewards()
     {
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void No_rewards()
-        {
-            Block block = Build.A.Block.WithNumber(10).WithUncles(Build.A.Block.WithNumber(9).TestObject).TestObject;
-            NoBlockRewards calculator = NoBlockRewards.Instance;
-            var rewards = calculator.CalculateRewards(block);
-            Assert.IsEmpty(rewards);
-        }
+        Block block = Build.A.Block.WithNumber(10).WithUncles(Build.A.Block.WithNumber(9).TestObject).TestObject;
+        NoBlockRewards calculator = NoBlockRewards.Instance;
+        var rewards = calculator.CalculateRewards(block);
+        Assert.That(rewards, Is.Empty);
     }
 }

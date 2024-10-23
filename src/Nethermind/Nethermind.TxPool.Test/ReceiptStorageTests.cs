@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -40,7 +39,7 @@ namespace Nethermind.TxPool.Test
         public void Setup()
         {
             _specProvider = MainnetSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             _blockTree = Build.A.BlockTree()
                 .WithBlocks(Build.A.Block.TestObject)
                 .TestObject;

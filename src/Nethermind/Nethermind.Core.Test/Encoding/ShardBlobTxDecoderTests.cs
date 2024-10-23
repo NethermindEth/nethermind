@@ -8,8 +8,8 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -18,13 +18,13 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public partial class ShardBlobTxDecoderTests
 {
-    private readonly TxDecoder _txDecoder = new();
+    private readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     [SetUp]
     public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();
 
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
-        TxDecoderTests.TestObjectsSource().Select(tos => (tos.Item1
+        TxDecoderTests.TestCaseSource().Select(tos => (Build.A.Transaction.From(tos.Item1)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithShardBlobTxTypeAndFields(2, false)
             .SignedAndResolved()
@@ -38,7 +38,7 @@ public partial class ShardBlobTxDecoderTests
         rlpStream.Position = 0;
         Transaction? decoded = _txDecoder.Decode(rlpStream);
         decoded!.SenderAddress =
-            new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
     }
@@ -54,7 +54,7 @@ public partial class ShardBlobTxDecoderTests
         rlpStream.Position = 0;
         Transaction? decoded = _txDecoder.Decode(ref decoderContext);
         decoded!.SenderAddress =
-            new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance).RecoverAddress(decoded);
+            new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
         decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
     }

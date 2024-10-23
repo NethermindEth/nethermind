@@ -8,7 +8,6 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
@@ -47,7 +46,7 @@ public class BlockBodiesMessageSerializerTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Transaction tx = Build.A.Transaction
             .WithTo(TestItem.AddressA)
-            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
 
         tx.SenderAddress = null;
@@ -79,21 +78,21 @@ public class BlockBodiesMessageSerializerTests
                         .WithChainId(TestBlockchainIds.ChainId)
                         .WithTo(TestItem.AddressA)
                         .WithShardBlobTxTypeAndFields(1)
-                        .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance),
+                        .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId),
                             TestItem.PrivateKeyA)
                         .TestObject,
                     Build.A.Transaction
                         .WithChainId(TestBlockchainIds.ChainId)
                         .WithTo(TestItem.AddressA)
                         .WithShardBlobTxTypeAndFields(2)
-                        .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance),
+                        .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId),
                             TestItem.PrivateKeyA)
                         .TestObject,
                     Build.A.Transaction
                         .WithChainId(TestBlockchainIds.ChainId)
                         .WithTo(TestItem.AddressA)
                         .WithShardBlobTxTypeAndFields(3, false)
-                        .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance),
+                        .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId),
                             TestItem.PrivateKeyA)
                         .TestObject,
                 }, new[] { header },

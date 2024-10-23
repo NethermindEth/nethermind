@@ -1,5 +1,5 @@
 using HiveCompare.Models;
-using Microsoft.Extensions.CommandLineUtils;
+using McMaster.Extensions.CommandLineUtils;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
@@ -52,7 +52,7 @@ internal class Program
 
             return HasRequiredOption(firstFileOption) && HasRequiredOption(secondFileOption)
                 ? RequiredFileExists(firstFileOption) && RequiredFileExists(secondFileOption)
-                    ? ParseTests(firstFileOption.Value(), secondFileOption.Value())
+                    ? ParseTests(firstFileOption.Value()!, secondFileOption.Value()!)
                         ? 0
                         : 4
                     : 2

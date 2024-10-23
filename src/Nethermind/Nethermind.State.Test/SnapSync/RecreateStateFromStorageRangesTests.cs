@@ -28,7 +28,7 @@ namespace Nethermind.Store.Test
         private TrieStore _store;
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
-        private PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
+        private readonly PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
 
         [OneTimeSetUp]
         public void Setup()

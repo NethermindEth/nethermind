@@ -25,19 +25,6 @@ jobs:
           scripts/deployment/build-runner.sh $GITHUB_SHA $build_timestamp
       - name: Build Nethermind.Cli
         run: scripts/deployment/build-cli.sh $GITHUB_SHA ${{ steps.build-runner.outputs.build-timestamp }}
-      - name: Bundle Nethermind launcher
-        run: |
-          json=$(curl -s https://api.github.com/repos/nethermindeth/nethermind.launcher/releases/latest)
-          url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("linux-x64"))')
-          curl -sSL $url -o $PUB_DIR/linux-x64/nethermind-launcher
-          url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("linux-arm64"))')
-          curl -sSL $url -o $PUB_DIR/linux-arm64/nethermind-launcher
-          url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("windows-x64"))')
-          curl -sSL $url -o $PUB_DIR/win-x64/nethermind-launcher.exe
-          url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("macos-x64"))')
-          curl -sSL $url -o $PUB_DIR/osx-x64/nethermind-launcher
-          url=$(echo "$json" | jq -r '.assets[].browser_download_url | select(contains("macos-arm64"))')
-          curl -sSL $url -o $PUB_DIR/osx-arm64/nethermind-launcher
       - name: Archive packages
         env:
           PACKAGE_PREFIX: nethermind-preview-${{ steps.build-runner.outputs.commit-hash }}

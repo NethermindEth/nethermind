@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text.Json;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -38,6 +39,13 @@ namespace Nethermind.Core.Test.Builders
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
                 ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
+
+            byte[] r = new byte[32];
+            byte[] s = new byte[32];
+            r[1] = 1;
+            s[2] = 2;
+            RandomSignatureA = new Signature(r, s, 27);
+            RandomSignatureB = new Signature(r, s, 28);
         }
 
         public static Hash256 KeccakFromNumber(int i)
@@ -92,12 +100,37 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
 
+        public static readonly Signature RandomSignatureA;
+        public static readonly Signature RandomSignatureB;
+
         public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
         public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
         public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGwei = 3_000_000_000 };
         public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGwei = 4_000_000_000 };
         public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
         public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
+
+        public static Deposit DepositA_1Eth = new() { Index = 1, Pubkey = PublicKeyA.Bytes, Amount = 1_000_000_000, WithdrawalCredentials = AddressA.Bytes, Signature = KeccakA.Bytes.ToArray() };
+        public static Deposit DepositB_2Eth = new() { Index = 2, Pubkey = PublicKeyB.Bytes, Amount = 2_000_000_000, WithdrawalCredentials = AddressB.Bytes, Signature = KeccakB.Bytes.ToArray() };
+        public static Deposit DepositC_3Eth = new() { Index = 3, Pubkey = PublicKeyC.Bytes, Amount = 3_000_000_000, WithdrawalCredentials = AddressC.Bytes, Signature = KeccakC.Bytes.ToArray() };
+        public static Deposit DepositD_4Eth = new() { Index = 4, Pubkey = PublicKeyD.Bytes, Amount = 4_000_000_000, WithdrawalCredentials = AddressD.Bytes, Signature = KeccakD.Bytes.ToArray() };
+        public static Deposit DepositE_5Eth = new() { Index = 5, Pubkey = PublicKeyE.Bytes, Amount = 5_000_000_000, WithdrawalCredentials = AddressE.Bytes, Signature = KeccakE.Bytes.ToArray() };
+        public static Deposit DepositF_6Eth = new() { Index = 6, Pubkey = PublicKeyF.Bytes, Amount = 6_000_000_000, WithdrawalCredentials = AddressF.Bytes, Signature = KeccakF.Bytes.ToArray() };
+
+
+        public static WithdrawalRequest WithdrawalRequestA = new() { SourceAddress = AddressA, ValidatorPubkey = PublicKeyA.Bytes };
+        public static WithdrawalRequest WithdrawalRequestB = new() { SourceAddress = AddressB, ValidatorPubkey = PublicKeyB.Bytes };
+        public static WithdrawalRequest WithdrawalRequestC = new() { SourceAddress = AddressC, ValidatorPubkey = PublicKeyC.Bytes };
+        public static WithdrawalRequest WithdrawalRequestD = new() { SourceAddress = AddressD, ValidatorPubkey = PublicKeyD.Bytes };
+        public static WithdrawalRequest WithdrawalRequestE = new() { SourceAddress = AddressE, ValidatorPubkey = PublicKeyE.Bytes };
+        public static WithdrawalRequest WithdrawalRequestF = new() { SourceAddress = AddressF, ValidatorPubkey = PublicKeyF.Bytes };
+
+        public static ConsolidationRequest ConsolidationRequestA = new() { SourceAddress = AddressA, SourcePubkey = PublicKeyA.Bytes, TargetPubkey = PublicKeyB.Bytes };
+        public static ConsolidationRequest ConsolidationRequestB = new() { SourceAddress = AddressB, SourcePubkey = PublicKeyB.Bytes, TargetPubkey = PublicKeyC.Bytes };
+        public static ConsolidationRequest ConsolidationRequestC = new() { SourceAddress = AddressC, SourcePubkey = PublicKeyC.Bytes, TargetPubkey = PublicKeyD.Bytes };
+        public static ConsolidationRequest ConsolidationRequestD = new() { SourceAddress = AddressD, SourcePubkey = PublicKeyD.Bytes, TargetPubkey = PublicKeyE.Bytes };
+        public static ConsolidationRequest ConsolidationRequestE = new() { SourceAddress = AddressE, SourcePubkey = PublicKeyE.Bytes, TargetPubkey = PublicKeyF.Bytes };
+        public static ConsolidationRequest ConsolidationRequestF = new() { SourceAddress = AddressF, SourcePubkey = PublicKeyF.Bytes, TargetPubkey = PublicKeyA.Bytes };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");

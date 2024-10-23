@@ -17,35 +17,18 @@ public class Bn254MulPrecompile : IPrecompile<Bn254MulPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(7);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.Bn254MulPrecompile++;
         Span<byte> inputDataSpan = stackalloc byte[96];
         inputData.PrepareEthInput(inputDataSpan);
 
         Span<byte> output = stackalloc byte[64];
-        bool success = Pairings.Bn254Mul(inputDataSpan, output);
+        return Pairings.Bn254Mul(inputDataSpan, output) ? (output.ToArray(), true) : IPrecompile.Failure;
 
-        (byte[], bool) result;
-        if (success)
-        {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
-        }
-
-        return result;
     }
 }

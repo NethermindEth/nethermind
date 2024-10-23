@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -31,9 +33,9 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ProgressTracker _progressTracker;
 
         // This is actually close to 97% effective.
-        private readonly LruKeyCacheLowObject<ValueHash256> _codeExistKeyCache = new(1024 * 16, "");
+        private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
-        public SnapProvider(ProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));

@@ -11,12 +11,12 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockReceiptTracer : BlockReceiptsTracer
 {
-    private readonly IOPConfigHelper _opConfigHelper;
+    private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IWorldState _worldState;
 
-    public OptimismBlockReceiptTracer(IOPConfigHelper opConfigHelper, IWorldState worldState)
+    public OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorldState worldState)
     {
-        _opConfigHelper = opConfigHelper;
+        _opSpecHelper = opSpecHelper;
         _worldState = worldState;
     }
 
@@ -35,7 +35,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
             {
                 depositNonce--;
             }
-            if (_opConfigHelper.IsCanyon(header))
+            if (_opSpecHelper.IsCanyon(header))
             {
                 version = 1;
             }
@@ -53,7 +53,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
         {
             Logs = logEntries,
             TxType = transaction.Type,
-            Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries),
+            // Bloom calculated in parallel with other receipts
             GasUsedTotal = Block.GasUsed,
             StatusCode = statusCode,
             Recipient = transaction.IsContractCreation ? null : recipient,

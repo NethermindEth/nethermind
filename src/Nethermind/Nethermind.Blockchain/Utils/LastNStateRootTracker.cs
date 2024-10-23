@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
@@ -16,7 +15,7 @@ namespace Nethermind.Blockchain.Utils;
 // of state, that would be out of spec for snap and it would fail hive test.
 public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
-    private IBlockTree _blockTree;
+    private readonly IBlockTree _blockTree;
     private readonly int _lastN = 0;
 
     private Hash256? _lastQueuedStateRoot = null;

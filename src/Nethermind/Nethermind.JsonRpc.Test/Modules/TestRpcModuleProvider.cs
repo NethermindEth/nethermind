@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -62,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IJsonSerializer Serializer => _provider.Serializer;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;
-        public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
+        public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module) => _provider.Check(methodName, context, out module);
 
         public ResolvedMethodInfo? Resolve(string methodName) => _provider.Resolve(methodName);
 

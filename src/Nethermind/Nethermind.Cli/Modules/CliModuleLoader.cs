@@ -66,7 +66,7 @@ namespace Nethermind.Cli.Modules
             if (cliModuleAttribute is null)
             {
                 _cliConsole.WriteErrorLine(
-                    $"Could not load module {module.GetType().Name} bacause of a missing {nameof(CliModuleAttribute)}.");
+                    $"Could not load module {module.GetType().Name} because of a missing {nameof(CliModuleAttribute)}.");
                 return;
             }
 

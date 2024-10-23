@@ -79,7 +79,7 @@ namespace Nethermind.Synchronization.Blocks
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId, logManager), _specProvider);
+            _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId), _specProvider);
             _syncBatchSize = syncBatchSize ?? new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
@@ -167,7 +167,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-                Stopwatch sw = Stopwatch.StartNew();
+                long startTime = Stopwatch.GetTimestamp();
                 using IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 Hash256? startHeaderHash = headers[0]?.Hash;
@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 ancestorLookupLevel = 0;
-                AdjustSyncBatchSize(sw.Elapsed);
+                AdjustSyncBatchSize(Stopwatch.GetElapsedTime(startTime));
 
                 for (int i = 1; i < headers.Count; i++)
                 {

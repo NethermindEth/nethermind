@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
 using System.Threading;
 
 namespace Nethermind.Core.Threading;
@@ -42,23 +40,12 @@ public class McsPriorityLock
     /// </summary>
     public McsLock.Disposable Acquire()
     {
-        // Check for reentrancy.
-        if (_coreLock._node.Value == _coreLock._currentLockHolder)
-            ThrowInvalidOperationException();
-
         var isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
         if (!isPriority)
             // If not a priority thread max of half processors can being to acquire the lock (e.g. block processing)
             return NonPriorityAcquire();
 
         return _coreLock.Acquire();
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException("Lock is not reentrant");
-        }
     }
 
     private McsLock.Disposable NonPriorityAcquire()

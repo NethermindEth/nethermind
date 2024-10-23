@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
@@ -121,7 +120,7 @@ public class TransactionsMessageSerializerTests
         {
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject
         };
 
@@ -130,36 +129,36 @@ public class TransactionsMessageSerializerTests
             Build.A.Transaction
                 .WithType(TxType.Legacy)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithTo(TestItem.AddressA)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(3)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
         };
 
@@ -169,12 +168,12 @@ public class TransactionsMessageSerializerTests
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance), TestItem.PrivateKeyA)
+                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
                 .TestObject
         };
     }

@@ -5,7 +5,7 @@ namespace Nethermind.Trie.Pruning;
 
 public class TrackedPastKeyCountStrategy : IPruningStrategy
 {
-    private IPruningStrategy _baseStrategy;
+    private readonly IPruningStrategy _baseStrategy;
     private readonly int _trackedPastKeyCount;
     public bool PruningEnabled => _baseStrategy.PruningEnabled;
     public int MaxDepth => _baseStrategy.MaxDepth;

@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Data;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {

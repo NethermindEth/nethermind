@@ -4,16 +4,15 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -53,8 +52,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            IDbMeta blocksDb,
-            IDb metadataDb,
+            [KeyFilter(DbNames.Blocks)] IDbMeta blocksDb,
+            [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger())
@@ -85,6 +84,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
+            _syncReport.FastBlocksBodies.Reset(0);
+            _syncReport.BodiesInQueue.Reset(0);
         }
 
         private void ResetSyncStatusList()

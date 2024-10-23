@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 

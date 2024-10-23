@@ -31,6 +31,7 @@ public interface INodeStorage
     /// Used by StateSync to make sure values are flushed.
     /// </summary>
     void Flush();
+    void Compact();
 
     public enum KeyScheme
     {

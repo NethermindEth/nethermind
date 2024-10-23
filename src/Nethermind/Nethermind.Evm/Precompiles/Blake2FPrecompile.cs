@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
@@ -39,17 +39,17 @@ namespace Nethermind.Evm.Precompiles
             return rounds;
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
-                return (Array.Empty<byte>(), false);
+                return IPrecompile.Failure;
             }
 
             byte finalByte = inputData.Span[212];
             if (finalByte != 0 && finalByte != 1)
             {
-                return (Array.Empty<byte>(), false);
+                return IPrecompile.Failure;
             }
 
             byte[] result = new byte[64];

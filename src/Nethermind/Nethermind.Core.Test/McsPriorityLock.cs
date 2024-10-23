@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Threading;
-using NUnit.Framework;
-using NUnit.Framework.Internal;
-
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core.Threading;
+using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-[TestFixture]
 public class McsPriorityLockTests
 {
     private McsPriorityLock mcsLock;
@@ -88,7 +84,7 @@ public class McsPriorityLockTests
         }
 
         var expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
-        CollectionAssert.AreEqual(expectedOrder, executionOrder, "Threads did not acquire lock in the order they were started.");
+        Assert.That(expectedOrder, Is.EqualTo(executionOrder), "Threads did not acquire lock in the order they were started.");
     }
 
 
@@ -144,28 +140,5 @@ public class McsPriorityLockTests
 
         // Some lower priority threads will acquire first; we are asserting that they mostly queue jump
         Assert.That(lowPriorityFirst < (numberOfThreads / 8), Is.True, "High priority threads did not acquire the lock before lower priority ones.");
-    }
-
-    [Test]
-    public void NonReentrantTest()
-    {
-        bool reentrancyDetected = false;
-        var thread = new Thread(() =>
-        {
-            using var handle = mcsLock.Acquire();
-            try
-            {
-                using var innerHandle = mcsLock.Acquire(); // Attempt to re-lock
-            }
-            catch
-            {
-                reentrancyDetected = true;
-            }
-        });
-
-        thread.Start();
-        thread.Join();
-
-        Assert.IsTrue(reentrancyDetected, "Reentrancy was not properly detected.");
     }
 }

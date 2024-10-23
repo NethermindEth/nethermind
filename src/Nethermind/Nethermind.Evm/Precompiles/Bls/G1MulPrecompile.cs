@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -13,7 +14,7 @@ namespace Nethermind.Evm.Precompiles.Bls;
 /// </summary>
 public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 {
-    public static G1MulPrecompile Instance = new G1MulPrecompile();
+    public static readonly G1MulPrecompile Instance = new();
 
     private G1MulPrecompile()
     {
@@ -21,39 +22,38 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x0c);
 
-    public long BaseGasCost(IReleaseSpec releaseSpec)
-    {
-        return 12000L;
-    }
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 12000L;
 
-    public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        return 0L;
-    }
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
 
-    public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    [SkipLocalsInit]
+    public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 2 * BlsParams.LenFp + BlsParams.LenFr;
+        Metrics.BlsG1MulPrecompile++;
+
+        const int expectedInputLength = BlsConst.LenG1 + BlsConst.LenFr;
         if (inputData.Length != expectedInputLength)
         {
-            return (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
-        (byte[], bool) result;
-
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = SubgroupChecks.G1IsInSubGroup(inputData.Span[..(2 * BlsParams.LenFp)])
-            && Pairings.BlsG1Mul(inputData.Span, output);
-
-        if (success)
+        G1 x = new(stackalloc long[G1.Sz]);
+        if (!x.TryDecodeRaw(inputData[..BlsConst.LenG1].Span) || !(BlsConst.DisableSubgroupChecks || x.InGroup()))
         {
-            result = (output.ToArray(), true);
-        }
-        else
-        {
-            result = (Array.Empty<byte>(), false);
+            return IPrecompile.Failure;
         }
 
-        return result;
+        bool scalarIsInfinity = !inputData.Span[BlsConst.LenG1..].ContainsAnyExcept((byte)0);
+        if (scalarIsInfinity || x.IsInf())
+        {
+            return (BlsConst.G1Inf, true);
+        }
+
+        Span<byte> scalar = stackalloc byte[32];
+        inputData.Span[BlsConst.LenG1..].CopyTo(scalar);
+        scalar.Reverse();
+
+        G1 res = x.Mult(scalar);
+        return (res.EncodeRaw(), true);
     }
 }

@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Logging;
 
 /// <summary>
-/// Struct to wrap InterfaceLogger in that that when created sets values in struct for
+/// Struct to wrap InterfaceLogger in that when created sets values in struct for
 /// IsTrace, IsDebug, IsInfo, IsWarn, IsError so the guards are a fast check inline against
 /// the struct rather than being an interface call each time.
 /// </summary>

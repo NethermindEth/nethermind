@@ -36,10 +36,9 @@ namespace Ethereum.Test.Base
 
         private string GetGeneralStateTestsDirectory()
         {
-            char pathSeparator = Path.AltDirectorySeparatorChar;
             string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            return currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}GeneralStateTests";
+            return Path.Combine(currentDirectory.Remove(currentDirectory.LastIndexOf("src")), "src", "tests", "GeneralStateTests");
         }
 
         private IEnumerable<GeneralStateTest> LoadTestsFromDirectory(string testDir, string wildcard)

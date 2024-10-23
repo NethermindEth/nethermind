@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,7 +33,7 @@ namespace Nethermind.Facade.Test
         [Test]
         public void Timestamp_is_set_on_transactions()
         {
-            Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
+            Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
             _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
             _txPool.Received().SubmitTx(Arg.Is<Transaction>(tx => tx.Timestamp != UInt256.Zero), TxHandlingOptions.PersistentBroadcast);
         }

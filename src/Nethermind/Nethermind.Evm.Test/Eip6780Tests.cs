@@ -19,7 +19,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
 using FluentAssertions;
@@ -39,7 +38,7 @@ namespace Nethermind.Evm.Test
         private Address _contractAddress;
         private byte[] _initCode;
         private readonly long _gasLimit = 1000000;
-        private readonly EthereumEcdsa _ecdsa = new(1, LimboLogs.Instance);
+        private readonly EthereumEcdsa _ecdsa = new(1);
 
         [SetUp]
         public override void Setup()

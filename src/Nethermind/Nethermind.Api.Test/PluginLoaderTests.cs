@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
@@ -13,7 +12,6 @@ using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
-using Nethermind.Mev;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -38,7 +36,7 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
@@ -61,7 +59,7 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
@@ -84,7 +82,7 @@ public class PluginLoaderTests
             typeof(HivePlugin),
             typeof(TestPlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
     [Test]
@@ -93,7 +91,7 @@ public class PluginLoaderTests
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader("", fileSystem,
             typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin),
-            typeof(MergePlugin), typeof(MevPlugin));
+            typeof(MergePlugin));
         loader.Load(new TestLogManager());
         IPluginConfig pluginConfig =
             new PluginConfig();
@@ -104,10 +102,9 @@ public class PluginLoaderTests
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
             typeof(MergePlugin),
-            typeof(MevPlugin),
             typeof(HealthChecksPlugin),
             typeof(HivePlugin)
         };
-        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+        Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 }

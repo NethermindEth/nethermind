@@ -16,7 +16,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class RpcModuleProviderTests
     {
-        private RpcModuleProvider _moduleProvider = null!;
+        private IRpcModuleProvider _moduleProvider = null!;
         private IFileSystem _fileSystem = null!;
         private JsonRpcContext _context = null!;
 
@@ -26,6 +26,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             _fileSystem = Substitute.For<IFileSystem>();
             _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), LimboLogs.Instance);
             _context = new JsonRpcContext(RpcEndpoint.Http);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _context?.Dispose();
         }
 
         [Test]

@@ -33,10 +33,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         if (_logger.IsDebug) _logger.Debug("Recreating light collection of blob transactions and cache");
         int numberOfTxsInDb = 0;
         int numberOfBlobsInDb = 0;
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        long startTime = Stopwatch.GetTimestamp();
         foreach (LightTransaction lightBlobTx in blobTxStorage.GetAll())
         {
-            if (base.TryInsert(lightBlobTx.Hash, lightBlobTx, out _))
+            if (lightBlobTx.SenderAddress is not null
+                && base.InsertCore(lightBlobTx.Hash, lightBlobTx, lightBlobTx.SenderAddress))
             {
                 numberOfTxsInDb++;
                 numberOfBlobsInDb += lightBlobTx.BlobVersionedHashes?.Length ?? 0;
@@ -45,15 +46,15 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
         if (_logger.IsInfo && numberOfTxsInDb != 0)
         {
-            long loadingTime = stopwatch.ElapsedMilliseconds;
-            _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime}ms");
+            long loadingTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+            _logger.Info($"Loaded {numberOfTxsInDb} blob txs from persistent db, containing {numberOfBlobsInDb} blobs, in {loadingTime:N0}ms");
+            _logger.Info($"There are {BlobIndex.Count} unique blobs indexed");
         }
-        stopwatch.Stop();
     }
 
-    public override bool TryInsert(ValueHash256 hash, Transaction fullBlobTx, out Transaction? removed)
+    protected override bool InsertCore(ValueHash256 hash, Transaction fullBlobTx, AddressAsKey groupKey)
     {
-        if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out removed))
+        if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
             _blobTxStorage.Add(fullBlobTx);
@@ -63,11 +64,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    public override bool TryGetValue(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
+    protected override bool TryGetValueNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
         // Firstly check if tx is present in in-memory collection of light blob txs (without actual blobs).
         // If not, just return false
-        if (base.TryGetValue(hash, out Transaction? lightTx))
+        if (base.TryGetValueNonLocked(hash, out Transaction? lightTx))
         {
             // tx is present in light collection. Try to get full blob tx from cache
             if (_blobTxCache.TryGet(hash, out fullBlobTx))
@@ -88,10 +89,20 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    protected override bool Remove(ValueHash256 hash, Transaction tx)
+    protected override bool Remove(ValueHash256 hash, out Transaction? tx)
     {
-        _blobTxCache.Delete(hash);
-        _blobTxStorage.Delete(hash, tx.Timestamp);
-        return base.Remove(hash, tx);
+        if (base.Remove(hash, out tx))
+        {
+            if (tx is not null)
+            {
+                _blobTxStorage.Delete(hash, tx.Timestamp);
+            }
+
+            _blobTxCache.Delete(hash);
+
+            return true;
+        }
+
+        return false;
     }
 }

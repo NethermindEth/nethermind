@@ -20,7 +20,10 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Core.ConsensusRequests;
+using Microsoft.CodeAnalysis;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -28,7 +31,6 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
-        private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
              Hash256 safeBlockHash)
@@ -50,17 +52,30 @@ namespace Nethermind.Merge.Plugin.Test
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
-            Transaction BuildTransaction(uint index, AccountStruct senderAccount) =>
-                Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
+            Transaction BuildTransaction(uint index, AccountStruct senderAccount)
+            {
+                TransactionBuilder<Transaction> builder = Build.A.Transaction
+                    .WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
                     .WithValue(value.GWei())
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
-                    .WithSenderAddress(from.Address)
-                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithSenderAddress(from.Address);
+
+                if (blobCountPerTx != 0)
+                {
+                    builder = builder.WithShardBlobTxTypeAndFields(blobCountPerTx);
+                }
+                else
+                {
+                    builder = builder.WithType(TxType.EIP1559);
+                }
+
+                return builder
                     .WithMaxFeePerGasIfSupports1559(1.GWei())
                     .SignedAndResolved(from).TestObject;
+            }
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
             chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
@@ -69,7 +84,7 @@ namespace Nethermind.Merge.Plugin.Test
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
-        private ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
+        protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
             Block? head = blockTree.Head;
             if (head is null) throw new NotSupportedException();
@@ -104,16 +119,22 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
+        private static ExecutionPayloadV3 CreateBlockRequestV3(
+            MergeTestBlockchain chain,
+            ExecutionPayload parent,
+            Address miner,
+            Withdrawal[]? withdrawals = null,
+            ulong? blobGasUsed = null,
+            ulong? excessBlobGas = null,
+            Transaction[]? transactions = null,
+            Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
-            _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
-            var blockHashStore = new BlockhashStore(chain.BlockTree, chain.SpecProvider, chain.State);
-            blockHashStore.ApplyHistoryBlockHashes(block!.Header);
+            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
+            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
@@ -126,9 +147,43 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequestV3;
         }
 
-        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
+        private static ExecutionPayloadV4 CreateBlockRequestV4(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null, ConsensusRequest[]? requests = null)
         {
+            ExecutionPayloadV4 blockRequestV4 = CreateBlockRequestInternal<ExecutionPayloadV4>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot, requests: requests);
+            blockRequestV4.TryGetBlock(out Block? block);
+
+            var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
+            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header));
+            Snapshot before = chain.State.TakeSnapshot();
+            var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
+            blockHashStore.ApplyBlockhashStateChanges(block!.Header);
+
+            chain.ConsensusRequestsProcessor?.ProcessRequests(block!, chain.State, Array.Empty<TxReceipt>(), chain.SpecProvider.GenesisSpec);
+
+            chain.State.Commit(chain.SpecProvider.GenesisSpec);
+            chain.State.RecalculateStateRoot();
+            blockRequestV4.StateRoot = chain.State.StateRoot;
+            chain.State.Restore(before);
+
+            TryCalculateHash(blockRequestV4, out Hash256? hash);
+            blockRequestV4.BlockHash = hash;
+            return blockRequestV4;
+        }
+
+        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null, ConsensusRequest[]? requests = null
+                ) where T : ExecutionPayload, new()
+        {
+            Deposit[]? deposits = null;
+            WithdrawalRequest[]? withdrawalRequests = null;
+            ConsolidationRequest[]? consolidationRequests = null;
+
+            if (requests is not null)
+            {
+                (deposits, withdrawalRequests, consolidationRequests) = requests.SplitRequests();
+            }
+
             T blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
@@ -144,6 +199,9 @@ namespace Nethermind.Merge.Plugin.Test
                 BlobGasUsed = blobGasUsed,
                 ExcessBlobGas = excessBlobGas,
                 ParentBeaconBlockRoot = parentBeaconBlockRoot,
+                DepositRequests = deposits,
+                WithdrawalRequests = withdrawalRequests,
+                ConsolidationRequests = consolidationRequests,
             };
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());

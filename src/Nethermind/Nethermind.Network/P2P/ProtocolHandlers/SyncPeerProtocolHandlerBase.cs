@@ -74,7 +74,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             initialRequestSize: 4
         );
 
-        protected LruKeyCacheLowObject<ValueHash256> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        protected ClockKeyCache<ValueHash256>? _notifiedTransactions;
+        protected ClockKeyCache<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -86,7 +87,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
-            _txDecoder = new TxDecoder();
+            _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
 
@@ -282,7 +283,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeadersMessage, CancellationToken cancellationToken)
         {
             using GetBlockHeadersMessage message = getBlockHeadersMessage;
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Received headers request from {Session.Node:c}:");
@@ -308,8 +309,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // }
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;
         }
@@ -342,12 +342,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
             }
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
 
             Interlocked.Increment(ref Counter);
             BlockBodiesMessage resp = await FulfillBlockBodiesRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             return resp;
         }
 
@@ -390,10 +389,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw new EthSyncException("Incoming receipts request for more than 512 blocks");
             }
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;
         }

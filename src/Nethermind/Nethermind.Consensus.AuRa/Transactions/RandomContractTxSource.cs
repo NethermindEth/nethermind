@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+extern alias BouncyCastle;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,7 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Org.BouncyCastle.Crypto;
+using BouncyCastle::Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {

@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -189,6 +187,8 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
+            HeadersSyncProgressReport.Reset(0);
+            HeadersSyncQueueReport.Reset(0);
         }
 
         protected virtual void ResetPivot()

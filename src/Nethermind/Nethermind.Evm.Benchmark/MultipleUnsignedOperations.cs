@@ -76,7 +76,8 @@ public class MultipleUnsignedOperations
         _stateProvider.Commit(_spec);
 
         Console.WriteLine(MuirGlacier.Instance);
-        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
+        CodeInfoRepository codeInfoRepository = new();
+        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
 
         _environment = new ExecutionEnvironment
         (
@@ -86,7 +87,7 @@ public class MultipleUnsignedOperations
             codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             value: 0,
             transferValue: 0,
-            txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+            txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
             inputData: default
         );
 

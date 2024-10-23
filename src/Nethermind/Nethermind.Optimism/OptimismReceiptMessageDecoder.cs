@@ -56,13 +56,16 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlp
         }
         txReceipt.Logs = entries;
 
-        if (txReceipt.TxType == TxType.DepositTx && lastCheck > rlpStream.Position)
+        if (lastCheck > rlpStream.Position)
         {
-            txReceipt.DepositNonce = rlpStream.DecodeUlong();
-
-            if (lastCheck > rlpStream.Position)
+            if (txReceipt.TxType == TxType.DepositTx && lastCheck > rlpStream.Position)
             {
-                txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+                txReceipt.DepositNonce = rlpStream.DecodeUlong();
+
+                if (lastCheck > rlpStream.Position)
+                {
+                    txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+                }
             }
         }
 
