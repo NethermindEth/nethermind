@@ -196,7 +196,12 @@ namespace Nethermind.Consensus.Producers
                         // Get the next transaction in nonce order
                         tx = order[index];
                         // Check if the transaction's nonce matches the expected nonce
-                        if (expectedNonce != tx.Nonce)
+                        if (expectedNonce > tx.Nonce)
+                        {
+                            // Replaced tx just remove this one
+                            tx = null;
+                        }
+                        else if (expectedNonce != tx.Nonce)
                         {
                             // Nonce mismatch: remove this transaction and all subsequent ones from this sender
                             tx = null;
