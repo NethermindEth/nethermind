@@ -18,3 +18,17 @@ public sealed class CumulativeTotalDifficultyStrategy : ITotalDifficultyStrategy
         return (header.TotalDifficulty ?? 0) - header.Difficulty;
     }
 }
+
+public sealed class FixedTotalDifficultyStrategy(
+    ITotalDifficultyStrategy strategy,
+    long fixesBlockNumber,
+    UInt256 toTotalDifficulty
+) : ITotalDifficultyStrategy
+{
+    public UInt256 ParentTotalDifficulty(BlockHeader header)
+    {
+        return header.Number > 0 && header.Number - 1 == fixesBlockNumber
+            ? toTotalDifficulty
+            : strategy.ParentTotalDifficulty(header);
+    }
+}
