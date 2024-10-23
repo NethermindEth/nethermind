@@ -145,14 +145,16 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     tx.CopyTo(systemTransaction);
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
 
-                    for (int j = 0; j <= i; j++)
+                    Address senderAddress = tx.SenderAddress;
+                    if (!scope.WorldState.AccountExists(senderAddress))
                     {
-                        Address senderAddress = block.Transactions[j].SenderAddress!;
-                        if (!scope.WorldState.AccountExists(senderAddress))
-                        {
-                            scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero, UInt256.One);
-                        }
-                        else
+                        scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                    }
+
+                    for (int prev = 0; prev < i; prev++)
+                    {
+                        Address prevAddress = block.Transactions[prev].SenderAddress!;
+                        if (senderAddress == prevAddress)
                         {
                             scope.WorldState.IncrementNonce(senderAddress);
                         }
