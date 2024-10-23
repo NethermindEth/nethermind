@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -30,7 +31,7 @@ public class EraExporter : IEraExporter
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        string networkName)
+        [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -53,6 +54,9 @@ public class EraExporter : IEraExporter
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
         if (size < 1) throw new ArgumentOutOfRangeException(nameof(size), size, $"Must be greater than 0.");
         if (size > EraWriter.MaxEra1Size) throw new ArgumentOutOfRangeException(nameof(size), size, $"Cannot be greater than {EraWriter.MaxEra1Size}.");
+
+        if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
+
         if (!_fileSystem.Directory.Exists(destinationPath))
         {
             //TODO look into permission settings - should it be set?

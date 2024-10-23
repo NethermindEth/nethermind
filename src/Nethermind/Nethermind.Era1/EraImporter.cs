@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
@@ -37,7 +38,7 @@ public class EraImporter : IEraImporter
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        string networkName,
+        [KeyFilter(EraComponentKeys.NetworkName)] string networkName,
         int epochSize = EraWriter.MaxEra1Size)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -78,10 +79,13 @@ public class EraImporter : IEraImporter
         bool processBlock,
         CancellationToken cancellation)
     {
+        if (!_fileSystem.Directory.Exists(src))
+        {
+            throw new EraImportException($"The directory given for import '{src}' does not exist.");
+        }
+
         EraStore eraStore = new(src, _networkName, _fileSystem);
-
         long startEpoch = startNumber / _epochSize;
-
         if (!eraStore.HasEpoch(startEpoch))
         {
             throw new EraImportException($"No {_networkName} epochs found for block {startNumber} in '{src}'");

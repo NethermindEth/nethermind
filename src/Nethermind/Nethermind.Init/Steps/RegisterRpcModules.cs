@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -133,29 +134,13 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.PeerManager);
         StepDependencyException.ThrowIfNull(_api.StaticNodesManager);
         StepDependencyException.ThrowIfNull(_api.Enode);
-        EraImporter eraImport = new(
-            _api.FileSystem,
-            _api.BlockTree,
-            _api.BlockValidator,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            _api.LogManager,
-            BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
-        IEraExporter eraExporter = new EraExporter(
-           _api.FileSystem,
-           _api.BlockTree,
-           _api.ReceiptStorage,
-           _api.SpecProvider,
-            _api.LogManager,
-           BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
-        IAdminEraService eraService = new AdminEraService(
-            _api.BlockTree,
-            eraImport,
-            eraExporter,
-            _api.EthSyncingInfo,
-            _api.ProcessExit!,
-            _api.FileSystem,
-            _api.LogManager);
+
+        IContainer eraContainer = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
+            .AddModule(new EraModule())
+            .AddSingleton<IAdminEraService, AdminEraService>()
+            .Build();
+        _api.DisposeStack.Push((IAsyncDisposable)eraContainer);
+
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         AdminRpcModule adminRpcModule = new(
@@ -164,7 +149,7 @@ public class RegisterRpcModules : IStep
             _api.PeerPool,
             _api.StaticNodesManager,
             _api.Enode,
-            eraService,
+            eraContainer.Resolve<IAdminEraService>(),
             initConfig.BaseDbPath,
             pruningTrigger);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
