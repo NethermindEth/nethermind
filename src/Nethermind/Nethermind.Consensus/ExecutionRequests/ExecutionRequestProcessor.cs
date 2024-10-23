@@ -124,7 +124,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         CallOutputTracer tracer = new();
 
-        _transactionProcessor.Execute( isWithdrawalRequests? _withdrawalTransaction: _consolidationTransaction, new BlockExecutionContext(block.Header), tracer);
+        _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header), tracer);
         var result = tracer.ReturnValue;
         if (result == null || result.Length == 0)
             yield break;
