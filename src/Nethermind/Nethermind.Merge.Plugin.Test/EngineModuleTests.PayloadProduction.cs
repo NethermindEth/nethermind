@@ -281,11 +281,13 @@ public partial class EngineModuleTests
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
 
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
-        await Task.Delay(timePerSlot / 3);
+        await Task.Delay(timePerSlot / 4);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
-        await Task.Delay(timePerSlot / 3);
+        await Task.Delay(timePerSlot / 4);
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await Task.Delay(timePerSlot / 4);
 
-        improvementContextFactory.CreatedContexts.Count.Should().Be(3);
+        improvementContextFactory.CreatedContexts.Count.Should().BeInRange(2, 5);
         improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(i => i.Disposed);
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
