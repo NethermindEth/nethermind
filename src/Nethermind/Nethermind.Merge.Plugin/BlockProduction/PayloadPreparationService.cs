@@ -146,7 +146,18 @@ public class PayloadPreparationService : IPayloadPreparationService
         });
         context.ImprovementTask.ContinueWith(async _ =>
         {
-            // Attempt to improve the block if there is still enough time left in the slot after a delay
+            // Attempt to improve the block if there is still enough time left in the slot
+            //
+            // Min production time is roughly 2/3rd of block. For example, 8 sec block 
+            // production, 4 sec validation. So in the first 65% of the block, we will 
+            // build on a timer to make sure we always have a good block ready. After 
+            // that time, we will rebuild as fast as possible, triggered any time a new 
+            // tx arrives that meets the base gas threshold, as we can be asked for the 
+            // payload anytime.
+            //
+            // Cancellation of building on GetPayload/NewPayload/ForkChoice will stop
+            // the building for the slot at that point.
+            const double slowBlockPeriod = 0.65;
 
             // Calculate the time elapsed since the last improvement attempt started
             TimeSpan elapsedTimeSinceStart = Stopwatch.GetElapsedTime(startTimestamp);
@@ -155,12 +166,12 @@ public class PayloadPreparationService : IPayloadPreparationService
             TimeSpan estimatedNextImprovementDuration = elapsedTimeSinceStart * 2;
             // Estimate when the next improvement attempt would complete if started now
             DateTimeOffset estimatedNextImprovementCompletion = DateTimeOffset.UtcNow + estimatedNextImprovementDuration;
-            // Determine when we should have a good block built by (e.g., 85% of the slot duration)
-            // If we are in the last 85% of the block we will stop waiting between
+            // Determine when we should have a good block built by (e.g., 65% of the slot duration)
+            // If we are in the last 65% of the block we will stop waiting between
             // improvements as inclusion is very time sensitive and we don't know when
             // GetPayload will be called; and instead we will rely on cancellation
             // to stop improving.
-            DateTimeOffset slotImprovementDeadline = startDateTime + _timePerSlot * 0.85;
+            DateTimeOffset slotImprovementDeadline = startDateTime + _timePerSlot * slowBlockPeriod;
             if (!token.IsCancellationRequested)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} will be improved in {_improvementDelay.TotalMilliseconds}ms");
