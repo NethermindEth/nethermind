@@ -148,8 +148,14 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     for (int j = 0; j <= i; j++)
                     {
                         Address senderAddress = tx.SenderAddress!;
-                        scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                        scope.WorldState.IncrementNonce(senderAddress!);
+                        if (!scope.WorldState.AccountExists(senderAddress))
+                        {
+                            scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero, UInt256.One);
+                        }
+                        else
+                        {
+                            scope.WorldState.IncrementNonce(senderAddress);
+                        }
                     }
 
                     if (spec.UseTxAccessLists)
