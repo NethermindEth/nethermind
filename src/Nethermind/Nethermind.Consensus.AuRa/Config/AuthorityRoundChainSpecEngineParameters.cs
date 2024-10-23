@@ -8,6 +8,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -53,8 +54,8 @@ public class AuthorityRoundChainSpecEngineParameters : IChainSpecEngineParameter
 
     public Address WithdrawalContractAddress { get; set; }
 
-    private Validator? _validators;
-    public Validator Validators
+    private AuRaParameters.Validator? _validators;
+    public AuRaParameters.Validator Validators
     {
         get => _validators ??= LoadValidator(_validatorsJson);
     }
@@ -72,22 +73,22 @@ public class AuthorityRoundChainSpecEngineParameters : IChainSpecEngineParameter
         spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? long.MaxValue) ? MaximumUncleCount ?? 2 : 2);
     }
 
-    static Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
+    static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
     {
-        ValidatorType validatorType = validatorJson.GetValidatorType();
-        Validator validator = new() { ValidatorType = validatorType };
+        AuRaParameters.ValidatorType validatorType = validatorJson.GetValidatorType();
+        AuRaParameters.Validator validator = new() { ValidatorType = validatorType };
         switch (validator.ValidatorType)
         {
-            case ValidatorType.List:
+            case AuRaParameters.ValidatorType.List:
                 validator.Addresses = validatorJson.List;
                 break;
-            case ValidatorType.Contract:
+            case AuRaParameters.ValidatorType.Contract:
                 validator.Addresses = new[] { validatorJson.SafeContract };
                 break;
-            case ValidatorType.ReportingContract:
+            case AuRaParameters.ValidatorType.ReportingContract:
                 validator.Addresses = new[] { validatorJson.Contract };
                 break;
-            case ValidatorType.Multi:
+            case AuRaParameters.ValidatorType.Multi:
                 if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
                 validator.Validators = validatorJson.Multi
                     .ToDictionary(kvp => kvp.Key, kvp => LoadValidator(kvp.Value, level + 1))
@@ -212,74 +213,28 @@ public class AuthorityRoundChainSpecEngineParameters : IChainSpecEngineParameter
         public Address SafeContract { get; set; }
         public Dictionary<long, AuRaValidatorJson> Multi { get; set; }
 
-        public ValidatorType GetValidatorType()
+        public AuRaParameters.ValidatorType GetValidatorType()
         {
             if (List is not null)
             {
-                return ValidatorType.List;
+                return AuRaParameters.ValidatorType.List;
             }
             else if (Contract is not null)
             {
-                return ValidatorType.ReportingContract;
+                return AuRaParameters.ValidatorType.ReportingContract;
             }
             else if (SafeContract is not null)
             {
-                return ValidatorType.Contract;
+                return AuRaParameters.ValidatorType.Contract;
             }
             else if (Multi is not null)
             {
-                return ValidatorType.Multi;
+                return AuRaParameters.ValidatorType.Multi;
             }
             else
             {
                 throw new NotSupportedException("AuRa validator type not supported.");
             }
         }
-    }
-}
-
-public enum ValidatorType
-{
-    List,
-    Contract,
-    ReportingContract,
-    Multi
-}
-
-public class Validator
-{
-    public ValidatorType ValidatorType { get; set; }
-
-    /// <summary>
-    /// Dictionary of Validators per their starting block.
-    /// </summary>
-    /// <remarks>
-    /// Only Valid for <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/>.
-    ///
-    /// This has to sorted in order of starting blocks.
-    /// </remarks>
-    public IDictionary<long, Validator> Validators { get; set; }
-
-    /// <summary>
-    /// Addresses for validator.
-    /// </summary>
-    /// <remarks>
-    /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.List"/> should contain at least one address.
-    /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Contract"/> and <see cref="AuRaParameters.ValidatorType.ReportingContract"/> should contain exactly one address.
-    /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/> will be empty.
-    /// </remarks>
-    public Address[] Addresses { get; set; }
-
-    public Address GetContractAddress()
-    {
-        switch (ValidatorType)
-        {
-            case ValidatorType.Contract:
-            case ValidatorType.ReportingContract:
-                return Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses));
-            default:
-                throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address.");
-        }
-
     }
 }

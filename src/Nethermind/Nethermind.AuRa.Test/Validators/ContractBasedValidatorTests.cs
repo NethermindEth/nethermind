@@ -40,7 +40,7 @@ public class ContractBasedValidatorTests
     private IWorldState _stateProvider;
     private IAbiEncoder _abiEncoder;
     private ILogManager _logManager;
-    private Validator _validator;
+    private AuRaParameters.Validator _validator;
     private Block _block;
     private BlockHeader _parentHeader;
     private ITransactionProcessor _transactionProcessor;
@@ -67,10 +67,10 @@ public class ContractBasedValidatorTests
         _blockTree = Substitute.For<IBlockTree>();
         _blockFinalizationManager = Substitute.For<IAuRaBlockFinalizationManager>();
         _receiptsStorage = Substitute.For<IReceiptStorage>();
-        _validator = new Validator()
+        _validator = new AuRaParameters.Validator()
         {
             Addresses = new[] { _contractAddress },
-            ValidatorType = ValidatorType.Contract
+            ValidatorType = AuRaParameters.ValidatorType.Contract
         };
         _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
 

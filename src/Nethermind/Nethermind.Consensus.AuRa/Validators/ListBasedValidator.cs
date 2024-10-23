@@ -9,7 +9,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public sealed class ListBasedValidator : AuRaValidatorBase
     {
-        public ListBasedValidator(Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber, bool forSealing = false)
+        public ListBasedValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber, bool forSealing = false)
             : base(validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
             ArgumentNullException.ThrowIfNull(validator);

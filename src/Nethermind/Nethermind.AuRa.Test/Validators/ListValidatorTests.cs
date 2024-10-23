@@ -24,9 +24,9 @@ namespace Nethermind.AuRa.Test.Validators
             LimboLogs logManager = LimboLogs.Instance;
             _validSealerStrategy = new ValidSealerStrategy();
             ListBasedValidator validator = new(
-                new Validator()
+                new AuRaParameters.Validator()
                 {
-                    ValidatorType = ValidatorType.List,
+                    ValidatorType = AuRaParameters.ValidatorType.List,
                     Addresses = address
                 }, _validSealerStrategy, Substitute.For<IValidatorStore>(), logManager, 1);
 
