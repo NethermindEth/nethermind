@@ -9,8 +9,6 @@ using System.Linq;
 using System.Numerics;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Json;
-
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

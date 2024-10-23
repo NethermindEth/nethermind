@@ -273,6 +273,10 @@ namespace Nethermind.State
         }
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
+        public void ResetTransient()
+        {
+            _transientStorageProvider.Reset();
+        }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
     }

@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
