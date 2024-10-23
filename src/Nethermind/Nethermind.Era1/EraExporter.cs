@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.IO.Abstractions;
-using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -119,7 +119,8 @@ public class EraExporter : IEraExporter
                     throw new EraException($"Could not find a block with number {y}.");
                 }
 
-                TxReceipt[]? receipts = _receiptStorage.Get(block);
+                // TODO: Check if recover: false is safe
+                TxReceipt[]? receipts = _receiptStorage.Get(block, recover: false);
                 if (receipts is null)
                 {
                     // Can this even happen?
