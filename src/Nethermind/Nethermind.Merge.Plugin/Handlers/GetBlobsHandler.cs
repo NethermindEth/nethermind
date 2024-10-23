@@ -35,8 +35,11 @@ public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV
                 Metrics.NumberOfSentBlobs++;
                 yield return new BlobAndProofV1(blob, proof);
             }
+            else
+            {
+                yield return null;
 
-            yield return null;
+            }
         }
     }
 }
