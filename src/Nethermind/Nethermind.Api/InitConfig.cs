@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Consensus.Processing;
-using Nethermind.Trie;
 
 namespace Nethermind.Api
 {

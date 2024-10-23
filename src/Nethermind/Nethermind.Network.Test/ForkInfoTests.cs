@@ -4,7 +4,6 @@
 using System.IO;
 using System.Reflection;
 using System.Text;
-using System.Text.Unicode;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
