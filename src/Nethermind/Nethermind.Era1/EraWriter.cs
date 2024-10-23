@@ -24,7 +24,6 @@ public class EraWriter : IDisposable
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = new();
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly IByteBufferAllocator _byteBufferAllocator;
 
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly AccumulatorCalculator _accumulatorCalculator;
@@ -50,11 +49,10 @@ public class EraWriter : IDisposable
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
-        _byteBufferAllocator = bufferAllocator ?? PooledByteBufferAllocator.Default;
         _entryIndexes = new(MaxEra1Size);
     }
 
-    public async Task<bool> Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
         if (_finalized)
             throw new EraException($"Finalized() has been called on this {nameof(EraWriter)}, and no more blocks can be added. ");
@@ -65,7 +63,7 @@ public class EraWriter : IDisposable
             throw new ArgumentException("The block must have a hash.", nameof(block));
 
         if (_entryIndexes.Count >= MaxEra1Size)
-            return false;
+            throw new ArgumentException($"Era file should not contain more than {MaxEra1Size} blocks");
 
         if (_firstBlock)
         {
@@ -98,8 +96,6 @@ public class EraWriter : IDisposable
         }
 
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
-
-        return true;
     }
 
     public async Task<byte[]> Finalize(CancellationToken cancellation = default)

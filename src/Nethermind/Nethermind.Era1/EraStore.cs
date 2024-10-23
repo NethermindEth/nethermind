@@ -122,6 +122,7 @@ public class EraStore : IEraStore
 
         foreach (var kv in _epochs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             using (EraReader reader = GetReader(kv.Key))
             {
                 string root = (reader.ReadAccumulator()).BytesAsSpan.ToHexString(true);

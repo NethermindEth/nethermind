@@ -68,13 +68,13 @@ public class EraExporterTests
     [Test]
     public void Export_ReceiptsAreNull_ThrowEraException()
     {
-        var fileSystem = new MockFileSystem();
+        using TmpDirectory tmpDirectory = new TmpDirectory();
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        receiptStorage.Get(Arg.Any<Block>()).ReturnsNull();
+        receiptStorage.Get(Arg.Any<Block>(), Arg.Any<bool>()).ReturnsNull();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
+        EraExporter sut = new(new FileSystem(), blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
 
-        Assert.That(() => sut.Export("test", 0, 1), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, 1), Throws.TypeOf<EraException>());
     }
 }

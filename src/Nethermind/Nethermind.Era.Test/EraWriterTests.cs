@@ -28,20 +28,18 @@ internal class EraWriterTests
     }
 
     [Test]
-    public async Task Add_AddOneBlock_ReturnsTrue()
+    public async Task Add_AddOneBlock()
     {
         using MemoryStream stream = new();
         using EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block1 = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
-        bool result = await sut.Add(block1, Array.Empty<TxReceipt>());
-
-        Assert.That(result, Is.EqualTo(true));
+        await sut.Add(block1, Array.Empty<TxReceipt>());
     }
 
     [Test]
-    public async Task Add_AddMoreThanMaximumOf8192_ReturnsFalse()
+    public async Task Add_AddMoreThanMaximumOf8192_Throws()
     {
         using MemoryStream stream = Substitute.For<MemoryStream>();
         stream.CanWrite.Returns(true);
@@ -55,10 +53,9 @@ internal class EraWriterTests
             await sut.Add(block, Array.Empty<TxReceipt>());
         }
 
-        bool result = await sut.Add(Build.A.Block.WithNumber(0)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject, Array.Empty<TxReceipt>());
-
-        Assert.That(result, Is.EqualTo(false));
+        Assert.That(
+            () => sut.Add(Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject, Array.Empty<TxReceipt>()),
+            Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

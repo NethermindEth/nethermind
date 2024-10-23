@@ -108,10 +108,10 @@ public class EraExporter : IEraExporter
             string filePath = Path.Combine(
                 destinationPath,
                 EraWriter.Filename(_networkName, startingIndex / size, Keccak.Zero));
-            using EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
+            using EraWriter builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
             //TODO read directly from RocksDb with range reads
-            for (var y = startingIndex; y < startingIndex + size; y++)
+            for (var y = startingIndex; y < startingIndex + size && y <= end; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (block is null)
@@ -135,20 +135,7 @@ public class EraExporter : IEraExporter
                     throw new EraException($"Block does not have total difficulty specified");
                 }
 
-                if (!await builder.Add(block, receipts, cancellation) || y == startingIndex + size || y == end)
-                {
-                    byte[] root = await builder.Finalize();
-                    builder.Dispose();
-                    string rename = Path.Combine(
-                        destinationPath,
-                        EraWriter.Filename(_networkName, startingIndex / size, new Hash256(root)));
-                    _fileSystem.File.Move(
-                        filePath,
-                        rename, true);
-
-                    eraRoots[epochIdx] = root;
-                    break;
-                }
+                await builder.Add(block, receipts, cancellation);
 
                 bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
                 Interlocked.Increment(ref processedSinceLast);
@@ -167,6 +154,17 @@ public class EraExporter : IEraExporter
                     txProcessedSinceLast = 0;
                 }
             }
+
+            byte[] root = await builder.Finalize(cancellation);
+            string rename = Path.Combine(
+                destinationPath,
+                EraWriter.Filename(_networkName, startingIndex / size, new Hash256(root)));
+            _fileSystem.File.Move(
+                filePath,
+                rename, true);
+
+            eraRoots[epochIdx] = root;
+            builder.Dispose();
         }
     }
 
