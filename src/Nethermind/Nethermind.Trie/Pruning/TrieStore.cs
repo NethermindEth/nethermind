@@ -504,7 +504,7 @@ namespace Nethermind.Trie.Pruning
 
                 _pruningTask.ContinueWith((_) =>
                 {
-                    OnMemoryPruneCompleted?.Invoke(this, null!);
+                    OnMemoryPruneCompleted?.Invoke(this, EventArgs.Empty);
                 });
             }
         }
@@ -710,11 +710,11 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
-            if (_lastCommitSet is { } lastCommitSet)
+            if (_lastCommitSet is not null)
             {
-                Debug.Assert(lastCommitSet.IsSealed, "Not sealed when beginning new block");
+                Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
 
-                if (lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && lastCommitSet.BlockNumber != 0)
+                if (_lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && _lastCommitSet.BlockNumber != 0)
                 {
                     if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
                 }
