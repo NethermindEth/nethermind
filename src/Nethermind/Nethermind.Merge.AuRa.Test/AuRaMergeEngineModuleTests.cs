@@ -124,7 +124,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
                     new ChainSpec
                     {
-                        EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev,
+                        EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                            new AuthorityRoundChainSpecEngineParameters
+                            {
+                                WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                            }),
                         Parameters = new()
                     })
             {
@@ -135,12 +139,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
             };
-            _api.ChainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>().Returns(
-                    new AuthorityRoundChainSpecEngineParameters
-                    {
-                        WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                    });
 
             WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.EngineChainSpecParametersProvider
                 .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>(), _api.AbiEncoder);
