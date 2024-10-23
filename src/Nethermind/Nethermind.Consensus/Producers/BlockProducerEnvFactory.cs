@@ -155,7 +155,7 @@ namespace Nethermind.Consensus.Producers
                 readOnlyTxProcessingEnv.WorldState,
                 receiptStorage,
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor),
+                new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, readOnlyTxProcessingEnv.WorldState),
                 new BlockhashStore(_specProvider, readOnlyTxProcessingEnv.WorldState),
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.WorldState, logManager)),

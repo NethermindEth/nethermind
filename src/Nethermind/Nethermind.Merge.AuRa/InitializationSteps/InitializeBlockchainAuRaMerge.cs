@@ -40,7 +40,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, worldState),
                 worldState,
                 _api.ReceiptStorage!,
-                new BeaconBlockRootHandler(transactionProcessor),
+                new BeaconBlockRootHandler(transactionProcessor, worldState),
                 _api.LogManager,
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(withdrawalContractFactory.Create(transactionProcessor), _api.LogManager),
