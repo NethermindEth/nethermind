@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -65,21 +66,52 @@ public class EraExporter : IEraExporter
 
         DateTime startTime = DateTime.Now;
         DateTime lastProgress = DateTime.Now;
-
         int totalProcessed = 0;
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
-        List<byte[]> eraRoots = new();
-        for (long i = start; i <= end; i += size)
+        long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)size);
+        byte[][] eraRoots = new byte[epochCount][];
+
+        List<long> epochIdxs = new List<long>();
+        for (long i = 0; i < epochCount; i++)
         {
+            epochIdxs.Add(i);
+        }
+
+        await Parallel.ForEachAsync(epochIdxs, cancellation, async (epochIdx, cancel) =>
+        {
+            await WriteEpoch(epochIdx);
+        });
+
+        if (createAccumulator)
+        {
+            string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+            await new EraStore(destinationPath, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
+        }
+
+        LogExportProgress(
+            end - start,
+            totalProcessed,
+            processedSinceLast,
+            txProcessedSinceLast,
+            DateTime.Now.Subtract(lastProgress),
+            DateTime.Now.Subtract(startTime));
+
+        if (_logger.IsInfo) _logger.Info("Export completed");
+
+        async Task WriteEpoch(long epochIdx)
+        {
+            // Hmm.. if it does not start at the boundary, then it all offset?
+            // What would be the expected way to encode this?
+            long startingIndex = start + epochIdx * size;
             string filePath = Path.Combine(
-               destinationPath,
-               EraWriter.Filename(_networkName, i / size, Keccak.Zero));
+                destinationPath,
+                EraWriter.Filename(_networkName, startingIndex / size, Keccak.Zero));
             using EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
             //TODO read directly from RocksDb with range reads
-            for (var y = i; y <= i + size; y++)
+            for (var y = startingIndex; y < startingIndex + size; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (block is null)
@@ -102,43 +134,38 @@ public class EraExporter : IEraExporter
                     throw new EraException($"Block does not have total difficulty specified");
                 }
 
-                if (!await builder.Add(block, receipts, cancellation) || y == i + size || y == end)
+                if (!await builder.Add(block, receipts, cancellation) || y == startingIndex + size || y == end)
                 {
                     byte[] root = await builder.Finalize();
                     builder.Dispose();
                     string rename = Path.Combine(
-                                            destinationPath,
-                                            EraWriter.Filename(_networkName, i / size, new Hash256(root)));
+                        destinationPath,
+                        EraWriter.Filename(_networkName, startingIndex / size, new Hash256(root)));
                     _fileSystem.File.Move(
                         filePath,
                         rename, true);
-                    eraRoots.Add(root);
+
+                    eraRoots[epochIdx] = root;
                     break;
                 }
-                totalProcessed++;
-                txProcessedSinceLast += block.Transactions.Length;
-                processedSinceLast++;
-                TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-                if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
+
+                bool shouldLog = (Interlocked.Increment(ref totalProcessed) % 10000) == 0;
+                Interlocked.Increment(ref processedSinceLast);
+                Interlocked.Add(ref txProcessedSinceLast, block.Transactions.Length);
+                if (shouldLog)
                 {
                     LogExportProgress(
                         end - start,
                         totalProcessed,
                         processedSinceLast,
                         txProcessedSinceLast,
-                        elapsed,
+                        DateTime.Now.Subtract(lastProgress),
                         DateTime.Now.Subtract(startTime));
                     lastProgress = DateTime.Now;
                     processedSinceLast = 0;
                     txProcessedSinceLast = 0;
                 }
             }
-        }
-
-        if (createAccumulator)
-        {
-            string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-            await new EraStore(destinationPath, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
         }
     }
 
