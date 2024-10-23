@@ -4,26 +4,13 @@
 using System;
 using Autofac;
 using FluentAssertions;
+using Nethermind.Core.Container;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test;
+namespace Nethermind.Core.Test.Container;
 
 public class ContainerBuilderExtensionsTests
 {
-    [Test]
-    public void AddPropertiesFrom_CanAddProperties()
-    {
-        ITestInterface interfaceImplementation = new InterfaceImplementation();
-        IContainer sp = new ContainerBuilder()
-            .AddPropertiesFrom(interfaceImplementation)
-            .Build();
-
-        sp.ResolveOptional<DeclaredService>().Should().NotBeNull();
-        sp.ResolveOptional<DeclaredInBase>().Should().BeNull();
-        sp.ResolveOptional<Ignored>().Should().BeNull();
-        sp.ResolveOptional<DeclaredButNullService>().Should().BeNull();
-    }
-
     [Test]
     public void TestRegisterNamedComponent()
     {
@@ -79,6 +66,7 @@ public class ContainerBuilderExtensionsTests
         public DeclaredService TheService { get; set; } = new DeclaredService();
         public DeclaredButNullService? NullService { get; set; } = null;
         public Ignored IgnoredService { get; set; } = new Ignored();
+        public DeclaredInBase KeyedBaseService { get; set; } = new DeclaredInBase();
         public DeclaredInBase BaseService { get; set; } = new DeclaredInBase();
     }
 
@@ -89,6 +77,9 @@ public class ContainerBuilderExtensionsTests
 
         [SkipServiceCollection]
         Ignored IgnoredService { get; set; }
+
+        [ComponentKey(ComponentKey.NodeKey)]
+        public DeclaredInBase KeyedBaseService { get; set; }
     }
 
     private interface ITestInterfaceBase

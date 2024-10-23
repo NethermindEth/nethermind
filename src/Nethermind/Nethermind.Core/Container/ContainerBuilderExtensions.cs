@@ -6,40 +6,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Container;
 
 public static class ContainerBuilderExtensions
 {
-    /// <summary>
-    /// Add all properties as singleton. It get them ahead of time instead of lazily to prevent the final service provider
-    /// from disposing it. To prevent a property from being included, use <see cref="SkipServiceCollectionAttribute"/>.
-    /// </summary>
-    /// <param name="configuration"></param>
-    /// <param name="source"></param>
-    /// <typeparam name="T"></typeparam>
-    /// <returns></returns>
-    public static ContainerBuilder AddPropertiesFrom<T>(this ContainerBuilder configuration, T source) where T : class
-    {
-        Type t = typeof(T);
-
-        IEnumerable<PropertyInfo> properties = t
-            .GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
-            .Where(p => p.GetCustomAttribute<SkipServiceCollectionAttribute>() == null);
-
-        foreach (PropertyInfo propertyInfo in properties)
-        {
-            object? val = propertyInfo.GetValue(source);
-            if (val != null)
-            {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
-            }
-        }
-
-        return configuration;
-    }
-
     public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder) where T : notnull
     {
         builder.RegisterType<T>()
@@ -50,7 +23,7 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddInstance<T>(this ContainerBuilder builder, T instance) where T : class
     {
         builder.RegisterInstance(instance)
             .As<T>()
@@ -112,6 +85,25 @@ public static class ContainerBuilderExtensions
     {
         builder.Register<ILifetimeScope, T>(ctx => ctx.BeginLifetimeScope(configurator).Resolve<T>())
             .Named<T>(name);
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    {
+        builder.RegisterModule(module);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Shorthand for registering a constructor that resolve TImpl as TAs.
+    /// This is useful for clarity or for conditional registration where TImpl is declared somewhere else.
+    /// </summary>
+    public static ContainerBuilder Bind<TImpl, TAs>(this ContainerBuilder builder) where TImpl : notnull where TAs : notnull
+    {
+        builder.Register(ctx => ctx.Resolve<TImpl>())
+            .As<TAs>();
 
         return builder;
     }

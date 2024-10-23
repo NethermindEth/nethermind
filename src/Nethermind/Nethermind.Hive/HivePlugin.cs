@@ -10,12 +10,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Hive
 {
-    public class HivePlugin : INethermindPlugin
+    public class HivePlugin(IHiveConfig hiveConfig) : INethermindPlugin
     {
         private INethermindApi _api = null!;
-        private IHiveConfig _hiveConfig = null!;
         private ILogger _logger;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
+        public bool Enabled => Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || hiveConfig.Enabled;
 
         public ValueTask DisposeAsync()
         {
@@ -33,10 +33,7 @@ namespace Nethermind.Hive
         public Task Init(INethermindApi api)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
-            _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
             _logger = _api.LogManager.GetClassLogger();
-
-            Enabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || _hiveConfig.Enabled;
 
             return Task.CompletedTask;
         }
@@ -73,7 +70,5 @@ namespace Nethermind.Hive
         {
             return Task.CompletedTask;
         }
-
-        private bool Enabled { get; set; }
     }
 }

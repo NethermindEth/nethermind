@@ -17,13 +17,16 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -51,6 +54,15 @@ public class SnapServer : ISnapServer
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
+
+    public bool IsEnabled { get; } = true;
+
+    public SnapServer(ISyncConfig syncConfig, IReadOnlyTrieStore trieStore, [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
+        IBlockTree blockTree, ILogManager logManager)
+        : this(trieStore, codeDb, new LastNStateRootTracker(blockTree, 128), logManager)
+    {
+        IsEnabled = syncConfig.SnapServingEnabled == true;
+    }
 
     public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
     {
