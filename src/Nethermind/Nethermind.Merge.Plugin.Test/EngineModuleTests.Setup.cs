@@ -90,6 +90,7 @@ public partial class EngineModuleTests
             chain.LogManager);
         invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
         chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.PoSSwitcher, chain.LogManager);
+        chain.BeaconSync.AllowBeaconHeaderSync();
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
         return new EngineRpcModule(
             new GetPayloadV1Handler(
@@ -255,7 +256,7 @@ public partial class EngineModuleTests
                 State,
                 ReceiptStorage,
                 TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor),
+                new BeaconBlockRootHandler(TxProcessor, State),
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
                 WithdrawalProcessor,

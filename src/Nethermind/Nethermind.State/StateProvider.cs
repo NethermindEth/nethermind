@@ -851,14 +851,14 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        public void CommitTree(long blockNumber)
+        public void CommitTree()
         {
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
             }
 
-            _tree.Commit(blockNumber);
+            _tree.Commit();
         }
 
         public static void CommitBranch()

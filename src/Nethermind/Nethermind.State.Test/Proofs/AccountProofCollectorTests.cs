@@ -53,7 +53,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -75,7 +75,7 @@ namespace Nethermind.Store.Test.Proofs
 
             Account account1 = Build.An.Account.WithBalance(1).TestObject;
             tree.Set(TestItem.AddressA, account1);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressC, new UInt256[] { 1, 2, 3 });
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -106,7 +106,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account = Build.An.Account.WithBalance(1).TestObject;
             tree.Set(c.AsSpan(), Rlp.Encode(account.WithChangedBalance(3)));
             tree.Set(d.AsSpan(), Rlp.Encode(account.WithChangedBalance(4)));
-            tree.Commit(0);
+            tree.Commit();
 
             // now wer are looking for a trying to trick the code to think that the extension of c and d is a good match
             // if everything is ok the proof length of 1 is enough since the extension from the root is not matched
@@ -128,7 +128,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -150,7 +150,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -173,7 +173,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -196,7 +196,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -219,7 +219,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -242,7 +242,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -260,7 +260,7 @@ namespace Nethermind.Store.Test.Proofs
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA, new[] { Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001") });
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -277,14 +277,14 @@ namespace Nethermind.Store.Test.Proofs
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Set(UInt256.One, Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000"));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA, new[] { Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001") });
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -302,14 +302,14 @@ namespace Nethermind.Store.Test.Proofs
             StorageTree storageTree = new(trieStore.GetTrieStore(TestItem.AddressA.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Set(UInt256.One, Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000"));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             AccountProofCollector accountProofCollector = new(TestItem.AddressA, new[] { Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001") });
             tree.Accept(accountProofCollector, tree.RootHash);
@@ -332,14 +332,14 @@ namespace Nethermind.Store.Test.Proofs
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper dumper = new();
             tree.Accept(dumper, tree.RootHash);
@@ -371,14 +371,14 @@ namespace Nethermind.Store.Test.Proofs
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper dumper = new();
             tree.Accept(dumper, tree.RootHash);
@@ -412,14 +412,14 @@ namespace Nethermind.Store.Test.Proofs
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper dumper = new();
             tree.Accept(dumper, tree.RootHash);
@@ -451,14 +451,14 @@ namespace Nethermind.Store.Test.Proofs
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper dumper = new();
             tree.Accept(dumper, tree.RootHash);
@@ -486,7 +486,7 @@ namespace Nethermind.Store.Test.Proofs
             byte[] code = new byte[] { 1, 2, 3 };
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper dumper = new();
             tree.Accept(dumper, tree.RootHash);
@@ -519,14 +519,14 @@ namespace Nethermind.Store.Test.Proofs
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Commit(0);
+            storageTree.Commit();
 
             byte[] code = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper dumper = new();
             tree.Accept(dumper, tree.RootHash);
@@ -629,14 +629,14 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 TestContext.Out.WriteLine($"Set {Keccak.Compute(rawKey).Bytes.ToHexString()}");
                 storageTree.Set(addressWithStorage.StorageCells[j].Index, new byte[] { 1 });
                 storageTree.UpdateRootHash();
-                storageTree.Commit(0);
+                storageTree.Commit();
             }
 
             Account account = Build.An.Account.WithBalance((UInt256)accountIndex).WithStorageRoot(storageTree.RootHash).TestObject;
             tree.Set(addressWithStorage.Address, account);
 
             tree.UpdateRootHash();
-            tree.Commit(0);
+            tree.Commit();
 
             TreeDumper treeDumper = new();
             tree.Accept(treeDumper, tree.RootHash);
@@ -705,14 +705,14 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 }
 
                 storageTree.UpdateRootHash();
-                storageTree.Commit(0);
+                storageTree.Commit();
 
                 account = account.WithChangedStorageRoot(storageTree.RootHash);
                 tree.Set(addressesWithStorage[i].Address, account);
             }
 
             tree.UpdateRootHash();
-            tree.Commit(0);
+            tree.Commit();
 
             for (int i = 0; i < accountsCount; i++)
             {
