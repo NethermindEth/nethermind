@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using McMaster.Extensions.CommandLineUtils;
 using Nethermind.Core.Collections;
 using NLog;
 using NLog.Config;
@@ -53,9 +52,8 @@ namespace Nethermind.Runner.Logging
             loggingConfiguration?.RemoveTarget("seq");
         }
 
-        public static void ConfigureLogLevels(CommandOption logLevelOverride)
+        public static void ConfigureLogLevels(string logLevel)
         {
-            string logLevel = logLevelOverride.Value();
             LogLevel nLogLevel = logLevel.ToUpperInvariant() switch
             {
                 "OFF" => LogLevel.Off,
