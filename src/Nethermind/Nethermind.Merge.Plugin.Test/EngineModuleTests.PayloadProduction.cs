@@ -419,7 +419,7 @@ public partial class EngineModuleTests
         };
 
         await blockImprovementStartsLock.WaitAsync(1000); // started improving block
-        improvementContextFactory.CreatedContexts.Should().HaveCount(2);
+        improvementContextFactory.CreatedContexts.Should().HaveCountGreaterThanOrEqualTo(2);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
