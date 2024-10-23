@@ -5,7 +5,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Consensus;
 using Nethermind.KeyStore.Config;

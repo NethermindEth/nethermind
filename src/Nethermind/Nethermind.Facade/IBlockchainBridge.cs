@@ -14,7 +14,6 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
-using static Nethermind.Facade.BlockchainBridge;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade

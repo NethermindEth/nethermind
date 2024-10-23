@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text.Json;
 using Nethermind.Serialization.Json;
 
 using NUnit.Framework;

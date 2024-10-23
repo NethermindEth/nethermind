@@ -3,7 +3,6 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;

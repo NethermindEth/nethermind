@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.StateSync;

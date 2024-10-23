@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using System.Text.Json;
 using System.Text.Json.Serialization;
