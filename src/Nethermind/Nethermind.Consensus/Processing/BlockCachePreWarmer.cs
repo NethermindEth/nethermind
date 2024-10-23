@@ -144,14 +144,14 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     tx = block.Transactions[i];
                     tx.CopyTo(systemTransaction);
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-					
+
                     for (int j = 0; j <= i; j++)
                     {
                         Address senderAddress = tx.SenderAddress!;
                         scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
                         scope.WorldState.IncrementNonce(senderAddress!);
-                    }					
-					
+                    }
+
                     if (spec.UseTxAccessLists)
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
