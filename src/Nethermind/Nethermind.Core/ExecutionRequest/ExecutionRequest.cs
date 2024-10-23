@@ -109,17 +109,17 @@ public static class ExecutionRequestExtensions
 
         using (SHA256 sha256 = SHA256.Create())
         {
-            Span<byte> concatenatedHashes = new byte[32 * flatEncodedRequests!.Length];
+            byte[] concatenatedHashes = new byte[32 * flatEncodedRequests!.Length];
             int currentPosition = 0;
             byte type = 0;
+            // Allocate the buffer once outside the loop
+            Span<byte> requestBuffer = stackalloc byte[flatEncodedRequests.Max(r => r.Length) + 1];
             // Compute sha256 for each request and concatenate them
             foreach (byte[] request in flatEncodedRequests)
             {
-                if (type > 2) break;
-                Span<byte> requestBuffer = new byte[request.Length + 1];
                 requestBuffer[0] = type;
-                request.CopyTo(requestBuffer.Slice(1));
-                sha256.ComputeHash(requestBuffer.ToArray()).CopyTo(concatenatedHashes.Slice(currentPosition, 32));
+                request.CopyTo(requestBuffer.Slice(1, request.Length));
+                sha256.ComputeHash(requestBuffer.Slice(0, request.Length + 1).ToArray()).CopyTo(concatenatedHashes.AsSpan(currentPosition, 32));
                 currentPosition += 32;
                 type++;
             }
@@ -137,17 +137,5 @@ public static class ExecutionRequestExtensions
     {
         using ArrayPoolList<byte[]> requests = GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
         return CalculateHashFromFlatEncodedRequests(requests.ToArray());
-    }
-
-    public static bool IsSortedByType(this ExecutionRequest[] requests)
-    {
-        for (int i = 1; i < requests.Length; i++)
-        {
-            if (requests[i - 1].RequestType > requests[i].RequestType)
-            {
-                return false;
-            }
-        }
-        return true;
     }
 }

@@ -187,7 +187,7 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
+        blockHeader.Should().BeEquivalentTo(header);
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

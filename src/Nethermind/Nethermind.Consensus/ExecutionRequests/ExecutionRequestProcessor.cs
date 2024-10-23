@@ -19,12 +19,41 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor) : IExecutionRequestsProcessor
+public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 {
     private readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
     private const long GasLimit = 30_000_000L;
+
+    private readonly ITransactionProcessor _transactionProcessor;
+
+    private readonly Transaction _withdrawalTransaction = new()
+    {
+        Value = UInt256.Zero,
+        Data = Array.Empty<byte>(),
+        To = Eip7002Constants.WithdrawalRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = UInt256.Zero,
+    };
+
+    private readonly Transaction _consolidationTransaction = new()
+    {
+        Value = UInt256.Zero,
+        Data = Array.Empty<byte>(),
+        To = Eip7251Constants.ConsolidationRequestPredeployAddress,
+        SenderAddress = Address.SystemUser,
+        GasLimit = GasLimit,
+        GasPrice = UInt256.Zero,
+    };
+
+    public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
+    {
+        _transactionProcessor = transactionProcessor;
+        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
+        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
+    }
 
     public IEnumerable<ExecutionRequest> ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec)
     {
@@ -95,18 +124,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
 
         CallOutputTracer tracer = new();
 
-        Transaction? transaction = new()
-        {
-            Value = UInt256.Zero,
-            Data = Array.Empty<byte>(),
-            To = contractAddress,
-            SenderAddress = Address.SystemUser,
-            GasLimit = GasLimit,
-            GasPrice = UInt256.Zero,
-        };
-        transaction.Hash = transaction.CalculateHash();
-
-        transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
+        _transactionProcessor.Execute( isWithdrawalRequests? _withdrawalTransaction: _consolidationTransaction, new BlockExecutionContext(block.Header), tracer);
         var result = tracer.ReturnValue;
         if (result == null || result.Length == 0)
             yield break;
@@ -133,7 +151,7 @@ public class ExecutionRequestsProcessor(ITransactionProcessor transactionProcess
         IEnumerable<ExecutionRequest> withdrawalRequests = ReadRequests(block, state, spec, spec.Eip7002ContractAddress);
         IEnumerable<ExecutionRequest> consolidationRequests = ReadRequests(block, state, spec, spec.Eip7251ContractAddress);
         using ArrayPoolList<byte[]> requests = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
-        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requests.ToArray());
         block.ExecutionRequests = requests.ToArray();
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 }
