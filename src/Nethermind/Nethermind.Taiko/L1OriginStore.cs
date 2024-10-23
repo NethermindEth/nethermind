@@ -7,30 +7,26 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginStore(IDb db, IRlpStreamDecoder<L1Origin> decoder, ILogManager? logManager = null) : IL1OriginStore
+public class L1OriginStore(IDb db, IRlpStreamDecoder<L1Origin> decoder) : IL1OriginStore
 {
-    private readonly ILogger? _logger = logManager?.GetClassLogger<L1OriginStore>();
-
-    private static readonly int L1OriginHeadKeyLength = 32;
+    private const int UInt256BytesLength = 32;
     private static readonly byte[] L1OriginHeadKey = UInt256.MaxValue.ToBigEndian();
 
     public L1Origin? ReadL1Origin(UInt256 blockId)
     {
-        Span<byte> keyBytes = stackalloc byte[L1OriginHeadKeyLength];
+        Span<byte> keyBytes = stackalloc byte[UInt256BytesLength];
         blockId.ToBigEndian(keyBytes);
-        ValueHash256 key = new(keyBytes);
 
-        return db.Get(key, decoder);
+        return db.Get(new ValueHash256(keyBytes), decoder);
     }
 
     public void WriteL1Origin(UInt256 blockId, L1Origin l1Origin)
     {
-        Span<byte> key = stackalloc byte[L1OriginHeadKeyLength];
+        Span<byte> key = stackalloc byte[UInt256BytesLength];
         blockId.ToBigEndian(key);
 
         int encodedL1OriginLength = decoder.GetLength(l1Origin, RlpBehaviors.None);
@@ -59,6 +55,9 @@ public class L1OriginStore(IDb db, IRlpStreamDecoder<L1Origin> decoder, ILogMana
 
     public void WriteHeadL1Origin(UInt256 blockId)
     {
-        db.Set(L1OriginHeadKey, blockId.ToBigEndian());
+        Span<byte> blockIdBytes = stackalloc byte[UInt256BytesLength];
+        blockId.ToBigEndian(blockIdBytes);
+
+        db.Set(new(L1OriginHeadKey.AsSpan()), blockIdBytes);
     }
 }

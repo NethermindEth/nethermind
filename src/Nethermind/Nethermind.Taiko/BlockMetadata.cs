@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
 

@@ -1,22 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.IO.Compression;
-using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;

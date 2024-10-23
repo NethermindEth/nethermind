@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -27,8 +27,6 @@ public class TaikoBlockValidator(
     private static readonly Address GoldenTouchAccount = new("0x0000777735367b36bC9B61C50022d9D0700dB4Ec");
 
     private const long AnchorGasLimit = 250_000;
-
-    private readonly IEthereumEcdsa _ecdsa = ecdsa;
 
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
@@ -75,7 +73,7 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        if (tx.Data is null || (!Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorSelector) && !Bytes.AreEqual(tx.Data.Value.Span[0..4], AnchorV2Selector)))
+        if (tx.Data is null || (!AnchorSelector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4]) && !AnchorV2Selector.AsSpan().SequenceEqual(tx.Data.Value.Span[0..4])))
         {
             errorMessage = "Anchor transaction must have valid selector";
             return false;
@@ -99,8 +97,14 @@ public class TaikoBlockValidator(
             return false;
         }
 
-        tx.SenderAddress = _ecdsa.RecoverAddress(tx)
-            ?? throw new InvalidOperationException("Couldn't recover sender address for Anchor Transaction");
+        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
+
+        if (tx.SenderAddress is null)
+        {
+            errorMessage = "Anchor transaction sender address is not recoverable";
+            return false;
+        }
+
         if (!tx.SenderAddress!.Equals(GoldenTouchAccount))
         {
             errorMessage = "Anchor transaction must be sent by the golden touch account";

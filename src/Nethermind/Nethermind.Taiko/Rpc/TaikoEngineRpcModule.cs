@@ -165,7 +165,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         BlockExecutionContext blkCtx = new(blockHeader);
         worldState.StateRoot = blockHeader.StateRoot;
 
-        Batch batch = new(maxBytesPerTxList, txDecoder);
+        Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
         try
         {
@@ -173,17 +173,6 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             {
                 Transaction tx = txSource[i];
                 Snapshot snapshot = worldState.TakeSnapshot(true);
-                long gasUsed = blockHeader.GasUsed;
-
-                void IgnoreCurrentSender()
-                {
-                    while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
-                }
-
-                void RestoreState()
-                {
-                    worldState.Restore(snapshot);
-                }
 
                 try
                 {
@@ -191,7 +180,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                     if (!executionResult)
                     {
-                        RestoreState();
+                        worldState.Restore(snapshot);
 
                         if (executionResult.Error == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                         {
@@ -202,29 +191,29 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                                 return [.. Batches];
                             }
 
-                            batch = new(maxBytesPerTxList, txDecoder);
+                            batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
 
                             continue;
                         }
 
-                        IgnoreCurrentSender();
+                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
                 }
                 catch
                 {
-                    RestoreState();
-                    IgnoreCurrentSender();
+                    worldState.Restore(snapshot);
+                    while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                     continue;
                 }
 
                 if (!batch.TryAddTx(tx))
                 {
-                    RestoreState();
+                    worldState.Restore(snapshot);
 
                     if (batch.Transactions.Count is 0)
                     {
-                        IgnoreCurrentSender();
+                        while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
                     else
@@ -236,7 +225,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                             return [.. Batches];
                         }
 
-                        batch = new(maxBytesPerTxList, txDecoder);
+                        batch = new(maxBytesPerTxList, txSource.Length - i, txDecoder);
 
                         continue;
                     }
@@ -258,12 +247,12 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return [.. Batches];
     }
 
-    struct Batch(ulong maxBytes, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
+    struct Batch(ulong maxBytes, int transactionsListCapacity, IRlpStreamDecoder<Transaction> txDecoder) : IDisposable
     {
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
 
-        public ArrayPoolList<Transaction> Transactions { get; } = ArrayPoolList<Transaction>.Empty();
+        public ArrayPoolList<Transaction> Transactions { get; } = new ArrayPoolList<Transaction>(transactionsListCapacity);
 
         public bool TryAddTx(Transaction tx)
         {

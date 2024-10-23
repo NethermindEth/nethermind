@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -33,7 +33,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         block.Transactions[0].IsAnchorTx = true;
 
         BlockExecutionContext blkCtx = new(block.Header);
-        List<Transaction> correctTransactions = [];
+        using ArrayPoolList<Transaction> correctTransactions = new(block.Transactions.Length);
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
@@ -70,7 +70,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, tx, receiptsTracer.LastReceipt));
             correctTransactions.Add(tx);
         }
-
+        
         block.TrySetTransactions([.. correctTransactions]);
         return [.. receiptsTracer.TxReceipts];
     }

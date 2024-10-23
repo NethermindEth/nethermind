@@ -141,7 +141,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         IDb db = _api.DbFactory!.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
         _api.DbProvider!.RegisterDb(L1OriginDbName, db);
-        L1OriginStore l1OriginStore = new(db, Rlp.GetStreamDecoder<L1Origin>()!, _api.LogManager);
+        L1OriginStore l1OriginStore = new(db, Rlp.GetStreamDecoder<L1Origin>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<L1Origin>)));
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
@@ -177,7 +177,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             scope.WorldState,
             blockchainProcessor);
 
-        IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new NullReferenceException("txDecoder");
+        IRlpStreamDecoder<Transaction> txDecoder = Rlp.GetStreamDecoder<Transaction>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<Transaction>));
 
         TaikoPayloadPreparationService payloadPreparationService = new(
             chainProcessor,

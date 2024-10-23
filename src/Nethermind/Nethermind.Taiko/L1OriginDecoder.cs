@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko;
 
-public class L1OriginDecoder : IRlpObjectDecoder<L1Origin>, IRlpStreamDecoder<L1Origin>
+public class L1OriginDecoder : IRlpStreamDecoder<L1Origin>
 {
     public L1Origin Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

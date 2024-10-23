@@ -29,9 +29,6 @@ public class TaikoPayloadPreparationService(
     private readonly SemaphoreSlim _worldStateLock = new(1);
 
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockchainProcessor _processor = processor;
-    private readonly IWorldState _worldState = worldState;
-    private readonly IL1OriginStore _l1OriginStore = l1OriginStore;
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
 
@@ -59,9 +56,9 @@ public class TaikoPayloadPreparationService(
             l1Origin.L2BlockHash = block.Hash;
 
             // Write L1Origin.
-            _l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
+            l1OriginStore.WriteL1Origin(l1Origin.BlockId, l1Origin);
             // Write the head L1Origin.
-            _l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
+            l1OriginStore.WriteHeadL1Origin(l1Origin.BlockId);
 
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
             _payloadStorage.TryAdd(payloadId, new NoBlockProductionContext(block, UInt256.Zero));
@@ -76,11 +73,11 @@ public class TaikoPayloadPreparationService(
         {
             try
             {
-                if (_worldState.HasStateForRoot(parentStateRoot))
+                if (worldState.HasStateForRoot(parentStateRoot))
                 {
-                    _worldState.StateRoot = parentStateRoot;
+                    worldState.StateRoot = parentStateRoot;
 
-                    return _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance)
+                    return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance)
                         ?? throw new InvalidOperationException("Block processing failed");
                 }
             }
@@ -142,7 +139,7 @@ public class TaikoPayloadPreparationService(
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
         Transaction[] transactions = BuildTransactions(payloadAttributes);
 
-        return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+        return new Block(header, transactions, [], payloadAttributes.Withdrawals);
     }
 
     public ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
@@ -153,5 +150,6 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
-    public event EventHandler<BlockEventArgs>? BlockImproved = (s, e) => { };
+
+    public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }
