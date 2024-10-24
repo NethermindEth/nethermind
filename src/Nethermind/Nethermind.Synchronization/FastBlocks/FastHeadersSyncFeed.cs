@@ -32,6 +32,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncReport _syncReport;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
+        private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
 
         private readonly object _handlerLock = new();
 
@@ -39,7 +40,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected long _lowestRequestedHeaderNumber;
 
         protected Hash256 _nextHeaderHash;
-        protected UInt256? _nextHeaderDiff;
+        protected UInt256? _nextHeaderTotalDifficulty;
 
         protected long _pivotNumber;
 
@@ -154,6 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
             ILogManager? logManager,
+            ITotalDifficultyStrategy? totalDifficultyStrategy = null,
             bool alwaysStartHeaderSync = false)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -161,6 +163,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
+            _totalDifficultyStrategy = totalDifficultyStrategy ?? new CumulativeTotalDifficultyStrategy();
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
@@ -196,7 +199,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _lowestRequestedHeaderNumber = _pivotNumber + 1; // Because we want the pivot to be requested
             _nextHeaderHash = _syncConfig.PivotHashParsed;
-            _nextHeaderDiff = _syncConfig.PivotTotalDifficultyParsed;
+            _nextHeaderTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
@@ -610,7 +613,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                 }
 
-                header.TotalDifficulty = _nextHeaderDiff;
+                header.TotalDifficulty = _nextHeaderTotalDifficulty;
                 AddBlockResult addBlockResult = InsertHeader(header);
                 if (addBlockResult == AddBlockResult.InvalidBlock)
                 {
@@ -713,8 +716,9 @@ namespace Nethermind.Synchronization.FastBlocks
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             _nextHeaderHash = header.ParentHash!;
-            _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+            _nextHeaderTotalDifficulty = _totalDifficultyStrategy.ParentTotalDifficulty(header);
         }
+
         private bool _disposed = false;
         public override void Dispose()
         {
