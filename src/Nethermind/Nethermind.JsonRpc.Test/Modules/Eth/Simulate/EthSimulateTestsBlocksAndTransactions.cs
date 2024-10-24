@@ -14,7 +14,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;

@@ -19,13 +19,8 @@ public class OptimismOverridableTxProcessingEnv(
     ILogManager logManager,
     IL1CostHelper l1CostHelper,
     IOptimismSpecHelper opSpecHelper,
-    IWorldState? worldStateToWarmUp = null) : OverridableTxProcessingEnv(
-    worldStateManager,
-    readOnlyBlockTree,
-    specProvider,
-    logManager,
-    worldStateToWarmUp
-)
+    IWorldState? worldStateToWarmUp = null)
+    : OverridableTxProcessingEnv(worldStateManager, readOnlyBlockTree, specProvider, logManager, worldStateToWarmUp)
 {
     protected override ITransactionProcessor CreateTransactionProcessor()
     {

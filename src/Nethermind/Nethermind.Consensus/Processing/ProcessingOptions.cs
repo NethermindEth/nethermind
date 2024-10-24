@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Processing
         MarkAsProcessed = 128,
 
         /// <summary>
-        /// Forces to run on top of specified block state, instead of reverting to the previous one.
+        /// Forces to run on top of the specified block state, instead of reverting to the previous one.
         /// </summary>
         ForceSameBlock = 1 << 8,
 
