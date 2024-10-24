@@ -24,12 +24,12 @@ public class PivotUpdator
 {
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly ISyncPeerPool _syncPeerPool;
+    protected readonly ISyncPeerPool _syncPeerPool;
     private readonly ISyncConfig _syncConfig;
-    private readonly IBlockCacheService _blockCacheService;
-    private readonly IBeaconSyncStrategy _beaconSyncStrategy;
+    protected readonly IBlockCacheService _blockCacheService;
+    protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
-    private readonly ILogger _logger;
+    protected readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
 
@@ -127,38 +127,29 @@ public class PivotUpdator
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        Hash256? finalizedBlockHash = TryGetFinalizedBlockHashFromCl();
+        (Hash256 Hash, long Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
+
+        return potentialPivotData is not null && TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
+    }
+
+    protected virtual async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    {
+        // getting finalized block hash as it is safe, because can't be reorganized
+        Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
 
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
-            return false;
+            PrintWaitingForMessageFromCl();
+            return null;
         }
+
+        UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
 
         long? finalizedBlockNumber = TryGetFinalizedBlockNumberFromBlockCache(finalizedBlockHash);
         finalizedBlockNumber ??= TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash);
         finalizedBlockNumber ??= await TryGetFinalizedBlockNumberFromPeers(finalizedBlockHash, cancellationToken);
 
-        return finalizedBlockNumber is not null && TryOverwritePivot(finalizedBlockHash, (long)finalizedBlockNumber);
-    }
-
-    private Hash256? TryGetFinalizedBlockHashFromCl()
-    {
-        Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
-
-        if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
-        {
-            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
-
-            return null;
-        }
-
-        if (_alreadyAnnouncedNewPivotHash != finalizedBlockHash)
-        {
-            if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
-            _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
-        }
-
-        return finalizedBlockHash;
+        return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
     }
 
     private long? TryGetFinalizedBlockNumberFromBlockCache(Hash256 finalizedBlockHash)
@@ -223,31 +214,31 @@ public class PivotUpdator
             }
         }
 
-        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
+        PrintPotentialNewPivotAndWaiting(finalizedBlockHash.ToString());
         return null;
     }
 
-    private bool TryOverwritePivot(Hash256 finalizedBlockHash, long finalizedBlockNumber)
+    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, long potentialPivotBlockNumber)
     {
         long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
-        bool isCloseToHead = targetBlock <= finalizedBlockNumber || (targetBlock - finalizedBlockNumber) < Constants.MaxDistanceFromHead;
-        bool newPivotHigherThanOld = finalizedBlockNumber > _syncConfig.PivotNumberParsed;
+        bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
+        bool newPivotHigherThanOld = potentialPivotBlockNumber > _syncConfig.PivotNumberParsed;
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            UpdateConfigValues(finalizedBlockHash, finalizedBlockNumber);
+            UpdateConfigValues(potentialPivotBlockHash, potentialPivotBlockNumber);
 
             RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-            pivotData.Encode(finalizedBlockNumber);
-            pivotData.Encode(finalizedBlockHash);
+            pivotData.Encode(potentialPivotBlockNumber);
+            pivotData.Encode(potentialPivotBlockHash);
             _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
 
-            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
+            if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {potentialPivotBlockNumber}, hash: {potentialPivotBlockHash}");
             return true;
         }
 
-        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {finalizedBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - finalizedBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
-        if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {finalizedBlockNumber}, old: {_syncConfig.PivotNumber}");
+        if (!isCloseToHead && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer too far from head. PivotBlockNumber: {potentialPivotBlockNumber}, TargetBlockNumber: {targetBlock}, difference: {targetBlock - potentialPivotBlockNumber} blocks. Max difference allowed: {Constants.MaxDistanceFromHead}");
+        if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {potentialPivotBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
     }
 
@@ -259,4 +250,22 @@ public class PivotUpdator
         _beaconSyncStrategy.AllowBeaconHeaderSync();
     }
 
+    protected void PrintWaitingForMessageFromCl()
+    {
+        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+    }
+
+    protected void PrintPotentialNewPivotAndWaiting(string potentialPivotBlockHash)
+    {
+        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Potential new pivot block: {potentialPivotBlockHash}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
+    }
+
+    protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)
+    {
+        if (_alreadyAnnouncedNewPivotHash != finalizedBlockHash)
+        {
+            if (_logger.IsInfo) _logger.Info($"Potential new pivot block hash: {finalizedBlockHash}");
+            _alreadyAnnouncedNewPivotHash = finalizedBlockHash;
+        }
+    }
 }
