@@ -127,9 +127,9 @@ public interface IShutterConfig : IConfig
         {
             bootnodeP2PAddresses = BootnodeP2PAddresses.Select(addr => Multiaddress.Decode(addr)).ToArray();
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException e)
         {
-            throw new ArgumentException($"Could not decode Shutter bootnode p2p addresses.");
+            throw new ArgumentException($"Could not decode Shutter bootnode p2p addresses.", e);
         }
     }
 }
