@@ -6,17 +6,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using FluentAssertions;
 using FluentAssertions.Equivalency;
-using FluentAssertions.Json;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 

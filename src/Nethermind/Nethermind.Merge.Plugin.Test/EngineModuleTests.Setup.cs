@@ -39,7 +39,6 @@ using Nethermind.Merge.Plugin.Test.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;

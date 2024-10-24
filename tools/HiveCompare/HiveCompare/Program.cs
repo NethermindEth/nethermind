@@ -52,7 +52,7 @@ internal class Program
 
             return HasRequiredOption(firstFileOption) && HasRequiredOption(secondFileOption)
                 ? RequiredFileExists(firstFileOption) && RequiredFileExists(secondFileOption)
-                    ? ParseTests(firstFileOption.Value(), secondFileOption.Value())
+                    ? ParseTests(firstFileOption.Value()!, secondFileOption.Value()!)
                         ? 0
                         : 4
                     : 2
