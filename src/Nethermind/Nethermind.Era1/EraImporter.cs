@@ -95,8 +95,10 @@ public class EraImporter : IEraImporter
         DateTime lastProgress = DateTime.Now;
         long epochProcessed = 0;
         DateTime startTime = DateTime.Now;
-        long totalblocks = (eraStore.BiggestEpoch - startEpoch);
+        long totalblocks = (eraStore.BiggestEpoch - startEpoch) * EraWriter.MaxEra1Size;
         int blocksProcessed = 0;
+
+        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(_blockTree);
 
         for (long i = startEpoch; eraStore.HasEpoch(i); i++)
         {
@@ -122,7 +124,10 @@ public class EraImporter : IEraImporter
                 }
 
                 if (processBlock)
+                {
+                    await pacer.WaitForQueue(b.Number, cancellation);
                     await SuggestBlock(b, r, processBlock);
+                }
                 else
                     InsertBlockAndReceipts(b, r);
 
