@@ -15,7 +15,7 @@ namespace Nethermind.Config.Test
         [Test]
         public void CorrectSettingNames_CaseInsensitive()
         {
-            JsonConfigSource? jsonSource = new("SampleJson/CorrectSettingNames.cfg");
+            JsonConfigSource? jsonSource = new("SampleJson/CorrectSettingNames.json");
 
             IEnvironment? env = Substitute.For<IEnvironment>();
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { { "NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT", "500" } });
@@ -50,14 +50,14 @@ namespace Nethermind.Config.Test
                 { "NETHERMIND_HIVE_ENABLED", "true" },
                 { "NETHERMIND_URL", "http://test:80" },
                 { "NETHERMIND_CORS_ORIGINS", "*" },
-                { "NETHERMIND_CONFIG", "test2.cfg" },
+                { "NETHERMIND_CONFIG", "test2.json" },
                 { "NETHERMIND_XYZ", "xyz" },    // not existing, should get error
                 { "QWER", "qwerty" }    // not Nethermind setting, no error
             });
             EnvConfigSource? envSource = new(env);
 
             ArgsConfigSource? argsSource = new(new Dictionary<string, string>() {
-                { "config", "test.cfg" },
+                { "config", "test.json" },
                 { "datadir", "Data" },
                 { "ConfigsDirectory", "ConfDir" },
                 { "baseDbPath", "DB" },
@@ -85,7 +85,7 @@ namespace Nethermind.Config.Test
         [Test]
         public void SettingWithTypos()
         {
-            JsonConfigSource? jsonSource = new("SampleJson/ConfigWithTypos.cfg");
+            JsonConfigSource? jsonSource = new("SampleJson/ConfigWithTypos.json");
 
             IEnvironment? env = Substitute.For<IEnvironment>();
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() {

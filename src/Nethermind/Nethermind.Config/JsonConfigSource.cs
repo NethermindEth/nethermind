@@ -47,7 +47,7 @@ namespace Nethermind.Config
 
                     missingConfigFileMessage.AppendLine().AppendLine($"Search directory: {directory}");
 
-                    string[] configFiles = Directory.GetFiles(directory, "*.cfg");
+                    string[] configFiles = Directory.GetFiles(directory, "*.json");
                     if (configFiles.Length > 0)
                     {
                         missingConfigFileMessage.AppendLine("Found the following config files:");

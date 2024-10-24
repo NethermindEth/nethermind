@@ -176,17 +176,17 @@ namespace Nethermind.Overseer.Test.Framework
 
         public TestBuilder StartCliqueNode(string name)
         {
-            return StartNode(name, "configs/cliqueNode.cfg");
+            return StartNode(name, "configs/cliqueNode.json");
         }
 
         public TestBuilder StartCliqueMiner(string name)
         {
-            return StartNode(name, "configs/cliqueMiner.cfg");
+            return StartNode(name, "configs/cliqueMiner.json");
         }
 
         public TestBuilder StartAuRaMiner(string name, string key)
         {
-            return StartNode(name, "configs/auRaMiner.cfg", key);
+            return StartNode(name, "configs/auRaMiner.json", key);
         }
 
         public TestBuilder StartNode(string name, string baseConfigFile, string key = null)
@@ -212,7 +212,7 @@ namespace Nethermind.Overseer.Test.Framework
                 var nodeKey = GetNodeKey(key);
 
                 string dbDir = Path.Combine(_dbsDir, name);
-                string configPath = Path.Combine(_configsDir, $"{name}.cfg");
+                string configPath = Path.Combine(_configsDir, $"{name}.json");
                 File.Copy(baseConfigFile, configPath);
                 int p2pPort = _startPort + _nodeCounter;
                 int httpPort = _startHttpPort + _nodeCounter;

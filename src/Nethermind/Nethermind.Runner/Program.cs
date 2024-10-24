@@ -374,60 +374,65 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configDir = parseResult.GetResult(BasicOptions.ConfigurationDirectory)?.GetValueOrDefault<string>();
-    string configFilePath = parseResult.GetResult(BasicOptions.Configuration)?.GetValueOrDefault<string>();
-    string? configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
+    string configsDir = parseResult.GetResult(BasicOptions.ConfigurationDirectory)?.GetValueOrDefault<string>();
+    string configFile = parseResult.GetResult(BasicOptions.Configuration)?.GetValueOrDefault<string>();
+    string? configFileEnvVar = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
 
-    if (!string.IsNullOrWhiteSpace(configPathVariable))
+    if (!string.IsNullOrWhiteSpace(configFileEnvVar))
     {
-        configFilePath = configPathVariable;
+        configFile = configFileEnvVar;
     }
 
-    if (!PathUtils.IsExplicitlyRelative(configFilePath))
+    // If the configuration is a rooted path, don't handle it
+    if (!Path.IsPathRooted(configFile))
     {
-        configFilePath = configDir == "configs"
-            ? configFilePath.GetApplicationResourcePath()
-            : Path.Combine(configDir, string.Concat(configFilePath));
-    }
+        // If the configuration doesn't have any directory info or file extension,
+        // append a supported file extension
+        var shouldAppendExtension = string.IsNullOrEmpty(Path.GetDirectoryName(configFile)) &&
+            !Path.HasExtension(configFile);
 
-    if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
-    {
-        string redirectedConfigPath = Path.Combine(configDir, string.Concat(configFilePath, ".cfg"));
-        configFilePath = redirectedConfigPath;
-        if (!File.Exists(configFilePath))
+        configFile = Path.Combine(configsDir, configFile);
+
+        // If the resulting path is still not rooted, combine with the current directory
+        if (!Path.IsPathRooted(configFile))
         {
-            throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
+            configFile = Path.Combine(AppContext.BaseDirectory, configFile);
+        }
+
+        if (shouldAppendExtension)
+        {
+            string? fallback = null;
+
+            foreach (var ext in new[] { ".json", ".cfg" })
+            {
+                fallback = $"{configFile}{ext}";
+
+                if (File.Exists(fallback))
+                {
+                    configFile = fallback;
+                    break;
+                }
+            }
         }
     }
 
-    if (!Path.HasExtension(configFilePath))
-    {
-        configFilePath = string.Concat(configFilePath, ".cfg");
-    }
+    if (!File.Exists(configFile))
+        throw new FileNotFoundException("Configuration not found.", configFile);
 
-    // Fallback to "{executingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
-    if (!File.Exists(configFilePath))
-    {
-        string configName = Path.GetFileName(configFilePath);
-        string? configDirectory = Path.GetDirectoryName(configFilePath);
-        string redirectedConfigPath = Path.Combine(configDirectory ?? string.Empty, configDir, configName);
-        configFilePath = redirectedConfigPath;
-        if (!File.Exists(configFilePath))
-        {
-            throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
-        }
-    }
+    logger.Info($"Loading configuration from {configFile}");
 
-    logger.Info($"Reading config file from {configFilePath}");
-    configProvider.AddSource(new JsonConfigSource(configFilePath));
+    configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
+
     var incorrectSettings = configProvider.FindIncorrectSettings();
-    if (incorrectSettings.Errors.Count > 0)
+
+    if (incorrectSettings.Errors.Any())
     {
         logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
     }
 
     logger.Info("Configuration initialized.");
+
     return configProvider;
 }
 

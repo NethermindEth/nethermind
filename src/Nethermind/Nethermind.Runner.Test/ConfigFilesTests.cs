@@ -42,7 +42,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     // maybe leave in test since deprecation has not fully happened?
     [TestCase("validators", true)]
-    [TestCase("poacore_validator.cfg", true)]
+    [TestCase("poacore_validator.json", true)]
     [TestCase("spaceneth", false)]
     [TestCase("archive", false)]
     [TestCase("fast", true)]
@@ -149,8 +149,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("gnosis ^archive", 768000000)]
     [TestCase("poacore archive", 1024000000)]
     [TestCase("poacore ^archive", 768000000)]
-    [TestCase("spaceneth.cfg", 64000000)]
-    [TestCase("spaceneth_persistent.cfg", 128000000)]
+    [TestCase("spaceneth.json", 64000000)]
+    [TestCase("spaceneth_persistent.json", 128000000)]
     public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
     {
         Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, expectedValue);
@@ -160,7 +160,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Metrics_disabled_by_default(string configWildcard)
     {
         Test<IMetricsConfig, bool>(configWildcard, c => c.Enabled, false);
-        Test<IMetricsConfig, string>(configWildcard, c => c.NodeName.ToUpperInvariant(), (cf, p) => cf.Replace("_", " ").Replace(".cfg", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
+        Test<IMetricsConfig, string>(configWildcard, c => c.NodeName.ToUpperInvariant(), (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
         Test<IMetricsConfig, int>(configWildcard, c => c.IntervalSeconds, 5);
         Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
     }
@@ -229,12 +229,12 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [TestCase("archive", false)]
-    [TestCase("mainnet.cfg", true)]
-    [TestCase("sepolia.cfg", true)]
-    [TestCase("gnosis.cfg", true)]
-    [TestCase("chiado.cfg", true)]
-    [TestCase("energyweb.cfg", false)]
-    [TestCase("volta.cfg", false)]
+    [TestCase("mainnet.json", true)]
+    [TestCase("sepolia.json", true)]
+    [TestCase("gnosis.json", true)]
+    [TestCase("chiado.json", true)]
+    [TestCase("energyweb.json", false)]
+    [TestCase("volta.json", false)]
     public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
     {
         Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
@@ -251,7 +251,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
     }
 
-    [TestCase("^spaceneth.cfg")]
+    [TestCase("^spaceneth.json")]
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard)
     {
         Test<IInitConfig, DiagnosticMode>(configWildcard, c => c.DiagnosticMode, DiagnosticMode.None);
@@ -294,8 +294,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IReceiptConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
     }
 
-    [TestCase("mainnet_archive.cfg", true)]
-    [TestCase("mainnet.cfg", true)]
+    [TestCase("mainnet_archive.json", true)]
+    [TestCase("mainnet.json", true)]
     [TestCase("poacore", true)]
     [TestCase("gnosis", true)]
     [TestCase("volta", false)]
@@ -334,11 +334,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
 
     [TestCase("mainnet")]
-    [TestCase("poacore.cfg", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_archive.cfg", new[] { 16, 16, 16, 16 })]
-    [TestCase("poacore_validator.cfg", null, false)]
-    [TestCase("gnosis.cfg", new[] { 16, 16, 16 })]
-    [TestCase("gnosis_archive.cfg", new[] { 16, 16, 16 })]
+    [TestCase("poacore.json", new[] { 16, 16, 16, 16 })]
+    [TestCase("poacore_archive.json", new[] { 16, 16, 16, 16 })]
+    [TestCase("poacore_validator.json", null, false)]
+    [TestCase("gnosis.json", new[] { 16, 16, 16 })]
+    [TestCase("gnosis_archive.json", new[] { 16, 16, 16 })]
     [TestCase("volta")]
     public void Bloom_configs_are_as_expected(string configWildcard, int[] levels = null, bool index = true)
     {
@@ -416,24 +416,24 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     protected override IEnumerable<string> Configs { get; } = new HashSet<string>
     {
-        "holesky.cfg",
-        "holesky_archive.cfg",
-        "mainnet_archive.cfg",
-        "mainnet.cfg",
-        "poacore.cfg",
-        "poacore_archive.cfg",
-        "gnosis.cfg",
-        "gnosis_archive.cfg",
-        "spaceneth.cfg",
-        "spaceneth_persistent.cfg",
-        "volta.cfg",
-        "volta_archive.cfg",
-        "energyweb.cfg",
-        "energyweb_archive.cfg",
-        "sepolia.cfg",
-        "sepolia_archive.cfg",
-        "chiado.cfg",
-        "chiado_archive.cfg",
+        "holesky.json",
+        "holesky_archive.json",
+        "mainnet_archive.json",
+        "mainnet.json",
+        "poacore.json",
+        "poacore_archive.json",
+        "gnosis.json",
+        "gnosis_archive.json",
+        "spaceneth.json",
+        "spaceneth_persistent.json",
+        "volta.json",
+        "volta_archive.json",
+        "energyweb.json",
+        "energyweb_archive.json",
+        "sepolia.json",
+        "sepolia_archive.json",
+        "chiado.json",
+        "chiado_archive.json",
     };
 
     public IEnumerable<int> AllIndexesOf(string str, string searchString)
