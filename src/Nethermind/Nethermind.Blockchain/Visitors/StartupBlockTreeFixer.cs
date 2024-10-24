@@ -15,7 +15,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Visitors
 {
-    public class StartupBlockTreeFixer : IBlockTreeVisitor
+    public class StartupBlockTreeFixer : IBlockTreeVisitor, IDisposable
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
@@ -241,6 +241,11 @@ namespace Nethermind.Blockchain.Visitors
                     _logger.Info(
                         $"Found {_blocksToLoad} block tree levels to review for fixes starting from {StartLevelInclusive}");
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTreeSuggestPacer.Dispose();
         }
     }
 }
