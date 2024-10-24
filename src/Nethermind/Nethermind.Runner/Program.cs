@@ -11,6 +11,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -132,7 +133,7 @@ void Configure(string[] args)
 
     try
     {
-        Environment.ExitCode = parseResult.Invoke();
+        Environment.ExitCode = cli.Invoke(args);
     }
     catch (Exception ex)
     {
@@ -151,7 +152,7 @@ void Configure(string[] args)
 async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
     processExitSource = new(cancellationToken);
-        
+
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -160,21 +161,21 @@ async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, Cancella
 
     pluginLoader.OrderPlugins(pluginConfig);
 
-    SetFinalDataDirectory(parseResult.GetResult(BasicOptions.DataDirectory)?.GetValueOrDefault<string>(),
+    ResolveDataDirectory(parseResult.GetResult(BasicOptions.DataDirectory)?.GetValueOrDefault<string>(),
         initConfig, keyStoreConfig, snapshotConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
     logger = logManager.GetClassLogger();
     ConfigureSeqLogger(configProvider);
-    SetFinalDbPath(parseResult.GetResult(BasicOptions.DatabasePath)?.GetValueOrDefault<string>(), initConfig);
+    ResolveDatabaseDirectory(parseResult.GetResult(BasicOptions.DatabasePath)?.GetValueOrDefault<string>(), initConfig);
 
     if (logger.IsDebug)
     {
         logger.Debug($"""
-            Server GC:           {System.Runtime.GCSettings.IsServerGC}
-            GC latency mode:     {System.Runtime.GCSettings.LatencyMode}
-            LOH compaction mode: {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}
+            Server GC:           {GCSettings.IsServerGC}
+            GC latency mode:     {GCSettings.LatencyMode}
+            LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}
             """);
     }
 
@@ -205,7 +206,6 @@ async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, Cancella
     ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
     nethermindApi.ProcessExit = processExitSource;
 
-    //_appClosed.Reset();
     EthereumRunner ethereumRunner = new(nethermindApi);
     try
     {
@@ -214,11 +214,11 @@ async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, Cancella
     }
     catch (OperationCanceledException)
     {
-        if (logger.IsTrace) logger.Trace("Runner operation was canceled");
+        if (logger.IsTrace) logger.Trace("Nethermind operation was canceled.");
     }
     catch (Exception ex)
     {
-        if (logger.IsError) logger.Error("Error during ethereum runner start", ex);
+        if (logger.IsError) logger.Error(unhandledError, ex);
         processExitSource.Exit(ex is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
     }
 
@@ -259,9 +259,11 @@ void AddConfigurationOptions(CliCommand command)
         {
             ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (configItemAttribute?.DisabledForCli == true || configItemAttribute?.HiddenFromDocs == true)
+            if (configItemAttribute?.DisabledForCli == false || configItemAttribute?.HiddenFromDocs == false)
             {
-                command.Add(new CliOption<string>($"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}")
+                command.Add(new CliOption<string>(
+                    $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
+                    $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
                 {
                     Description = configItemAttribute?.Description
                 });
@@ -321,37 +323,42 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
 
 IConfigProvider CreateConfigProvider(ParseResult parseResult)
 {
-    if (parseResult.GetResult(BasicOptions.LoggerConfigurationSource)?.GetValueOrDefault<string>() is not null)
-    {
-        string nLogPath = parseResult.GetResult(BasicOptions.LoggerConfigurationSource)?.GetValueOrDefault<string>();
-        logger.Info($"Loading NLog configuration file from {nLogPath}.");
+    string? nLogConfig = parseResult.GetResult(BasicOptions.LoggerConfigurationSource)?.GetValueOrDefault<string>();
 
-        try
-        {
-            LogManager.Configuration = new XmlLoggingConfiguration(nLogPath);
-        }
-        catch (Exception e)
-        {
-            logger.Info($"Failed to load NLog configuration from {nLogPath}. {e}");
-        }
-    }
-    else
+    if (nLogConfig is null)
     {
-        logger.Info($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
+        logger.Info($"Loading logging configuration from {"NLog.config".GetApplicationResourcePath()}.");
+
         long startTime = Stopwatch.GetTimestamp();
         LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
 
-        logger.Info($"NLog.config loaded in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms.");
+        logger.Info($"Logging configuration loaded in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms.");
+    }
+    else
+    {
+        logger.Info($"Loading logging configuration from {nLogConfig}.");
+
+        try
+        {
+            LogManager.Configuration = new XmlLoggingConfiguration(nLogConfig);
+        }
+        catch (Exception ex)
+        {
+            logger.Error($"Failed to load {nLogConfig}.", ex);
+        }
     }
 
+    string logLevel = parseResult.GetResult(BasicOptions.LogLevel)?.GetValueOrDefault<string>();
+
     // TODO: dynamically switch log levels from CLI
-    if (parseResult.GetResult(BasicOptions.LogLevel)?.GetValueOrDefault<string>() is not null)
+    if (logLevel is not null)
     {
-        NLogConfigurator.ConfigureLogLevels(parseResult.GetResult(BasicOptions.LogLevel)?.GetValueOrDefault<string>());
+        NLogConfigurator.ConfigureLogLevels(logLevel);
     }
 
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
+
     foreach (SymbolResult child in parseResult.RootCommandResult.Children)
     {
         if (child is OptionResult result)
@@ -370,6 +377,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     string configDir = parseResult.GetResult(BasicOptions.ConfigurationDirectory)?.GetValueOrDefault<string>();
     string configFilePath = parseResult.GetResult(BasicOptions.Configuration)?.GetValueOrDefault<string>();
     string? configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
+
     if (!string.IsNullOrWhiteSpace(configPathVariable))
     {
         configFilePath = configPathVariable;
@@ -476,37 +484,46 @@ string LoadPluginsDirectory(string[] args)
     return pluginDirectory;
 }
 
-void SetFinalDbPath(string? baseDbPath, IInitConfig initConfig)
+void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
 {
-    if (!string.IsNullOrWhiteSpace(baseDbPath))
-    {
-        string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(baseDbPath);
-        if (logger.IsDebug) logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
-        initConfig.BaseDbPath = newDbPath;
-    }
-    else
+    if (string.IsNullOrWhiteSpace(path))
     {
         initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
     }
+    else
+    {
+        string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
+
+        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {dbPath}");
+
+        initConfig.BaseDbPath = dbPath;
+    }
 }
 
-void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
+void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
 {
-    if (!string.IsNullOrWhiteSpace(dataDir))
+    if (string.IsNullOrWhiteSpace(path))
     {
-        string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(dataDir);
-        string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
-        string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
-        string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(dataDir);
+        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
+        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
+        initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
+    }
+    else
+    {
+        string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
+        string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
+        string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
+        string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
 
         if (logger.IsInfo)
         {
-            logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
-            logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
-            logger.Info($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
+            logger.Info($"{nameof(initConfig.BaseDbPath)}: {newDbPath}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {newKeyStorePath}");
+            logger.Info($"{nameof(initConfig.LogDirectory)}: {newLogDirectory}");
+
             if (snapshotConfig.Enabled)
             {
-                logger.Info($"Setting SnapshotPath to: {newSnapshotPath}");
+                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {newSnapshotPath}");
             }
         }
 
@@ -514,12 +531,6 @@ void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreCon
         keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
         initConfig.LogDirectory = newLogDirectory;
         snapshotConfig.SnapshotDirectory = newSnapshotPath;
-    }
-    else
-    {
-        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
-        initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
     }
 }
 
@@ -529,40 +540,49 @@ static class BasicOptions
         new("--config", "-c")
         {
             DefaultValueFactory = r => "mainnet",
-            Description = "The path to the configuration file or the name (without extension) of any of the configuration files in the configuration directory."
+            Description = "The path to the configuration file or the name (without extension) of any of the configuration files in the configuration directory.",
+            HelpName = "network or file name"
         };
 
     public static CliOption<string> ConfigurationDirectory { get; } =
-        new("--configsDirectory", "-cd")
+        new("--configs-dir", "--configsDirectory", "-cd")
         {
             DefaultValueFactory = r => "configs",
-            Description = "The path to the configuration files directory."
+            Description = "The path to the configuration files directory.",
+            HelpName = "path"
         };
 
-    public static CliOption<string> DatabasePath { get; } = new("--baseDbPath", "-d")
+    public static CliOption<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
     {
-        Description = "The path to the Nethermind database directory."
+        Description = "The path to the Nethermind database directory.",
+        HelpName = "path"
     };
 
-    public static CliOption<string> DataDirectory { get; } = new("--datadir", "-dd")
+    public static CliOption<string> DataDirectory { get; } = new("--data-dir", "--datadir", "-dd")
     {
         DefaultValueFactory = r => string.Empty.GetApplicationResourcePath(),
-        Description = "The path to the Nethermind data directory."
+        Description = "The path to the Nethermind data directory.",
+        HelpName = "path"
     };
 
     public static CliOption<string> LoggerConfigurationSource { get; } =
-        new("--loggerConfigSource", "-lcs")
+        new("--logger-config", "--loggerConfigSource", "-lcs")
         {
-            //DefaultValueFactory = r => "NLog.config",
-            Description = "The path to the NLog configuration file. "
+            Description = "The path to the NLog configuration file.",
+            HelpName = "path"
         };
 
     public static CliOption<string> LogLevel { get; } = new("--log", "-l")
     {
         DefaultValueFactory = r => "info",
-        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error."
+        Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
+        HelpName = "level"
     };
 
     public static CliOption<string> PluginsDirectory { get; } =
-        new("--pluginsDirectory", "-pd") { Description = "The path to the Nethermind plugins directory." };
+        new("--plugins-dir", "--pluginsDirectory", "-pd")
+        {
+            Description = "The path to the Nethermind plugins directory.",
+            HelpName = "path"
+        };
 }
