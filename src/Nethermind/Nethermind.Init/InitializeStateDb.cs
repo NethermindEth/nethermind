@@ -119,9 +119,9 @@ public class InitializeStateDb : IStep
             var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
             if (totalWriteBufferMb < minimumWriteBufferMb)
             {
-                int minimumWriteBufferNumber = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferSize);
+                long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
 
-                if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.WriteBufferNumber)} {minimumWriteBufferNumber}`.");
+                if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
             }
 
             pruningStrategy = Prune

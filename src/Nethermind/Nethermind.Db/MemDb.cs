@@ -77,9 +77,7 @@ namespace Nethermind.Db
 
         public IDb Innermost => this;
 
-        public virtual void Flush()
-        {
-        }
+        public virtual void Flush(bool onlyWal = false) { }
 
         public void Clear()
         {
