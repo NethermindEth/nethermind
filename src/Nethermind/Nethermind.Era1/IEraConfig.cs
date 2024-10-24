@@ -18,4 +18,7 @@ public interface IEraConfig : IConfig
 
     [ConfigItem(Description = "End block to export. Set to 0 for Head.", DefaultValue = "0", HiddenFromDocs = false)]
     long End { get; set; }
+
+    [ConfigItem(Description = "Trusted accumulator file.", DefaultValue = "null", HiddenFromDocs = false)]
+    string? TrustedAccumulatorFile { get; set; }
 }

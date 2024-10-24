@@ -3,15 +3,12 @@
 
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
-using Microsoft.FSharp.Core;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Era1.Exceptions;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -28,6 +25,7 @@ public class EraImporter : IEraImporter
     private readonly string _networkName;
     private readonly ReceiptMessageDecoder _receiptDecoder;
     private readonly ILogger _logger;
+    private readonly int _maxEra1Size;
 
     public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(10);
 
@@ -38,7 +36,8 @@ public class EraImporter : IEraImporter
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
+        [KeyFilter(EraComponentKeys.NetworkName)] string networkName,
+        int maxEra1Size = EraWriter.MaxEra1Size)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
@@ -49,6 +48,7 @@ public class EraImporter : IEraImporter
         _logger = logManager.GetClassLogger<EraImporter>();
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
+        _maxEra1Size = maxEra1Size;
     }
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
@@ -56,25 +56,22 @@ public class EraImporter : IEraImporter
         // TODO: End not handled missing
 
         if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
-        if (!string.IsNullOrEmpty(accumulatorFile))
-        {
-            await VerifyEraFiles(src, accumulatorFile, cancellation);
-        }
-        await ImportInternal(src, start, end, false, cancellation);
+        await ImportInternal(src, start, end, accumulatorFile, false, cancellation);
 
         if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
     }
 
-    public Task ImportAsArchiveSync(string src, CancellationToken cancellation)
+    public Task ImportAsArchiveSync(string src, string? accumulatorFile, CancellationToken cancellation)
     {
         _logger.Info($"Starting full archive import from '{src}'");
-        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, long.MaxValue, true, cancellation);
+        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, long.MaxValue, accumulatorFile, true, cancellation);
     }
 
     private async Task ImportInternal(
         string src,
         long startNumber,
         long end,
+        string? accumulatorFile,
         bool processBlock,
         CancellationToken cancellation)
     {
@@ -83,7 +80,13 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"The directory given for import '{src}' does not exist.");
         }
 
-        using EraStore eraStore = new(src, _networkName, _fileSystem);
+        HashSet<ValueHash256>? trustedAccumulators = null;
+        if (accumulatorFile != null)
+        {
+            string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
+            trustedAccumulators = lines.Select(s => new ValueHash256(s)).ToHashSet();
+        }
+        using EraStore eraStore = new(src, trustedAccumulators, _specProvider, _networkName, _fileSystem, _maxEra1Size);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (end != long.MaxValue && lastBlockInStore < end)
@@ -106,7 +109,7 @@ public class EraImporter : IEraImporter
         {
             cancellation.ThrowIfCancellationRequested();
 
-            (Block? b, TxReceipt[]? r) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation);
+            (Block? b, TxReceipt[]? r) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);
             if (b is null)
             {
                 throw new EraImportException($"Unable to find block info for block {blockNumber}");
@@ -190,28 +193,6 @@ public class EraImporter : IEraImporter
         }
     }
 
-
-    /// <summary>
-    /// Verifies all era1 archives from a directory, with an expected accumulator list from a hex encoded file.
-    /// </summary>
-    /// <param name="eraDirectory"></param>
-    /// <param name="accumulatorFile"></param>
-    /// <param name="cancellation"></param>
-    /// <exception cref="EraVerificationException">If the verification fails.</exception>
-    public async Task VerifyEraFiles(string eraDirectory, string accumulatorFile, CancellationToken cancellation = default)
-    {
-        if (!_fileSystem.Directory.Exists(eraDirectory))
-            throw new EraImportException($"Directory does not exist '{eraDirectory}'");
-        if (!_fileSystem.File.Exists(accumulatorFile))
-            throw new EraImportException($"Accumulator file does not exist '{accumulatorFile}'");
-
-        var eraStore = new EraStore(eraDirectory, _networkName, _fileSystem);
-
-        string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
-        var accumulators = lines.Select(s => new ValueHash256(s)).ToHashSet();
-        await eraStore.VerifyAll(_specProvider, cancellation, accumulators, LogVerificationProgress);
-    }
-
     private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
     {
         Hash256 receiptsRoot = new ReceiptTrie<TxReceipt>(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder).RootHash;
@@ -220,11 +201,5 @@ public class EraImporter : IEraImporter
         {
             throw new EraImportException($"Wrong receipts root in Era1 archive for block {block.ToString(Block.Format.Short)}.");
         }
-    }
-
-    private void LogVerificationProgress(VerificationProgressArgs args)
-    {
-        if (_logger.IsInfo)
-            _logger.Info($"Verification progress: {args.Processed,10}/{args.TotalToProcess} archives  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.Processed / args.Elapsed.TotalSeconds,10:0.00} archives/s");
     }
 }

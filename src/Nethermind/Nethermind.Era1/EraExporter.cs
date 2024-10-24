@@ -87,7 +87,7 @@ public class EraExporter : IEraExporter
         if (createAccumulator)
         {
             string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-            await new EraStore(destinationPath, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
+            await new EraStore(destinationPath, null, _specProvider, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
         }
 
         LogExportProgress(

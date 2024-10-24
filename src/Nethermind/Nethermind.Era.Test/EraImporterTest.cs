@@ -13,6 +13,7 @@ using NSubstitute;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
 
@@ -33,7 +34,7 @@ public class EraImporterTest
                               LimboLogs.Instance,
                               "abc");
 
-        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.FullName, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.FullName, null, CancellationToken.None), Throws.TypeOf<ArgumentOutOfRangeException>());
         tempDirectory.Delete();
     }
 
@@ -41,9 +42,12 @@ public class EraImporterTest
     public void ImportAsArchiveSync_DirectoryContainsWrongEraFiles_ThrowEraImportException()
     {
         IBlockTree blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        IFileSystem fileSystem = new MockFileSystem();
-        IDirectoryInfo tempDirectory = fileSystem.Directory.CreateTempSubdirectory();
-        fileSystem.File.Create(Path.Join(tempDirectory.FullName, "abc-00000-00000000.era1"));
+        IFileSystem fileSystem = new FileSystem();
+        using TmpDirectory tempDirectory = new TmpDirectory();
+        fileSystem.Directory.CreateDirectory(tempDirectory.DirectoryPath);
+        FileSystemStream stream = fileSystem.File.Create(Path.Join(tempDirectory.DirectoryPath, "abc-00000-00000000.era1"));
+        stream.WriteAsync(new byte[]{0, 0});
+        stream.Close();
         EraImporter sut = new(fileSystem,
                               blockTree,
                               Substitute.For<IBlockValidator>(),
@@ -52,8 +56,7 @@ public class EraImporterTest
                               LimboLogs.Instance,
                               "abc");
 
-        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.FullName, CancellationToken.None), Throws.TypeOf<EraImportException>());
-        tempDirectory.Delete(recursive: true);
+        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.DirectoryPath, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
     }
 
     [Test]
@@ -75,7 +78,7 @@ public class EraImporterTest
                               "abc"
                               );
 
-        Assert.That(() => sut.ImportAsArchiveSync(tmpDirectory.DirectoryPath, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.ImportAsArchiveSync(tmpDirectory.DirectoryPath, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
     }
 
     [Test]
@@ -90,33 +93,8 @@ public class EraImporterTest
         string destinationPath = tmpDirectory.DirectoryPath;
         await exporter.Export(destinationPath!, 0, ChainLength - 1, 16);
 
-        var eraStore = new EraStore(destinationPath, NetworkName, fileSystem);
-        var accumulatorPath = Path.Combine(destinationPath, "something.txt");
-        await eraStore.CreateAccumulatorFile(accumulatorPath, default);
-
-        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
-
-        Assert.DoesNotThrowAsync(() => sut.VerifyEraFiles(destinationPath, accumulatorPath));
-    }
-
-    [Test]
-    public async Task VerifyEraFiles_VerifyAccumulatorsithExpectedFromFileW_DoesNotThrow()
-    {
-        const int ChainLength = 128;
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
-        const string NetworkName = "test";
-        var fileSystem = new FileSystem();
-        EraExporter exporter = new(fileSystem, blockTree, Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
-
-        using var tmpDirectory = new TmpDirectory();
-        string destinationPath = tmpDirectory.DirectoryPath;
-        await exporter.Export(destinationPath!, 0, ChainLength - 1, 16);
-
-        var accumulatorPath = Path.Combine(destinationPath, EraExporter.AccumulatorFileName);
-
-        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
-
-        Assert.DoesNotThrowAsync(() => sut.VerifyEraFiles(destinationPath, accumulatorPath));
+        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName, maxEra1Size: 16);
+        await sut.Import(destinationPath, 0, long.MaxValue, Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
     }
 
     [Test]
@@ -137,11 +115,11 @@ public class EraImporterTest
         accumulators[accumulators.Length - 1] = new byte[32];
         await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select(acc => acc.ToHexString()));
 
-        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName);
+        EraImporter sut = new(fileSystem, blockTree, Substitute.For<IBlockValidator>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance, NetworkName, maxEra1Size: EpochSize);
+        Func<Task> importTask = () =>sut.Import(destinationPath, 0, long.MaxValue,
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
 
-        Assert.That(
-            () => sut.VerifyEraFiles(destinationPath, accumulatorPath),
-            Throws.TypeOf<EraVerificationException>());
+        Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
     }
 
     private async Task<(TmpDirectory, IBlockTree)> CreateEraFileSystem()

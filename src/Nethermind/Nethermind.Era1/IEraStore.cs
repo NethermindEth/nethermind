@@ -10,6 +10,6 @@ namespace Nethermind.Era1;
 /// </summary>
 public interface IEraStore: IDisposable
 {
-    Task<Block?> FindBlock(long number, CancellationToken cancellation = default);
-    Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, CancellationToken cancellation = default);
+    Task<Block?> FindBlock(long number, bool ensureVerified = true, CancellationToken cancellation = default);
+    Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureVerified = true, CancellationToken cancellation = default);
 }

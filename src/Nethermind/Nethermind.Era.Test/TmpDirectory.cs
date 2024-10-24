@@ -14,6 +14,12 @@ public class TmpDirectory : IDisposable
 
     public void Dispose()
     {
-        Directory.Delete(DirectoryPath, true);
+        try
+        {
+            Directory.Delete(DirectoryPath, true);
+        }
+        catch (System.IO.DirectoryNotFoundException)
+        {
+        }
     }
 }

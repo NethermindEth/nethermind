@@ -13,10 +13,14 @@ using NonBlocking;
 namespace Nethermind.Era1;
 public class EraStore : IEraStore, IDisposable
 {
-    private TimeSpan ProgressInterval { get; } = TimeSpan.FromSeconds(10);
     private readonly char[] _eraSeparator = ['-'];
-    private readonly Dictionary<long, string> _epochs;
+
     private readonly IFileSystem _fileSystem;
+    private readonly ISpecProvider _specProvider;
+    private readonly ISet<ValueHash256>? _trustedAccumulators;
+
+    private readonly Dictionary<long, string> _epochs;
+    private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
 
     /// <summary>
     /// Simple mechanism to limit opened file. Each epoch is sharded to _maxOpenFile. Whenever a reader is to be used
@@ -29,14 +33,25 @@ public class EraStore : IEraStore, IDisposable
     private readonly ConcurrentDictionary<int, EraReader> _openedReader = new();
 
     private bool _disposed = false;
+    private readonly int _maxEraFile;
 
     private int BiggestEpoch { get; set; }
     private int SmallestEpoch { get; set; }
     public long LastBlock { get; }
 
-    public EraStore(string directory, string networkName, IFileSystem fileSystem)
+    public EraStore(
+        string directory,
+        ISet<ValueHash256>? trustedAcccumulators,
+        ISpecProvider specProvider,
+        string networkName,
+        IFileSystem fileSystem,
+        int maxEraSize = EraWriter.MaxEra1Size
+    )
     {
         _maxOpenFile = Environment.ProcessorCount * 2;
+        _trustedAccumulators = trustedAcccumulators;
+        _specProvider = specProvider;
+        _maxEraFile = maxEraSize;
 
         var eraFiles = EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem).ToArray();
         _epochs = new();
@@ -59,6 +74,11 @@ public class EraStore : IEraStore, IDisposable
         _fileSystem = fileSystem;
     }
 
+    private long GetEpochNumber(long blockNumber)
+    {
+        return blockNumber / _maxEraFile;
+    }
+
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
     public EraReader GetReader(long epoch)
@@ -67,28 +87,44 @@ public class EraStore : IEraStore, IDisposable
         return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
-    public async Task<Block?> FindBlock(long blockNumber, CancellationToken cancellation = default)
+    public async Task<Block?> FindBlock(long blockNumber, bool ensureVerified = true, CancellationToken cancellation = default)
     {
         ThrowIfNegative(blockNumber);
 
-        long partOfEpoch = blockNumber == 0 ? 0 : blockNumber / EraWriter.MaxEra1Size;
+        long partOfEpoch = GetEpochNumber(blockNumber);
         if (!_epochs.ContainsKey(partOfEpoch))
             return null;
 
         using EraRenter _r = RentReader(partOfEpoch, out EraReader reader);
+        if (ensureVerified) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
         (Block b, _) = await reader.GetBlockByNumber(blockNumber, cancellation);
         return b;
     }
 
-    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, CancellationToken cancellation = default)
+    private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
+    {
+        if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
+        {
+            var eraAccumulator = await reader.ReadAndVerifyAccumulator(_specProvider, cancellation);
+            if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
+            {
+                throw new EraVerificationException( $"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
+            }
+
+            _verifiedEpochs.TryAdd(epoch, true);
+        }
+    }
+
+    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureVerified = true, CancellationToken cancellation = default)
     {
         ThrowIfNegative(number);
 
-        long partOfEpoch = number == 0 ? 0 : number / EraWriter.MaxEra1Size;
+        long partOfEpoch = GetEpochNumber(number);
         if (!_epochs.ContainsKey(partOfEpoch))
             return (null, null);
 
         using EraRenter _ = RentReader(partOfEpoch, out EraReader reader);
+        if (ensureVerified) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
         (Block b, TxReceipt[] r) = await reader.GetBlockByNumber(number, cancellation);
         return (b, r);
     }
@@ -101,7 +137,6 @@ public class EraStore : IEraStore, IDisposable
         if (_openedReader.TryRemove(shardIdx, out reader!)) return new EraRenter(this, reader, shardIdx);
 
         reader = GetReader(epoch);
-        // TODO: Verify here
         return new EraRenter(this, reader, shardIdx);
     }
 
@@ -121,40 +156,6 @@ public class EraStore : IEraStore, IDisposable
 
         // Still failed, so we just dispose ourself
         reader.Dispose();
-    }
-
-    public async Task VerifyAll(ISpecProvider specProvider, CancellationToken cancellationToken, HashSet<ValueHash256>? trustedAccumulators = null, Action<VerificationProgressArgs>? onProgress = null)
-    {
-        if (trustedAccumulators != null)
-        {
-            // Must it? Like, what if there is less in the directory?
-            if (_epochs.Count != trustedAccumulators.Count) throw new ArgumentException("Must have an equal amount of files and accumulators.", nameof(trustedAccumulators));
-        }
-
-        DateTime startTime = DateTime.Now;
-        DateTime lastProgress = DateTime.Now;
-        int fileCount = 0;
-        foreach (KeyValuePair<long, string> kv in _epochs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            string era = kv.Value;
-            using MemoryStream destination = new();
-            using EraReader eraReader = GetReader(kv.Key);
-            var eraAccumulator = await eraReader.ReadAndVerifyAccumulator(specProvider, cancellationToken);
-            if (trustedAccumulators != null && !trustedAccumulators.Contains(eraAccumulator))
-            {
-                throw new EraVerificationException($"Accumulator {eraAccumulator} not trusted from era file {era}");
-            }
-
-            fileCount++;
-            TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-            if (elapsed.TotalSeconds > ProgressInterval.TotalSeconds)
-            {
-                onProgress?.Invoke(new VerificationProgressArgs(fileCount, _epochs.Count, DateTime.Now.Subtract(startTime)));
-                lastProgress = DateTime.Now;
-            }
-        }
     }
 
     public async Task CreateAccumulatorFile(string accumulatorPath, CancellationToken cancellationToken)
@@ -190,7 +191,7 @@ public class EraStore : IEraStore, IDisposable
     private void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
-            throw new ArgumentOutOfRangeException($"Does not contain epoch.", epoch, nameof(epoch));
+            throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));
     }
 
     private readonly struct EraRenter(EraStore store, EraReader reader, int shardIdx) : IDisposable

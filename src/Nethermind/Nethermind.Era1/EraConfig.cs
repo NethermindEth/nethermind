@@ -11,4 +11,5 @@ public class EraConfig : IEraConfig
     public string? ExportDirectory { get; set; }
     public long Start { get; set; }
     public long End { get; set; }
+    public string? TrustedAccumulatorFile { get; set; }
 }

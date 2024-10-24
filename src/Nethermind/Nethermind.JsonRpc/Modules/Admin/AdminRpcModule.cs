@@ -141,10 +141,4 @@ public class AdminRpcModule : IAdminRpcModule
     {
         return _eraService.ExportHistory(destination, epochFrom, epochTo);
     }
-
-    //TODO maybe move to cli?
-    public Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile)
-    {
-        return _eraService.VerifyHistory(eraSource, accumulatorFile);
-    }
 }

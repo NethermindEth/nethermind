@@ -6,5 +6,4 @@ namespace Nethermind.JsonRpc.Modules;
 public interface IAdminEraService
 {
     ResultWrapper<string> ExportHistory(string destination, int epochFrom, int epochTo);
-    ResultWrapper<string> VerifyHistory(string eraSource, string accumulatorFile);
 }

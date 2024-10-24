@@ -134,11 +134,16 @@ public class E2StoreReader : IDisposable
     {
         if (_startBlock != null) return;
 
+        if (_accessor.Capacity < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
+
         // Read the block count
         _blockCount = _accessor.ReadInt64(_accessor.Capacity - 8);
 
         // <starting block> + 8 * <offset> + <count>
         int indexLength = 8 + 8 * (int)_blockCount + 8;
+
+        // Verify that its a block index
+        _ = ReadEntry(_accessor.Capacity - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
         _startBlock = _accessor.ReadInt64(_accessor.Capacity - indexLength);
     }

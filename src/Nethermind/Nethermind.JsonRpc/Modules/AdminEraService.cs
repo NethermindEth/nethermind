@@ -11,7 +11,6 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules;
 public class AdminEraService : IAdminEraService
@@ -25,7 +24,6 @@ public class AdminEraService : IAdminEraService
     private readonly IFileSystem _fileSystem;
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
-    private int _canEnterVerification = 1;
 
     public AdminEraService(
         IBlockTree blockTree,
@@ -169,53 +167,6 @@ public class AdminEraService : IAdminEraService
         catch (Exception e)
         {
             _logger.Error("Import error", e);
-            throw;
-        }
-    }
-
-
-    public ResultWrapper<string> VerifyHistory(string eraSource, string accumulatorFile)
-    {
-
-        if (!_fileSystem.Directory.Exists(eraSource))
-            //TODO consider if this is too sensitive information
-            return ResultWrapper<string>.Fail($"The directory does not exists.");
-        if (!_fileSystem.File.Exists(accumulatorFile))
-            //TODO consider if this is too sensitive information
-            return ResultWrapper<string>.Fail($"The accumulator file does not exists.");
-        if (Interlocked.Exchange(ref _canEnterVerification, 0) == 1)
-        {
-            StartVerificationTask(eraSource, accumulatorFile).ContinueWith((t) =>
-            {
-                Interlocked.Exchange(ref _canEnterVerification, 1);
-            });
-            return ResultWrapper<string>.Success("Started history verification");
-        }
-        else
-        {
-            return ResultWrapper<string>.Fail("A verification job is currently running.");
-        }
-    }
-
-    private async Task StartVerificationTask(string eraSource, string accumulatorFile)
-    {
-        try
-        {
-            if (_logger.IsInfo) _logger.Info($"Starting history verification in '{eraSource}'");
-            await _eraImporter.VerifyEraFiles(eraSource, accumulatorFile, _processExit.Token);
-            if (_logger.IsInfo) _logger.Info($"Succesfully verified all {_eraExporter.NetworkName} archives in '{eraSource}'");
-        }
-        catch (EraVerificationException e)
-        {
-            if (_logger.IsInfo) _logger.Info($"History verification failed: {e.Message}");
-        }
-        catch (Exception e) when (e is EraException or FormatException)
-        {
-            _logger.Error($"History verification failed: {e.Message}");
-        }
-        catch (Exception e)
-        {
-            _logger.Error("History verification failed.", e);
             throw;
         }
     }

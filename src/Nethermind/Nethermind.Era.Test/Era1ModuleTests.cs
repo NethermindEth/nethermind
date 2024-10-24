@@ -119,20 +119,6 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase("testdata/mainnet")]
-    public async Task VerifyAccumulatorsOnFiles(string dir)
-    {
-        var eraStore = new EraStore(dir, "mainnet", new FileSystem());
-
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        IReceiptSpec receiptSpec = Substitute.For<IReleaseSpec>();
-
-        receiptSpec.IsEip658Enabled.Returns(true);
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(receiptSpec);
-
-        await eraStore.VerifyAll(specProvider, default);
-    }
-
     [Test]
     public async Task CreateEraAndVerifyAccumulators()
     {
@@ -340,7 +326,7 @@ public class Era1ModuleTests
             specProvider,
             LimboLogs.Instance,
             "abc");
-        await importer.ImportAsArchiveSync(tmpDir.DirectoryPath, CancellationToken.None);
+        await importer.ImportAsArchiveSync(tmpDir.DirectoryPath, Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
         Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
