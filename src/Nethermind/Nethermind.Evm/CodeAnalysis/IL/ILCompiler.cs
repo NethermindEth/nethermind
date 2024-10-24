@@ -13,7 +13,6 @@ using Sigil;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using static Nethermind.Evm.IL.EmitExtensions;
@@ -400,18 +399,18 @@ internal class ILCompiler
                     EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!,
                         (il, postInstructionLabel, locals) =>
                         {
-                            Label label1 = il.DefineLabel();
-                            Label label2 = il.DefineLabel();
+                            Label bIsNotZero = il.DefineLabel();
+                            Label bIsNotMinusOneLabel = il.DefineLabel();
 
                             il.LoadLocalAddress(locals[1]);
                             il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZero), false, out _));
-                            il.BranchIfFalse(label1);
+                            il.BranchIfFalse(bIsNotZero);
 
                             il.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
                             il.StoreLocal(uint256R);
                             il.Branch(postInstructionLabel);
 
-                            il.MarkLabel(label1);
+                            il.MarkLabel(bIsNotZero);
 
                             il.LoadLocalAddress(locals[1]);
                             il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
@@ -422,14 +421,14 @@ internal class ILCompiler
                             il.Call(typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.P255), BindingFlags.Static | BindingFlags.NonPublic).GetMethod);
                             il.Call(typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }));
                             il.And();
-                            il.BranchIfFalse(label2);
+                            il.BranchIfFalse(bIsNotMinusOneLabel);
 
                             il.Call(typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.P255), BindingFlags.Static | BindingFlags.NonPublic).GetMethod);
                             il.LoadObject(typeof(UInt256));
                             il.StoreLocal(uint256R);
                             il.Branch(postInstructionLabel);
 
-                            il.MarkLabel(label2);
+                            il.MarkLabel(bIsNotMinusOneLabel);
                         }, evmExceptionLabels, uint256A, uint256B);
                     break;
                 case Instruction.ADDMOD:
@@ -1458,7 +1457,7 @@ internal class ILCompiler
                         method.StackLoadPrevious(stack, head, 1);
                         method.Call(Word.GetUInt0);
                         method.StoreLocal(uint32A);
-                        method.StackPop(head, 1);
+                        method.Print(uint32A);
 
                         method.LoadLocal(uint32A);
                         method.LoadConstant(32);
@@ -1506,6 +1505,7 @@ internal class ILCompiler
                         method.LoadLocal(tempLocalSpan);
                         method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
                         method.MarkLabel(argumentGt32);
+                        method.StackPop(head, 1);
                     }
                     break;
                 case Instruction.LOG0:
@@ -1959,7 +1959,6 @@ internal class ILCompiler
         method.MarkLabel(jumpTable);
         method.StackLoadPrevious(stack, head, 1);
         method.Call(Word.GetInt0);
-        method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
         method.StoreLocal(jmpDestination);
         method.StackPop(head);
 

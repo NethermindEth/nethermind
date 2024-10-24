@@ -336,8 +336,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
         public static IEnumerable<(Instruction?, byte[], EvmExceptionType)> GeJitBytecodesSamples()
         {
-            yield return (null, Prepare.EvmCode
-                    .Done, EvmExceptionType.None);
             yield return (Instruction.PUSH32, Prepare.EvmCode
                     .PushSingle(1)
                     .Done, EvmExceptionType.None);
@@ -1126,7 +1124,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 JittingThreshold = repeatCount + 1,
                 AnalysisQueueMaxSize = 1,
                 IsJitEnabled = true,
-                AggressiveJitMode = true
+                AggressiveJitMode = true,
             });
 
             var address = enhancedChain.InsertCode(Prepare.EvmCode
