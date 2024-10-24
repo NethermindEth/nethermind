@@ -19,7 +19,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;

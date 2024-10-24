@@ -141,9 +141,9 @@ internal class FundsDistributor
     /// <returns><see cref="IEnumerable{string}"/> containing all the executed tx hashes.</returns>
     public async Task<IEnumerable<string>> ReclaimFunds(Address beneficiary, UInt256 maxFee, UInt256 maxPriorityFee)
     {
-        IEnumerable<Signer> privateSigners =
-            File.ReadAllLines(_keyFilePath)
-            .Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
+        IEnumerable<Signer> privateSigners = _keyFilePath is null
+            ? []
+            : File.ReadAllLines(_keyFilePath).Select(k => new Signer(_chainId, new PrivateKey(k), _logManager));
 
         ILogger log = _logManager.GetClassLogger();
         List<string> txHashes = new List<string>();
