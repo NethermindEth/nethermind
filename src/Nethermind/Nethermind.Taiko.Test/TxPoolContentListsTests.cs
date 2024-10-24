@@ -79,7 +79,7 @@ public class TxPoolContentListsTests
             Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-            Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),
+            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
             Substitute.For<ISpecProvider>(),
             null!,
             Substitute.For<ILogManager>(),
