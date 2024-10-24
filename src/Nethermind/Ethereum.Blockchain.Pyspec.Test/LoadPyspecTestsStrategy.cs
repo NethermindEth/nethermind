@@ -20,7 +20,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
     public IEnumerable<IEthereumTest> Load(string testsDir, string wildcard = null)
     {
-        string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", ArchiveVersion, ArchiveName.Split('.')[0]);
+        string testsDirectoryName = Path.Combine("C:/", ArchiveName.Split('.')[0]);
         if (!Directory.Exists(testsDirectoryName)) // Prevent redownloading the fixtures if they already exists with this version and archive name
             DownloadAndExtract(ArchiveVersion, ArchiveName, testsDirectoryName);
         bool isStateTest = testsDir.Contains("state_tests", StringComparison.InvariantCultureIgnoreCase);
