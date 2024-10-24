@@ -48,11 +48,10 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            // Ensures that the execution requests has exactly three items
             if (ExecutionRequests.Length != 3)
             {
                 error = "Execution requests must have exactly three items";
-                return ValidationResult.Fail;
+                return ValidationResult.Invalid;
             }
 
         }

@@ -196,7 +196,6 @@ public class BlockValidatorTests
         Build.A.Block
         .TestObject,
         new CustomSpecProvider(((ForkActivation)0, Prague.Instance)),
-        Substitute.For<ISpecProvider>(),
         "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.");
     }
 
