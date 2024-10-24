@@ -99,7 +99,7 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, _jsonRpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
+            _api.WorldStateManager.TrieStore,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
@@ -257,7 +257,7 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         return new TraceModuleFactory(
-            _api.WorldStateManager,
+            _api.WorldStateManager.TrieStore,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,

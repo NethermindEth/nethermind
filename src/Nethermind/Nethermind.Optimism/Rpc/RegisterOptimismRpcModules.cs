@@ -103,7 +103,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
 
         OptimismTraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager,
+            _api.WorldStateManager.TrieStore,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,

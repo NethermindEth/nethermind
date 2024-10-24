@@ -46,7 +46,7 @@ public class DebugRpcModuleTests
             IReceiptsMigration receiptsMigration = Substitute.For<IReceiptsMigration>();
             ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
             var factory = new DebugModuleFactory(
-                blockchain.WorldStateManager,
+                blockchain.WorldStateManager.TrieStore,
                 blockchain.DbProvider,
                 blockchain.BlockTree,
                 blockchain.RpcConfig,

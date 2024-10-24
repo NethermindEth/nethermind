@@ -56,7 +56,7 @@ public class TraceRpcModuleTests
             }
 
             Factory = new(
-                Blockchain.OverridableWorldStateManager,
+                Blockchain.OverridableWorldStateManager.TrieStore,
                 Blockchain.DbProvider,
                 Blockchain.BlockTree,
                 JsonRpcConfig,
