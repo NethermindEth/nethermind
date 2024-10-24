@@ -3,11 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Crypto;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Consensus.Messages;
 public static class TxErrorMessages

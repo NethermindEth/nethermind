@@ -14,7 +14,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 
