@@ -44,13 +44,13 @@ public class ChainSpecTest
         chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
             new EthashChainSpecEngineParameters
             {
-                DifficultyBombDelays = new Dictionary<string, long>
+                DifficultyBombDelays = new Dictionary<long, long>
                 {
-                    { "3", 100 },
-                    { "7", 200 },
-                    { "13", 300 },
-                    { "17", 400 },
-                    { "19", 500 },
+                    { 3, 100 },
+                    { 7, 200 },
+                    { 13, 300 },
+                    { 17, 400 },
+                    { 19, 500 },
                 }
             });
 

@@ -14,6 +14,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
@@ -46,7 +47,7 @@ public class EthereumRunnerTests
 
     private static ICollection InitOnce()
     {
-        // TODO: we need this to discover OptimismChainSpecEngineParameters and CliqueChainSpecEngineParameters
+        // we need this to discover OptimismChainSpecEngineParameters and CliqueChainSpecEngineParameters
         new CliqueConfig();
         new OptimismConfig();
         // by pre-caching configs providers we make the tests do lot less work

@@ -31,19 +31,17 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     [JsonConverter(typeof(BlockRewardJsonConverter))]
     public SortedDictionary<long, UInt256> BlockReward { get; set; }
 
-    // TODO: write converter
-    public IDictionary<string, long>? DifficultyBombDelays { get; set; }
+    [JsonConverter(typeof(DifficultyBombDelaysJsonConverter))]
+    public IDictionary<long, long>? DifficultyBombDelays { get; set; }
 
     public string? SealEngineType => "Ethash";
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
-        foreach (KeyValuePair<string, long> bombDelay in DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<string, long>>())
+        foreach (KeyValuePair<long, long> bombDelay in DifficultyBombDelays ??
+                                                       Enumerable.Empty<KeyValuePair<long, long>>())
         {
-            long key  = bombDelay.Key.StartsWith("0x") ?
-                long.Parse(bombDelay.Key.AsSpan(2), NumberStyles.HexNumber) :
-                long.Parse(bombDelay.Key);
-            blockNumbers.Add(key);
+            blockNumbers.Add(bombDelay.Key);
         }
 
         if (BlockReward is not null)
@@ -72,8 +70,8 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
     private void SetDifficultyBombDelays(ReleaseSpec spec, long startBlock)
     {
-
-        foreach (KeyValuePair<long, UInt256> blockReward in BlockReward ?? Enumerable.Empty<KeyValuePair<long, UInt256>>())
+        foreach (KeyValuePair<long, UInt256> blockReward in BlockReward ??
+                                                            Enumerable.Empty<KeyValuePair<long, UInt256>>())
         {
             if (blockReward.Key <= startBlock)
             {
@@ -81,12 +79,10 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
             }
         }
 
-        foreach (KeyValuePair<string, long> bombDelay in DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<string, long>>())
+        foreach (KeyValuePair<long, long> bombDelay in DifficultyBombDelays ??
+                                                       Enumerable.Empty<KeyValuePair<long, long>>())
         {
-            long key  = bombDelay.Key.StartsWith("0x") ?
-                long.Parse(bombDelay.Key.AsSpan(2), NumberStyles.HexNumber) :
-                long.Parse(bombDelay.Key);
-            if (key <= startBlock)
+            if (bombDelay.Key <= startBlock)
             {
                 spec.DifficultyBombDelay += bombDelay.Value;
             }
@@ -97,71 +93,127 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void ApplyToChainSpec(ChainSpec chainSpec)
     {
-        IEnumerable<long?>? difficultyBombDelaysBlockNumbers = DifficultyBombDelays?
-            .Keys.Select(key => key.StartsWith("0x") ? long.Parse(key.AsSpan(2), NumberStyles.HexNumber) : long.Parse(key))
-            .Cast<long?>()
-            .ToArray();
-
-        chainSpec.MuirGlacierNumber = difficultyBombDelaysBlockNumbers?.Skip(2).FirstOrDefault();
-        chainSpec.ArrowGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(4).FirstOrDefault();
-        chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
+        chainSpec.MuirGlacierNumber = DifficultyBombDelays?.Keys.Skip(2).FirstOrDefault();
+        chainSpec.ArrowGlacierBlockNumber = DifficultyBombDelays?.Keys.Skip(4).FirstOrDefault();
+        chainSpec.GrayGlacierBlockNumber = DifficultyBombDelays?.Keys.Skip(5).FirstOrDefault();
         chainSpec.HomesteadBlockNumber = HomesteadTransition;
         chainSpec.DaoForkBlockNumber = DaoHardforkTransition;
     }
-}
 
-internal class BlockRewardJsonConverter : JsonConverter<SortedDictionary<long, UInt256>>
-{
-    public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
-        JsonSerializerOptions options)
+    internal class BlockRewardJsonConverter : JsonConverter<SortedDictionary<long, UInt256>>
     {
-        throw new NotSupportedException();
-    }
+        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
+            JsonSerializerOptions options)
+        {
+            throw new NotSupportedException();
+        }
 
-    public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        var value = new SortedDictionary<long, UInt256>();
-        if (reader.TokenType == JsonTokenType.String)
+        public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
-            value.Add(0, blockReward);
-        }
-        else if (reader.TokenType == JsonTokenType.Number)
-        {
-            value.Add(0, new UInt256(reader.GetUInt64()));
-        }
-        else if (reader.TokenType == JsonTokenType.StartObject)
-        {
-            reader.Read();
-            while (reader.TokenType != JsonTokenType.EndObject)
+            var value = new SortedDictionary<long, UInt256>();
+            if (reader.TokenType == JsonTokenType.String)
             {
-                if (reader.TokenType != JsonTokenType.PropertyName)
-                {
-                    throw new ArgumentException("Cannot deserialize BlockReward.");
-                }
-
-                var property =
-                    UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
-                var key = (long)property;
-                reader.Read();
-                if (reader.TokenType != JsonTokenType.String)
-                {
-                    throw new ArgumentException("Cannot deserialize BlockReward.");
-                }
-
-                var blockReward =
-                    UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
-                value.Add(key, blockReward);
-
-                reader.Read();
+                var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+                value.Add(0, blockReward);
             }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, new UInt256(reader.GetUInt64()));
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    var property =
+                        UInt256Converter.Read(reader.HasValueSequence
+                            ? reader.ValueSequence.ToArray()
+                            : reader.ValueSpan);
+                    var key = (long)property;
+                    reader.Read();
+                    if (reader.TokenType != JsonTokenType.String)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    var blockReward =
+                        UInt256Converter.Read(reader.HasValueSequence
+                            ? reader.ValueSequence.ToArray()
+                            : reader.ValueSpan);
+                    value.Add(key, blockReward);
+
+                    reader.Read();
+                }
+            }
+            else
+            {
+                throw new ArgumentException("Cannot deserialize BlockReward.");
+            }
+
+            return value;
         }
-        else
+    }
+
+    private class DifficultyBombDelaysJsonConverter : JsonConverter<IDictionary<long, long>>
+    {
+        public override void Write(Utf8JsonWriter writer, IDictionary<long, long> value, JsonSerializerOptions options)
         {
-            throw new ArgumentException("Cannot deserialize BlockReward.");
+            throw new NotSupportedException();
         }
 
-        return value;
+        public override IDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = new Dictionary<long, long>();
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, reader.GetInt64());
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize DifficultyBombDelays.");
+                    }
+                    string keyString = reader.GetString();
+                    var key = keyString.StartsWith("0x") ? Convert.ToInt64(keyString, 16) : long.Parse(keyString);
+                    reader.Read();
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        string valueString = reader.GetString();
+                        value.Add(key, valueString.StartsWith("0x") ? Convert.ToInt64(valueString, 16) : long.Parse(valueString));
+                    }
+                    else if (reader.TokenType == JsonTokenType.Number)
+                    {
+                        value.Add(key, reader.GetInt64());
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Cannot deserialize DifficultyBombDelays.");
+                    }
+
+                    reader.Read();
+                }
+            }
+            else
+            {
+                throw new ArgumentException("Cannot deserialize DifficultyBombDelays.");
+            }
+
+            return value;
+        }
     }
+
 }
