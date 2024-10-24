@@ -150,6 +150,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             EntryTypes.TotalDifficulty);
         header.TotalDifficulty = currentTotalDiffulty;
 
+        // TODO: Always verify here
+
         Block block = new Block(header, body);
         return new EntryReadResult(block, receipts);
     }

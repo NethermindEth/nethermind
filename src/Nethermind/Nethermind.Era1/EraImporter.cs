@@ -10,8 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.Era1;
 public class EraImporter : IEraImporter
@@ -23,7 +21,6 @@ public class EraImporter : IEraImporter
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
     private readonly string _networkName;
-    private readonly ReceiptMessageDecoder _receiptDecoder;
     private readonly ILogger _logger;
     private readonly int _maxEra1Size;
 
@@ -44,7 +41,6 @@ public class EraImporter : IEraImporter
         _blockValidator = blockValidator;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _receiptDecoder = new();
         _logger = logManager.GetClassLogger<EraImporter>();
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
@@ -129,10 +125,10 @@ public class EraImporter : IEraImporter
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
 
-            if (processBlock)
+            if (processBlock && (_blockTree.Head?.Number ?? 0) < b.Number)
             {
                 await pacer.WaitForQueue(b.Number, cancellation);
-                await SuggestBlock(b, r, processBlock);
+                await SuggestAndProcessBlock(b);
             }
             else
                 InsertBlockAndReceipts(b, r);
@@ -163,7 +159,7 @@ public class EraImporter : IEraImporter
         _receiptStorage.Insert(b, r);
     }
 
-    private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock)
+    private async Task SuggestAndProcessBlock(Block block)
     {
         // Well... this is weird
         block.Header.TotalDifficulty = null;
@@ -173,8 +169,7 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"Invalid block in Era1 archive. {error}");
         }
 
-        var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-        var addResult = await _blockTree.SuggestBlockAsync(block, options);
+        var addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)
         {
             case AddBlockResult.AlreadyKnown:
@@ -186,20 +181,11 @@ public class EraImporter : IEraImporter
             case AddBlockResult.InvalidBlock:
                 throw new EraImportException("Invalid block in Era1 archive");
             case AddBlockResult.Added:
-                if (!processBlock) _receiptStorage.Insert(block, receipts);
+                // Hmm... this is weird. Could be beacon body. In any the head should be before this block
+                // so it should get to this block eventually.
                 break;
             default:
                 throw new NotSupportedException($"Not supported value of {nameof(AddBlockResult)} = {addResult}");
-        }
-    }
-
-    private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
-    {
-        Hash256 receiptsRoot = new ReceiptTrie<TxReceipt>(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder).RootHash;
-
-        if (receiptsRoot != block.ReceiptsRoot)
-        {
-            throw new EraImportException($"Wrong receipts root in Era1 archive for block {block.ToString(Block.Format.Short)}.");
         }
     }
 }
