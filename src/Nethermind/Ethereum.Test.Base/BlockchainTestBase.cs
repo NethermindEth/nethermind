@@ -321,9 +321,12 @@ public abstract class BlockchainTestBase
         foreach (KeyValuePair<Address, AccountState> accountState in
             ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
         {
-            foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+            if (accountState.Value.Storage is not null)
             {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                {
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                }
             }
 
             stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
