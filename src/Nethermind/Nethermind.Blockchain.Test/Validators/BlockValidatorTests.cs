@@ -184,6 +184,20 @@ public class BlockValidatorTests
         .TestObject,
         new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
         "InsufficientMaxFeePerBlobGas");
+
+        yield return new TestCaseData(
+        Build.A.Block
+        .WithHeader(Build.A.BlockHeader.WithRequestsHash(Keccak.Zero).TestObject)
+        .TestObject,
+        Substitute.For<ISpecProvider>(),
+        "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.");
+
+        yield return new TestCaseData(
+        Build.A.Block
+        .TestObject,
+        new CustomSpecProvider(((ForkActivation)0, Prague.Instance)),
+        Substitute.For<ISpecProvider>(),
+        "MissingRequests: Requests cannot be null in block when EIP-6110 or EIP-7002 are activated.");
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]
