@@ -69,11 +69,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
-            BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
-            blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            blockHeader.TxRoot = Keccak.EmptyTreeHash;
-            blockHeader.Bloom = Bloom.Empty;
-            var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            Block block = CreateEmptyBlock(parent, payloadAttributes);
 
             if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
             {
@@ -95,6 +91,15 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
+        protected virtual Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
+        {
+            BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
+            blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+            blockHeader.TxRoot = Keccak.EmptyTreeHash;
+            blockHeader.Bloom = Bloom.Empty;
+            return new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+        }
+
         protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
             Block block = base.PrepareBlock(parent, payloadAttributes, token);
@@ -105,12 +110,12 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = base.PrepareBlockHeader(parent, payloadAttributes);
-            AmendHeader(blockHeader, parent);
+            AmendHeader(blockHeader, parent, payloadAttributes);
             return blockHeader;
         }
 
         // TODO: this seems to me that it should be done in the Eth2 seal engine?
-        protected virtual void AmendHeader(BlockHeader blockHeader, BlockHeader parent)
+        protected virtual void AmendHeader(BlockHeader blockHeader, BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             blockHeader.ExtraData = _blocksConfig.GetExtraDataBytes();
             blockHeader.IsPostMerge = true;

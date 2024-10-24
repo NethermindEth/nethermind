@@ -400,7 +400,7 @@ public partial class BlockProcessor(
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.CreateCopy(headerForProcessing);
+        return suggestedBlock.WithReplacedHeader(headerForProcessing);
     }
 
     // TODO: block processor pipeline
