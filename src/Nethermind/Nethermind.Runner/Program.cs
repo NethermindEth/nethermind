@@ -107,7 +107,7 @@ public static partial class Program
 
     private static void Configure(string[] args)
     {
-        CliConfiguration cli = ConfigureCli(args);
+        CliConfiguration cli = ConfigureCli();
         ParseResult parseResult = cli.Parse(args);
 
         Console.Title = ProductInfo.Name;
@@ -245,7 +245,7 @@ public static partial class Program
         return _processExitSource.ExitCode;
     }
 
-    private static CliConfiguration ConfigureCli(string[] args)
+    private static CliConfiguration ConfigureCli()
     {
         CliRootCommand rootCommand =
         [
@@ -385,8 +385,8 @@ public static partial class Program
         }
 
         ConfigProvider configProvider = new();
-        Dictionary<string, string> configArgs = new();
-        foreach (var child in parseResult.RootCommandResult.Children)
+        Dictionary<string, string> configArgs = [];
+        foreach (SymbolResult child in parseResult.RootCommandResult.Children)
         {
             if (child is OptionResult result)
             {
