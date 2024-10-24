@@ -8,16 +8,16 @@ namespace Nethermind.Flashbots.Data;
 
 public class SubmitBlockRequest
 {
-    private readonly ExecutionPayload _executionPayload;
+    private readonly ExecutionPayloadV3 _executionPayload;
     private readonly BlobsBundleV1 _blobsBundle;
 
-    public SubmitBlockRequest(ExecutionPayload executionPayload, BlobsBundleV1 blobsBundle, BidTrace message)
+    public SubmitBlockRequest(ExecutionPayloadV3 executionPayload, BlobsBundleV1 blobsBundle, BidTrace message)
     {
         _executionPayload = executionPayload;
         _blobsBundle = blobsBundle;
         Message = message;
     }
-    public ExecutionPayload ExecutionPayload => _executionPayload;
+    public ExecutionPayloadV3 ExecutionPayload => _executionPayload;
     public BlobsBundleV1 BlobsBundle => _blobsBundle;
     public BidTrace Message { get; }
 }

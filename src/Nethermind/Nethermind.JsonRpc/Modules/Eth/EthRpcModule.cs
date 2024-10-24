@@ -390,9 +390,10 @@ public partial class EthRpcModule(
             return ResultWrapper<string?>.Success(null);
         }
 
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.None));
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(TxDecoder.Instance.GetLength(transaction, RlpBehaviors.SkipTypedWrapping));
         using NettyRlpStream stream = new(buffer);
-        TxDecoder.Instance.Encode(stream, transaction);
+        TxDecoder.Instance.Encode(stream, transaction, rlpBehaviors: RlpBehaviors.SkipTypedWrapping);
+
         return ResultWrapper<string?>.Success(buffer.AsSpan().ToHexString(false));
     }
 

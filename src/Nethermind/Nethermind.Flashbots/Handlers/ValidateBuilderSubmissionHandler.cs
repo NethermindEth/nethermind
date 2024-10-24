@@ -25,6 +25,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.State;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Flashbots.Handlers;
 
@@ -60,7 +61,16 @@ public class ValidateSubmissionHandler
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
-        ExecutionPayload payload = request.BlockRequest.ExecutionPayload;
+        ExecutionPayloadV3 payload = request.BlockRequest.ExecutionPayload;
+
+        if (request.ParentBeaconBlockRoot is null)
+        {
+            return FlashbotsResult.Invalid("Parent beacon block root must be set in the request");
+        }
+        
+        payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
+        
+
         BlobsBundleV1 blobsBundle = request.BlockRequest.BlobsBundle;
 
         string payloadStr = $"BuilderBlock: {payload}";
@@ -186,9 +196,23 @@ public class ValidateSubmissionHandler
         IWorldState currentState = processingScope.WorldState;
         ITransactionProcessor transactionProcessor = processingScope.TransactionProcessor;
 
-        UInt256 feeRecipientBalanceBefore = currentState.GetBalance(feeRecipient);
+        UInt256 feeRecipientBalanceBefore;
+        try
+        {
+            feeRecipientBalanceBefore = currentState.GetBalance(feeRecipient);
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to get balance for fee recipient: {ex.Message}";
+            return false;
+        }
 
         BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor);
+
+        EthereumEcdsa ecdsa = new EthereumEcdsa(_txProcessingEnv.SpecProvider.ChainId);
+        IReleaseSpec spec = _txProcessingEnv.SpecProvider.GetSpec(parentHeader);
+
+        RecoverSenderAddress(block, ecdsa, spec);
 
         List<Block> suggestedBlocks = [block];
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -196,7 +220,6 @@ public class ValidateSubmissionHandler
         try
         {
             Block processedBlock = blockProcessor.Process(currentState.StateRoot, suggestedBlocks, ValidateSubmissionProcessingOptions, blockReceiptsTracer)[0];
-            FinalizeStateAndBlock(currentState, processedBlock, _txProcessingEnv.SpecProvider.GetSpec(parentHeader), block, _blockTree);
         }
         catch (Exception e)
         {
@@ -235,6 +258,15 @@ public class ValidateSubmissionHandler
         return true;
     }
 
+    private void RecoverSenderAddress(Block block, EthereumEcdsa ecdsa, IReleaseSpec spec){
+        foreach (Transaction tx in block.Transactions)
+        {
+            if(tx.SenderAddress is null){
+                tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            }
+        }
+    }
+
     private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, out string? error)
     {
         if (!_headerValidator.Validate(block.Header))
@@ -243,11 +275,11 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        if (!_blockTree.IsBetterThanHead(block.Header))
-        {
-            error = $"Block {block.Header.Hash} is not better than head";
-            return false;
-        }
+        // if (!_blockTree.IsBetterThanHead(block.Header))
+        // {
+        //     error = $"Block {block.Header.Hash} is not better than head";
+        //     return false;
+        // }
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit);
 
@@ -372,14 +404,5 @@ public class ValidateSubmissionHandler
             withdrawalProcessor: new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
             receiptsRootCalculator: new ReceiptsRootCalculator()
         );
-    }
-
-    private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
-    {
-        stateProvider.StateRoot = processedBlock.StateRoot!;
-        stateProvider.Commit(currentSpec);
-        stateProvider.CommitTree(currentBlock.Number);
-        blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-        blockTree.UpdateHeadBlock(processedBlock.Hash!);
     }
 }
