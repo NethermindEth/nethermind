@@ -312,7 +312,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Test<IInitConfig, bool>(configWildcard, c => c.EnableUnsecuredDevWallet, false);
         }
 
-        Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
+        Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("json", "logs.txt"), cf));
     }
 
     [TestCase("*")]
