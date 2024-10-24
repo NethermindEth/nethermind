@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -201,6 +202,8 @@ public class ChainSpecBasedSpecProviderTests
     [TestCaseSource(nameof(ChiadoActivations))]
     public void Chiado_loads_properly(ForkActivation forkActivation)
     {
+        // We need this to discover AuthorityRoundEngineParams
+        new AuRaConfig();
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("chiado");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
