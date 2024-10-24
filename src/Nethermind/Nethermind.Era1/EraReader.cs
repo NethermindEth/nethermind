@@ -16,9 +16,10 @@ namespace Nethermind.Era1;
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private bool _disposedValue;
-    private ReceiptMessageDecoder _receiptDecoder = new();
-    private BlockBodyDecoder _blockBodyDecoder = new();
-    private E2StoreReader _fileReader;
+    private readonly ReceiptMessageDecoder _receiptDecoder = new();
+    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+    private readonly HeaderDecoder _headerDecoder = new();
+    private readonly E2StoreReader _fileReader;
 
     public long StartBlock => _fileReader.StartBlock;
     public long LastBlock => _fileReader.LastBlock;
@@ -71,9 +72,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
             EntryReadResult err = result.Value;
 
-            // This should never happen as the hash itself is not stored. Its computed by the decoder.
-            Debug.Assert(err.Block.Header.Hash == err.ComputedHeaderHash, "Mismatched header hash");
-
             Hash256 txRoot = new TxTrie(err.Block.Transactions).RootHash;
             if (err.Block.Header.TxRoot != txRoot)
             {
@@ -86,6 +84,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 throw new EraVerificationException("Mismatched receipt root");
             }
 
+            // Note: Header.Hash is calculated by HeaderDecoder.
             calculator.Add(err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
         }
 
@@ -123,9 +122,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         long position = _fileReader.BlockOffset(blockNumber);
 
-        ((BlockHeader header, Hash256? currentComputedHeaderHash), long readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode<(BlockHeader, Hash256?)>(
+        (BlockHeader header, long readSize) = await _fileReader.ReadSnappyCompressedEntryAndDecode(
             position,
-            computeHeaderHash ? DecodeHeaderAndHash : DecodeHeaderButNoHash,
+            DecodeHeader,
             EntryTypes.CompressedHeader,
             cancellationToken);
 
@@ -152,7 +151,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         header.TotalDifficulty = currentTotalDiffulty;
 
         Block block = new Block(header, body);
-        return new EntryReadResult(block, receipts, currentComputedHeaderHash);
+        return new EntryReadResult(block, receipts);
     }
 
     private BlockBody DecodeBody(IByteBuffer buffer)
@@ -161,19 +160,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
-    (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderAndHash(IByteBuffer buffer)
+    private BlockHeader DecodeHeader(IByteBuffer buffer)
     {
-        NettyRlpStream rlpStream = new NettyRlpStream(buffer);
-        Hash256? currentComputedHeaderHash = Keccak.Compute(rlpStream.PeekNextItem());
-        BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
-        return (header, currentComputedHeaderHash);
-    }
-
-    (BlockHeader header, Hash256? currentComputedHeaderHash) DecodeHeaderButNoHash(IByteBuffer buffer)
-    {
-        NettyRlpStream rlpStream = new NettyRlpStream(buffer);
-        BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
-        return (header, null);
+        var ctx = new Rlp.ValueDecoderContext(buffer.AsSpan());
+        return _headerDecoder.Decode(ref ctx)!;
     }
 
     private TxReceipt[] DecodeReceipts(IByteBuffer buf)
@@ -199,14 +189,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     private struct EntryReadResult
     {
-        public EntryReadResult(Block block, TxReceipt[] receipts, Hash256? headerHash)
+        public EntryReadResult(Block block, TxReceipt[] receipts)
         {
             Block = block;
-            ComputedHeaderHash = headerHash;
             Receipts = receipts;
         }
         public Block Block { get; }
         public TxReceipt[] Receipts { get; }
-        public Hash256? ComputedHeaderHash { get; }
     }
 }
