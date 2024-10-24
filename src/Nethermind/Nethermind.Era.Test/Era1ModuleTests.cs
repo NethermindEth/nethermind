@@ -325,8 +325,13 @@ public class Era1ModuleTests
 
         BlockTree importTree = Build.A.BlockTree()
             .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+
         int bestSuggestedNumber = 0;
-        importTree.NewBestSuggestedBlock += (sender, args) => bestSuggestedNumber++;
+        importTree.NewBestSuggestedBlock += (sender, args) =>
+        {
+            bestSuggestedNumber++;
+            importTree.UpdateMainChain([args.Block], true);
+        };
         EraImporter importer = new(
             fileSystem,
             importTree,
@@ -366,7 +371,11 @@ public class Era1ModuleTests
             .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
 
         int bestSuggestedNumber = 0;
-        importTree.NewBestSuggestedBlock += (sender, args) => bestSuggestedNumber++;
+        importTree.NewBestSuggestedBlock += (sender, args) =>
+        {
+            bestSuggestedNumber++;
+            importTree.UpdateMainChain([args.Block], true);
+        };
 
         EraImporter importer = new(
             fileSystem,

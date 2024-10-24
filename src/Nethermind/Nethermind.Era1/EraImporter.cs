@@ -25,7 +25,6 @@ public class EraImporter : IEraImporter
     private readonly IBlockValidator _blockValidator;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
-    private readonly int _epochSize;
     private readonly string _networkName;
     private readonly ReceiptMessageDecoder _receiptDecoder;
     private readonly ILogger _logger;
@@ -39,8 +38,7 @@ public class EraImporter : IEraImporter
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        [KeyFilter(EraComponentKeys.NetworkName)] string networkName,
-        int epochSize = EraWriter.MaxEra1Size)
+        [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
@@ -49,7 +47,6 @@ public class EraImporter : IEraImporter
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _receiptDecoder = new();
         _logger = logManager.GetClassLogger<EraImporter>();
-        this._epochSize = epochSize;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
     }
@@ -63,7 +60,7 @@ public class EraImporter : IEraImporter
         {
             await VerifyEraFiles(src, accumulatorFile, cancellation);
         }
-        await ImportInternal(src, start, false, cancellation);
+        await ImportInternal(src, start, end, false, cancellation);
 
         if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
     }
@@ -71,12 +68,13 @@ public class EraImporter : IEraImporter
     public Task ImportAsArchiveSync(string src, CancellationToken cancellation)
     {
         _logger.Info($"Starting full archive import from '{src}'");
-        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, true, cancellation);
+        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, long.MaxValue, true, cancellation);
     }
 
     private async Task ImportInternal(
         string src,
         long startNumber,
+        long end,
         bool processBlock,
         CancellationToken cancellation)
     {
@@ -85,74 +83,75 @@ public class EraImporter : IEraImporter
             throw new EraImportException($"The directory given for import '{src}' does not exist.");
         }
 
-        EraStore eraStore = new(src, _networkName, _fileSystem);
-        long startEpoch = startNumber / _epochSize;
-        if (!eraStore.HasEpoch(startEpoch))
+        using EraStore eraStore = new(src, _networkName, _fileSystem);
+
+        long lastBlockInStore = eraStore.LastBlock;
+        if (end != long.MaxValue && lastBlockInStore < end)
         {
-            throw new EraImportException($"No {_networkName} epochs found for block {startNumber} in '{src}'");
+            throw new EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower then last requested block {end}.");
+        }
+        if (end == long.MaxValue)
+        {
+            end = lastBlockInStore;
         }
 
         DateTime lastProgress = DateTime.Now;
-        long epochProcessed = 0;
         DateTime startTime = DateTime.Now;
-        long totalblocks = (eraStore.BiggestEpoch - startEpoch) * EraWriter.MaxEra1Size;
+        long totalblocks = end - startNumber + 1;
         int blocksProcessed = 0;
 
         using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(_blockTree);
 
-        for (long i = startEpoch; eraStore.HasEpoch(i); i++)
+        for (long blockNumber = startNumber; blockNumber <= end; blockNumber++)
         {
-            using EraReader eraReader = eraStore.GetReader(i);
+            cancellation.ThrowIfCancellationRequested();
 
-            await foreach ((Block b, TxReceipt[] r) in eraReader)
+            (Block? b, TxReceipt[]? r) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation);
+            if (b is null)
             {
-                cancellation.ThrowIfCancellationRequested();
-
-                if (b.IsGenesis)
-                {
-                    continue;
-                }
-
-                if (b.Number < startNumber)
-                {
-                    continue;
-                }
-
-                if (b.IsBodyMissing)
-                {
-                    throw new EraImportException($"Unexpected block without a body found in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
-                }
-
-                if (processBlock)
-                {
-                    await pacer.WaitForQueue(b.Number, cancellation);
-                    await SuggestBlock(b, r, processBlock);
-                }
-                else
-                    InsertBlockAndReceipts(b, r);
-
-                blocksProcessed++;
-                TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-                if (elapsed > ProgressInterval)
-                {
-                    LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
-                    lastProgress = DateTime.Now;
-                }
+                throw new EraImportException($"Unable to find block info for block {blockNumber}");
             }
-            epochProcessed++;
+            if (r is null)
+            {
+                throw new EraImportException($"Unable to find receipt for block {blockNumber}");
+            }
+
+            if (b.IsGenesis)
+            {
+                continue;
+            }
+
+            if (b.IsBodyMissing)
+            {
+                throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
+            }
+
+            if (processBlock)
+            {
+                await pacer.WaitForQueue(b.Number, cancellation);
+                await SuggestBlock(b, r, processBlock);
+            }
+            else
+                InsertBlockAndReceipts(b, r);
+
+            blocksProcessed++;
+            TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
+            if (elapsed > ProgressInterval)
+            {
+                LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks);
+                lastProgress = DateTime.Now;
+            }
         }
-        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
+        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks);
     }
 
     private void LogImportProgress(
         TimeSpan elapsed,
         long totalBlocksProcessed,
-        long totalBlocks,
-        long epochProcessed,
-        long totalEpochs)
+        long totalBlocks)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Import progress: | {totalBlocksProcessed,10}/{totalBlocks} blocks  |  {epochProcessed}/{totalEpochs} epochs  |  elapsed {elapsed:hh\\:mm\\:ss}");
+            _logger.Info($"Import progress: | {totalBlocksProcessed,10}/{totalBlocks} blocks  | elapsed {elapsed:hh\\:mm\\:ss}");
     }
 
     private void InsertBlockAndReceipts(Block b, TxReceipt[] r)

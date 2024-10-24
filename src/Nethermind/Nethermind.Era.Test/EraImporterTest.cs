@@ -50,8 +50,7 @@ public class EraImporterTest
                               Substitute.For<IReceiptStorage>(),
                               Substitute.For<ISpecProvider>(),
                               LimboLogs.Instance,
-                              "abc",
-                              1);
+                              "abc");
 
         Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.FullName, CancellationToken.None), Throws.TypeOf<EraImportException>());
         tempDirectory.Delete(recursive: true);

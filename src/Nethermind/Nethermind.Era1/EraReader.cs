@@ -20,6 +20,10 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     private BlockBodyDecoder _blockBodyDecoder = new();
     private E2StoreReader _fileReader;
 
+    public long StartBlock => _fileReader.StartBlock;
+    public long LastBlock => _fileReader.LastBlock;
+
+
     public EraReader(string fileName) : this(new E2StoreReader(fileName))
     {
     }
