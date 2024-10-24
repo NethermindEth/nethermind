@@ -95,6 +95,8 @@ public class JsonRpcService : IJsonRpcService
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
+        int initialMissingParamsCount = missingParamsCount;
+
         if (providedParametersLength > 0)
         {
             foreach (JsonElement item in providedParameters.EnumerateArray())
@@ -102,6 +104,10 @@ public class JsonRpcService : IJsonRpcService
                 if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
                 {
                     missingParamsCount++;
+                }
+                else
+                {
+                    missingParamsCount = initialMissingParamsCount;
                 }
             }
         }
