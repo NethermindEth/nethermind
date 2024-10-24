@@ -15,6 +15,18 @@ public class TaikoExecutionPayload : ExecutionPayload
     public Hash256? WithdrawalsHash { get; set; } = null;
     public Hash256? TxHash { get; set; } = null;
 
+
+    private byte[][]? _encodedTransactions;
+    public new byte[][]? Transactions
+    {
+        get { return _encodedTransactions; }
+        set
+        {
+            _encodedTransactions = value;
+            _transactions = null;
+        }
+    }
+
     protected override int GetExecutionPayloadVersion() => this switch
     {
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,

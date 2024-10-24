@@ -32,7 +32,7 @@ public class TaikoPayloadPreparationService(
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
 
-    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         TaikoPayloadAttributes attrs = (payloadAttributes as TaikoPayloadAttributes)
             ?? throw new InvalidOperationException("Payload attributes have incorrect type. Expected TaikoPayloadAttributes.");

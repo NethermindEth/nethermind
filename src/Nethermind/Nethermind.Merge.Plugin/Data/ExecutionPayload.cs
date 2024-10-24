@@ -189,7 +189,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         }
     }
 
-    private Transaction[]? _transactions = null;
+    protected Transaction[]? _transactions = null;
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
