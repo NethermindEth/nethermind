@@ -82,50 +82,54 @@ namespace Nethermind.Evm
 
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
+        /// <summary>
+        /// Contructor for a top level <see cref="EvmState"/>.
+        /// </summary>
         public EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
             Snapshot snapshot,
-            AccessTracker accessedItems)
-            : this(gasAvailable,
-                env,
-                executionType,
-                true,
-                snapshot,
-                0L,
-                0L,
-                false,
-                accessedItems,
-                false,
-                false)
+            AccessTracker? accessedItems = null) : this(gasAvailable,
+                                    env,
+                                    executionType,
+                                    true,
+                                    snapshot,
+                                    0L,
+                                    0L,
+                                    false,
+                                    accessedItems,
+                                    false)
         {
         }
-
+        /// <summary>
+        /// Contructor for a frame <see cref="EvmState"/> beneath top level.
+        /// </summary>
         internal EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
-            bool isTopLevel,
             Snapshot snapshot,
-            bool isContinuation)
-            : this(gasAvailable,
+            long outputDestination,
+            long outputLength,
+            bool isStatic,
+            AccessTracker? stateForAccessLists,
+            bool isCreateOnPreExistingAccount) :
+            this(
+                gasAvailable,
                 env,
                 executionType,
-                isTopLevel,
-                snapshot,
-                0L,
-                0L,
                 false,
-                null,
-                isContinuation,
-                false)
+                snapshot,
+                outputDestination,
+                outputLength,
+                isStatic,
+                stateForAccessLists,
+                isCreateOnPreExistingAccount)
         {
-            GasAvailable = gasAvailable;
-            Env = env;
-        }
 
-        internal EvmState(
+        }
+        private EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
@@ -135,14 +139,8 @@ namespace Nethermind.Evm
             long outputLength,
             bool isStatic,
             AccessTracker? stateForAccessLists,
-            bool isContinuation,
             bool isCreateOnPreExistingAccount)
         {
-            if (isTopLevel && isContinuation)
-            {
-                throw new InvalidOperationException("Top level continuations are not valid");
-            }
-
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
@@ -152,7 +150,7 @@ namespace Nethermind.Evm
             OutputDestination = outputDestination;
             OutputLength = outputLength;
             IsStatic = isStatic;
-            IsContinuation = isContinuation;
+            IsContinuation = false;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
             if (stateForAccessLists is not null)
             {

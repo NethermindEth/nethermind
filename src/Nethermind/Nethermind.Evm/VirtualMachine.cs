@@ -2234,13 +2234,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             gasLimitUl,
             callEnv,
             executionType,
-            isTopLevel: false,
             snapshot,
             outputOffset.ToLong(),
             outputLength.ToLong(),
             instruction == Instruction.STATICCALL || vmState.IsStatic,
             vmState.AccessTracker,
-            isContinuation: false,
             isCreateOnPreExistingAccount: false);
 
         return EvmExceptionType.None;
@@ -2482,13 +2480,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             callGas,
             callEnv,
             instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
-            false,
             snapshot,
             0L,
             0L,
             vmState.IsStatic,
             vmState.AccessTracker,
-            false,
             accountExists);
 
         return (EvmExceptionType.None, callState);

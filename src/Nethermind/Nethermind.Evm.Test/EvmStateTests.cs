@@ -15,13 +15,6 @@ namespace Nethermind.Evm.Test
     public class EvmStateTests
     {
         [Test]
-        public void Top_level_continuations_are_not_valid()
-        {
-            Assert.Throws<InvalidOperationException>(
-                () => _ = CreateEvmState(isContinuation: true));
-        }
-
-        [Test]
         public void Things_are_cold_to_start_with()
         {
             EvmState evmState = CreateEvmState();
@@ -234,19 +227,15 @@ namespace Nethermind.Evm.Test
                 ? new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
-                    true,
-                    Snapshot.Empty,
-                    isContinuation)
+                    Snapshot.Empty)
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
-                    false,
                     Snapshot.Empty,
                     0,
                     0,
                     false,
                     parentEvmState.AccessTracker,
-                    isContinuation,
                     false);
 
         public class Context { }
