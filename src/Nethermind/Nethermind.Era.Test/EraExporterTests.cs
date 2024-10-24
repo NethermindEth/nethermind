@@ -1,38 +1,16 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Specs;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using System.IO.Abstractions;
-using System.IO.Abstractions.TestingHelpers;
-using FluentAssertions;
-using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
+using Autofac;
 
 namespace Nethermind.Era1.Test;
 public class EraExporterTests
 {
-    [TestCase(EraWriter.MaxEra1Size + 1)]
-    [TestCase(0)]
-    [TestCase(-1)]
-    public void Export_SizeIsGreaterThan8192OrLessThan1_ThrowArgumentOutOfRange(int size)
-    {
-        IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "test");
-
-        Assert.That(() => sut.Export("", 0, 0, size), Throws.TypeOf<ArgumentOutOfRangeException>());
-    }
-
     [TestCase(1, 1, 1)]
     [TestCase(3, 1, 3)]
     [TestCase(16, 16, 1)]
@@ -40,14 +18,16 @@ public class EraExporterTests
     [TestCase(64 * 2 + 1, 64, 3)]
     public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int size, int expectedNumberOfFiles)
     {
-        var fileSystem = new MockFileSystem();
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(chainlength).TestObject;
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainlength)
+            .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
+            .Build();
 
-        await sut.Export("test", 0, chainlength - 1, size, createAccumulator: false);
-        Assert.That(fileSystem.AllFiles.Count, Is.EqualTo(expectedNumberOfFiles));
+        TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        await sut.Export(tmpDirectory.DirectoryPath, 0, chainlength - 1, createAccumulator: false);
+
+        int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory.DirectoryPath).Length;
+        Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles));
     }
 
     [TestCase(1, 1)]
@@ -56,24 +36,25 @@ public class EraExporterTests
     [TestCase(99, 999)]
     public void Export_ExportBeyondAvailableBlocks_ThrowEraException(int chainLength, int to)
     {
-        var fileSystem = new MockFileSystem();
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
+        using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength)
+            .Build();
 
-        Assert.That(() => sut.Export("test", 0, to), Throws.TypeOf<EraException>());
+        IEraExporter sut = container.Resolve<IEraExporter>();
+        TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
+
+        Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, to), Throws.TypeOf<EraException>());
     }
 
     [Test]
     public void Export_ReceiptsAreNull_ThrowEraException()
     {
-        using TmpDirectory tmpDirectory = new TmpDirectory();
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        receiptStorage.Get(Arg.Any<Block>(), Arg.Any<bool>()).ReturnsNull();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        EraExporter sut = new(new FileSystem(), blockTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
+        using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
+            .Build();
+
+        TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
+        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>()).ReturnsNull();
+
+        IEraExporter sut = container.Resolve<IEraExporter>();
 
         Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, 1), Throws.TypeOf<EraException>());
     }

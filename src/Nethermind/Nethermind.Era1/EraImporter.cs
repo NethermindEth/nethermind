@@ -36,8 +36,8 @@ public class EraImporter : IEraImporter
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
         ILogManager logManager,
-        [KeyFilter(EraComponentKeys.NetworkName)] string networkName,
-        int maxEra1Size = EraWriter.MaxEra1Size)
+        IEraConfig eraConfig,
+        [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
@@ -48,7 +48,7 @@ public class EraImporter : IEraImporter
         _logger = logManager.GetClassLogger<EraImporter>();
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
-        _maxEra1Size = maxEra1Size;
+        _maxEra1Size = eraConfig.MaxEra1Size;
     }
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)

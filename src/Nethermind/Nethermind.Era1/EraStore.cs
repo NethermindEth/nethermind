@@ -11,7 +11,7 @@ using Nethermind.Era1.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.Era1;
-public class EraStore : IEraStore, IDisposable
+public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
 
@@ -30,14 +30,28 @@ public class EraStore : IEraStore, IDisposable
     /// Note: EraReader itself is concurrent safe, so there is probably a better way to do this.
     /// </summary>
     private readonly int _maxOpenFile;
-    private readonly ConcurrentDictionary<int, EraReader> _openedReader = new();
+    private readonly ConcurrentDictionary<int, (long, EraReader)> _openedReader = new();
 
     private bool _disposed = false;
     private readonly int _maxEraFile;
 
     private int BiggestEpoch { get; set; }
     private int SmallestEpoch { get; set; }
-    public long LastBlock { get; }
+
+    private long? _lastBlock = null;
+
+    public long LastBlock
+    {
+        get
+        {
+            if (_lastBlock == null)
+            {
+                using EraRenter _ = RentReader(BiggestEpoch, out EraReader biggestEraReader);
+                _lastBlock = biggestEraReader.LastBlock;
+            }
+            return _lastBlock.Value;
+        }
+    }
 
     public EraStore(
         string directory,
@@ -45,7 +59,7 @@ public class EraStore : IEraStore, IDisposable
         ISpecProvider specProvider,
         string networkName,
         IFileSystem fileSystem,
-        int maxEraSize = EraWriter.MaxEra1Size
+        int maxEraSize
     )
     {
         _maxOpenFile = Environment.ProcessorCount * 2;
@@ -67,9 +81,6 @@ public class EraStore : IEraStore, IDisposable
             if (epoch < SmallestEpoch)
                 SmallestEpoch = epoch;
         }
-
-        using EraRenter _ = RentReader(BiggestEpoch, out EraReader biggestEraReader);
-        LastBlock = biggestEraReader.LastBlock;
 
         _fileSystem = fileSystem;
     }
@@ -134,25 +145,39 @@ public class EraStore : IEraStore, IDisposable
         GuardMissingEpoch(epoch);
 
         int shardIdx = (int)(epoch % _maxOpenFile);
-        if (_openedReader.TryRemove(shardIdx, out reader!)) return new EraRenter(this, reader, shardIdx);
+        if (_openedReader.TryRemove(shardIdx, out (long, EraReader) openedReader))
+        {
+            if (openedReader.Item1 == epoch)
+            {
+                reader = openedReader.Item2;
+                return new EraRenter(this, reader, epoch);
+            }
+
+            if (!_openedReader.TryAdd(shardIdx, openedReader))
+            {
+                openedReader.Item2.Dispose();
+            }
+        }
 
         reader = GetReader(epoch);
-        return new EraRenter(this, reader, shardIdx);
+        return new EraRenter(this, reader, epoch);
     }
 
-    private void ReturnReader(EraReader reader, int shardIdx)
+    private void ReturnReader(long epoch, EraReader reader)
     {
-        if (_openedReader.TryAdd(shardIdx, reader)) return;
+        int shardIdx = (int)(epoch % _maxOpenFile);
+
+        if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
 
         // Something opened another reader of the same shard.
 
         // We try to remove and dispose the current one first.
-        if (_openedReader.TryRemove(shardIdx, out EraReader? existingReader))
+        if (_openedReader.TryRemove(shardIdx, out (long, EraReader) existingReader))
         {
-            existingReader.Dispose();
+            existingReader.Item2.Dispose();
         }
 
-        if (_openedReader.TryAdd(shardIdx, reader)) return;
+        if (_openedReader.TryAdd(shardIdx, (epoch, reader))) return;
 
         // Still failed, so we just dispose ourself
         reader.Dispose();
@@ -194,11 +219,11 @@ public class EraStore : IEraStore, IDisposable
             throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));
     }
 
-    private readonly struct EraRenter(EraStore store, EraReader reader, int shardIdx) : IDisposable
+    private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {
         public void Dispose()
         {
-            store.ReturnReader(reader, shardIdx);
+            store.ReturnReader(epoch, reader);
         }
     }
 
@@ -207,9 +232,9 @@ public class EraStore : IEraStore, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        foreach (KeyValuePair<int, EraReader> kv in _openedReader)
+        foreach (KeyValuePair<int, (long, EraReader)> kv in _openedReader)
         {
-            kv.Value.Dispose();
+            kv.Value.Item2.Dispose();
         }
     }
 }

@@ -21,6 +21,7 @@ public class EraExporter : IEraExporter
     private readonly ISpecProvider _specProvider;
     private readonly string _networkName;
     private readonly ILogger _logger;
+    private readonly int _era1Size;
 
     public string NetworkName => _networkName;
 
@@ -31,6 +32,7 @@ public class EraExporter : IEraExporter
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
+        IEraConfig eraConfig,
         ILogManager logManager,
         [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
     {
@@ -38,6 +40,7 @@ public class EraExporter : IEraExporter
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _era1Size = eraConfig.MaxEra1Size;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _logger = logManager.GetClassLogger<EraExporter>();
         _networkName = networkName.Trim().ToLower();
@@ -47,15 +50,11 @@ public class EraExporter : IEraExporter
         string destinationPath,
         long start,
         long end,
-        int size = EraWriter.MaxEra1Size,
         bool createAccumulator = true,
         CancellationToken cancellation = default)
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
-        if (size < 1) throw new ArgumentOutOfRangeException(nameof(size), size, $"Must be greater than 0.");
-        if (size > EraWriter.MaxEra1Size) throw new ArgumentOutOfRangeException(nameof(size), size, $"Cannot be greater than {EraWriter.MaxEra1Size}.");
-
         if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
 
         if (!_fileSystem.Directory.Exists(destinationPath))
@@ -70,7 +69,7 @@ public class EraExporter : IEraExporter
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
-        long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)size);
+        long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)_era1Size);
         byte[][] eraRoots = new byte[epochCount][];
 
         List<long> epochIdxs = new List<long>();
@@ -87,7 +86,7 @@ public class EraExporter : IEraExporter
         if (createAccumulator)
         {
             string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-            await new EraStore(destinationPath, null, _specProvider, _networkName, _fileSystem).CreateAccumulatorFile(accumulatorPath, cancellation);
+            await new EraStore(destinationPath, null, _specProvider, _networkName, _fileSystem, _era1Size).CreateAccumulatorFile(accumulatorPath, cancellation);
         }
 
         LogExportProgress(
@@ -104,15 +103,15 @@ public class EraExporter : IEraExporter
         {
             // Hmm.. if it does not start at the boundary, then it all offset?
             // What would be the expected way to encode this?
-            long startingIndex = start + epochIdx * size;
+            long startingIndex = start + epochIdx * _era1Size;
             string filePath = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, startingIndex / size, Keccak.Zero));
+                EraWriter.Filename(_networkName, startingIndex / _era1Size, Keccak.Zero));
 
             using EraWriter builder = new EraWriter(_fileSystem.File.Create(filePath), _specProvider);
 
             //TODO read directly from RocksDb with range reads
-            for (var y = startingIndex; y < startingIndex + size && y <= end; y++)
+            for (var y = startingIndex; y < startingIndex + _era1Size && y <= end; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (block is null)
@@ -159,7 +158,7 @@ public class EraExporter : IEraExporter
             byte[] root = await builder.Finalize(cancellation);
             string rename = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, startingIndex / size, new Hash256(root)));
+                EraWriter.Filename(_networkName, startingIndex / _era1Size, new Hash256(root)));
             _fileSystem.File.Move(
                 filePath,
                 rename, true);

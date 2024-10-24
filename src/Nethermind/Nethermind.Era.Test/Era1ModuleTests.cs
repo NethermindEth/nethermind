@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.IO.MemoryMappedFiles;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -298,39 +299,36 @@ public class Era1ModuleTests
     public async Task EraExportAndImport()
     {
         const int ChainLength = 10000;
-        var fileSystem = new FileSystem();
-        using var tmpDir = new TmpDirectory();
+        await using IContainer outCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(ChainLength).Build();
+        TmpDirectory tmpDir = outCtx.Resolve<TmpDirectory>();
+        IBlockTree outTree = outCtx.Resolve<IBlockTree>();
 
-        BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(true);
-        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, LimboLogs.Instance, "abc");
+        IEraExporter exporter = outCtx.Resolve<IEraExporter>();
         await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
 
-        BlockTree importTree = Build.A.BlockTree()
-            .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(true);
+
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .AddSingleton<IBlockValidator>(blockValidator)
+            .Build();
 
         int bestSuggestedNumber = 0;
-        importTree.NewBestSuggestedBlock += (sender, args) =>
+        inTree.NewBestSuggestedBlock += (sender, args) =>
         {
             bestSuggestedNumber++;
-            importTree.UpdateMainChain([args.Block], true);
+            inTree.UpdateMainChain([args.Block], true);
         };
-        EraImporter importer = new(
-            fileSystem,
-            importTree,
-            blockValidator,
-            receiptStorage,
-            specProvider,
-            LimboLogs.Instance,
-            "abc");
+
+        IEraImporter importer = inCtx.Resolve<IEraImporter>();
         await importer.ImportAsArchiveSync(tmpDir.DirectoryPath, Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
-        Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
-        Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
-
+        Assert.That(inTree.BestSuggestedHeader, Is.Not.Null);
+        Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
         Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
     }
 
@@ -338,82 +336,58 @@ public class Era1ModuleTests
     public async Task EraExportAndImportWithValidation()
     {
         const int ChainLength = EraWriter.MaxEra1Size * 3;
-        var fileSystem = new FileSystem();
-        using var path = new TmpDirectory();
-        BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
-        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        EraExporter exporter = new(
-            fileSystem,
-            exportTree,
-            receiptStorage,
-            specProvider,
-            LimboLogs.Instance,
-            "abc");
-        await exporter.Export(path.DirectoryPath, 0, ChainLength - 1);
+        await using IContainer outCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(ChainLength).Build();
+        TmpDirectory tmpDir = outCtx.Resolve<TmpDirectory>();
+        IBlockTree outTree = outCtx.Resolve<IBlockTree>();
 
-        BlockTree importTree = Build.A.BlockTree()
-            .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        IEraExporter exporter = outCtx.Resolve<IEraExporter>();
+        await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .Build();
 
         int bestSuggestedNumber = 0;
-        importTree.NewBestSuggestedBlock += (sender, args) =>
+        inTree.NewBestSuggestedBlock += (sender, args) =>
         {
             bestSuggestedNumber++;
-            importTree.UpdateMainChain([args.Block], true);
+            inTree.UpdateMainChain([args.Block], true);
         };
 
-        EraImporter importer = new(
-            fileSystem,
-            importTree,
-            blockValidator,
-            receiptStorage,
-            specProvider,
-            LimboLogs.Instance,
-            "abc");
-        await importer.Import(path.DirectoryPath, 0, exportTree.Head!.Number, Path.Combine(path.DirectoryPath, "accumulators.txt"));
+        IEraImporter importer = inCtx.Resolve<IEraImporter>();
+        await importer.Import(tmpDir.DirectoryPath, 0, long.MaxValue, Path.Combine(tmpDir.DirectoryPath, "accumulators.txt"));
 
-        Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
-        Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
-
-        Assert.That(importTree.BestKnownNumber, Is.EqualTo(exportTree.BestKnownNumber));
+        Assert.That(inTree.BestSuggestedHeader, Is.Not.Null);
+        Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
+        Assert.That(inTree.BestKnownNumber, Is.EqualTo(outTree.BestKnownNumber));
     }
 
     [Test]
     public async Task EraExportAndImportNormal()
     {
         const int ChainLength = EraWriter.MaxEra1Size * 5;
-        var fileSystem = new FileSystem();
-        using var tmpDir = new TmpDirectory();
 
-        BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
-        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        EraExporter exporter = new(
-            fileSystem,
-            exportTree,
-            receiptStorage,
-            specProvider,
-            LimboLogs.Instance,
-            "abc");
+        await using IContainer outCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(ChainLength).Build();
+        TmpDirectory tmpDir = outCtx.Resolve<TmpDirectory>();
+        IBlockTree outTree = outCtx.Resolve<IBlockTree>();
+
+        IEraExporter exporter = outCtx.Resolve<IEraExporter>();
         await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
 
-        BlockTree importTree = Build.A.BlockTree()
-            .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
 
-        EraImporter importer = new(
-            fileSystem,
-            importTree,
-            blockValidator,
-            receiptStorage,
-            specProvider,
-            LimboLogs.Instance,
-            "abc");
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .Build();
 
-        await importer.Import(tmpDir.DirectoryPath, 0, exportTree.Head!.Number, Path.Combine(tmpDir.DirectoryPath, "accumulators.txt"));
+        IEraImporter importer = inCtx.Resolve<IEraImporter>();
+        await importer.Import(tmpDir.DirectoryPath, 0, long.MaxValue, Path.Combine(tmpDir.DirectoryPath, "accumulators.txt"));
 
-        Assert.That(importTree.LowestInsertedHeader, Is.Not.Null);
-        Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
+        Assert.That(inTree.LowestInsertedHeader, Is.Not.Null);
+        Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
     }
 }

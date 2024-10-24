@@ -7,5 +7,5 @@ public interface IEraExporter
 {
     string NetworkName { get; }
 
-    Task Export(string destinationPath, long start, long end, int size = EraWriter.MaxEra1Size, bool createAccumulator = true, CancellationToken cancellation = default);
+    Task Export(string destinationPath, long start, long end, bool createAccumulator = true, CancellationToken cancellation = default);
 }

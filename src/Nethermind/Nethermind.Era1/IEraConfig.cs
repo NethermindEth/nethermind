@@ -21,4 +21,7 @@ public interface IEraConfig : IConfig
 
     [ConfigItem(Description = "Trusted accumulator file.", DefaultValue = "null", HiddenFromDocs = false)]
     string? TrustedAccumulatorFile { get; set; }
+
+    [ConfigItem(Description = "Max era1 size.", DefaultValue = "8192", HiddenFromDocs = true)]
+    int MaxEra1Size { get; set; }
 }

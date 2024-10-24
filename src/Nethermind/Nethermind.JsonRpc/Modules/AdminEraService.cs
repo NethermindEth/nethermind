@@ -126,7 +126,6 @@ public class AdminEraService : IAdminEraService
                 destination,
                 from,
                 to,
-                EraWriter.MaxEra1Size,
                 cancellation: _processExit.Token);
             if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
         }
