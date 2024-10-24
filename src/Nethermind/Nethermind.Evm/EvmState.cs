@@ -74,9 +74,9 @@ namespace Nethermind.Evm
 
         public int[]? ReturnStack;
 
-        public AccessTracker AccessTracker => _accessTracker;
+        public StackAccessTracker AccessTracker => _accessTracker;
 
-        private readonly AccessTracker _accessTracker;
+        private readonly StackAccessTracker _accessTracker;
 
         public int DataStackHead = 0;
 
@@ -90,7 +90,7 @@ namespace Nethermind.Evm
             ExecutionEnvironment env,
             ExecutionType executionType,
             Snapshot snapshot,
-            AccessTracker? accessedItems = null) : this(gasAvailable,
+            in StackAccessTracker accessedItems) : this(gasAvailable,
                                     env,
                                     executionType,
                                     true,
@@ -99,6 +99,25 @@ namespace Nethermind.Evm
                                     0L,
                                     false,
                                     accessedItems,
+                                    false)
+        {
+        }
+        /// <summary>
+        /// Contructor for a top level <see cref="EvmState"/>.
+        /// </summary>
+        public EvmState(
+            long gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            Snapshot snapshot) : this(gasAvailable,
+                                    env,
+                                    executionType,
+                                    true,
+                                    snapshot,
+                                    0L,
+                                    0L,
+                                    false,
+                                    new StackAccessTracker(),
                                     false)
         {
         }
@@ -113,7 +132,7 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
-            AccessTracker? stateForAccessLists,
+            in StackAccessTracker stateForAccessLists,
             bool isCreateOnPreExistingAccount) :
             this(
                 gasAvailable,
@@ -138,7 +157,7 @@ namespace Nethermind.Evm
             long outputDestination,
             long outputLength,
             bool isStatic,
-            AccessTracker? stateForAccessLists,
+            in StackAccessTracker stateForAccessLists,
             bool isCreateOnPreExistingAccount)
         {
             GasAvailable = gasAvailable;
@@ -152,16 +171,7 @@ namespace Nethermind.Evm
             IsStatic = isStatic;
             IsContinuation = false;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-            if (stateForAccessLists is not null)
-            {
-                // if we are sub-call, then we use the existing access list for this transaction
-                _accessTracker = new(stateForAccessLists);
-            }
-            else
-            {
-                // if we are top level, then we create a new access tracker
-                _accessTracker = new();
-            }
+            _accessTracker = new(stateForAccessLists);
             if (executionType.IsAnyCreate())
             {
                 _accessTracker.WasCreated(env.ExecutingAccount);

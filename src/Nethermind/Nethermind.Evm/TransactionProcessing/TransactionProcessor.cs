@@ -159,7 +159,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitStorageRoots: false);
 
-            AccessTracker accessTracker = new();
+            StackAccessTracker accessTracker = new();
             int delegationRefunds = ProcessDelegations(tx, spec, accessTracker);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice, _codeInfoRepository, accessTracker);
@@ -214,7 +214,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, AccessTracker accessTracker)
+        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker)
         {
             int refunds = 0;
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
@@ -249,7 +249,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool IsValidForExecution(
                 AuthorizationTuple authorizationTuple,
-                AccessTracker accessTracker,
+                StackAccessTracker accessTracker,
                 [NotNullWhen(false)] out string? error)
             {
                 UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
@@ -532,7 +532,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in UInt256 effectiveGasPrice,
             ICodeInfoRepository codeInfoRepository,
-            AccessTracker accessTracker)
+            in StackAccessTracker accessTracker)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
@@ -584,7 +584,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            AccessTracker accessedItems,
+            in StackAccessTracker accessedItems,
             in long gasAvailable,
             in ExecutionEnvironment env,
             out TransactionSubstate? substate,
