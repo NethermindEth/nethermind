@@ -160,8 +160,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             .AddSingleton(_mergeConfig)
             .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
 
-        builder.RegisterModule(new OptimismSynchronizerModule(parameters: _api.ChainSpec.Optimism, _api.SpecProvider, _syncConfig));
+        builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
+        builder.RegisterModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider));
 
         IContainer container = builder.Build();
 
