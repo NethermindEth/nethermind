@@ -16,7 +16,7 @@ internal class EraWriterTests
     public void Add_TotalDifficultyIsLowerThanBlock_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -31,7 +31,7 @@ internal class EraWriterTests
     public async Task Add_AddOneBlock()
     {
         using MemoryStream stream = new();
-        using EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
         Block block1 = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -45,7 +45,7 @@ internal class EraWriterTests
         stream.CanWrite.Returns(true);
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
         for (int i = 0; i < EraWriter.MaxEra1Size; i++)
         {
             Block block = Build.A.Block.WithNumber(i)
@@ -62,7 +62,7 @@ internal class EraWriterTests
     public async Task Add_FinalizedCalled_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
         Block block = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -77,7 +77,7 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
 
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
 
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
     }
@@ -86,7 +86,7 @@ internal class EraWriterTests
     public async Task Finalize_AddOneBlock_WritesAccumulatorEntry()
     {
         using MemoryStream stream = new();
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
         byte[] buffer = new byte[40];
 
         Block block = Build.A.Block.WithNumber(1)
@@ -104,7 +104,7 @@ internal class EraWriterTests
     public async Task Finalize_AddOneBlock_WritesCorrectBlockIndex()
     {
         using TmpFile tmpFile = new TmpFile();
-        EraWriter sut = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -120,7 +120,7 @@ internal class EraWriterTests
     public void Dispose_Disposed_InnerStreamIsDisposed()
     {
         using MemoryStream stream = new();
-        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        EraWriter sut = new EraWriter(stream, Substitute.For<ISpecProvider>());
         sut.Dispose();
 
         Assert.That(() => stream.ReadByte(), Throws.TypeOf<ObjectDisposedException>());

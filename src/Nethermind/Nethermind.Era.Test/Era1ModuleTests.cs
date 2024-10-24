@@ -34,7 +34,7 @@ public class Era1ModuleTests
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
         using var tmpFile = new TmpFile();
-        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        using EraWriter builder = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -97,7 +97,7 @@ public class Era1ModuleTests
             var readFromFile = new List<(Block b, TxReceipt[] r)>();
 
             using var tmpFile = new TmpFile();
-            using var builder = EraWriter.Create(tmpFile.FilePath, specProvider);
+            using var builder = new EraWriter(tmpFile.FilePath, specProvider);
 
             using var eraEnumerator = new EraReader(era);
             await foreach ((Block b, TxReceipt[] r) in eraEnumerator)
@@ -155,7 +155,7 @@ public class Era1ModuleTests
         }
 
         blocks = testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
-        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, testBlockchain.SpecProvider);
+        using EraWriter builder = new EraWriter(tmpFile.FilePath, testBlockchain.SpecProvider);
 
         foreach (var block in blocks)
         {
@@ -184,7 +184,7 @@ public class Era1ModuleTests
         int numOfBlocks = 12;
         await testBlockchain.BuildSomeBlocks(numOfBlocks);
 
-        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        using EraWriter builder = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
         foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
         {
             await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
@@ -217,7 +217,7 @@ public class Era1ModuleTests
         testBlockchain.State.RecalculateStateRoot();
 
         using var tmpFile = new TmpFile();
-        using EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        using EraWriter builder = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 

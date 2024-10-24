@@ -108,7 +108,8 @@ public class EraExporter : IEraExporter
             string filePath = Path.Combine(
                 destinationPath,
                 EraWriter.Filename(_networkName, startingIndex / size, Keccak.Zero));
-            using EraWriter builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
+
+            using EraWriter builder = new EraWriter(_fileSystem.File.Create(filePath), _specProvider);
 
             //TODO read directly from RocksDb with range reads
             for (var y = startingIndex; y < startingIndex + size && y <= end; y++)

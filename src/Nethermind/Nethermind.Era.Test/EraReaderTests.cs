@@ -31,7 +31,7 @@ internal class EraReaderTests
         public static async Task<PopulatedTestFile> Create()
         {
             TmpFile tmpFile = new TmpFile();
-            EraWriter builder = EraWriter.Create(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+            EraWriter builder = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
             List<(Block, TxReceipt[])> addedContents = new List<(Block, TxReceipt[])>();
             HeaderDecoder headerDecoder = new HeaderDecoder();
 

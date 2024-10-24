@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 using Snappier;
 namespace Nethermind.Era1;
 
-internal class E2StoreWriter : IDisposable
+public class E2StoreWriter : IDisposable
 {
     internal const int HeaderSize = 8;
 
@@ -21,14 +21,7 @@ internal class E2StoreWriter : IDisposable
 
     public long Position => _stream.Position;
 
-    public static E2StoreWriter ForWrite(Stream stream)
-    {
-        if (!stream.CanWrite)
-            throw new ArgumentException("Stream must be writeable.", nameof(stream));
-        return new(stream);
-    }
-
-    internal E2StoreWriter(Stream stream)
+    public E2StoreWriter(Stream stream)
     {
         _stream = stream;
     }

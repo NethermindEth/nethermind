@@ -31,20 +31,17 @@ public class EraWriter : IDisposable
     private bool _disposedValue;
     private bool _finalized;
 
-    public static EraWriter Create(string path, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator = null)
+    public EraWriter(string path, ISpecProvider specProvider)
+        : this(new E2StoreWriter(new FileStream(path, FileMode.Create)), specProvider)
     {
-        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException($"'{nameof(path)}' cannot be null or whitespace.", nameof(path));
-        return Create(new FileStream(path, FileMode.Create), specProvider, bufferAllocator);
-    }
-    public static EraWriter Create(Stream stream, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator = null)
-    {
-        if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
-
-        EraWriter b = new(E2StoreWriter.ForWrite(stream), specProvider, bufferAllocator);
-        return b;
     }
 
-    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator)
+    public EraWriter(Stream outputStream, ISpecProvider specProvider)
+        : this(new E2StoreWriter(outputStream), specProvider)
+    {
+    }
+
+    private EraWriter(E2StoreWriter e2StoreWriter, ISpecProvider specProvider)
     {
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
