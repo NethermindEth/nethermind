@@ -7,7 +7,6 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;

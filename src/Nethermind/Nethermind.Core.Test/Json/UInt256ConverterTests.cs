@@ -3,11 +3,9 @@
 
 using System;
 using System.Globalization;
-using System.IO;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
