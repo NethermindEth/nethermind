@@ -128,9 +128,9 @@ public class ColumnDb : IDb
         return _mainDb.KeyExistsWithColumn(key, _columnFamily);
     }
 
-    public void Flush()
+    public void Flush(bool onlyWal)
     {
-        _mainDb.Flush();
+        _mainDb.Flush(onlyWal);
     }
 
     public void Compact()

@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization
 {

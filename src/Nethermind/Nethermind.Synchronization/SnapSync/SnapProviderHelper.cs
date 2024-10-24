@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -13,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
