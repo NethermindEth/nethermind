@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
+using Microsoft.FSharp.Core;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
@@ -94,15 +95,11 @@ public class EraImporter : IEraImporter
         DateTime lastProgress = DateTime.Now;
         long epochProcessed = 0;
         DateTime startTime = DateTime.Now;
-        long txProcessed = 0;
-        long totalblocks = 0;
+        long totalblocks = (eraStore.BiggestEpoch - startEpoch);
         int blocksProcessed = 0;
-
-        Console.Error.WriteLine($"Start nubmer {startNumber}");
 
         for (long i = startEpoch; eraStore.HasEpoch(i); i++)
         {
-            Console.Error.WriteLine($"Start nubmer 2 {i}");
             using EraReader eraReader = eraStore.GetReader(i);
 
             await foreach ((Block b, TxReceipt[] r) in eraReader)
@@ -130,23 +127,21 @@ public class EraImporter : IEraImporter
                     InsertBlockAndReceipts(b, r);
 
                 blocksProcessed++;
-                txProcessed += b.Transactions.Length;
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                 if (elapsed > ProgressInterval)
                 {
-                    LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
+                    LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
                     lastProgress = DateTime.Now;
                 }
             }
             epochProcessed++;
         }
-        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
+        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks, epochProcessed, eraStore.EpochCount);
     }
 
     private void LogImportProgress(
         TimeSpan elapsed,
         long totalBlocksProcessed,
-        long txProcessed,
         long totalBlocks,
         long epochProcessed,
         long totalEpochs)
@@ -163,6 +158,9 @@ public class EraImporter : IEraImporter
 
     private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock)
     {
+        // Well... this is weird
+        block.Header.TotalDifficulty = null;
+
         if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
         {
             throw new EraImportException($"Invalid block in Era1 archive. {error}");

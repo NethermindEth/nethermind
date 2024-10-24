@@ -10,7 +10,7 @@ using Nethermind.Era1;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeBlockchain))]
+[RunnerStepDependencies(typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
 public class ImportEraStep : IStep
 {
     protected readonly INethermindApi _api;
@@ -28,5 +28,4 @@ public class ImportEraStep : IStep
             .Build();
         await container.Resolve<EraCliRunner>().Run(cancellationToken);
     }
-
 }
