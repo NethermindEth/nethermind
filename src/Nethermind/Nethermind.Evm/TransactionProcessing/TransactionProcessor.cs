@@ -614,7 +614,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
 
-                using (EvmState state = new(
+                using (EvmState state = new EvmState(
                     unspentGas,
                     env,
                     tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION,
