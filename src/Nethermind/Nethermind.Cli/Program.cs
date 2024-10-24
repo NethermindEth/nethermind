@@ -12,7 +12,6 @@ using McMaster.Extensions.CommandLineUtils;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Config;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
