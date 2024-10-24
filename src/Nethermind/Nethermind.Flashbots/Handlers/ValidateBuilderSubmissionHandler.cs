@@ -33,8 +33,10 @@ public class ValidateSubmissionHandler
 {
     private const ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
          | ProcessingOptions.IgnoreParentNotOnMainChain
-         | ProcessingOptions.ForceProcessing;
-
+         | ProcessingOptions.ForceProcessing
+         | ProcessingOptions.StoreReceipts
+         | ProcessingOptions.NoValidation
+         | ProcessingOptions.DoNotVerifyNonce;
     private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
     private readonly IBlockTree _blockTree;
     private readonly IHeaderValidator _headerValidator;
@@ -192,20 +194,11 @@ public class ValidateSubmissionHandler
         }
 
 
-        IReadOnlyTxProcessingScope processingScope = _txProcessingEnv.Build(parentHeader.StateRoot!);
+        using IReadOnlyTxProcessingScope processingScope = _txProcessingEnv.Build(parentHeader.StateRoot!);
         IWorldState currentState = processingScope.WorldState;
         ITransactionProcessor transactionProcessor = processingScope.TransactionProcessor;
 
-        UInt256 feeRecipientBalanceBefore;
-        try
-        {
-            feeRecipientBalanceBefore = currentState.GetBalance(feeRecipient);
-        }
-        catch (Exception ex)
-        {
-            error = $"Failed to get balance for fee recipient: {ex.Message}";
-            return false;
-        }
+        UInt256 feeRecipientBalanceBefore = currentState.AccountExists(feeRecipient) ?  currentState.GetBalance(feeRecipient) : UInt256.Zero;
 
         BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor);
 
