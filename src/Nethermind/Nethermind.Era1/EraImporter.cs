@@ -14,7 +14,6 @@ using Nethermind.Logging;
 namespace Nethermind.Era1;
 public class EraImporter : IEraImporter
 {
-    private const int MergeBlock = 15537393;
     private readonly IFileSystem _fileSystem;
     private readonly IBlockTree _blockTree;
     private readonly IBlockValidator _blockValidator;
@@ -23,8 +22,6 @@ public class EraImporter : IEraImporter
     private readonly string _networkName;
     private readonly ILogger _logger;
     private readonly int _maxEra1Size;
-
-    public TimeSpan ProgressInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     public EraImporter(
         IFileSystem fileSystem,
@@ -60,7 +57,7 @@ public class EraImporter : IEraImporter
     public Task ImportAsArchiveSync(string src, string? accumulatorFile, CancellationToken cancellation)
     {
         _logger.Info($"Starting full archive import from '{src}'");
-        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, long.MaxValue, accumulatorFile, true, cancellation);
+        return ImportInternal(src, 0, long.MaxValue, accumulatorFile, true, cancellation);
     }
 
     private async Task ImportInternal(
@@ -96,8 +93,10 @@ public class EraImporter : IEraImporter
 
         DateTime lastProgress = DateTime.Now;
         DateTime startTime = DateTime.Now;
+        TimeSpan elapsed = TimeSpan.Zero;
         long totalblocks = end - startNumber + 1;
-        int blocksProcessed = 0;
+        long blocksProcessed = 0;
+        long blocksProcessedAtLastLog = 0;
 
         using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(_blockTree);
 
@@ -134,29 +133,35 @@ public class EraImporter : IEraImporter
                 InsertBlockAndReceipts(b, r);
 
             blocksProcessed++;
-            TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
-            if (elapsed > ProgressInterval)
+            if (blocksProcessed % 10000 == 0)
             {
-                LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks);
+                elapsed = DateTime.Now.Subtract(lastProgress);
+                LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed - blocksProcessedAtLastLog, elapsed, blocksProcessed, totalblocks);
                 lastProgress = DateTime.Now;
+                blocksProcessedAtLastLog = blocksProcessed;
             }
         }
-        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessed, totalblocks);
+        elapsed = DateTime.Now.Subtract(lastProgress);
+        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessedAtLastLog, elapsed, blocksProcessed, totalblocks);
     }
 
     private void LogImportProgress(
         TimeSpan elapsed,
+        long blocksProcessedSinceLast,
+        TimeSpan elapsedSinceLastLog,
         long totalBlocksProcessed,
         long totalBlocks)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Import progress: | {totalBlocksProcessed,10}/{totalBlocks} blocks  | elapsed {elapsed:hh\\:mm\\:ss}");
+            _logger.Info($"Import progress: | {totalBlocksProcessed,10}/{totalBlocks} blocks  | elapsed {elapsed:hh\\:mm\\:ss} | {blocksProcessedSinceLast / elapsedSinceLastLog.TotalSeconds,10:0.00} Blk/s ");
     }
 
     private void InsertBlockAndReceipts(Block b, TxReceipt[] r)
     {
-        _blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
-        _receiptStorage.Insert(b, r);
+        if (_blockTree.FindBlock(b.Number) is null)
+            _blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+        if (!_receiptStorage.HasBlock(b.Number, b.Hash!))
+            _receiptStorage.Insert(b, r);
     }
 
     private async Task SuggestAndProcessBlock(Block block)
