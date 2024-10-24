@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
@@ -16,7 +19,11 @@ public class PragueStateTests : GeneralStateTestBase
 
     private static IEnumerable<GeneralStateTest> LoadTests()
     {
-        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/state_tests/prague");
+        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
+        {
+            ArchiveName = "fixtures_eip7692.tar.gz",
+            ArchiveVersion = "eip7692@v1.1.1"
+        }, $"fixtures/state_tests/prague");
         return loader.LoadTests().Cast<GeneralStateTest>();
     }
 }

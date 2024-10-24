@@ -15,6 +15,7 @@ public class Prague : Cancun
     {
         Name = "Prague";
         IsEip2537Enabled = true;
+        IsEofEnabled = true;
         IsEip2935Enabled = true;
         IsEip7702Enabled = true;
         IsEip6110Enabled = true;
