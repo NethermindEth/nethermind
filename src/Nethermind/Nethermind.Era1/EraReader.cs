@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -65,27 +67,42 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         ValueHash256 accumulator = ReadAccumulator();
 
-        using AccumulatorCalculator calculator = new();
+        long startBlock = _fileReader.StartBlock;
+        int blockCount = (int)_fileReader.BlockCount;
+        using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
-        foreach (var blockNumber in EnumerateBlockNumber())
+        ConcurrentQueue<long> blockNumbers = new ConcurrentQueue<long>(EnumerateBlockNumber());
+
+        Task[] workers = Enumerable.Range(0, Environment.ProcessorCount).Select((_) => Task.Run(async () =>
         {
-            EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
-            EntryReadResult err = result.Value;
-
-            Hash256 txRoot = new TxTrie(err.Block.Transactions).RootHash;
-            if (err.Block.Header.TxRoot != txRoot)
+            while (blockNumbers.TryDequeue(out long blockNumber))
             {
-                throw new EraVerificationException("Mismatched tx root");
-            }
+                EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
+                EntryReadResult err = result.Value;
 
-            Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts, _receiptDecoder).RootHash;
-            if (err.Block.Header.ReceiptsRoot != receiptRoot)
-            {
-                throw new EraVerificationException("Mismatched receipt root");
-            }
+                Hash256 txRoot = new TxTrie(err.Block.Transactions).RootHash;
+                if (err.Block.Header.TxRoot != txRoot)
+                {
+                    throw new EraVerificationException("Mismatched tx root");
+                }
 
-            // Note: Header.Hash is calculated by HeaderDecoder.
-            calculator.Add(err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+                Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number),
+                    err.Receipts, _receiptDecoder).RootHash;
+                if (err.Block.Header.ReceiptsRoot != receiptRoot)
+                {
+                    throw new EraVerificationException("Mismatched receipt root");
+                }
+
+                // Note: Header.Hash is calculated by HeaderDecoder.
+                blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
+            }
+        }, cancellation)).ToArray();
+        await Task.WhenAll(workers);
+
+        using AccumulatorCalculator calculator = new();
+        foreach (var valueTuple in blockHashes)
+        {
+            calculator.Add(valueTuple.Item1, valueTuple.Item2);
         }
 
         if (accumulator != calculator.ComputeRoot())
