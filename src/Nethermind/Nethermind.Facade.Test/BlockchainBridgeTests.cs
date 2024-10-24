@@ -4,12 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -37,7 +35,7 @@ namespace Nethermind.Facade.Test
 {
     public class BlockchainBridgeTests
     {
-        private BlockchainBridge _blockchainBridge;
+        private IBlockchainBridge _blockchainBridge;
         private IBlockTree _blockTree;
         private ITxPool _txPool;
         private IReceiptStorage _receiptStorage;
@@ -49,18 +47,15 @@ namespace Nethermind.Facade.Test
         private ISpecProvider _specProvider;
         private IDbProvider _dbProvider;
 
-        private class TestReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnv
+        private class TestReadOnlyTxProcessingEnv(
+            OverridableWorldStateManager worldStateManager,
+            IReadOnlyBlockTree blockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            ITransactionProcessor transactionProcessor)
+            : OverridableTxProcessingEnv(worldStateManager, blockTree, specProvider, logManager)
         {
-            public TestReadOnlyTxProcessingEnv(
-                IWorldStateManager worldStateManager,
-                IBlockTree blockTree,
-                ISpecProvider specProvider,
-                ILogManager logManager,
-                ITransactionProcessor transactionProcessor) :
-                base(worldStateManager, blockTree, specProvider, logManager)
-            {
-                _transactionProcessor = transactionProcessor;
-            }
+            protected override ITransactionProcessor CreateTransactionProcessor() => transactionProcessor;
         }
 
         [SetUp]
@@ -77,22 +72,20 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
-            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
-            IWorldStateManager readOnlyWorldStateManager =
-                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+            OverridableWorldStateManager worldStateManager = new(_dbProvider, trieStore, LimboLogs.Instance);
 
             IReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new TestReadOnlyTxProcessingEnv(
-                readOnlyWorldStateManager,
+            TestReadOnlyTxProcessingEnv processingEnv = new(
+                worldStateManager,
                 readOnlyBlockTree,
                 _specProvider,
                 LimboLogs.Instance,
                 _transactionProcessor);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                readOnlyWorldStateManager,
+                worldStateManager,
                 readOnlyBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
@@ -157,7 +150,7 @@ namespace Nethermind.Facade.Test
 
             Transaction tx = Build.A.Transaction.TestObject;
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx =>
@@ -173,7 +166,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
@@ -188,7 +181,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
@@ -203,7 +196,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithBeneficiary(TestItem.AddressB).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
-            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _blockchainBridge.Call(header, tx);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
@@ -214,20 +207,19 @@ namespace Nethermind.Facade.Test
         [TestCase(0)]
         public void Bridge_head_is_correct(long headNumber)
         {
-            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
-            IWorldStateManager readOnlyWorldStateManager =
-                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+            OverridableWorldStateManager worldStateManager =
+                new(_dbProvider, trieStore, LimboLogs.Instance);
             IReadOnlyBlockTree roBlockTree = _blockTree.AsReadOnly();
-            ReadOnlyTxProcessingEnv processingEnv = new(
-                readOnlyWorldStateManager,
+            OverridableTxProcessingEnv processingEnv = new(
+                worldStateManager,
                 roBlockTree,
                 _specProvider,
                 LimboLogs.Instance);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                readOnlyWorldStateManager,
+                worldStateManager,
                 roBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,

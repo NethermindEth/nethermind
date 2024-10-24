@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -93,7 +94,8 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
         SimulatePayload<TransactionForRpc> call,
-        BlockParameter? blockParameter)
+        BlockParameter? blockParameter,
+        Dictionary<Address, AccountOverride>? stateOverride = null)
     {
         if (call.BlockStateCalls is null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail("Must contain BlockStateCalls", ErrorCodes.InvalidParams);
@@ -207,11 +209,11 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout); //TODO remove!
         SimulatePayload<TransactionWithSourceDetails> toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
+        return Execute(header.Clone(), toProcess, stateOverride, cancellationTokenSource.Token);
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header,
-        SimulatePayload<TransactionWithSourceDetails> tx, CancellationToken token)
+        SimulatePayload<TransactionWithSourceDetails> tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
