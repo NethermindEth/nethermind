@@ -14,11 +14,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Evm;
+using System.Threading;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
-    public class PostMergeBlockProducer : BlockProducerBase
+    public class PostMergeBlockProducer : BlockProducerBase, ITxSourceNotifier
     {
+        private readonly ITxSourceNotifier? _notifier;
+
         public PostMergeBlockProducer(
             ITxSource txSource,
             IBlockchainProcessor processor,
@@ -44,19 +47,39 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 miningConfig
             )
         {
+            if (txSource is ITxSourceNotifier notifier)
+            {
+                _notifier = notifier;
+                notifier.NewPendingTransactions += Notifier_NewPending;
+                SupportsNotifications = true;
+            }
         }
 
-        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        public bool SupportsNotifications { get; }
+
+        private void Notifier_NewPending(object? sender, TxPool.TxEventArgs e)
+        {
+            NewPendingTransactions?.Invoke(sender, e);
+        }
+
+        public bool IsInterestingTx(Transaction tx, BlockHeader parent)
+            => _notifier?.IsInterestingTx(tx, parent) ?? true;
+
+        public event EventHandler<TxPool.TxEventArgs>? NewPendingTransactions;
+
+        public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
             Block block = CreateEmptyBlock(parent, payloadAttributes);
 
             if (_producingBlockLock.Wait(BlockProductionTimeoutMs))
             {
+                if (token.IsCancellationRequested) return block;
+
                 try
                 {
                     if (TrySetState(parent.StateRoot))
                     {
-                        return ProcessPreparedBlock(block, null) ?? throw new EmptyBlockProductionException("Block processing failed");
+                        return ProcessPreparedBlock(block, null, token) ?? throw new EmptyBlockProductionException("Block processing failed");
                     }
                 }
                 finally
@@ -68,7 +91,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             throw new EmptyBlockProductionException("Setting state for processing block failed");
         }
 
-        protected virtual Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected virtual Block CreateEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
@@ -77,9 +100,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }
 
-        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
+        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, CancellationToken token = default)
         {
-            Block block = base.PrepareBlock(parent, payloadAttributes);
+            Block block = base.PrepareBlock(parent, payloadAttributes, token);
             AmendHeader(block.Header, parent);
             return block;
         }

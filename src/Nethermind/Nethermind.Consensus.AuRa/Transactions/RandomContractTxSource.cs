@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using BouncyCastle::Org.BouncyCastle.Crypto;
+using System.Threading;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -48,7 +49,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, CancellationToken token = default)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {

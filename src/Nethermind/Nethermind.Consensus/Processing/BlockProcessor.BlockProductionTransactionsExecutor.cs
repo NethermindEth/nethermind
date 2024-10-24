@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -64,15 +65,16 @@ namespace Nethermind.Consensus.Processing
             }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
-                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec, CancellationToken token)
             {
+                LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 IEnumerable<Transaction> transactions = GetTransactions(block);
 
                 int i = 0;
-                LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
                 BlockExecutionContext blkCtx = new(block.Header);
                 foreach (Transaction currentTx in transactions)
                 {
+                    token.ThrowIfCancellationRequested();
                     TxAction action = ProcessTransaction(block, in blkCtx, currentTx, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == TxAction.Stop) break;
                 }
