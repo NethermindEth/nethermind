@@ -63,7 +63,7 @@ public class EraCliRunner(
     private async Task Import() {
         try
         {
-            await eraImporter.ImportAsArchiveSync(eraConfig.ImportDirectory!, eraConfig.TrustedAccumulatorFile, processExitSource.Token);
+            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.Start, eraConfig.End, eraConfig.TrustedAccumulatorFile, processExitSource.Token);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {

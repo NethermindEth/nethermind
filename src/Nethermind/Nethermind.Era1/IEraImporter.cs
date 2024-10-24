@@ -6,5 +6,4 @@ namespace Nethermind.Era1;
 public interface IEraImporter
 {
     Task Import(string src, long start, long end, string? accumulatorFile = null, CancellationToken cancellation = default);
-    Task ImportAsArchiveSync(string src, string? accumulatorFile, CancellationToken cancellation);
 }

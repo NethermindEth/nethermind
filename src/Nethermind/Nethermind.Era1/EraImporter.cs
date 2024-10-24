@@ -46,18 +46,11 @@ public class EraImporter : IEraImporter
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
     {
-        // TODO: End not handled missing
-
         if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
-        await ImportInternal(src, start, end, accumulatorFile, false, cancellation);
+
+        await ImportInternal(src, start, end, accumulatorFile, true, cancellation);
 
         if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
-    }
-
-    public Task ImportAsArchiveSync(string src, string? accumulatorFile, CancellationToken cancellation)
-    {
-        _logger.Info($"Starting full archive import from '{src}'");
-        return ImportInternal(src, 0, long.MaxValue, accumulatorFile, true, cancellation);
     }
 
     private async Task ImportInternal(
@@ -82,6 +75,7 @@ public class EraImporter : IEraImporter
         using EraStore eraStore = new(src, trustedAccumulators, _specProvider, _networkName, _fileSystem, _maxEra1Size);
 
         long lastBlockInStore = eraStore.LastBlock;
+        if (end == 0) end = long.MaxValue;
         if (end != long.MaxValue && lastBlockInStore < end)
         {
             throw new EraImportException($"The directory given for import '{src}' have highest block number {lastBlockInStore} which is lower then last requested block {end}.");
