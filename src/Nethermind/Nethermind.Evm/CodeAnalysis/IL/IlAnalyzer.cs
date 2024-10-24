@@ -36,7 +36,7 @@ public static class IlAnalyzer
     public static void Enqueue(CodeInfo codeInfo, ILMode mode, IVMConfig config, ILogger logger)
     {
         _queue.Enqueue(new AnalysisWork(codeInfo, mode));
-        if(config.AnalysisQueueMaxSize == _queue.Count)
+        if (config.AnalysisQueueMaxSize == _queue.Count)
         {
             Task.Run(() => AnalyzeQueue(config, logger));
         }

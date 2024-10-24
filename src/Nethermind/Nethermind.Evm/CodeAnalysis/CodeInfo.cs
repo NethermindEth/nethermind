@@ -16,7 +16,7 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
     {
-        public Address? Address { get; init; } 
+        public Address? Address { get; init; }
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
 

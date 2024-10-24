@@ -163,7 +163,8 @@ internal class ILCompiler
             method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
             method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
 
-            if (!bakeInTracerCalls) {
+            if (!bakeInTracerCalls)
+            {
                 if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
                 {
                     method.LoadLocal(gasAvailable);
@@ -175,7 +176,8 @@ internal class ILCompiler
                     method.Subtract();
                     method.StoreLocal(gasAvailable);
                 }
-            } else
+            }
+            else
             {
                 method.LoadLocal(gasAvailable);
                 method.LoadConstant(op.Metadata.GasCost);
@@ -2042,7 +2044,7 @@ internal class ILCompiler
         foreach (var kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
-            if(bakeInTracerCalls)
+            if (bakeInTracerCalls)
             {
                 EmitCallToErrorTrace(method, gasAvailable, kvp);
             }
