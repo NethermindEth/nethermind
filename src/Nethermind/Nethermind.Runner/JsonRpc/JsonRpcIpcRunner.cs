@@ -15,9 +15,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
 namespace Nethermind.Runner.JsonRpc
 {
     public class JsonRpcIpcRunner : IDisposable

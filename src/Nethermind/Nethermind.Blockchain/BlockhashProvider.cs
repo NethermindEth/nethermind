@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
