@@ -6,6 +6,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -21,7 +22,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
             Parameters = new ChainParameters
             {
                 TerminalPoWBlockNumber = terminalBlockNumber
-            }
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -51,7 +53,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     {
         ChainSpec chainSpec = new()
         {
-            Parameters = new ChainParameters { }
+            Parameters = new ChainParameters { },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);

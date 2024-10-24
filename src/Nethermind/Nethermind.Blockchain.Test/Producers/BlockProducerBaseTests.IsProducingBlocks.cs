@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -149,7 +150,7 @@ public partial class BlockProducerBaseTests
     {
         Address address = TestItem.Addresses[0];
         TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether());
