@@ -118,7 +118,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        protected virtual bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip1559Enabled)
             {
@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
+        protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
             if (header.Number != parent.Number + 1)
             {
@@ -147,7 +147,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateGasUsed(BlockHeader header, ref string? error)
+        protected virtual bool ValidateGasUsed(BlockHeader header, ref string? error)
         {
             if (header.GasUsed > header.GasLimit)
             {
@@ -159,7 +159,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
+        protected virtual bool ValidateParent(BlockHeader header, BlockHeader? parent, ref string? error)
         {
             if (parent is null)
             {
@@ -182,7 +182,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        private bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
+        protected virtual bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)
         {
             bool result = _sealValidator.ValidateParams(parent, header, isUncle);
 
@@ -195,7 +195,7 @@ namespace Nethermind.Consensus.Validators
             return result;
         }
 
-        private bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error)
+        protected virtual bool ValidateFieldLimit(BlockHeader blockHeader, ref string? error)
         {
             // Note, these are out of spec. Technically, there could be a block with field with very high value that is
             // valid when using ulong, but wrapped to negative value when using long. However, switching to ulong
@@ -271,7 +271,7 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
-        private bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
+        protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
         {
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
@@ -335,7 +335,7 @@ namespace Nethermind.Consensus.Validators
             header.Bloom is not null &&
             header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
 
-        private bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip4844Enabled)
             {

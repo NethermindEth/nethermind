@@ -13,6 +13,7 @@ using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Core.Eip2930;
@@ -143,6 +144,21 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     tx = block.Transactions[i];
                     tx.CopyTo(systemTransaction);
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+
+                    Address senderAddress = tx.SenderAddress!;
+                    if (!scope.WorldState.AccountExists(senderAddress))
+                    {
+                        scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                    }
+
+                    for (int prev = 0; prev < i; prev++)
+                    {
+                        if (senderAddress == block.Transactions[prev].SenderAddress)
+                        {
+                            scope.WorldState.IncrementNonce(senderAddress);
+                        }
+                    }
+
                     if (spec.UseTxAccessLists)
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930

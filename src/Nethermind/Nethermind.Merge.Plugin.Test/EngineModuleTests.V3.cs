@@ -377,7 +377,7 @@ public partial class EngineModuleTests
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-                 Substitute.For<IAsyncHandler<byte[][], GetBlobsV1Result>>(),
+                 Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
                  chain.SpecProvider,
                  new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                  Substitute.For<ILogManager>()));
@@ -537,7 +537,7 @@ public partial class EngineModuleTests
             request.Add(Bytes.FromHexString(i.ToString("X64")));
         }
 
-        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(request.ToArray());
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(request.ToArray());
 
         if (requestSize > 128)
         {
@@ -547,7 +547,7 @@ public partial class EngineModuleTests
         else
         {
             result.Result.Should().Be(Result.Success);
-            result.Data.BlobsAndProofs.Should().HaveCount(requestSize);
+            result.Data.Should().HaveCount(requestSize);
         }
     }
 
@@ -557,10 +557,10 @@ public partial class EngineModuleTests
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
 
-        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1([]);
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
         result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeEquivalentTo(new GetBlobsV1Result(ArraySegment<BlobAndProofV1?>.Empty));
+        result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV1?>.Empty);
     }
 
     [Test]
@@ -578,11 +578,11 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.BlobsAndProofs.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data.BlobsAndProofs.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        result.Data.Select(b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
+        result.Data.Select(b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
     }
 
     [Test]
@@ -600,10 +600,10 @@ public partial class EngineModuleTests
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
-        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
-        result.Data.BlobsAndProofs.Should().HaveCount(numberOfRequestedBlobs);
-        result.Data.BlobsAndProofs.Should().AllBeEquivalentTo<BlobAndProofV1?>(null);
+        result.Data.Should().HaveCount(numberOfRequestedBlobs);
+        result.Data.Should().AllBeEquivalentTo<BlobAndProofV1?>(null);
     }
 
     [Test]
@@ -636,12 +636,11 @@ public partial class EngineModuleTests
                 : null);
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
-        GetBlobsV1Result expected = new(blobsAndProofs.ToArray());
 
-        ResultWrapper<GetBlobsV1Result> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
+        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
 
-        result.Data.Should().BeEquivalentTo(expected);
-        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.BlobsAndProofs.ToArray();
+        result.Data.Should().BeEquivalentTo(blobsAndProofs);
+        BlobAndProofV1?[] resultBlobsAndProofs = result.Data.ToArray();
         resultBlobsAndProofs.Length.Should().Be(requestSize);
         for (int i = 0; i < requestSize; i++)
         {

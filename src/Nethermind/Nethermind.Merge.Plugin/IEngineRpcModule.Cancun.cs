@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
@@ -35,5 +36,5 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    public Task<ResultWrapper<GetBlobsV1Result>> engine_getBlobsV1(byte[][] blobVersionedHashes);
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes);
 }

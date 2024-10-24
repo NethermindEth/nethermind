@@ -22,6 +22,8 @@ public class ClefSignerPlugin : INethermindPlugin
 
     public string Author => "Nethermind";
 
+    public bool MustInitialize => true;
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public async Task Init(INethermindApi nethermindApi)

@@ -9,19 +9,19 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], GetBlobsV1Result>
+public class GetBlobsHandler(ITxPool txPool) : IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>
 {
     private const int MaxRequest = 128;
 
-    public Task<ResultWrapper<GetBlobsV1Result>> HandleAsync(byte[][] request)
+    public Task<ResultWrapper<IEnumerable<BlobAndProofV1?>>> HandleAsync(byte[][] request)
     {
         if (request.Length > MaxRequest)
         {
             var error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<GetBlobsV1Result>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<GetBlobsV1Result>.Success(new GetBlobsV1Result(GetBlobsAndProofs(request)));
+        return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Success(GetBlobsAndProofs(request));
     }
 
     private IEnumerable<BlobAndProofV1?> GetBlobsAndProofs(byte[][] request)

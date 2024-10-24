@@ -294,7 +294,7 @@ public class BlockValidator(
         return true;
     }
 
-    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
+    protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
         if (!spec.IsEip4844Enabled)
         {

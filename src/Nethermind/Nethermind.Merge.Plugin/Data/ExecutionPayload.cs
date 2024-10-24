@@ -177,7 +177,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         }
     }
 
-    private Transaction[]? _transactions = null;
+    protected Transaction[]? _transactions = null;
 
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
@@ -232,7 +232,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    private int GetExecutionPayloadVersion() => this switch
+    protected virtual int GetExecutionPayloadVersion() => this switch
     {
         { ExecutionRequests: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,

@@ -84,7 +84,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         return payloadId;
     }
 
-    private Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
         Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
