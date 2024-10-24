@@ -40,14 +40,14 @@ public class BlockTreeSuggestPacer : IDisposable
     public async Task WaitForQueue(long currentBlockNumber, CancellationToken token)
     {
         long currentHeadNumber = _blockTree.Head?.Number ?? 0;
-        if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed == null)
+        if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed is null)
         {
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
             TaskCompletionSource completionSource = new TaskCompletionSource();
             _dbBatchProcessed = completionSource;
         }
 
-        if (_dbBatchProcessed != null)
+        if (_dbBatchProcessed is not null)
         {
             await using (token.Register(() => _dbBatchProcessed.TrySetCanceled()))
             {
