@@ -232,6 +232,10 @@ public class MyTracer : ITxTracer, IDisposable
                              || IsTracingFees
                              || IsTracingLogs;
 
+    bool IILVMTracer.IsTracingPredefinedPatterns => true;
+
+    bool IILVMTracer.IsTracingCompiledSegments => true;
+
     public string lastmemline;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
@@ -389,4 +393,12 @@ public class MyTracer : ITxTracer, IDisposable
     }
 
     public void Dispose() { }
+
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+    }
+
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
+    {
+    }
 }

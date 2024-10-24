@@ -204,6 +204,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
+    public bool IsTracingPredefinedPatterns => _currentTxTracer.IsTracingPredefinedPatterns;
+
+    public bool IsTracingCompiledSegments => _currentTxTracer.IsTracingCompiledSegments;
     public int TakeSnapshot() => _txReceipts.Count;
 
     public void Restore(int snapshot)
@@ -271,5 +274,15 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void Dispose()
     {
         _currentTxTracer.Dispose();
+    }
+
+    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    {
+        _currentTxTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
+    }
+
+    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
+    {
+        _currentTxTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
     }
 }

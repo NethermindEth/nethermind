@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
