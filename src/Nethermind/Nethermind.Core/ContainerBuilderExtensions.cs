@@ -57,7 +57,8 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .As<T>()
-            .SingleInstance();
+            .SingleInstance()
+            .ExternallyOwned();
 
         return builder;
     }
@@ -77,7 +78,8 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .Named<T>(key)
-            .SingleInstance();
+            .SingleInstance()
+            .ExternallyOwned();
 
         return builder;
     }
