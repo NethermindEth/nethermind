@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.Era1;
@@ -22,6 +23,8 @@ public class EraImporter : IEraImporter
     private readonly string _networkName;
     private readonly ILogger _logger;
     private readonly int _maxEra1Size;
+    private readonly ITunableDb _blocksDb;
+    private readonly ITunableDb _receiptsDb;
 
     public EraImporter(
         IFileSystem fileSystem,
@@ -31,6 +34,8 @@ public class EraImporter : IEraImporter
         ISpecProvider specProvider,
         ILogManager logManager,
         IEraConfig eraConfig,
+        [KeyFilter(DbNames.Blocks)] ITunableDb blocksDb,
+        [KeyFilter(DbNames.Receipts)] ITunableDb receiptsDb,
         [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -38,6 +43,8 @@ public class EraImporter : IEraImporter
         _blockValidator = blockValidator;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _receiptsDb = receiptsDb;
+        _blocksDb = blocksDb;
         _logger = logManager.GetClassLogger<EraImporter>();
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
@@ -48,7 +55,17 @@ public class EraImporter : IEraImporter
     {
         if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
 
-        await ImportInternal(src, start, end, accumulatorFile, true, cancellation);
+        _receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
+        _blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
+        try
+        {
+            await ImportInternal(src, start, end, accumulatorFile, true, cancellation);
+        }
+        finally
+        {
+            _receiptsDb.Tune(ITunableDb.TuneType.Default);
+            _blocksDb.Tune(ITunableDb.TuneType.Default);
+        }
 
         if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
     }
