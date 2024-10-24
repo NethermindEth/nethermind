@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -575,7 +574,7 @@ public class FastHeadersSyncTests
             long? hangOnBlockNumberAfterInsert = null,
             ManualResetEventSlim? hangLatch = null,
             bool alwaysStartHeaderSync = false
-        ) : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
+        ) : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync: alwaysStartHeaderSync)
         {
             _hangOnBlockNumber = hangOnBlockNumber;
             _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;

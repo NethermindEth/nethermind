@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 using System;
-using System.Linq;
 
 namespace Nethermind.Optimism;
 

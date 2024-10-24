@@ -2,17 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using System.Collections;
-using System.Linq;
-using System.Numerics;
-using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
-using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;

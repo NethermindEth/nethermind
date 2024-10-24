@@ -360,6 +360,9 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
+        // Used in testing to not have to wait for condition.
+        public event EventHandler OnMemoryPruneCompleted;
+
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
         {
             nodeStorage ??= _nodeStorage;
@@ -457,14 +460,15 @@ namespace Nethermind.Trie.Pruning
                         // otherwise, it may not fit the whole dirty cache.
                         // Additionally, if (WriteBufferSize * (WriteBufferNumber - 1)) is already more than 20% of pruning
                         // cache, it is likely that there are enough space for it on most time, except for syncing maybe.
-                        _nodeStorage.Flush();
+                        _nodeStorage.Flush(onlyWal: false);
                         lock (_dirtyNodesLock)
                         {
                             long start = Stopwatch.GetTimestamp();
                             if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
                             long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
-                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
+                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested &&
+                                _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
                             {
                                 // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
                                 // usually faster to just SaveSnapshot causing most of the entry to be persisted.
@@ -496,6 +500,11 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
+                });
+
+                _pruningTask.ContinueWith((_) =>
+                {
+                    OnMemoryPruneCompleted?.Invoke(this, EventArgs.Empty);
                 });
             }
         }
@@ -673,6 +682,8 @@ namespace Nethermind.Trie.Pruning
         private ConcurrentQueue<BlockCommitSet> CommitSetQueue =>
             (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue));
 
+        private BlockCommitSet? _lastCommitSet = null;
+
         private long _memoryUsedByDirtyCache;
 
         private int _committedNodesCount;
@@ -699,12 +710,21 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
-            // TODO: this throws on reorgs, does it not? let us recreate it in test
-            Debug.Assert(!CommitSetQueue.TryPeek(out BlockCommitSet lastSet) || blockNumber == lastSet.BlockNumber + 1, $"Newly begun block is not a successor of the last one.");
-            Debug.Assert(!CommitSetQueue.TryPeek(out lastSet) || lastSet.IsSealed, "Not sealed when beginning new block");
+            if (_lastCommitSet is not null)
+            {
+                Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
+
+                if (_lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && _lastCommitSet.BlockNumber != 0)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
+                }
+            }
 
             BlockCommitSet commitSet = new(blockNumber);
             CommitSetQueue.Enqueue(commitSet);
+
+            _lastCommitSet = commitSet;
+
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
             // Why are we announcing **before** committing next block??
             // Should it be after commit?
@@ -746,7 +766,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
 
             long start = Stopwatch.GetTimestamp();
 
@@ -782,8 +802,9 @@ namespace Nethermind.Trie.Pruning
             disposeQueue.CompleteAdding();
             Task.WaitAll(_disposeTasks);
 
-            // Dispose top level last in case something goes wrong, at least the root wont be stored
+            // Dispose top level last in case something goes wrong, at least the root won't be stored
             topLevelWriteBatch.Dispose();
+            _nodeStorage.Flush(onlyWal: true);
 
             long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             Metrics.SnapshotPersistenceTime = elapsedMilliseconds;

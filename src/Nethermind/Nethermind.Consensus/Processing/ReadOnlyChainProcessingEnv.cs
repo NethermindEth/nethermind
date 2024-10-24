@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Processing
                 scope.WorldState,
                 receiptStorage,
                 scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor),
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(specProvider, scope.WorldState),
                 logManager);
         }
