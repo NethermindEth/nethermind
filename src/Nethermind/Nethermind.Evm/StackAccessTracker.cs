@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
-    public sealed class AccessTracker
+    public struct StackAccessTracker
     {
         public IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
         public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
@@ -28,24 +28,22 @@ namespace Nethermind.Evm
         private int _destroyListSnapshots;
         private int _logsSnapshots;
 
-        public AccessTracker(AccessTracker? accessTracker = null)
+        public StackAccessTracker(in StackAccessTracker accessTracker)
         {
-            if (accessTracker is not null)
-            {
-                _accessedAddresses = accessTracker._accessedAddresses;
-                _accessedStorageCells = accessTracker._accessedStorageCells;
-                _logs = accessTracker._logs;
-                _destroyList = accessTracker._destroyList;
-                _createList = accessTracker._createList;
-            }
-            else
-            {
-                _accessedAddresses = new();
-                _accessedStorageCells = new();
-                _logs = new();
-                _destroyList = new();
-                _createList = new();
-            }
+            _accessedAddresses = accessTracker._accessedAddresses;
+            _accessedStorageCells = accessTracker._accessedStorageCells;
+            _logs = accessTracker._logs;
+            _destroyList = accessTracker._destroyList;
+            _createList = accessTracker._createList;
+        }
+
+        public StackAccessTracker()
+        {
+            _accessedAddresses = new();
+            _accessedStorageCells = new();
+            _logs = new();
+            _destroyList = new();
+            _createList = new();
         }
         public bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
 
