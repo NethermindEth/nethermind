@@ -12,10 +12,6 @@ namespace Nethermind.Shutter.Config;
 
 public interface IShutterConfig : IConfig
 {
-    private const string DefaultP2PAddresses =
-@"/ip4/167.99.177.227/tcp/23003/p2p/12D3KooWD35AESYCttDEi3J5WnQdTFuM5JNtmuXEb1x4eQ28gb1s,
-/ip4/159.89.15.119/tcp/23003/p2p/12D3KooWRzAhgPA16DiBQhiuYoasYzJaQSAbtc5i5FvgTi9ZDQtS";
-
     [ConfigItem(Description = "Whether to enable Shutter.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
@@ -24,27 +20,27 @@ public interface IShutterConfig : IConfig
     string? ValidatorInfoFile { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter sequencer contract.",
-        DefaultValue = "0xc5C4b277277A1A8401E0F039dfC49151bA64DC2E")]
+        DefaultValue = "null")]
     string? SequencerContractAddress { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter validator registry contract.",
-        DefaultValue = "0xefCC23E71f6bA9B22C4D28F7588141d44496A6D6")]
+        DefaultValue = "null")]
     string? ValidatorRegistryContractAddress { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter key broadcast contract.",
-        DefaultValue = "0x626dB87f9a9aC47070016A50e802dd5974341301")]
+        DefaultValue = "null")]
     string? KeyBroadcastContractAddress { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter keyper set manager contract.",
-        DefaultValue = "0x7C2337f9bFce19d8970661DA50dE8DD7d3D34abb")]
+        DefaultValue = "null")]
     string? KeyperSetManagerContractAddress { get; set; }
 
     [ConfigItem(Description = "The p2p addresses of the Shutter Keyper network bootnodes.",
-        DefaultValue = DefaultP2PAddresses)]
+        DefaultValue = null)]
     string[]? BootnodeP2PAddresses { get; set; }
 
     [ConfigItem(Description = "Instance ID of Shutter keyper set.",
-        DefaultValue = "1000")]
+        DefaultValue = "0")]
     ulong InstanceID { get; set; }
 
     [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
