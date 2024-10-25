@@ -73,7 +73,7 @@ public class ShutterP2P : IShutterP2P
 
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
 
-        Identity identity = GetPeerIdentity(fileSystem, keyStoreConfig);
+        Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
         _peer = peerFactory.Create(identity, "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
@@ -135,9 +135,9 @@ public class ShutterP2P : IShutterP2P
         await (_cts?.CancelAsync() ?? Task.CompletedTask);
     }
 
-    private Identity GetPeerIdentity(IFileSystem fileSystem, IKeyStoreConfig cfg)
+    private Identity GetPeerIdentity(IFileSystem fileSystem, IShutterConfig shutterConfig, IKeyStoreConfig keyStoreConfig)
     {
-        string fp = cfg.ShutterKeyFile.GetApplicationResourcePath(cfg.KeyStoreDirectory);
+        string fp = shutterConfig.ShutterKeyFile.GetApplicationResourcePath(keyStoreConfig.KeyStoreDirectory);
         Identity identity;
 
         if (fileSystem.File.Exists(fp))
@@ -149,7 +149,7 @@ public class ShutterP2P : IShutterP2P
         {
             if (_logger.IsInfo) _logger.Info("Generating new Shutter P2P identity.");
             identity = new();
-            string keyStoreDirectory = cfg.KeyStoreDirectory.GetApplicationResourcePath();
+            string keyStoreDirectory = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
             fileSystem.Directory.CreateDirectory(keyStoreDirectory);
             fileSystem.File.WriteAllBytes(fp, identity.PrivateKey!.Data.ToByteArray());
         }

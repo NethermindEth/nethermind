@@ -42,7 +42,6 @@ namespace Nethermind.KeyStore.Config
         public string EnodeAccount { get; set; }
 
         public string EnodeKeyFile { get; set; }
-        public string ShutterKeyFile { get; set; } = "shutter.key.plain";
 
         public string[] Passwords { get; set; } = Array.Empty<string>();
 
