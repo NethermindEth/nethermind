@@ -37,13 +37,11 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -307,7 +305,7 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 txProcessor,
-                new BeaconBlockRootHandler(txProcessor),
+                new BeaconBlockRootHandler(txProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
                 logManager);
 
@@ -331,7 +329,7 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 devTxProcessor,
-                new BeaconBlockRootHandler(devTxProcessor),
+                new BeaconBlockRootHandler(devTxProcessor, devState),
                 new BlockhashStore(specProvider, devState),
                 logManager);
 

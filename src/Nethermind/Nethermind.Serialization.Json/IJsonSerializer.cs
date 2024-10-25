@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.IO;
-using System.IO.Pipelines;
 using System.Threading.Tasks;
 
 namespace Nethermind.Serialization.Json
