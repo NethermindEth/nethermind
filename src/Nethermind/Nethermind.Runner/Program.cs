@@ -175,18 +175,19 @@ async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, Cancella
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
 
-    if (logger.IsDebug)
-    {
-        logger.Debug($"""
-            Server GC:           {GCSettings.IsServerGC}
-            GC latency mode:     {GCSettings.LatencyMode}
-            LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}
-            """);
-    }
+    logger.Info("Configuration complete");
 
     EthereumJsonSerializer serializer = new();
 
-    if (logger.IsDebug) logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
+    if (logger.IsDebug)
+    {
+        logger.Debug($"Nethermind configuration:\n{serializer.Serialize(initConfig, true)}");
+
+        logger.Debug($"Server GC:           {GCSettings.IsServerGC}");
+        logger.Debug($"GC latency mode:     {GCSettings.LatencyMode}");
+        logger.Debug($"LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}");
+    }
+
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
     ApiBuilder apiBuilder = new(configProvider, logManager);
@@ -429,10 +430,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
     if (incorrectSettings.Errors.Any())
     {
-        logger.Warn($"Incorrect config settings found:\n  {incorrectSettings.ErrorMsg}");
+        logger.Warn($"Incorrect config settings found:\n{incorrectSettings.ErrorMsg}");
     }
-
-    logger.Info("Configuration initialized.");
 
     return configProvider;
 }
