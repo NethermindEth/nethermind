@@ -3,6 +3,7 @@
 
 using System.IO.Compression;
 using System.IO.MemoryMappedFiles;
+using CommunityToolkit.HighPerformance;
 using DotNetty.Buffers;
 using Snappier;
 
@@ -82,8 +83,12 @@ public class E2StoreReader : IDisposable
         IByteBuffer buffer = _bufferAllocator.Buffer((int)(length * 2));
         buffer.EnsureWritable((int)length * 2, true);
 
-        // TODO: No ToArray()
-        using SnappyStream decompressor = new(_mappedFile.CreateViewStream(offset, length, MemoryMappedFileAccess.Read), CompressionMode.Decompress, true);
+        // Using _mappedFile.CreateViewStream results in crashes when things got fast enough.
+        IByteBuffer inputBuffer = _bufferAllocator.Buffer((int)length);
+        _ = _accessor.ReadArray(offset, inputBuffer.Array, inputBuffer.ArrayOffset, (int)length);
+        Stream inputStream = inputBuffer.Array.AsMemory()[inputBuffer.ArrayOffset..(inputBuffer.ArrayOffset + (int)length)].AsStream();
+
+        using SnappyStream decompressor = new(inputStream, CompressionMode.Decompress, true);
 
         int read;
         do
@@ -103,6 +108,7 @@ public class E2StoreReader : IDisposable
         }
         while (read != 0);
 
+        inputBuffer.Release();
         return buffer;
     }
 

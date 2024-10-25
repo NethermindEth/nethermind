@@ -126,6 +126,13 @@ public class EraStore : IEraStore
         }
     }
 
+    public long NextEraStart(long blockNumber)
+    {
+        long epoch = GetEpochNumber(blockNumber);
+        using EraRenter _ = RentReader(epoch, out EraReader reader);
+        return reader.LastBlock + 1;
+    }
+
     public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureVerified = true, CancellationToken cancellation = default)
     {
         ThrowIfNegative(number);

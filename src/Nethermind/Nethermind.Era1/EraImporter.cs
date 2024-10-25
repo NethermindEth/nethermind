@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
@@ -110,8 +111,55 @@ public class EraImporter : IEraImporter
         long blocksProcessedAtLastLog = 0;
 
         using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(_blockTree);
+        long blockNumber = startNumber;
 
-        for (long blockNumber = startNumber; blockNumber <= end; blockNumber++)
+        // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
+        // This make the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
+        // work on the same era file as other thread.
+        long nextEraStart = eraStore.NextEraStart(blockNumber);
+        if (nextEraStart <= end)
+        {
+            for (; blockNumber < nextEraStart; blockNumber++)
+            {
+                await ImportBlock(blockNumber);
+            }
+        }
+
+        // Earlier part can be parallelized
+        long partitionSize = _maxEra1Size;
+        if (_blockTree.Head is not null && startNumber + partitionSize < _blockTree.Head.Number)
+        {
+            ConcurrentQueue<long> partitionStartBlocks = new ConcurrentQueue<long>();
+            for (; blockNumber + partitionSize < _blockTree.Head.Number && blockNumber + partitionSize < end; blockNumber += partitionSize)
+            {
+                partitionStartBlocks.Enqueue(blockNumber);
+            }
+
+            Task[] importTasks = Enumerable.Range(0, 8).Select((_) =>
+            {
+                return Task.Run(async () =>
+                {
+                    while (partitionStartBlocks.TryDequeue(out long partitionStartBlock))
+                    {
+                        for (long i = 0; i < partitionSize; i++)
+                        {
+                            await ImportBlock(i + partitionStartBlock);
+                        }
+                    }
+                });
+            }).ToArray();
+
+            await Task.WhenAll(importTasks);
+        }
+
+        for (; blockNumber <= end; blockNumber++)
+        {
+            await ImportBlock(blockNumber);
+        }
+        elapsed = DateTime.Now.Subtract(lastProgress);
+        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessedAtLastLog, elapsed, blocksProcessed, totalblocks);
+
+        async Task ImportBlock(long blockNumber)
         {
             cancellation.ThrowIfCancellationRequested();
 
@@ -127,7 +175,7 @@ public class EraImporter : IEraImporter
 
             if (b.IsGenesis)
             {
-                continue;
+                return;
             }
 
             if (b.IsBodyMissing)
@@ -152,8 +200,6 @@ public class EraImporter : IEraImporter
                 blocksProcessedAtLastLog = blocksProcessed;
             }
         }
-        elapsed = DateTime.Now.Subtract(lastProgress);
-        LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessedAtLastLog, elapsed, blocksProcessed, totalblocks);
     }
 
     private void LogImportProgress(

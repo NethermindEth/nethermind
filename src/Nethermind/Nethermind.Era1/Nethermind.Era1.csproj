@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.HighPerformance" />
     <PackageReference Include="Snappier" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
