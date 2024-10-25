@@ -127,7 +127,7 @@ docker-compose up
 #END of main
 
 function writeNethermindConfig() {
-cat <<EOF > node_$1/configs/config.cfg
+cat <<EOF > node_$1/configs/config.json
 {
     "Init": {
         "WebSocketsEnabled": false,
@@ -196,7 +196,7 @@ cat <<EOF >> docker-compose.yml
         command: --config config
         volumes:
             - ./genesis:/config/genesis
-            - ./node_$1/configs/config.cfg:/nethermind/configs/config.cfg
+            - ./node_$1/configs/config.json:/nethermind/configs/config.json
             - ./static-nodes.json:/nethermind/Data/static-nodes.json
             - ./node_$1/db/clique:/nethermind/nethermind_db/clique
             - ./node_$1/keystore:/nethermind/keystore

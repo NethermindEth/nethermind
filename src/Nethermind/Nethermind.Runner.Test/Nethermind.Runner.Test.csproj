@@ -52,7 +52,7 @@
       <Link>Chains\gnosis.json</Link>
     </Content>
 
-    <Content Include="..\Nethermind.Runner\configs\*.cfg" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
+    <Content Include="..\Nethermind.Runner\configs\*.json" Link="configs\%(RecursiveDir)%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
 

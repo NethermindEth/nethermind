@@ -75,7 +75,7 @@ public class MergePluginTests
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
 
-        JsonConfigSource? jsonSource = new("MisconfiguredConfig.cfg");
+        JsonConfigSource? jsonSource = new("MisconfiguredConfig.json");
         ConfigProvider? configProvider = new();
         configProvider.AddSource(jsonSource);
         configProvider.Initialize();
