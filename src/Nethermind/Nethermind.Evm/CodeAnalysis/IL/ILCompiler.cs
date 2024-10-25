@@ -236,17 +236,20 @@ internal class ILCompiler
                     break;
                 case Instruction.NOT:
                     {
-                        method.Load(stack, head);
-                        method.Call(Word.GetUInt256);
-                        method.StoreLocal(uint256A);
-                        method.StackPop(head);
+                        var refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
+                        var readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
+                        var writeVector256Method = GetWriteUnalignedMethodInfo<Vector256<byte>>();
+                        var notVector256Method = typeof(Vector256)
+                            .GetMethod(nameof(Vector256.OnesComplement), BindingFlags.Public | BindingFlags.Static)!
+                            .MakeGenericMethod(typeof(byte));
 
-                        method.LoadLocalAddress(uint256A);
-                        method.LoadLocalAddress(uint256R);
-                        method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Not)));
-                        method.Load(stack, head);
-                        method.LoadLocal(uint256R);
-                        method.Call(Word.SetUInt256);
+                        method.StackLoadPrevious(stack, head, 1);
+
+                        method.Duplicate();
+                        method.Call(refWordToRefByteMethod);
+                        method.Call(readVector256Method);
+                        method.Call(notVector256Method);
+                        method.Call(writeVector256Method);
                     }
                     break;
                 case Instruction.JUMP:
