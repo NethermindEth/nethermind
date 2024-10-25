@@ -54,8 +54,6 @@ public class EraImporter : IEraImporter
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
     {
-        if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
-
         _receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         _blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
         try
@@ -67,8 +65,6 @@ public class EraImporter : IEraImporter
             _receiptsDb.Tune(ITunableDb.TuneType.Default);
             _blocksDb.Tune(ITunableDb.TuneType.Default);
         }
-
-        if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
     }
 
     private async Task ImportInternal(
@@ -102,6 +98,8 @@ public class EraImporter : IEraImporter
         {
             end = lastBlockInStore;
         }
+
+        if (_logger.IsInfo) _logger.Info($"Starting history import from {startNumber} to {end}");
 
         DateTime lastProgress = DateTime.Now;
         DateTime startTime = DateTime.Now;
@@ -158,6 +156,8 @@ public class EraImporter : IEraImporter
         }
         elapsed = DateTime.Now.Subtract(lastProgress);
         LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessedAtLastLog, elapsed, blocksProcessed, totalblocks);
+
+        if (_logger.IsInfo) _logger.Info($"Finished history import from {startNumber} to {end}");
 
         async Task ImportBlock(long blockNumber)
         {
