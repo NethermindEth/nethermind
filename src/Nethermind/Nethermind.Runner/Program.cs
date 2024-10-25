@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.CommandLine.Help;
 using System.CommandLine.NamingConventionBinder;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
@@ -90,7 +91,7 @@ void Configure(string[] args)
 {
     CliConfiguration cli = ConfigureCli();
     ParseResult parseResult = cli.Parse(args);
-    var help = parseResult.GetResult(cli.RootCommand.Options.First())?.GetValueOrDefault<bool>() ?? false;
+    bool help = parseResult.GetValue(cli.RootCommand.Options.First() as HelpOption);
 
     ConsoleHelpers.EnableConsoleColorOutput();
 
@@ -108,7 +109,7 @@ void Configure(string[] args)
     };
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
-    string pluginsDirectoryPath = LoadPluginsDirectory(args);
+    string pluginsDirectoryPath = parseResult.GetValue(BasicOptions.PluginsDirectory);
     PluginLoader pluginLoader = new(pluginsDirectoryPath, new FileSystem(),
         typeof(AuRaPlugin),
         typeof(CliquePlugin),
@@ -161,14 +162,14 @@ async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, Cancella
 
     pluginLoader.OrderPlugins(pluginConfig);
 
-    ResolveDataDirectory(parseResult.GetResult(BasicOptions.DataDirectory)?.GetValueOrDefault<string>(),
+    ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
     logger = logManager.GetClassLogger();
     ConfigureSeqLogger(configProvider);
-    ResolveDatabaseDirectory(parseResult.GetResult(BasicOptions.DatabasePath)?.GetValueOrDefault<string>(), initConfig);
+    ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
 
     if (logger.IsDebug)
     {
@@ -323,7 +324,7 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
 
 IConfigProvider CreateConfigProvider(ParseResult parseResult)
 {
-    string? nLogConfig = parseResult.GetResult(BasicOptions.LoggerConfigurationSource)?.GetValueOrDefault<string>();
+    string? nLogConfig = parseResult.GetValue(BasicOptions.LoggerConfigurationSource);
 
     if (nLogConfig is null)
     {
@@ -348,7 +349,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         }
     }
 
-    string logLevel = parseResult.GetResult(BasicOptions.LogLevel)?.GetValueOrDefault<string>();
+    string logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
@@ -374,8 +375,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configsDir = parseResult.GetResult(BasicOptions.ConfigurationDirectory)?.GetValueOrDefault<string>();
-    string configFile = parseResult.GetResult(BasicOptions.Configuration)?.GetValueOrDefault<string>();
+    string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory);
+    string configFile = parseResult.GetValue(BasicOptions.Configuration);
     string? configFileEnvVar = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
 
     if (!string.IsNullOrWhiteSpace(configFileEnvVar))
@@ -447,46 +448,6 @@ ILogger GetCriticalLogger()
         if (logger.IsWarn) logger.Warn("File logging failed. Using console logging.");
         return logger;
     }
-}
-
-string LoadPluginsDirectory(string[] args)
-{
-    string shortCommand = "-pd";
-    string longCommand = "--pluginsDirectory";
-
-    string[] GetPluginArgs()
-    {
-        for (int i = 0; i < args.Length; i++)
-        {
-            string arg = args[i];
-            if (arg == shortCommand || arg == longCommand)
-            {
-                return i == args.Length - 1 ? [arg] : [arg, args[i + 1]];
-            }
-        }
-
-        return [];
-    }
-
-    CliOption<string> option = new(longCommand, shortCommand);
-    CliCommand pluginsApp = new("Nethermind.Runner.Plugins")
-    {
-        option
-    };
-
-    string pluginDirectory = "plugins";
-
-    pluginsApp.SetAction(parseResult =>
-    {
-        if (parseResult.GetValue(option) is not null)
-        {
-            pluginDirectory = parseResult.GetValue(option);
-        }
-
-        return 0;
-    });
-    new CliConfiguration(pluginsApp).Invoke(GetPluginArgs());
-    return pluginDirectory;
 }
 
 void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
@@ -587,6 +548,7 @@ static class BasicOptions
     public static CliOption<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")
         {
+            DefaultValueFactory = r => "plugins",
             Description = "The path to the Nethermind plugins directory.",
             HelpName = "path"
         };
