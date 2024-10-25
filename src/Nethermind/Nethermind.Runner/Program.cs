@@ -7,7 +7,6 @@ using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.NamingConventionBinder;
 using System.CommandLine.Parsing;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -43,6 +42,7 @@ using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
+using NullLogger = Nethermind.Logging.NullLogger;
 
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
@@ -95,6 +95,8 @@ void Configure(string[] args)
 
     ConsoleHelpers.EnableConsoleColorOutput();
 
+    ConfigureLogger(parseResult);
+
     // Don't log if help is requested
     if (!help)
     {
@@ -109,8 +111,10 @@ void Configure(string[] args)
     };
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
-    string pluginsDirectoryPath = parseResult.GetValue(BasicOptions.PluginsDirectory);
-    PluginLoader pluginLoader = new(pluginsDirectoryPath, new FileSystem(),
+    PluginLoader pluginLoader = new(
+        parseResult.GetValue(BasicOptions.PluginsDirectory),
+        new FileSystem(),
+        help ? NullLogger.Instance : logger, // Don't log if help is requested
         typeof(AuRaPlugin),
         typeof(CliquePlugin),
         typeof(EthashPlugin),
@@ -118,13 +122,11 @@ void Configure(string[] args)
         typeof(HivePlugin),
         typeof(UPnPPlugin)
     );
+    pluginLoader.Load();
 
     // leaving here as an example of adding Debug plugin
     // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
     // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-
-    // Don't log if help is requested
-    pluginLoader.Load(help ? NullLogManager.Instance : SimpleConsoleLogManager.Instance);
 
     TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
@@ -168,6 +170,7 @@ async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, Cancella
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
     logger = logManager.GetClassLogger();
+
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
 
@@ -322,32 +325,24 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
     }
 }
 
-IConfigProvider CreateConfigProvider(ParseResult parseResult)
+void ConfigureLogger(ParseResult parseResult)
 {
-    string? nLogConfig = parseResult.GetValue(BasicOptions.LoggerConfigurationSource);
+    string nLogConfig = parseResult.GetValue(BasicOptions.LoggerConfigurationSource)
+        ?? "NLog.config".GetApplicationResourcePath();
 
-    if (nLogConfig is null)
+    try
     {
-        logger.Info($"Loading logging configuration from {"NLog.config".GetApplicationResourcePath()}.");
-
-        long startTime = Stopwatch.GetTimestamp();
-        LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
-
-        logger.Info($"Logging configuration loaded in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms.");
+        LogManager.Configuration = new XmlLoggingConfiguration(nLogConfig);
     }
-    else
+    catch (Exception ex)
     {
-        logger.Info($"Loading logging configuration from {nLogConfig}.");
-
-        try
-        {
-            LogManager.Configuration = new XmlLoggingConfiguration(nLogConfig);
-        }
-        catch (Exception ex)
-        {
-            logger.Error($"Failed to load {nLogConfig}.", ex);
-        }
+        logger.Error($"Failed to load {nLogConfig}.", ex);
+        return;
     }
+
+    using NLogManager logManager = new("nethermind.log");
+
+    logger = logManager.GetClassLogger();
 
     string logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
@@ -356,7 +351,10 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     {
         NLogConfigurator.ConfigureLogLevels(logLevel);
     }
+}
 
+IConfigProvider CreateConfigProvider(ParseResult parseResult)
+{
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
 

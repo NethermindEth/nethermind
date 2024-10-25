@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Logging
                 _ => LogLevel.Info
             };
 
-            Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
+            //Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
 
             // There are some rules for which we don't want to override the log level
             // but instead preserve the original config defined in the 'NLog.config' file
@@ -82,7 +82,7 @@ namespace Nethermind.Runner.Logging
                 {
                     if (ruleTarget.Name != "seq")
                     {
-                        Console.WriteLine($"{ruleTarget.Name} TEST");
+                        //Console.WriteLine($"{ruleTarget.Name} TEST");
                         rule.DisableLoggingForLevels(LogLevel.Trace, nLogLevel);
                         rule.EnableLoggingForLevels(nLogLevel, LogLevel.Off);
                     }
