@@ -19,7 +19,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -31,7 +30,6 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Synchronization.Test;

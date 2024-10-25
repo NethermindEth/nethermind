@@ -352,7 +352,7 @@ internal class BlobSender
         return result is not null ? tx.CalculateHash() : null;
     }
 
-    private async static Task WaitForBlobInclusion(INodeManager nodeManager, Hash256 txHash, UInt256 lastBlockNumber)
+    private async static Task WaitForBlobInclusion(INodeManager nodeManager, Hash256? txHash, UInt256 lastBlockNumber)
     {
         Console.WriteLine("Waiting for blob transaction to be included in a block");
         int waitInMs = 2000;
@@ -366,7 +366,7 @@ internal class BlobSender
             {
                 lastBlockNumber = blockResult.Number + 1;
 
-                if (blockResult.Transactions.Contains(txHash))
+                if (txHash is not null && blockResult.Transactions.Contains(txHash))
                 {
                     string? receipt = await nodeManager.Post<string>("eth_getTransactionByHash", txHash.ToString(), true);
 

@@ -5,7 +5,6 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
