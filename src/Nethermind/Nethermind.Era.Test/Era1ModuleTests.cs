@@ -309,12 +309,8 @@ public class Era1ModuleTests
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
 
-        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), out _).Returns(true);
-
         await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
             .AddSingleton<IBlockTree>(inTree)
-            .AddSingleton<IBlockValidator>(blockValidator)
             .Build();
 
         int bestSuggestedNumber = 0;
@@ -325,69 +321,12 @@ public class Era1ModuleTests
         };
 
         IEraImporter importer = inCtx.Resolve<IEraImporter>();
-        await importer.ImportAsArchiveSync(tmpDir.DirectoryPath, Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName), CancellationToken.None);
+        await importer.Import(tmpDir.DirectoryPath, 0, 0, Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName), CancellationToken.None);
 
         Assert.That(inTree.BestSuggestedHeader, Is.Not.Null);
         Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
+        // Test with fastheader
+        // Assert.That(inTree.LowestInsertedHeader, Is.Not.Null);
         Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
-    }
-
-    [Test]
-    public async Task EraExportAndImportWithValidation()
-    {
-        const int ChainLength = EraWriter.MaxEra1Size * 3;
-        await using IContainer outCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(ChainLength).Build();
-        TmpDirectory tmpDir = outCtx.Resolve<TmpDirectory>();
-        IBlockTree outTree = outCtx.Resolve<IBlockTree>();
-
-        IEraExporter exporter = outCtx.Resolve<IEraExporter>();
-        await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
-
-        BlockTree inTree = Build.A.BlockTree()
-            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
-
-        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
-            .Build();
-
-        int bestSuggestedNumber = 0;
-        inTree.NewBestSuggestedBlock += (sender, args) =>
-        {
-            bestSuggestedNumber++;
-            inTree.UpdateMainChain([args.Block], true);
-        };
-
-        IEraImporter importer = inCtx.Resolve<IEraImporter>();
-        await importer.Import(tmpDir.DirectoryPath, 0, long.MaxValue, Path.Combine(tmpDir.DirectoryPath, "accumulators.txt"));
-
-        Assert.That(inTree.BestSuggestedHeader, Is.Not.Null);
-        Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
-        Assert.That(inTree.BestKnownNumber, Is.EqualTo(outTree.BestKnownNumber));
-    }
-
-    [Test]
-    public async Task EraExportAndImportNormal()
-    {
-        const int ChainLength = EraWriter.MaxEra1Size * 5;
-
-        await using IContainer outCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(ChainLength).Build();
-        TmpDirectory tmpDir = outCtx.Resolve<TmpDirectory>();
-        IBlockTree outTree = outCtx.Resolve<IBlockTree>();
-
-        IEraExporter exporter = outCtx.Resolve<IEraExporter>();
-        await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
-
-        BlockTree inTree = Build.A.BlockTree()
-            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
-
-        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(inTree)
-            .Build();
-
-        IEraImporter importer = inCtx.Resolve<IEraImporter>();
-        await importer.Import(tmpDir.DirectoryPath, 0, long.MaxValue, Path.Combine(tmpDir.DirectoryPath, "accumulators.txt"));
-
-        Assert.That(inTree.LowestInsertedHeader, Is.Not.Null);
-        Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
     }
 }

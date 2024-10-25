@@ -124,9 +124,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
         if (number < _fileReader.StartBlock)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.StartBlock}.");
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.StartBlock}. Number is {number}.");
         if (number > _fileReader.LastBlock)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}.");
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}. Number is {number}.");
         EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
         return (result.Block, result.Receipts);
     }

@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using NSubstitute;
 
@@ -38,8 +39,10 @@ public class EraTestModule : Module
             .AddModule(new EraModule())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
-            .AddSingleton<IBlockValidator>(Substitute.For<IBlockValidator>())
+            .AddSingleton<IBlockValidator>(Always.Valid)
             .AddSingleton<TmpDirectory>()
+            .AddKeyedSingleton<ITunableDb>(DbNames.Receipts, Substitute.For<ITunableDb>())
+            .AddKeyedSingleton<ITunableDb>(DbNames.Blocks, Substitute.For<ITunableDb>())
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IEraConfig>(new EraConfig()
             {

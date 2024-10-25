@@ -69,7 +69,10 @@ public class EraExporter : IEraExporter
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
-        long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)_era1Size);
+        long totalLengthWithStartOffset = (start % _era1Size) + (end - start + 1);
+        long epochCount = (long)Math.Ceiling(totalLengthWithStartOffset / (decimal)_era1Size);
+
+        long startEpoch = start / _era1Size;
         byte[][] eraRoots = new byte[epochCount][];
 
         List<long> epochIdxs = new List<long>();
@@ -101,12 +104,14 @@ public class EraExporter : IEraExporter
 
         async Task WriteEpoch(long epochIdx)
         {
-            // Hmm.. if it does not start at the boundary, then it all offset?
-            // What would be the expected way to encode this?
-            long startingIndex = start + epochIdx * _era1Size;
+            // TODO: Add export test on offset block
+            long epoch = startEpoch + epochIdx;
+            long startingIndex = epoch * _era1Size;
+            if (startingIndex < start) startingIndex = start;
+
             string filePath = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, startingIndex / _era1Size, Keccak.Zero));
+                EraWriter.Filename(_networkName, epoch, Keccak.Zero));
 
             using EraWriter builder = new EraWriter(_fileSystem.File.Create(filePath), _specProvider);
 
@@ -119,8 +124,7 @@ public class EraExporter : IEraExporter
                     throw new EraException($"Could not find a block with number {y}.");
                 }
 
-                // TODO: Check if recover: false is safe
-                TxReceipt[]? receipts = _receiptStorage.Get(block, recover: false);
+                TxReceipt[]? receipts = _receiptStorage.Get(block);
                 if (receipts is null)
                 {
                     // Can this even happen?
@@ -158,7 +162,7 @@ public class EraExporter : IEraExporter
             byte[] root = await builder.Finalize(cancellation);
             string rename = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, startingIndex / _era1Size, new Hash256(root)));
+                EraWriter.Filename(_networkName, epoch, new Hash256(root)));
             _fileSystem.File.Move(
                 filePath,
                 rename, true);

@@ -22,7 +22,7 @@ public class EraImporterTest
         TmpDirectory tmpDirectory = testContext.Resolve<TmpDirectory>();
         IEraImporter sut = testContext.Resolve<IEraImporter>();
 
-        Assert.That(() => sut.ImportAsArchiveSync(tmpDirectory.DirectoryPath, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.Import(tmpDirectory.DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
     }
 
     [Test]
@@ -39,7 +39,7 @@ public class EraImporterTest
         stream.Close();
 
         IEraImporter sut = testContext.Resolve<IEraImporter>();
-        Assert.That(() => sut.ImportAsArchiveSync(tempDirectory.DirectoryPath, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
+        Assert.That(() => sut.Import(tempDirectory.DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
     }
 
     [Test]
@@ -53,12 +53,11 @@ public class EraImporterTest
 
         await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
             .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IBlockValidator>(Always.Invalid)
             .Build();
 
-        targetCtx.Resolve<IBlockValidator>().ValidateSuggestedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(false);
-
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        Assert.That(() => sut.ImportAsArchiveSync(testCtx.Resolve<TmpDirectory>().DirectoryPath, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.Import(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
     }
 
     [Test]
@@ -70,7 +69,11 @@ public class EraImporterTest
         TmpDirectory tmpDirectory = fromCtx.Resolve<TmpDirectory>();
         string destinationPath = tmpDirectory.DirectoryPath;
 
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(fromCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+
         await using IContainer toCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = toCtx.Resolve<IEraImporter>();
@@ -89,7 +92,10 @@ public class EraImporterTest
         accumulators[accumulators.Length - 1] = new byte[32];
         await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select(acc => acc.ToHexString()));
 
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
         using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
             .Build();
 
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
