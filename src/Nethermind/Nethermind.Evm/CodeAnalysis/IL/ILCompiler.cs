@@ -244,9 +244,8 @@ internal class ILCompiler
                             .MakeGenericMethod(typeof(byte));
 
                         method.StackLoadPrevious(stack, head, 1);
-
-                        method.Duplicate();
                         method.Call(refWordToRefByteMethod);
+                        method.Duplicate();
                         method.Call(readVector256Method);
                         method.Call(notVector256Method);
                         method.Call(writeVector256Method);
