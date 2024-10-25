@@ -91,17 +91,18 @@ void Configure(string[] args)
 {
     CliConfiguration cli = ConfigureCli();
     ParseResult parseResult = cli.Parse(args);
-    bool help = parseResult.GetValue(cli.RootCommand.Options.First() as HelpOption);
+    // Don't log anything if run with `--help` or `--version`
+    bool silent = parseResult.CommandResult.Children
+        .Any(c => (c is OptionResult or) && (or.Option is HelpOption || or.Option is VersionOption));
 
     ConsoleHelpers.EnableConsoleColorOutput();
 
     ConfigureLogger(parseResult);
-
-    // Don't log if help is requested
-    if (!help)
+    
+    if (!silent)
     {
         logger.Info("Nethermind is starting up");
-        logger.Info(ProductInfo.ClientId);
+        logger.Info($"Version: {ProductInfo.Version}");
     }
 
     AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
@@ -112,9 +113,9 @@ void Configure(string[] args)
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
-        parseResult.GetValue(BasicOptions.PluginsDirectory),
+        parseResult.GetValue(BasicOptions.PluginsDirectory) ?? "plugins",
         new FileSystem(),
-        help ? NullLogger.Instance : logger, // Don't log if help is requested
+        silent ? NullLogger.Instance : logger,
         typeof(AuRaPlugin),
         typeof(CliquePlugin),
         typeof(EthashPlugin),
@@ -269,7 +270,8 @@ void AddConfigurationOptions(CliCommand command)
                     $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
                     $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
                 {
-                    Description = configItemAttribute?.Description
+                    Description = configItemAttribute?.Description,
+                    HelpName = "value"
                 });
             }
 
@@ -344,7 +346,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     logger = logManager.GetClassLogger();
 
-    string logLevel = parseResult.GetValue(BasicOptions.LogLevel);
+    string logLevel = parseResult.GetValue(BasicOptions.LogLevel) ?? "info";
 
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
@@ -373,8 +375,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory);
-    string configFile = parseResult.GetValue(BasicOptions.Configuration);
+    string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory) ?? "configs";
+    string configFile = parseResult.GetValue(BasicOptions.Configuration) ?? "mainnet";
     string? configFileEnvVar = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
 
     if (!string.IsNullOrWhiteSpace(configFileEnvVar))
@@ -427,7 +429,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
     if (incorrectSettings.Errors.Any())
     {
-        logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
+        logger.Warn($"Incorrect config settings found:\n  {incorrectSettings.ErrorMsg}");
     }
 
     logger.Info("Configuration initialized.");
@@ -503,7 +505,6 @@ static class BasicOptions
     public static CliOption<string> Configuration { get; } =
         new("--config", "-c")
         {
-            DefaultValueFactory = r => "mainnet",
             Description = "The path to the configuration file or the name (without extension) of any of the configuration files in the configuration directory.",
             HelpName = "network or file name"
         };
@@ -511,7 +512,6 @@ static class BasicOptions
     public static CliOption<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
-            DefaultValueFactory = r => "configs",
             Description = "The path to the configuration files directory.",
             HelpName = "path"
         };
@@ -524,7 +524,6 @@ static class BasicOptions
 
     public static CliOption<string> DataDirectory { get; } = new("--data-dir", "--datadir", "-dd")
     {
-        DefaultValueFactory = r => string.Empty.GetApplicationResourcePath(),
         Description = "The path to the Nethermind data directory.",
         HelpName = "path"
     };
@@ -538,7 +537,6 @@ static class BasicOptions
 
     public static CliOption<string> LogLevel { get; } = new("--log", "-l")
     {
-        DefaultValueFactory = r => "info",
         Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
         HelpName = "level"
     };
@@ -546,7 +544,6 @@ static class BasicOptions
     public static CliOption<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")
         {
-            DefaultValueFactory = r => "plugins",
             Description = "The path to the Nethermind plugins directory.",
             HelpName = "path"
         };
