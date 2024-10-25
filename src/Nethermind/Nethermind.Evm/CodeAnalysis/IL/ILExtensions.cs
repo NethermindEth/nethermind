@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis.IL;
+using Nethermind.Int256;
 using Org.BouncyCastle.Tls;
 using Sigil;
 using System;
@@ -20,6 +21,18 @@ namespace Nethermind.Evm.IL;
 /// </summary>
 static class EmitExtensions
 {
+    public static MethodInfo GetReadUnalignedMethodInfo<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.ReadUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
+    public static MethodInfo GetWriteUnalignedMethodInfo<TResult>()
+    {
+        MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.WriteUnaligned) && m.GetParameters()[0].ParameterType.IsByRef);
+        return method.MakeGenericMethod(typeof(TResult));
+    }
+
     public static MethodInfo GetAsMethodInfo<TOriginal, TResult>()
     {
         MethodInfo method = typeof(Unsafe).GetMethods().First((m) => m.Name == nameof(Unsafe.As) && m.ReturnType.IsByRef);
@@ -45,16 +58,20 @@ static class EmitExtensions
     }
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
-    public static FieldInfo GetFieldInfo<T>(string name) => GetFieldInfo(typeof(T), name);
-    public static FieldInfo GetFieldInfo(Type TypeInstance, string name)
+    public static MethodInfo ConvertionImplicit<TFrom, TTo>() => ConvertionImplicit(typeof(TFrom), typeof(TTo));
+    public static MethodInfo ConvertionImplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Implicit", new[] { tto });
+    public static MethodInfo ConvertionExplicit<TFrom, TTo>() => ConvertionExplicit(typeof(TFrom), typeof(TTo));
+    public static MethodInfo ConvertionExplicit(Type tfrom, Type tto) => tfrom.GetMethod("op_Explicit", new[] { tto });
+    public static FieldInfo GetFieldInfo<T>(string name, BindingFlags? flags = null) => GetFieldInfo(typeof(T), name, flags);
+    public static FieldInfo GetFieldInfo(Type TypeInstance, string name, BindingFlags? flags = null)
     {
-        return TypeInstance.GetField(name);
+        return flags is null ? TypeInstance.GetField(name) : TypeInstance.GetField(name, flags.Value);
     }
-    public static MethodInfo GetPropertyInfo<T>(string name, bool getSetter, out PropertyInfo propInfo)
-        => GetPropertyInfo(typeof(T), name, getSetter, out propInfo);
-    public static MethodInfo GetPropertyInfo(Type typeInstance, string name, bool getSetter, out PropertyInfo propInfo)
+    public static MethodInfo GetPropertyInfo<T>(string name, bool getSetter, out PropertyInfo propInfo, BindingFlags? flags = null)
+        => GetPropertyInfo(typeof(T), name, getSetter, out propInfo, flags);
+    public static MethodInfo GetPropertyInfo(Type typeInstance, string name, bool getSetter, out PropertyInfo propInfo, BindingFlags? flags = null)
     {
-        propInfo = typeInstance.GetProperty(name);
+        propInfo = flags is null ? typeInstance.GetProperty(name) : typeInstance.GetProperty(name, flags.Value);
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
