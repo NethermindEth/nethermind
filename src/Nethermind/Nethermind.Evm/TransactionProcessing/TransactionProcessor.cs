@@ -255,14 +255,27 @@ namespace Nethermind.Evm.TransactionProcessing
                 ISet<Address> accessedAddresses,
                 [NotNullWhen(false)] out string? error)
             {
-                if (authorizationTuple.Authority is null)
+                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                if (authorizationTuple.Authority is null
+                    || s > Secp256K1Curve.HalfN
+                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                    || (authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1))
                 {
                     error = "Bad signature.";
                     return false;
                 }
-                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
+
+                if ((authorizationTuple.ChainId != 0
+                    && SpecProvider.ChainId != authorizationTuple.ChainId)
+                    )
                 {
                     error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                    return false;
+                }
+
+                if (authorizationTuple.Nonce == ulong.MaxValue)
+                {
+                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
                     return false;
                 }
 
