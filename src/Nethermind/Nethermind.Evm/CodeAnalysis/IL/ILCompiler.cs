@@ -2262,32 +2262,6 @@ internal class ILCompiler
         il.StackPop(stack.idx);
     }
 
-    private static void EmitBitwiseUInt256Method2<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
-    {
-        // Note: Use Vector256 directoly if UInt256 does not use it internally
-        // we the two uint256 from the stack
-        il.StackLoadPrevious(stack.span, stack.idx, 1);
-        il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[0]);
-        il.StackLoadPrevious(stack.span, stack.idx, 2);
-        il.Call(Word.GetUInt256);
-        il.StoreLocal(locals[1]);
-        il.StackPop(stack.idx, 2);
-
-        // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
-        il.LoadLocalAddress(locals[1]);
-        il.LoadLocalAddress(uint256R);
-        il.Call(operation);
-
-        // push the result to the stack
-        il.CleanWord(stack.span, stack.idx);
-        il.Load(stack.span, stack.idx);
-        il.LoadLocal(uint256R); // stack: word*, uint256
-        il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx);
-    }
-
     private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         // we the two uint256 from the stack
