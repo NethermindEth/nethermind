@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Help;
-using System.CommandLine.NamingConventionBinder;
+using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.IO;
 using System.IO.Abstractions;
@@ -297,35 +297,25 @@ CliConfiguration ConfigureCli()
         BasicOptions.PluginsDirectory
     ];
 
-    var versionOption = (VersionOption)rootCommand.Children.Single(c => c is VersionOption);
+    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
 
-    versionOption.Action = CommandHandler.Create<bool>(v => Console.WriteLine($"""
-        Version:    {ProductInfo.Version}
-        Commit:     {ProductInfo.Commit}
-        Build date: {ProductInfo.BuildTimestamp:u}
-        Runtime:    {ProductInfo.Runtime}
-        OS:         {ProductInfo.OS} {ProductInfo.OSArchitecture}
-        """));
+    if (versionOption is not null)
+    {
+        versionOption.Action = new AnonymousCliAction(r =>
+        {
+            Console.WriteLine($"""
+                Version:    {ProductInfo.Version}
+                Commit:     {ProductInfo.Commit}
+                Build date: {ProductInfo.BuildTimestamp:u}
+                Runtime:    {ProductInfo.Runtime}
+                OS:         {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                """);
+
+            return ExitCodes.Ok;
+        });
+    }
 
     return new(rootCommand) { ProcessTerminationTimeout = Timeout.InfiniteTimeSpan };
-}
-
-void ConfigureSeqLogger(IConfigProvider configProvider)
-{
-    ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
-
-    if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal))
-    {
-        if (logger.IsInfo)
-            logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
-
-        NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
-    }
-    else
-    {
-        // Clear it up; otherwise, internally it will keep requesting localhost as `all` target includes this.
-        NLogConfigurator.ClearSeqTarget();
-    }
 }
 
 void ConfigureLogger(ParseResult parseResult)
@@ -353,6 +343,24 @@ void ConfigureLogger(ParseResult parseResult)
     if (logLevel is not null)
     {
         NLogConfigurator.ConfigureLogLevels(logLevel);
+    }
+}
+
+void ConfigureSeqLogger(IConfigProvider configProvider)
+{
+    ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
+
+    if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal))
+    {
+        if (logger.IsInfo)
+            logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
+
+        NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
+    }
+    else
+    {
+        // Clear it up; otherwise, internally it will keep requesting localhost as `all` target includes this.
+        NLogConfigurator.ClearSeqTarget();
     }
 }
 
@@ -509,7 +517,7 @@ static class BasicOptions
         };
 
     public static CliOption<string> ConfigurationDirectory { get; } =
-        new("--configs-dir", "--configsDirectory", "-cd")
+        new("--config-dir", "--configsDirectory", "-cd")
         {
             Description = "The path to the configuration files directory.",
             HelpName = "path"
@@ -546,4 +554,12 @@ static class BasicOptions
             Description = "The path to the Nethermind plugins directory.",
             HelpName = "path"
         };
+}
+
+class AnonymousCliAction(Func<ParseResult, int> action) : SynchronousCliAction
+{
+    private readonly Func<ParseResult, int> _action = action ?? throw new ArgumentNullException(nameof(action));
+
+    /// <inheritdoc />
+    public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
