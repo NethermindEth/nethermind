@@ -266,6 +266,32 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentVmTrace.Ops.Add(operationTrace);
         }
 
+        public override void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+        {
+            ParityVmOperationTrace operationTrace = new();
+            _gasAlreadySetForCurrentOp = false;
+            operationTrace.Pc = pc;
+            operationTrace.Cost = gas;
+            operationTrace.IsPrecompiledSegment = false;
+            operationTrace.SegmentId = segmentID;
+            _currentOperation = operationTrace;
+            _currentPushList.Clear();
+            _currentVmTrace.Ops.Add(operationTrace);
+        }
+
+        public override void ReportCompiledSegmentExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+        {
+            ParityVmOperationTrace operationTrace = new();
+            _gasAlreadySetForCurrentOp = false;
+            operationTrace.Pc = pc;
+            operationTrace.Cost = gas;
+            operationTrace.IsPrecompiledSegment = true;
+            operationTrace.SegmentId = segmentID;
+            _currentOperation = operationTrace;
+            _currentPushList.Clear();
+            _currentVmTrace.Ops.Add(operationTrace);
+        }
+
         public override void ReportOperationError(EvmExceptionType error)
         {
             if (error != EvmExceptionType.InvalidJumpDestination &&
