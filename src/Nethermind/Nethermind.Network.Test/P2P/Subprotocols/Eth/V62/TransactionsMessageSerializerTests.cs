@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 

@@ -4,7 +4,6 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 

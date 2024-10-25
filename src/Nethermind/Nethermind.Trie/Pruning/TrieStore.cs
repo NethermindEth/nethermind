@@ -27,8 +27,6 @@ namespace Nethermind.Trie.Pruning
 
         private int _isFirst;
 
-        private INodeStorage.WriteBatch? _currentBatch = null;
-
         private readonly TrieStoreDirtyNodesCache[] _dirtyNodes = [];
         private readonly Task[] _dirtyNodesTasks = [];
         private readonly ConcurrentDictionary<HashAndTinyPath, Hash256?>[] _persistedHashes = [];
@@ -164,8 +162,10 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private void CommitNode(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        private void CommitAndInsertToDirtyNodes(long blockNumber, Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo)
         {
+            Debug.Assert(_pruningStrategy.PruningEnabled);
+
             if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
@@ -181,17 +181,8 @@ namespace Nethermind.Trie.Pruning
                     ThrowNodeHasBeenSeen(blockNumber, node);
                 }
 
-                if (_pruningStrategy.PruningEnabled)
-                {
-                    node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
-                }
-
+                node = SaveOrReplaceInDirtyNodesCache(address, ref path, nodeCommitInfo, node);
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen);
-
-                if (!_pruningStrategy.PruningEnabled)
-                {
-                    PersistNode(address, path, node, blockNumber, writeFlags);
-                }
 
                 IncrementCommittedNodesCount();
             }
@@ -209,6 +200,29 @@ namespace Nethermind.Trie.Pruning
             [DoesNotReturn]
             [StackTraceHidden]
             static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node) => throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
+        }
+
+        private void CommitAndPersistNode(Hash256? address, ref TreePath path, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags, INodeStorage.WriteBatch? writeBatch)
+        {
+            Debug.Assert(!_pruningStrategy.PruningEnabled);
+
+            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
+            {
+                TrieNode node = nodeCommitInfo.Node;
+
+                if (node.Keccak is null)
+                {
+                    ThrowUnknownHash(node);
+                }
+
+                PersistNode(address, path, node, writeBatch!, writeFlags);
+
+                IncrementCommittedNodesCount();
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
         }
 
         private int GetNodeShardIdx(in TreePath path, Hash256 hash) =>
@@ -289,71 +303,65 @@ namespace Nethermind.Trie.Pruning
                 throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
         }
 
-        public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
+        public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
         {
-            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
-            EnsureCommitSetExistsForBlock(blockNumber);
+            if (_pruningStrategy.PruningEnabled)
+            {
+                if (_currentBlockCommitter is null) throw new InvalidOperationException($"With pruning triestore, {nameof(BeginBlockCommit)} must be called.");
+            }
 
-            int concurrency = _pruningStrategy.PruningEnabled
-                ? Environment.ProcessorCount
-                : 0; // The write batch when pruning is not enabled is not concurrent safe
-
-            return new TrieStoreCommitter(this, trieType, blockNumber, address, root, writeFlags, concurrency);
+            return _currentBlockCommitter is not null
+                // Note, archive node still use this path. This is because it needs the block commit set to handle reorg announcement.
+                ? _currentBlockCommitter.GetTrieCommitter(address, root, writeFlags)
+                // This happens when there are no block involved, such as during snap sync or just calculating patricia root.
+                : new NonPruningTrieStoreCommitter(this, address, _nodeStorage.StartWriteBatch(), writeFlags);
         }
 
-        private void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        public IBlockCommitter BeginBlockCommit(long blockNumber)
         {
-            try
+            if (_pruningStrategy.PruningEnabled)
             {
-                if (trieType == TrieType.State) // storage tries happen before state commits
+                if (_currentBlockCommitter is not null)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
-                    BlockCommitSet set = CurrentPackage;
-                    if (set is not null)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {root}, block {set.BlockNumber}");
-                        set.Seal(root);
-                    }
-
-                    bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
-                    if (shouldPersistSnapshot)
-                    {
-                        _currentBatch ??= _nodeStorage.StartWriteBatch();
-                        try
-                        {
-                            PersistBlockCommitSet(address, set, _currentBatch, writeFlags: writeFlags);
-                            PruneCurrentSet();
-                        }
-                        finally
-                        {
-                            // For safety we prefer to commit half of the batch rather than not commit at all.
-                            // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                            _currentBatch?.Dispose();
-                            _currentBatch = null;
-                        }
-                    }
-                    else
-                    {
-                        PruneCurrentSet();
-                    }
-
-                    CurrentPackage = null;
-                    if (_pruningStrategy.PruningEnabled && Monitor.IsEntered(_dirtyNodesLock))
-                    {
-                        Monitor.Exit(_dirtyNodesLock);
-                    }
+                    throw new InvalidOperationException("Cannot start a new block commit when an existing one is still not closed");
                 }
+
+                Monitor.Enter(_dirtyNodesLock);
             }
-            finally
+
+            _currentBlockCommitter = new BlockCommitter(this, CreateCommitSet(blockNumber));
+            return _currentBlockCommitter;
+        }
+
+        private void FinishBlockCommit(BlockCommitSet set, TrieNode? root)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue?.Count ?? 0}");
+            set.Seal(root);
+
+            bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
+            if (shouldPersistSnapshot)
             {
-                _currentBatch?.Dispose();
-                _currentBatch = null;
+                // For safety we prefer to commit half of the batch rather than not commit at all.
+                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
+                using INodeStorage.WriteBatch currentBatch = _nodeStorage.StartWriteBatch();
+                ParallelPersistBlockCommitSet(set);
             }
+
+            set.Prune();
+
+            _currentBlockCommitter = null;
+
+            if (_pruningStrategy.PruningEnabled)
+                Monitor.Exit(_dirtyNodesLock);
 
             Prune();
         }
 
+
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+        // Used in testing to not have to wait for condition.
+        public event EventHandler OnMemoryPruneCompleted;
 
         public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
         {
@@ -452,14 +460,15 @@ namespace Nethermind.Trie.Pruning
                         // otherwise, it may not fit the whole dirty cache.
                         // Additionally, if (WriteBufferSize * (WriteBufferNumber - 1)) is already more than 20% of pruning
                         // cache, it is likely that there are enough space for it on most time, except for syncing maybe.
-                        _nodeStorage.Flush();
+                        _nodeStorage.Flush(onlyWal: false);
                         lock (_dirtyNodesLock)
                         {
                             long start = Stopwatch.GetTimestamp();
                             if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
                             long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
-                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
+                            if (!_pruningTaskCancellationTokenSource.IsCancellationRequested &&
+                                _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
                             {
                                 // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
                                 // usually faster to just SaveSnapshot causing most of the entry to be persisted.
@@ -491,6 +500,11 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
+                });
+
+                _pruningTask.ContinueWith((_) =>
+                {
+                    OnMemoryPruneCompleted?.Invoke(this, EventArgs.Empty);
                 });
             }
         }
@@ -544,7 +558,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-                    ParallelPersistBlockCommitSet(null, blockCommitSet, persistedNodeRecorder);
+                    ParallelPersistBlockCommitSet(blockCommitSet, persistedNodeRecorder);
                 }
 
                 Task deleteTask = shouldDeletePersistedNode ? RemovePastKeys() : Task.CompletedTask;
@@ -597,23 +611,6 @@ namespace Nethermind.Trie.Pruning
 
                 _persistedHashes[shardIdx].AddOrUpdate(key, _ => tn.Keccak, (_, _) => null);
             }
-        }
-
-        /// <summary>
-        /// Prunes persisted branches of the current commit set root.
-        /// </summary>
-        private void PruneCurrentSet()
-        {
-            long start = Stopwatch.GetTimestamp();
-
-            // We assume that the most recent package very likely resolved many persisted nodes and only replaced
-            // some top level branches. Any of these persisted nodes are held in cache now so we just prune them here
-            // to avoid the references still being held after we prune the cache.
-            // We prune them here but just up to two levels deep which makes it a very lightweight operation.
-            // Note that currently the TrieNode ResolveChild un-resolves any persisted child immediately which
-            // may make this call unnecessary.
-            CurrentPackage?.Root?.PrunePersistedRecursively(2);
-            Metrics.DeepPruningTime = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         }
 
         /// <summary>
@@ -682,6 +679,11 @@ namespace Nethermind.Trie.Pruning
 
         private ConcurrentQueue<BlockCommitSet> _commitSetQueue;
 
+        private ConcurrentQueue<BlockCommitSet> CommitSetQueue =>
+            (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue));
+
+        private BlockCommitSet? _lastCommitSet = null;
+
         private long _memoryUsedByDirtyCache;
 
         private int _committedNodesCount;
@@ -690,9 +692,8 @@ namespace Nethermind.Trie.Pruning
 
         private long _latestPersistedBlockNumber;
 
-        private BlockCommitSet? CurrentPackage { get; set; }
+        private BlockCommitter? _currentBlockCommitter = null;
 
-        private bool IsCurrentListSealed => CurrentPackage is null || CurrentPackage.IsSealed;
 
         private long LatestCommittedBlockNumber { get; set; }
         public INodeStorage.KeyScheme Scheme => _nodeStorage.Scheme;
@@ -705,22 +706,32 @@ namespace Nethermind.Trie.Pruning
             return prior ?? instance;
         }
 
-        private void CreateCommitSet(long blockNumber)
+        private BlockCommitSet CreateCommitSet(long blockNumber)
         {
             if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
-            // TODO: this throws on reorgs, does it not? let us recreate it in test
-            Debug.Assert(CurrentPackage is null || blockNumber == CurrentPackage.BlockNumber + 1, "Newly begun block is not a successor of the last one");
-            Debug.Assert(IsCurrentListSealed, "Not sealed when beginning new block");
+            if (_lastCommitSet is not null)
+            {
+                Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
+
+                if (_lastCommitSet.BlockNumber != blockNumber - 1 && blockNumber != 0 && _lastCommitSet.BlockNumber != 0)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
+                }
+            }
 
             BlockCommitSet commitSet = new(blockNumber);
-            (_commitSetQueue ?? CreateQueueAtomic(ref _commitSetQueue)).Enqueue(commitSet);
+            CommitSetQueue.Enqueue(commitSet);
+
+            _lastCommitSet = commitSet;
+
             LatestCommittedBlockNumber = Math.Max(blockNumber, LatestCommittedBlockNumber);
+            // Why are we announcing **before** committing next block??
+            // Should it be after commit?
             AnnounceReorgBoundaries();
             DequeueOldCommitSets();
 
-            CurrentPackage = commitSet;
-            Debug.Assert(ReferenceEquals(CurrentPackage, commitSet), $"Current {nameof(BlockCommitSet)} is not same as the new package just after adding");
+            return commitSet;
         }
 
         /// <summary>
@@ -728,40 +739,10 @@ namespace Nethermind.Trie.Pruning
         /// Already persisted nodes are skipped. After this action we are sure that the full state is available
         /// for the block represented by this commit set.
         /// </summary>
-        /// <param name="address"></param>
         /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
-        /// <param name="writeBatch">The write batch to write to</param>
-        /// <param name="persistedHashes">Track persisted hashes in this dictionary if not null</param>
+        /// <param name="persistedNodeRecorder">Special action to be called on each persist. Used to track which node to remove.</param>
         /// <param name="writeFlags"></param>
-        private void PersistBlockCommitSet(
-            Hash256? address,
-            BlockCommitSet commitSet,
-            INodeStorage.WriteBatch writeBatch,
-            Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
-            WriteFlags writeFlags = WriteFlags.None
-        )
-        {
-            void PersistNode(TrieNode tn, Hash256? address2, TreePath path)
-            {
-                persistedNodeRecorder?.Invoke(path, address2, tn);
-                this.PersistNode(address2, path, tn, commitSet.BlockNumber, writeFlags, writeBatch);
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
-
-            long start = Stopwatch.GetTimestamp();
-            TreePath path = TreePath.Empty;
-            commitSet.Root?.CallRecursively(PersistNode, address, ref path, GetTrieStore(null), true, _logger);
-            long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
-
-            if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
-
-            LastPersistedBlockNumber = commitSet.BlockNumber;
-        }
-
         private void ParallelPersistBlockCommitSet(
-            Hash256? address,
             BlockCommitSet commitSet,
             Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder = null,
             WriteFlags writeFlags = WriteFlags.None
@@ -777,7 +758,7 @@ namespace Nethermind.Trie.Pruning
                 if (path.Length < parallelBoundaryPathLength)
                 {
                     persistedNodeRecorder?.Invoke(path, address2, tn);
-                    PersistNode(address2, path, tn, commitSet.BlockNumber, writeFlags, topLevelWriteBatch);
+                    PersistNode(address2, path, tn, topLevelWriteBatch, writeFlags);
                 }
                 else
                 {
@@ -785,13 +766,13 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
 
             long start = Stopwatch.GetTimestamp();
 
             // The first CallRecursive stop at two level, yielding 256 node in parallelStartNodes, which is run concurrently
             TreePath path = TreePath.Empty;
-            commitSet.Root?.CallRecursively(TopLevelPersist, address, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
+            commitSet.Root?.CallRecursively(TopLevelPersist, null, ref path, GetTrieStore(null), true, _logger, maxPathLength: parallelBoundaryPathLength);
 
             // The amount of change in the subtrees are not balanced at all. So their writes ares buffered here
             // which get disposed in parallel instead of being disposed in `PersistNodeStartingFrom`.
@@ -815,14 +796,15 @@ namespace Nethermind.Trie.Pruning
             Task.WaitAll(parallelStartNodes.Select(entry => Task.Run(() =>
             {
                 (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
-                PersistNodeStartingFrom(trieNode, address2, path2, commitSet, persistedNodeRecorder, writeFlags, disposeQueue);
+                PersistNodeStartingFrom(trieNode, address2, path2, persistedNodeRecorder, writeFlags, disposeQueue);
             })).ToArray());
 
             disposeQueue.CompleteAdding();
             Task.WaitAll(_disposeTasks);
 
-            // Dispose top level last in case something goes wrong, at least the root wont be stored
+            // Dispose top level last in case something goes wrong, at least the root won't be stored
             topLevelWriteBatch.Dispose();
+            _nodeStorage.Flush(onlyWal: true);
 
             long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
@@ -832,7 +814,7 @@ namespace Nethermind.Trie.Pruning
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
 
-        private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path, BlockCommitSet commitSet,
+        private void PersistNodeStartingFrom(TrieNode tn, Hash256 address2, TreePath path,
             Action<TreePath, Hash256?, TrieNode>? persistedNodeRecorder,
             WriteFlags writeFlags, BlockingCollection<INodeStorage.WriteBatch> disposeQueue)
         {
@@ -842,7 +824,7 @@ namespace Nethermind.Trie.Pruning
             void DoPersist(TrieNode node, Hash256? address3, TreePath path2)
             {
                 persistedNodeRecorder?.Invoke(path2, address3, node);
-                PersistNode(address3, path2, node, commitSet.BlockNumber, writeFlags, writeBatch);
+                PersistNode(address3, path2, node, writeBatch, writeFlags);
 
                 persistedNodeCount++;
                 if (persistedNodeCount % 512 == 0)
@@ -856,23 +838,20 @@ namespace Nethermind.Trie.Pruning
             disposeQueue.Add(writeBatch);
         }
 
-        private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None, INodeStorage.WriteBatch? writeBatch = null)
+        private void PersistNode(Hash256? address, in TreePath path, TrieNode currentNode, INodeStorage.WriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
         {
-            writeBatch ??= _currentBatch ??= _nodeStorage.StartWriteBatch();
             ArgumentNullException.ThrowIfNull(currentNode);
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen >= 0, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
                 // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
+                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
                 writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen);
                 IncrementPersistedNodesCount();
             }
             else
@@ -909,19 +888,6 @@ namespace Nethermind.Trie.Pruning
                 {
                     break;
                 }
-            }
-        }
-
-        private void EnsureCommitSetExistsForBlock(long blockNumber)
-        {
-            if (CurrentPackage is null)
-            {
-                if (_pruningStrategy.PruningEnabled && !Monitor.IsEntered(_dirtyNodesLock))
-                {
-                    Monitor.Enter(_dirtyNodesLock);
-                }
-
-                CreateCommitSet(blockNumber);
             }
         }
 
@@ -993,7 +959,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-                    PersistBlockCommitSet(null, blockCommitSet, writeBatch);
+                    ParallelPersistBlockCommitSet(blockCommitSet);
                 }
                 writeBatch.Dispose();
 
@@ -1031,10 +997,8 @@ namespace Nethermind.Trie.Pruning
                         }
 
                         commitSetCount++;
-                        using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
-                        PersistBlockCommitSet(null, commitSet, writeBatch);
+                        ParallelPersistBlockCommitSet(commitSet);
                     }
-                    PruneCurrentSet();
                 }
 
                 if (!(_commitSetQueue?.IsEmpty ?? true))
@@ -1130,36 +1094,28 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        private class TrieStoreCommitter(
+        private class BlockCommitter(
             TrieStore trieStore,
-            TrieType trieType,
-            long blockNumber,
-            Hash256? address,
-            TrieNode? root,
-            WriteFlags writeFlags,
-            int concurrency
-        ) : ICommitter
+            BlockCommitSet commitSet
+        ) : IBlockCommitter
         {
-            private readonly bool _needToResetRoot = root is not null && root.IsDirty;
-            private int _concurrency = concurrency;
-            private TrieNode? _root = root;
+            internal TrieNode? StateRoot = null;
+            private int _concurrency = trieStore._pruningStrategy.PruningEnabled ? Environment.ProcessorCount : 0;
 
             public void Dispose()
             {
-                if (_needToResetRoot)
-                {
-                    // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
-                    // This ensure that the root that we use here is the same.
-                    _root = trieStore.FindCachedOrUnknown(address, TreePath.Empty, _root?.Keccak);
-                }
-
-                trieStore.FinishBlockCommit(trieType, blockNumber, address, _root, writeFlags);
+                trieStore.FinishBlockCommit(commitSet, StateRoot);
             }
 
-            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
-                trieStore.CommitNode(blockNumber, address, ref path, nodeCommitInfo, writeFlags: writeFlags);
+            public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+            {
+                if (address is null) StateRoot = root;
+                return trieStore._pruningStrategy.PruningEnabled
+                    ? new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root)
+                    : new NonPruningTrieStoreCommitter(trieStore, address, trieStore._nodeStorage.StartWriteBatch(), writeFlags);
+            }
 
-            public bool CanSpawnTask()
+            public bool TryRequestConcurrencyQuota()
             {
                 if (Interlocked.Decrement(ref _concurrency) >= 0)
                 {
@@ -1173,6 +1129,56 @@ namespace Nethermind.Trie.Pruning
             public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
         }
 
+        private class PruningTrieStoreCommitter(
+            BlockCommitter blockCommitter,
+            TrieStore trieStore,
+            long blockNumber,
+            Hash256? address,
+            TrieNode root
+        ) : ICommitter
+        {
+            private readonly bool _needToResetRoot = root is not null && root.IsDirty;
+
+            public void Dispose()
+            {
+                if (_needToResetRoot)
+                {
+                    // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
+                    // This ensure that the root that we use here is the same.
+                    // This is only needed for state tree as the root need to be put in the block commit set.
+                    if (address == null) blockCommitter.StateRoot = trieStore.FindCachedOrUnknown(address, TreePath.Empty, root?.Keccak);
+                }
+            }
+
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) =>
+                trieStore.CommitAndInsertToDirtyNodes(blockNumber, address, ref path, nodeCommitInfo);
+
+            public bool TryRequestConcurrentQuota() => blockCommitter.TryRequestConcurrencyQuota();
+
+            public void ReturnConcurrencyQuota() => blockCommitter.ReturnConcurrencyQuota();
+        }
+
+        private class NonPruningTrieStoreCommitter(
+            TrieStore trieStore,
+            Hash256? address,
+            INodeStorage.WriteBatch writeBatch,
+            WriteFlags writeFlags = WriteFlags.None
+        ) : ICommitter
+        {
+            public void Dispose()
+            {
+                writeBatch.Dispose();
+            }
+
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo)
+            {
+                trieStore.CommitAndPersistNode(address, ref path, nodeCommitInfo, writeFlags: writeFlags, writeBatch: writeBatch);
+            }
+
+            public bool TryRequestConcurrentQuota() => false;
+
+            public void ReturnConcurrencyQuota() { }
+        }
 
         internal static class HashHelpers
         {

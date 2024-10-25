@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract

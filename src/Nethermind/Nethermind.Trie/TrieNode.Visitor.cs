@@ -6,7 +6,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;

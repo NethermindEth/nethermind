@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization
 {
@@ -15,8 +14,5 @@ namespace Nethermind.Synchronization
         void Start();
 
         Task StopAsync();
-
-        ISyncProgressResolver SyncProgressResolver { get; }
-        ISyncModeSelector SyncModeSelector { get; }
     }
 }
