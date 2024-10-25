@@ -251,7 +251,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ISet<Address> accessedAddresses,
                 [NotNullWhen(false)] out string? error)
             {
-                UInt256 s = new (authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
                 if (authorizationTuple.Authority is null
                     || s > Secp256K1Curve.HalfN
                     //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
