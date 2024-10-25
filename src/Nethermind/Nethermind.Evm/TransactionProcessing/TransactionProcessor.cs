@@ -782,7 +782,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
     }
 
-    public readonly struct TransactionResult(string? error)
+    public readonly struct TransactionResult(string? error) : IEquatable<TransactionResult>
     {
         [MemberNotNullWhen(true, nameof(Fail))]
         [MemberNotNullWhen(false, nameof(Success))]
@@ -792,6 +792,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public static implicit operator TransactionResult(string? error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.Success;
+        public bool Equals(TransactionResult other) => (Success && other.Success) || (Error == other.Error);
+        public static bool operator ==(TransactionResult obj1, TransactionResult obj2) => obj1.Equals(obj2);
+        public static bool operator !=(TransactionResult obj1, TransactionResult obj2) => !obj1.Equals(obj2);
+        public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
+        public override int GetHashCode() => Success ? 1 : Error.GetHashCode();
+
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
 
         public static readonly TransactionResult Ok = new();
