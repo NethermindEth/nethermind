@@ -75,7 +75,7 @@ public class ShutterP2P : IShutterP2P
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
 
         Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
-        _peer = peerFactory.Create(identity, $"/ip4/{ip}/tcp/{ _cfg.P2PPort}");
+        _peer = peerFactory.Create(identity, $"/ip4/{ip}/tcp/{_cfg.P2PPort}");
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");
