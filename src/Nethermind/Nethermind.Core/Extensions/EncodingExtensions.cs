@@ -13,13 +13,14 @@ public static class EncodingExtensions
     public static bool TryGetStringSlice(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount,
         out bool completed, [NotNullWhen(true)] out string? result)
     {
-        char[] chars = ArrayPool<char>.Shared.Rent(charCount);
+        char[] charsArray = ArrayPool<char>.Shared.Rent(charCount);
 
         try
         {
+            Span<char> chars = charsArray.AsSpan(0, charCount);
             ReadOnlySpan<byte> first = sequence.FirstSpan;
             encoding.GetDecoder().Convert(first, chars, true, out _, out int charsUsed, out completed);
-            result = new(chars.AsSpan(0, charsUsed));
+            result = new(chars[..charsUsed]);
             return true;
         }
         catch (Exception)
@@ -30,7 +31,7 @@ public static class EncodingExtensions
         }
         finally
         {
-            ArrayPool<char>.Shared.Return(chars);
+            ArrayPool<char>.Shared.Return(charsArray);
         }
     }
 
