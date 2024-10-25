@@ -18,6 +18,7 @@ using System.Threading.Channels;
 using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
+using System.Net;
 
 namespace Nethermind.Shutter;
 
@@ -37,7 +38,7 @@ public class ShutterP2P : IShutterP2P
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
-    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig)
+    public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IPAddress ip)
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
@@ -74,7 +75,7 @@ public class ShutterP2P : IShutterP2P
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
 
         Identity identity = GetPeerIdentity(fileSystem, _cfg, keyStoreConfig);
-        _peer = peerFactory.Create(identity, "/ip4/0.0.0.0/tcp/" + _cfg.P2PPort);
+        _peer = peerFactory.Create(identity, $"/ip4/{ip}/tcp/{ _cfg.P2PPort}");
         _router = _serviceProvider!.GetService<PubsubRouter>()!;
         _disc = new(_router, _peerStore = _serviceProvider.GetService<PeerStore>()!, new PubsubPeerDiscoverySettings() { Interval = 300 }, _peer);
         ITopic topic = _router.GetTopic("decryptionKeys");

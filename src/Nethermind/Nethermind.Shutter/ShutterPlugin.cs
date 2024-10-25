@@ -72,6 +72,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.ReceiptFinder is null) throw new ArgumentNullException(nameof(_api.ReceiptFinder));
             if (_api.WorldStateManager is null) throw new ArgumentNullException(nameof(_api.WorldStateManager));
+            if (_api.IpResolver is null) throw new ArgumentNullException(nameof(_api.IpResolver));
 
             if (_logger.IsInfo) _logger.Info("Initializing Shutter block producer.");
 
@@ -112,7 +113,8 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 _api.Config<IKeyStoreConfig>(),
                 _shutterConfig,
                 validatorsInfo,
-                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
+                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
+                _api.IpResolver.ExternalIp
             );
 
             _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);

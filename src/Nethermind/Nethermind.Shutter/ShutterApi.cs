@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -63,7 +64,8 @@ public class ShutterApi : IShutterApi
         IKeyStoreConfig keyStoreConfig,
         IShutterConfig cfg,
         Dictionary<ulong, byte[]> validatorsInfo,
-        TimeSpan slotLength
+        TimeSpan slotLength,
+        IPAddress ip
         )
     {
         _cfg = cfg;
@@ -101,7 +103,7 @@ public class ShutterApi : IShutterApi
 
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
-        InitP2P();
+        InitP2P(ip);
     }
 
     public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)
@@ -147,16 +149,14 @@ public class ShutterApi : IShutterApi
         TxSource.LoadTransactions(head, parentHeader, keys.Value);
     }
 
-    protected virtual void InitP2P()
+    protected virtual void InitP2P(IPAddress ip)
     {
-        P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig);
+        P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
     }
 
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
 
     protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
-    {
-        return new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
-    }
+        => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }
