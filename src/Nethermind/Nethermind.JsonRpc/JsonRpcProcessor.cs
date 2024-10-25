@@ -131,7 +131,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             Metrics.JsonRpcRequestDeserializationFailures++;
 
             const int sliceSize = 1000;
-            if (Encoding.UTF8.TryGetString(buffer, sliceSize, out bool isFullString, out string data))
+            if (Encoding.UTF8.TryGetStringSlice(buffer, sliceSize, out bool isFullString, out string data))
             {
                 error = isFullString
                     ? $"{error} Data:\n{data}\n"

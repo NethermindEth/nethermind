@@ -10,7 +10,7 @@ namespace Nethermind.Core.Extensions;
 
 public static class EncodingExtensions
 {
-    public static bool TryGetString(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount,
+    public static bool TryGetStringSlice(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount,
         out bool completed, [NotNullWhen(true)] out string? result)
     {
         char[] chars = ArrayPool<char>.Shared.Rent(charCount);
@@ -34,6 +34,6 @@ public static class EncodingExtensions
         }
     }
 
-    public static bool TryGetString(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount, [NotNullWhen(true)] out string? result) =>
-        TryGetString(encoding, sequence, charCount, out _, out result);
+    public static bool TryGetStringSlice(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount, [NotNullWhen(true)] out string? result) =>
+        TryGetStringSlice(encoding, sequence, charCount, out _, out result);
 }

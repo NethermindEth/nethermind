@@ -25,11 +25,11 @@ public class EncodingExtensionsTests
     [TestCase("\u0101\u0102\u0103\u0104\u0105", 3, "\u0101\u0102\u0103")]
     [TestCase("\u0101\u0102\u0103\u0104\u0105", 5, "\u0101\u0102\u0103\u0104\u0105")]
     [TestCase("\u0101\u0102\u0103\u0104\u0105", 10, "\u0101\u0102\u0103\u0104\u0105")]
-    public void TryGetString_Utf8_SingleSegment(string text, int charsLimit, string expected)
+    public void TryGetStringSlice_Utf8_SingleSegment(string text, int charsLimit, string expected)
     {
         System.Text.Encoding encoding = System.Text.Encoding.UTF8;
         var sequence = new ReadOnlySequence<byte>(encoding.GetBytes(text));
-        encoding.TryGetString(sequence, charsLimit, out var completed, out var result);
+        encoding.TryGetStringSlice(sequence, charsLimit, out var completed, out var result);
 
         result.Should().Be(expected);
         completed.Should().Be(charsLimit >= text.Length);
