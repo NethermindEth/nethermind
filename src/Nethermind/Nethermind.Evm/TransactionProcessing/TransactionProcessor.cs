@@ -321,7 +321,7 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <param name="opts">Options (Flags) to use for execution</param>
         /// <param name="intrinsicGas">Calculated intrinsic gas</param>
         /// <returns></returns>
-        protected TransactionResult ValidateStatic(
+        protected virtual TransactionResult ValidateStatic(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -369,7 +369,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
             {
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
-                return "block gas limit exceeded";
+                return TransactionResult.BlockGasLimitExceeded;
             }
 
             return TransactionResult.Ok;
@@ -794,5 +794,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static implicit operator TransactionResult(string? error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.Success;
         public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
+
+        public const string BlockGasLimitExceeded = "Block gas limit exceeded";
     }
 }
