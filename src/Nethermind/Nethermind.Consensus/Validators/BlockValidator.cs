@@ -274,7 +274,7 @@ public class BlockValidator(
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
+    protected virtual bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
 
@@ -294,7 +294,7 @@ public class BlockValidator(
         return true;
     }
 
-    private bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
+    protected virtual bool ValidateEip4844Fields(Block block, IReleaseSpec spec, out string? error)
     {
         if (!spec.IsEip4844Enabled)
         {
