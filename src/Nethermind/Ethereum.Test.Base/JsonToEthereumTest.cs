@@ -366,7 +366,6 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                Console.WriteLine($"Loading {namedTest.Key}\n {namedTest.Value.Post}");
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 
