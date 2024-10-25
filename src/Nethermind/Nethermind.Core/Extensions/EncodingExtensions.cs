@@ -10,42 +10,24 @@ namespace Nethermind.Core.Extensions;
 
 public static class EncodingExtensions
 {
-    private class LimitedArrayBufferWriter<T>(T[] buffer, int limit) : IBufferWriter<T>
-    {
-        private int _index;
-
-        public void Advance(int count)
-        {
-            if (count < 0)
-                throw new ArgumentException(null, nameof(count));
-
-            _index += count;
-        }
-
-        public Memory<T> GetMemory(int sizeHint = 0) => buffer.AsMemory(_index, limit - _index);
-
-        public Span<T> GetSpan(int sizeHint = 0) => buffer.AsSpan(_index, limit - _index);
-    }
-
-    private static string GetStringSlice(this Encoding encoding, ReadOnlySpan<byte> span, Span<char> chars, out bool completed)
+    private static string GetStringSlice(Encoding encoding, ReadOnlySpan<byte> span, Span<char> chars, out bool completed)
     {
         encoding.GetDecoder().Convert(span, chars, true, out _, out int charsUsed, out completed);
         return new(chars[..charsUsed]);
     }
 
-    private static string GetStringSliceMultiSegment(this Encoding encoding, ReadOnlySequence<byte> sequence, char[] charArray, int charCount,
-        out bool completed)
+    private static string GetStringSliceMultiSegment(Encoding encoding, ReadOnlySequence<byte> sequence, Span<char> chars, out bool completed)
     {
         try
         {
-            var writer = new LimitedArrayBufferWriter<char>(charArray, charCount);
-            encoding.GetDecoder().Convert(sequence, writer, true, out long charsUsed, out completed);
-            return new(charArray.AsSpan(0, (int)charsUsed));
+            var charsUsed = encoding.GetChars(sequence, chars);
+            completed = true;
+            return new(chars[..charsUsed]);
         }
         catch (ArgumentException exception) when (exception.ParamName == "chars")
         {
             completed = false;
-            return  new(charArray.AsSpan(0, charCount));
+            return  new(chars);
         }
     }
 
@@ -53,12 +35,13 @@ public static class EncodingExtensions
         out bool completed, [NotNullWhen(true)] out string? result)
     {
         char[] charArray = ArrayPool<char>.Shared.Rent(charCount);
+        Span<char> chars = charArray.AsSpan(0, charCount);
 
         try
         {
             result = sequence.IsSingleSegment
-                ? GetStringSlice(encoding, sequence.FirstSpan, charArray.AsSpan(0, charCount), out completed)
-                : GetStringSliceMultiSegment(encoding, sequence, charArray, charCount, out completed);
+                ? GetStringSlice(encoding, sequence.FirstSpan, chars, out completed)
+                : GetStringSliceMultiSegment(encoding, sequence, chars, out completed);
 
             return true;
         }
