@@ -560,21 +560,14 @@ internal class ILCompiler
                     EmitComparaisonInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, uint256A, uint256B);
                     break;
                 case Instruction.EQ:
-                    EmitComparaisonUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), evmExceptionLabels, uint256A, uint256B);
+                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(Vector256).GetMethod(nameof(Vector256.Equals), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
                     break;
                 case Instruction.ISZERO:
                     {// we load the stack
                         method.StackLoadPrevious(stack, head, 1);
+                        method.Duplicate();
                         method.Call(Word.GetIsZero);
-                        method.StoreLocal(byte8A);
-                        method.StackPop(head, 1);
-
-                        // we convert the result to a Uint256 and store it in the stack
-                        method.CleanWord(stack, head);
-                        method.Load(stack, head);
-                        method.LoadLocal(byte8A);
                         method.StoreField(Word.Byte0Field);
-                        method.StackPush(head);
                     }
                     break;
                 case Instruction.POP:
