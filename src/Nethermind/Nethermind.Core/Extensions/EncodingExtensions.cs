@@ -16,7 +16,7 @@ public static class EncodingExtensions
         return new(chars[..charsUsed]);
     }
 
-    private static string GetStringSliceMultiSegment(Encoding encoding, ReadOnlySequence<byte> sequence, Span<char> chars, out bool completed)
+    private static string GetStringSliceMultiSegment(Encoding encoding, ref readonly ReadOnlySequence<byte> sequence, Span<char> chars, out bool completed)
     {
         try
         {
@@ -31,7 +31,7 @@ public static class EncodingExtensions
         }
     }
 
-    public static bool TryGetStringSlice(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount,
+    public static bool TryGetStringSlice(this Encoding encoding, in ReadOnlySequence<byte> sequence, int charCount,
         out bool completed, [NotNullWhen(true)] out string? result)
     {
         char[] charArray = ArrayPool<char>.Shared.Rent(charCount);
@@ -41,7 +41,7 @@ public static class EncodingExtensions
         {
             result = sequence.IsSingleSegment
                 ? GetStringSlice(encoding, sequence.FirstSpan, chars, out completed)
-                : GetStringSliceMultiSegment(encoding, sequence, chars, out completed);
+                : GetStringSliceMultiSegment(encoding, in sequence, chars, out completed);
 
             return true;
         }
@@ -57,6 +57,6 @@ public static class EncodingExtensions
         }
     }
 
-    public static bool TryGetStringSlice(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount, [NotNullWhen(true)] out string? result) =>
-        TryGetStringSlice(encoding, sequence, charCount, out _, out result);
+    public static bool TryGetStringSlice(this Encoding encoding, in ReadOnlySequence<byte> sequence, int charCount, [NotNullWhen(true)] out string? result) =>
+        TryGetStringSlice(encoding, in sequence, charCount, out _, out result);
 }
