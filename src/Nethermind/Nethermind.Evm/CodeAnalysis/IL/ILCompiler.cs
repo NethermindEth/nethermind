@@ -1020,13 +1020,14 @@ internal class ILCompiler
                     break;
                 case Instruction.KECCAK256:
                     {
+                        var refWordToRefValueHashMethod = GetAsMethodInfo<Word, ValueHash256>();
+
                         method.StackLoadPrevious(stack, head, 1);
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256A);
                         method.StackLoadPrevious(stack, head, 2);
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256B);
-                        method.StackPop(head, 2);
 
                         method.LoadLocal(gasAvailable);
                         method.LoadLocalAddress(uint256B);
@@ -1049,17 +1050,16 @@ internal class ILCompiler
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
-                        method.CleanWord(stack, head);
-                        method.Load(stack, head);
                         method.LoadArgument(VMSTATE_INDEX);
                         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.LoadSpan), [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]));
                         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                        method.Call(typeof(ValueKeccak).GetMethod(nameof(ValueKeccak.Compute), [typeof(ReadOnlySpan<byte>)]));
-                        method.Call(Word.SetKeccak);
-                        method.StackPush(head);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.Call(refWordToRefValueHashMethod);
+                        method.Call(typeof(KeccakCache).GetMethod(nameof(KeccakCache.ComputeTo), [typeof(ReadOnlySpan<byte>), typeof(ValueHash256).MakeByRefType()]));
+                        method.StackPop(head);
                     }
                     break;
                 case Instruction.BYTE:
