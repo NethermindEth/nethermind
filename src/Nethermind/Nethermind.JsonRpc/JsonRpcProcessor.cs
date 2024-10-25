@@ -130,15 +130,23 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         {
             Metrics.JsonRpcRequestDeserializationFailures++;
 
-            const int sliceSize = 1000;
-            if (Encoding.UTF8.TryGetStringSlice(buffer, sliceSize, out bool isFullString, out string data))
+            if (_logger.IsError)
             {
-                error = isFullString
-                    ? $"{error} Data:\n{data}\n"
-                    : $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
+                _logger.Error(error, exception);
             }
 
-            if (_logger.IsError) _logger.Error(error, exception);
+            if (_logger.IsDebug)
+            {
+                const int sliceSize = 1000;
+                if (Encoding.UTF8.TryGetStringSlice(buffer, sliceSize, out bool isFullString, out string data))
+                {
+                    error = isFullString
+                        ? $"{error} Data:\n{data}\n"
+                        : $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
+                }
+                _logger.Debug(error);
+            }
+
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
             TraceResult(response);
             return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false)));
