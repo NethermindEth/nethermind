@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
-            StateReader _ = new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            StateReader stateReader = new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -241,6 +241,9 @@ namespace Nethermind.Blockchain.Test
             Dictionary<AddressAsKey, Transaction[]> blobTransactions = GroupTransactions(true);
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
             transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
+            transactionPool.GetPendingTransactions().Returns(transactions.SelectMany((group) => group.Value).ToArray());
+            transactionPool.GetPendingBlobTransactions().Returns(blobTransactions.SelectMany((group) => group.Value).ToArray());
+
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
                 transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
@@ -260,7 +263,7 @@ namespace Nethermind.Blockchain.Test
             SetAccountStates(testCase.MissingAddresses);
 
             TxPoolTxSource poolTxSource = new(transactionPool, specProvider,
-                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline);
+                transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, stateReader);
 
             BlockHeaderBuilder parentHeader = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee);
             if (spec.IsEip4844Enabled)
@@ -332,12 +335,12 @@ namespace Nethermind.Blockchain.Test
                     AccountStates = { { TestItem.AddressA, (1000, 1) } },
                     Transactions =
                     {
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(3).WithValue(1)
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2).WithValue(1)
                             .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(1).WithValue(10)
                             .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithType(TxType.EIP1559).WithNonce(2).WithValue(10)
-                            .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithType(TxType.EIP1559).WithNonce(2).WithValue(10)
+                            .WithMaxFeePerGas(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyB).TestObject
                     },
                     GasLimit = 10000000
                 };

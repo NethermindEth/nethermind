@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -13,7 +14,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         private readonly long _posdaoTransition;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, CancellationToken token = default)
         {
             if (ForSealing)
             {

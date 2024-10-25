@@ -151,6 +151,14 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
+    public CancellationTokenSource CancelOngoingImprovements()
+    {
+        return new();
+    }
+
+    public void Dispose()
+    {
+    }
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }
 }

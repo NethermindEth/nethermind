@@ -60,7 +60,7 @@ public class BlockProcessorTests
             Keccak.EmptyTreeHash,
             new List<Block> { block },
             ProcessingOptions.None,
-            NullBlockTracer.Instance);
+            NullBlockTracer.Instance, default);
         Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
         Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
     }
@@ -91,13 +91,13 @@ public class BlockProcessorTests
             Keccak.EmptyTreeHash,
             new List<Block> { block },
             ProcessingOptions.None,
-            AlwaysCancelBlockTracer.Instance));
+            AlwaysCancelBlockTracer.Instance, default));
 
         Assert.Throws<OperationCanceledException>(() => processor.Process(
             Keccak.EmptyTreeHash,
             new List<Block> { block },
             ProcessingOptions.None,
-            AlwaysCancelBlockTracer.Instance));
+            AlwaysCancelBlockTracer.Instance, default));
     }
 
     [MaxTime(Timeout.MaxTestTime)]

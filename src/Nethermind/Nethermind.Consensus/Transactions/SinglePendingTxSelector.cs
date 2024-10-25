@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
@@ -17,8 +18,8 @@ namespace Nethermind.Consensus.Transactions
             _innerSource = innerSource;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null) =>
-            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, CancellationToken token = default) =>
+            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, token)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);

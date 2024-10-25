@@ -280,9 +280,14 @@ public partial class EngineModuleTests
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
 
-        await Task.Delay(timePerSlot / 2);
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await Task.Delay(timePerSlot / 4);
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await Task.Delay(timePerSlot / 4);
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
+        await Task.Delay(timePerSlot / 4);
 
-        improvementContextFactory.CreatedContexts.Count.Should().BeInRange(3, 5);
+        improvementContextFactory.CreatedContexts.Count.Should().BeInRange(2, 5);
         improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(i => i.Disposed);
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
@@ -414,7 +419,7 @@ public partial class EngineModuleTests
         };
 
         await blockImprovementStartsLock.WaitAsync(1000); // started improving block
-        improvementContextFactory.CreatedContexts.Should().HaveCount(2);
+        improvementContextFactory.CreatedContexts.Should().HaveCountGreaterThanOrEqualTo(2);
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -639,7 +644,6 @@ public partial class EngineModuleTests
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot,
-            improvementDelay: delay,
-            minTimeForProduction: delay);
+            improvementDelay: delay);
     }
 }

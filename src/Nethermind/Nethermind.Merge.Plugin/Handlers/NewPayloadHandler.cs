@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -40,6 +41,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IBlockProcessingQueue _processingQueue;
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
+    private readonly IPayloadPreparationService? _payloadPreparationService;
     private readonly ILogger _logger;
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
@@ -59,12 +61,14 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         ILogManager logManager,
         TimeSpan? timeout = null,
         bool storeReceipts = true,
-        int cacheSize = 50)
+        int cacheSize = 50,
+        IPayloadPreparationService? payloadPreparationService = null)
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
         _syncConfig = syncConfig;
         _poSSwitcher = poSSwitcher;
+        _payloadPreparationService = payloadPreparationService;
         _beaconSyncStrategy = beaconSyncStrategy;
         _beaconPivot = beaconPivot;
         _blockCacheService = blockCacheService;
@@ -107,6 +111,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $"The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
+
+        _payloadPreparationService?.CancelOngoingImprovements();
 
         // Imagine that node was on block X and later node was offline.
         // Now user download new Nethermind release with sync pivot X+100 and start the node.
