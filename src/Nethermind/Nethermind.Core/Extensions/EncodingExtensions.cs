@@ -10,17 +10,30 @@ namespace Nethermind.Core.Extensions;
 
 public static class EncodingExtensions
 {
-    public static bool TryGetString(this Encoding encoding, ReadOnlySequence<byte> bytes, [NotNullWhen(true)] out string? result)
+    public static bool TryGetString(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount,
+        out bool completed, [NotNullWhen(true)] out string? result)
     {
+        char[] chars = ArrayPool<char>.Shared.Rent(charCount);
+
         try
         {
-            result = encoding.GetString(bytes);
+            ReadOnlySpan<byte> first = sequence.FirstSpan;
+            encoding.GetDecoder().Convert(first, chars, true, out _, out int charsUsed, out completed);
+            result = new(chars.AsSpan(0, charsUsed));
             return true;
         }
         catch (Exception)
         {
             result = null;
+            completed = false;
             return false;
         }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(chars);
+        }
     }
+
+    public static bool TryGetString(this Encoding encoding, ReadOnlySequence<byte> sequence, int charCount, [NotNullWhen(true)] out string? result) =>
+        TryGetString(encoding, sequence, charCount, out _, out result);
 }

@@ -130,12 +130,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         {
             Metrics.JsonRpcRequestDeserializationFailures++;
 
-            if (Encoding.UTF8.TryGetString(buffer, out string data))
+            const int sliceSize = 1000;
+            if (Encoding.UTF8.TryGetString(buffer, sliceSize, out bool isFullString, out string data))
             {
-                const int sliceSize = 1000;
-                error = data.Length > sliceSize
-                    ? $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n"
-                    : $"{error} Data:\n{data}\n";
+                error = isFullString
+                    ? $"{error} Data:\n{data}\n"
+                    : $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
             }
 
             if (_logger.IsError) _logger.Error(error, exception);
