@@ -98,7 +98,7 @@ void Configure(string[] args)
     ConsoleHelpers.EnableConsoleColorOutput();
 
     ConfigureLogger(parseResult);
-    
+
     if (!silent)
     {
         logger.Info("Nethermind is starting up");
