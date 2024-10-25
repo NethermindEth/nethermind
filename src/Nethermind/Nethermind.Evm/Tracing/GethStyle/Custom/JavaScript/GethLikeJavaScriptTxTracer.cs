@@ -101,7 +101,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        _log.pc = pc;
+        _log.pc = pc + env.CodeInfo.PcOffset();
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();

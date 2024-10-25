@@ -63,5 +63,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public SectionHeader? ContainerSectionOffset(int idx)
             => throw new UnreachableException();
+
+        public int PcOffset() => 0;
     }
 }

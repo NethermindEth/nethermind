@@ -23,6 +23,8 @@ public class EofCodeInfo : ICodeInfo
 
     public SectionHeader CodeSectionOffset(int sectionId) => EofContainer.Header.CodeSections[sectionId];
     public SectionHeader? ContainerSectionOffset(int sectionId) => EofContainer.Header.ContainerSections.Value[sectionId];
+    public int PcOffset() => EofContainer.Header.CodeSections.Start;
+
     public (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index)
     {
         ReadOnlySpan<byte> typesectionSpan = EofContainer.TypeSections[index].Span;
