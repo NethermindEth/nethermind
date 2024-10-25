@@ -574,7 +574,7 @@ public class FastHeadersSyncTests
             long? hangOnBlockNumberAfterInsert = null,
             ManualResetEventSlim? hangLatch = null,
             bool alwaysStartHeaderSync = false
-        ) : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync)
+        ) : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, alwaysStartHeaderSync: alwaysStartHeaderSync)
         {
             _hangOnBlockNumber = hangOnBlockNumber;
             _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
