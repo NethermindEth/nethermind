@@ -27,7 +27,7 @@ public static class EncodingExtensions
         catch (ArgumentException exception) when (exception.ParamName == "chars")
         {
             completed = false;
-            return  new(chars);
+            return new(chars);
         }
     }
 
