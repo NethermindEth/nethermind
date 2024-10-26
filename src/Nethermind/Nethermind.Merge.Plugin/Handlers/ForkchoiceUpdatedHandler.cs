@@ -312,71 +312,88 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             $", Hex: {data.ToHexString(withZeroX: true)}";
     }
 
-    private static StringBuilder? _extraDataStringBuilder;
     public static string CleanUtf8ByteArray(byte[] bytes)
     {
-        int start = 0;
-        int end = bytes.Length;
-        int firstValidIndex = -1;
-        int lastValidIndex = -1;
-        bool inValidSequence = false;
-        StringBuilder validStringBuilder = Interlocked.Exchange(ref _extraDataStringBuilder, null) ?? new();
+        // The maximum number of UTF-16 chars is bytes.Length, but each Rune can be up to 2 chars.
+        // So we allocate bytes.Length to bytes.Length * 2 chars.
+        const int maxOutputChars = 32 * 2;
 
-        while (start < end)
+        if (bytes == null || bytes.Length == 0 || bytes.Length > 32)
+            return string.Empty;
+
+        // Allocate a char buffer on the stack.
+        Span<char> outputBuffer = stackalloc char[maxOutputChars];
+
+        int outputPos = 0;
+        int index = 0;
+        bool hasValidContent = false;
+        bool shouldAddSpace = false;
+
+        while (index < bytes.Length)
         {
-            ReadOnlySpan<byte> span = bytes.AsSpan(start);
+            ReadOnlySpan<byte> span = bytes.AsSpan(index);
 
-            if (Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed) == OperationStatus.Done)
+            OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
+            if (status == OperationStatus.Done)
             {
-                if (IsControlCharacter(rune))
+                if (!IsControlCharacter(rune))
                 {
-                    if (inValidSequence)
+                    if (shouldAddSpace)
                     {
-                        validStringBuilder.Append(' ');
-                        inValidSequence = false;
+                        outputBuffer[outputPos++] = ' ';
+                        shouldAddSpace = false;
                     }
+
+                    int charsNeeded = rune.Utf16SequenceLength;
+                    if (outputPos + charsNeeded > outputBuffer.Length)
+                    {
+                        // Expand output buffer
+                        int newSize = outputBuffer.Length * 2;
+                        char[] newBuffer = new char[newSize];
+                        outputBuffer.Slice(0, outputPos).CopyTo(newBuffer);
+                        outputBuffer = newBuffer;
+                    }
+
+                    rune.EncodeToUtf16(outputBuffer.Slice(outputPos));
+                    outputPos += charsNeeded;
+                    hasValidContent = true;
                 }
                 else
                 {
-                    if (firstValidIndex == -1)
-                    {
-                        firstValidIndex = validStringBuilder.Length;
-                    }
-
-                    validStringBuilder.Append(rune.ToString());
-                    lastValidIndex = validStringBuilder.Length;
-                    inValidSequence = true;
+                    // Control character encountered; set flag to add space if needed
+                    if (hasValidContent)
+                        shouldAddSpace = true;
                 }
-                start += bytesConsumed;
+                index += bytesConsumed;
+            }
+            else if (status == OperationStatus.InvalidData)
+            {
+                // Invalid data; set flag to add space if needed
+                if (hasValidContent)
+                    shouldAddSpace = true;
+                index++;
+            }
+            else if (status == OperationStatus.NeedMoreData)
+            {
+                // Incomplete sequence at the end; break out of the loop
+                break;
             }
             else
             {
-                if (inValidSequence)
-                {
-                    validStringBuilder.Append(' ');
-                    inValidSequence = false;
-                }
-                start++; // Move past the invalid byte
+                // Unexpected status; treat as invalid data
+                if (hasValidContent)
+                    shouldAddSpace = true;
+                index++;
             }
         }
 
-        // If no valid content was found, return an empty string
-        if (firstValidIndex == -1)
-            return string.Empty;
-
-        // Extract the valid content from the StringBuilder
-        string extraData = validStringBuilder.ToString(firstValidIndex, lastValidIndex - firstValidIndex);
-
-        // Clear and repool the string builder
-        validStringBuilder.Clear();
-        _extraDataStringBuilder = validStringBuilder;
-
-        return extraData;
+        // Create the final string from the output buffer.
+        return outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
     }
 
     private static bool IsControlCharacter(Rune rune)
     {
-        // Control characters are from U+0000 to U+001F and U+007F to U+009F
+        // Control characters are U+0000 to U+001F and U+007F to U+009F
         return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
     }
 
