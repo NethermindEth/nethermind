@@ -755,7 +755,7 @@ namespace Nethermind.Core.Crypto
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 10)) = c2;
             Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 15)) = c3;
             // Can't over-write for last elements so write the upper Vector256 and then ulong
-            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20)) = c3.GetUpper();
+            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(state), 20)) = c4.GetLower();
             state[24] = c4.GetElement(4);
         }
     }
