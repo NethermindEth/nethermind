@@ -30,9 +30,7 @@ namespace Nethermind.Api
         IReceiptFinder? ReceiptFinder { get; set; }
         IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
-
-        [SkipServiceCollection]
-        IBlockStore? BadBlocksStore { get; set; }
+        IBadBlockStore? BadBlocksStore { get; set; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithStores(ContainerBuilder builder)
         {
