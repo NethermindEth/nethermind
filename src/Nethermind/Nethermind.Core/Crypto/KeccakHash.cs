@@ -666,9 +666,10 @@ namespace Nethermind.Core.Crypto
             Vector512<ulong> permute1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
             Vector512<ulong> permute2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
             ulong[] roundConstants = RoundConstants;
-            // Use constant for loop so Jit expects to loop
+            // Use constant for loop so Jit expects to loop; unroll once
             for (int round = 0; round < ROUNDS; round += 2)
             {
+                // Iteration 1
                 {
                     ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round);
                     // Theta step
@@ -743,6 +744,7 @@ namespace Nethermind.Core.Crypto
                     // Iota step
                     c0 = Vector512.Xor(c0, Vector512.Create(roundConstant, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
                 }
+                // Iteration 2
                 {
                     ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round + 1);
                     // Theta step
