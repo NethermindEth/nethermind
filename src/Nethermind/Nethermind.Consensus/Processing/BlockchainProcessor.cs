@@ -419,7 +419,21 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             Metrics.RecoveryQueueSize = _recoveryQueue.Count;
             Metrics.ProcessingQueueSize = _blockQueue.Count;
-            _stats.UpdateStats(lastProcessed, blockProcessingTimeInMicrosecs);
+
+            Transaction[] txs = suggestedBlock.Transactions;
+            Address beneficiary = suggestedBlock.Header.GasBeneficiary;
+            Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
+            bool isMev = false;
+            if (lastTx is not null && lastTx.SenderAddress == beneficiary)
+            {
+                // Mev reward with in last tx
+                beneficiary = lastTx.To;
+                isMev = true;
+            }
+            UInt256 beforeBalance = _stateReader.GetBalance(processingBranch.Root, beneficiary);
+            UInt256 afterBalance = _stateReader.GetBalance(suggestedBlock.StateRoot, beneficiary);
+            UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
+            _stats.UpdateStats(lastProcessed, blockProcessingTimeInMicrosecs, rewards, isMev);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);

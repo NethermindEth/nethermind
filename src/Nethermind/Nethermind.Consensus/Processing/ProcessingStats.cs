@@ -45,6 +45,8 @@ namespace Nethermind.Consensus.Processing
         private long _codeDbCacheProcessing;
         private long _contractAnalysedProcessing;
         private long _createsProcessing;
+        private UInt256 _rewards;
+        private bool _isMev;
 
         public ProcessingStats(ILogger logger)
         {
@@ -57,7 +59,7 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
-        public void UpdateStats(Block? block, long blockProcessingTimeInMicros)
+        public void UpdateStats(Block? block, long blockProcessingTimeInMicros, in UInt256 rewards, bool isMev)
         {
             if (block is null)
             {
@@ -99,6 +101,8 @@ namespace Nethermind.Consensus.Processing
                 _codeDbCacheProcessing = Db.Metrics.ThreadLocalCodeDbCache;
                 _contractAnalysedProcessing = Evm.Metrics.ThreadLocalContractsAnalysed;
                 _createsProcessing = Evm.Metrics.ThreadLocalCreates;
+                _rewards = rewards;
+                _isMev = isMev;
                 GenerateReport();
             }
         }
@@ -107,6 +111,7 @@ namespace Nethermind.Consensus.Processing
 
         void IThreadPoolWorkItem.Execute()
         {
+            const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
             const string whiteText = "\u001b[97m";
             const string yellowText = "\u001b[93m";
@@ -235,7 +240,7 @@ namespace Nethermind.Consensus.Processing
                 var recoveryQueue = Metrics.RecoveryQueueSize;
                 var processingQueue = Metrics.ProcessingQueueSize;
 
-                _logger.Info($"- Block{(chunkBlocks > 1 ? $"s {chunkBlocks,-9:N0}" : "           ")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,9:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
+                _logger.Info($"- Block{(chunkBlocks > 1 ? $"s {chunkBlocks,-9:N0}  " : $" {(_isMev ? "MEV" : "   ")} {_rewards.ToDecimal(null) / weiToEth,5:N3}Eth")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
                     _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,9:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
