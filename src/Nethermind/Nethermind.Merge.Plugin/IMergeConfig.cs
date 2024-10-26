@@ -69,4 +69,7 @@ public interface IMergeConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
     bool SimulateBlockProduction { get; set; }
+
+    [ConfigItem(Description = "Whether to show the block's Extra Data field in logs", DefaultValue = "true")]
+    bool ShowExtraData { get; set; }
 }

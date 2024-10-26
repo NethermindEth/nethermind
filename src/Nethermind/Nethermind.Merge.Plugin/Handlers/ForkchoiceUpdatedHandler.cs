@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -13,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -51,6 +53,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly bool _simulateBlockProduction;
     private readonly ulong _secondsPerSlot;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly bool _showExtraData;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -67,7 +70,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         ISyncPeerPool syncPeerPool,
         ILogManager logManager,
         ulong secondsPerSlot,
-        bool simulateBlockProduction = false)
+        bool simulateBlockProduction = false,
+        bool showExtraData = true)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
@@ -84,6 +88,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _simulateBlockProduction = simulateBlockProduction;
         _secondsPerSlot = secondsPerSlot;
         _logger = logManager.GetClassLogger();
+        _showExtraData = showExtraData;
     }
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
@@ -279,10 +284,121 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
+            if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}{ParseExtraData(newHeadBlock.Header.ExtraData, newHeadBlock.Header.GasBeneficiary)}");
         }
 
         return null;
+    }
+
+    private string ParseExtraData(byte[] data, Address? gasBeneficiary)
+    {
+        if (!_showExtraData) return string.Empty;
+
+        if (data is null || data.Length == 0)
+        {
+            // If no extra data just show GasBeneficiary address
+            return $", Address: {(gasBeneficiary?.ToString() ?? "0x")}";
+        }
+
+        // Ideally we'd prefer to show text; so convert invalid unicode
+        // and control chars to spaces and trim leading and trailing spaces.
+        string extraData = CleanUtf8ByteArray(data);
+
+        // If the cleaned text is less than half length of input size,
+        // output it as hex, else output the text.
+        return extraData.Length > data.Length / 2 ?
+            $", Extra Data: {extraData}" :
+            $", Hex: {data.ToHexString(withZeroX: true)}";
+    }
+
+    private static StringBuilder? _extraDataStringBuilder;
+
+    public static string CleanUtf8ByteArray(byte[] bytes)
+    {
+        int start = 0;
+        int lastValidEnd = 0; // Tracks the end of the last valid UTF-8 sequence
+        int end = bytes.Length;
+        bool inMiddle = false;
+        int firstValidStart = -1; // Tracks the first valid position
+        StringBuilder validStringBuilder = Interlocked.Exchange(ref _extraDataStringBuilder, null) ?? new();
+
+        while (start < end)
+        {
+            int sequenceLength = GetUtf8SequenceLength(bytes, start);
+
+            if (sequenceLength == 0 || IsControlCharacter(bytes[start]))
+            {
+                // If we are already in a valid sequence, add a space for invalid or control characters
+                if (inMiddle)
+                {
+                    validStringBuilder.Append(' ');
+                    inMiddle = false;
+                }
+                start++;
+            }
+            else
+            {
+                if (firstValidStart == -1) firstValidStart = validStringBuilder.Length;
+
+                // Append the valid UTF-8 sequence
+                validStringBuilder.Append(Encoding.UTF8.GetString(bytes, start, sequenceLength));
+                start += sequenceLength;
+                lastValidEnd = validStringBuilder.Length; // Update last valid position
+                inMiddle = true;
+            }
+        }
+
+        if (firstValidStart == -1)
+            return string.Empty;
+
+        // Return only the valid portion between firstValidStart and lastValidEnd
+        string extraData = validStringBuilder.ToString(firstValidStart, lastValidEnd - firstValidStart);
+
+        // Clear and repool the string builder
+        validStringBuilder.Clear();
+        _extraDataStringBuilder = validStringBuilder;
+
+        return extraData;
+    }
+
+    // Helper function to determine the length of a valid UTF-8 sequence or return 0 for invalid
+    private static int GetUtf8SequenceLength(byte[] bytes, int start)
+    {
+        if (start >= bytes.Length) return 0;
+
+        byte firstByte = bytes[start];
+
+        if ((firstByte & 0b1000_0000) == 0)
+        {
+            return 1; // 1-byte sequence (ASCII)
+        }
+        else if ((firstByte & 0b1110_0000) == 0b1100_0000 && start + 1 < bytes.Length &&
+                 (bytes[start + 1] & 0b1100_0000) == 0b1000_0000)
+        {
+            return 2; // 2-byte sequence
+        }
+        else if ((firstByte & 0b1111_0000) == 0b1110_0000 && start + 2 < bytes.Length &&
+                 (bytes[start + 1] & 0b1100_0000) == 0b1000_0000 &&
+                 (bytes[start + 2] & 0b1100_0000) == 0b1000_0000)
+        {
+            return 3; // 3-byte sequence
+        }
+        else if ((firstByte & 0b1111_1000) == 0b1111_0000 && start + 3 < bytes.Length &&
+                 (bytes[start + 1] & 0b1100_0000) == 0b1000_0000 &&
+                 (bytes[start + 2] & 0b1100_0000) == 0b1000_0000 &&
+                 (bytes[start + 3] & 0b1100_0000) == 0b1000_0000)
+        {
+            return 4; // 4-byte sequence
+        }
+
+        return 0; // Invalid UTF-8 sequence
+    }
+
+    // Helper function to check if a byte is a control character in the ASCII range
+    private static bool IsControlCharacter(byte b)
+    {
+        // Control characters are in the ASCII range 0x00 to 0x1F
+        return b >= 0x00 && b <= 0x1F;
     }
 
     protected virtual bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,

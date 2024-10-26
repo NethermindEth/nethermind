@@ -424,7 +424,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Address beneficiary = suggestedBlock.Header.GasBeneficiary;
             Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
             bool isMev = false;
-            if (lastTx is not null && lastTx.SenderAddress == beneficiary)
+            if (lastTx is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
             {
                 // Mev reward with in last tx
                 beneficiary = lastTx.To;
@@ -783,6 +783,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
     }
+
+    // Help identify mev blocks when doesn't follow regular pattern
+    private static HashSet<AddressAsKey> _alternateMevPayees = new()
+    {
+        new Address("0xa83114A443dA1CecEFC50368531cACE9F37fCCcb"), // Extra data as: beaverbuild.org
+        new Address("0x9FC3da866e7DF3a1c57adE1a97c9f00a70f010c8"), // Extra data as: Titan (titanbuilder.xyz)
+    };
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
     private readonly struct ProcessingBranch
