@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BadBlockStore(IDb blockDb, long? maxSize = null) : IBadBlockStore
+public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
 {
     private readonly BlockDecoder _blockDecoder = new();
 
@@ -25,13 +25,9 @@ public class BadBlockStore(IDb blockDb, long? maxSize = null) : IBadBlockStore
         // if we carry Rlp from the network message all the way here we could avoid encoding back to RLP here
         // Although cpu is the main bottleneck since NettyRlpStream uses pooled memory which avoid unnecessary allocations..
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
-
         blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
 
-        if (maxSize is not null)
-        {
-            TruncateToMaxSize();
-        }
+        TruncateToMaxSize();
     }
 
     public IEnumerable<Block> GetAll()
@@ -54,6 +50,5 @@ public class BadBlockStore(IDb blockDb, long? maxSize = null) : IBadBlockStore
     private void Delete(long blockNumber, Hash256 blockHash)
     {
         blockDb.Delete(blockNumber, blockHash);
-        blockDb.Remove(blockHash.Bytes);
     }
 }
