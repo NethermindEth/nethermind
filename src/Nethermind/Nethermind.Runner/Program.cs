@@ -72,26 +72,28 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 
 try
 {
-    Configure(args);
+    return await ConfigureAsync(args);
 }
 catch (Exception ex)
 {
     ILogger criticalLogger = GetCriticalLogger();
 
-    criticalLogger.Error($"{unhandledError}.", ex is AggregateException aex ? aex.InnerException : ex);
+    ex = ex is AggregateException aex ? aex.InnerException : ex;
 
-    Environment.ExitCode = ExitCodes.GeneralError;
+    criticalLogger.Error($"{unhandledError}.", ex);
+
+    return ex is IExceptionWithExitCode exc ? exc.ExitCode : ExitCodes.GeneralError;
 }
 finally
 {
     NLogManager.Shutdown();
 }
 
-void Configure(string[] args)
+async Task<int> ConfigureAsync(string[] args)
 {
     CliConfiguration cli = ConfigureCli();
     ParseResult parseResult = cli.Parse(args);
-    // Don't log anything if run with `--help` or `--version`
+    // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
         .Any(c => (c is OptionResult or) && (or.Option is HelpOption || or.Option is VersionOption));
 
@@ -133,19 +135,11 @@ void Configure(string[] args)
 
     AddConfigurationOptions(cli.RootCommand);
 
-    cli.RootCommand.SetAction((pr, ct) => Run(pr, pluginLoader, ct));
+    cli.RootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
 
     try
     {
-        Environment.ExitCode = cli.Invoke(args);
-    }
-    catch (Exception ex)
-    {
-        Environment.ExitCode = ex is IExceptionWithExitCode withExit
-            ? withExit.ExitCode
-            : ExitCodes.GeneralError;
-
-        throw;
+        return await cli.InvokeAsync(args);
     }
     finally
     {
@@ -153,7 +147,7 @@ void Configure(string[] args)
     }
 }
 
-async Task<int> Run(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
+async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
     processExitSource = new(cancellationToken);
 
@@ -315,7 +309,11 @@ CliConfiguration ConfigureCli()
         });
     }
 
-    return new(rootCommand) { ProcessTerminationTimeout = Timeout.InfiniteTimeSpan };
+    return new(rootCommand)
+    {
+        EnableDefaultExceptionHandler = false,
+        ProcessTerminationTimeout = Timeout.InfiniteTimeSpan
+    };
 }
 
 void ConfigureLogger(ParseResult parseResult)
@@ -517,7 +515,7 @@ static class BasicOptions
         };
 
     public static CliOption<string> ConfigurationDirectory { get; } =
-        new("--config-dir", "--configsDirectory", "-cd")
+        new("--configs-dir", "--configsDirectory", "-cd")
         {
             Description = "The path to the configuration files directory.",
             HelpName = "path"
