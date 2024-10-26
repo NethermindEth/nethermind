@@ -35,7 +35,7 @@ public class BadBlockStoreTests
     }
 
     [Test]
-    public void Test_LimitInsertedBlock()
+    public void Test_LimitStoredBlock()
     {
         BadBlockStore badBlockStore = new BadBlockStore(new TestMemDb(), 2);
 
