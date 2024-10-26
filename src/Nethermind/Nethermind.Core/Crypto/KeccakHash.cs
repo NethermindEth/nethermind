@@ -665,10 +665,12 @@ namespace Nethermind.Core.Crypto
             Vector512<ulong> c4 = Vector512.Create(c4a, c4b);
 
             ulong[] roundConstants = RoundConstants;
-            for (int round = 0; round < roundConstants.Length; round++)
+            // Use constant for loop so Jit expects to loop
+            for (int round = 0; round < ROUNDS; round++)
             {
+                ulong roundConstant = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(roundConstants), round);
                 // Theta step
-                Vector512<ulong> parity = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
+                Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
 
                 // Compute Theta
                 Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL)), 1);
@@ -740,7 +742,7 @@ namespace Nethermind.Core.Crypto
                 c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, permute1), Avx512F.PermuteVar8x64(c4, permute2), 0xD2);
 
                 // Iota step
-                c0 = Vector512.Xor(c0, Vector512.Create(roundConstants[round], 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
+                c0 = Vector512.Xor(c0, Vector512.Create(roundConstant, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL));
             }
 
             // Can over-write for first elements
