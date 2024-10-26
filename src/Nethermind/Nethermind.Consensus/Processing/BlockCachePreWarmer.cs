@@ -160,7 +160,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                         }
                     }
 
-                    if (nonceDelta > 0)
+                    if (!nonceDelta.IsZero)
                     {
                         scope.WorldState.IncrementNonce(senderAddress, nonceDelta);
                     }
