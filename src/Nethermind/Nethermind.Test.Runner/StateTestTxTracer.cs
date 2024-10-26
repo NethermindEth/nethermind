@@ -54,7 +54,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         bool isPostMerge = env.IsPostMerge();
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc;
+        _traceEntry.Pc = pc + env.CodeInfo.PcOffset();
         _traceEntry.Operation = (byte)opcode;
         _traceEntry.OperationName = opcode.GetName(isPostMerge);
         _traceEntry.Gas = gas;

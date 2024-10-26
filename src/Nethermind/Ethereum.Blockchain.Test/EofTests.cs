@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
@@ -15,7 +16,9 @@ public class EOFTests : GeneralStateTestBase
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test)
     {
-        Assert.That(RunTest(test).Pass, Is.True);
+        // Legacy ethereum/tests EOF tests currently are based on a Prague spec, which lacks EOF.
+        // All EOF tests are now a part of EEST
+        //Assert.That(RunTest(test).Pass, Is.True);
     }
 
     public static IEnumerable<GeneralStateTest> LoadTests()

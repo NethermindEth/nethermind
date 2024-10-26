@@ -261,7 +261,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
-            operationTrace.Pc = pc;
+            operationTrace.Pc = pc + env.CodeInfo.PcOffset();
             operationTrace.Cost = gas;
             _currentOperation = operationTrace;
             _currentPushList.Clear();

@@ -56,6 +56,7 @@ namespace Ethereum.Test.Base
             var strategy = vector.ContainerKind;
             var fork = test.Result.Fork switch
             {
+                "Osaka" => Nethermind.Specs.Forks.Osaka.Instance,
                 "Prague" => Nethermind.Specs.Forks.Prague.Instance,
                 "Berlin" => Nethermind.Specs.Forks.Berlin.Instance,
                 "London" => Nethermind.Specs.Forks.London.Instance,

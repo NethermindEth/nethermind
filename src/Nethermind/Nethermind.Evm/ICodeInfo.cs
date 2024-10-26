@@ -20,6 +20,7 @@ public interface ICodeInfo
     ReadOnlyMemory<byte> ContainerSection => Memory<byte>.Empty;
     SectionHeader CodeSectionOffset(int idx);
     SectionHeader? ContainerSectionOffset(int idx);
+    int PcOffset();
     (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index) => (0, 0, 1024);
     void AnalyseInBackgroundIfRequired() { }
 }

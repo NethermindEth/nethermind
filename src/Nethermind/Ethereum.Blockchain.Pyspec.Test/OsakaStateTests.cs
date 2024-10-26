@@ -12,7 +12,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 [Explicit("These tests are not ready yet")]
-public class PragueStateTests : GeneralStateTestBase
+public class OsakaStateTests : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public void Test(GeneralStateTest test) => RunTest(test).Pass.Should().BeTrue();
@@ -21,9 +21,9 @@ public class PragueStateTests : GeneralStateTestBase
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy()
         {
-            ArchiveName = "fixtures_eip7692.tar.gz",
-            ArchiveVersion = "eip7692@v1.1.1"
-        }, $"fixtures/state_tests/prague");
+            ArchiveName = "fixtures_eip7692-osaka.tar.gz",
+            ArchiveVersion = "eip7692@v2.0.0"
+        }, $"fixtures/state_tests/osaka");
         return loader.LoadTests().Cast<GeneralStateTest>();
     }
 }

@@ -61,6 +61,7 @@ namespace Ethereum.Test.Base
                 "Cancun" => Cancun.Instance,
                 "Paris" => Paris.Instance,
                 "Prague" => Prague.Instance,
+                "Osaka" => Osaka.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -310,7 +311,7 @@ namespace Ethereum.Test.Base
             {
                 var index = namedTest.Key.IndexOf(".py::");
                 var name = namedTest.Key.Substring(index + 5);
-                string category = namedTest.Key.Substring(0, index).Replace("tests/prague/eip7692_eof_v1/", "");
+                string category = namedTest.Key.Substring(0, index).Replace("tests/osaka/eip7692_eof_v1/", "");
 
                 string? description = null;
                 string? url = null;
@@ -365,7 +366,6 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                Console.WriteLine($"Loading {namedTest.Key}\n {namedTest.Value.Post}");
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 
