@@ -668,24 +668,18 @@ namespace Nethermind.Core.Crypto
             for (int round = 0; round < roundConstants.Length; round++)
             {
                 // Theta step
-                Vector512<ulong> bVec = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
+                Vector512<ulong> parity = Vector512.Xor(Vector512.Xor(Vector512.Xor(c0, c1), Vector512.Xor(c2, c3)), c4);
 
-                // Compute Theta Vector
-                Vector512<ulong> bVecRot1 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL));
-                Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(bVec, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+                // Compute Theta
+                Vector512<ulong> bVecRot1Rotated = Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL)), 1);
+                Vector512<ulong> bVecRot4 = Avx512F.PermuteVar8x64(parity, Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL));
+                Vector512<ulong> theta = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
 
-                // Rotate bVecRot1 left by 1
-                Vector512<ulong> bVecRot1ShiftedLeft = Avx512F.ShiftLeftLogical(bVecRot1, 1);
-                Vector512<ulong> bVecRot1ShiftedRight = Avx512F.ShiftRightLogical(bVecRot1, 63);
-                Vector512<ulong> bVecRot1Rotated = Avx512F.Or(bVecRot1ShiftedLeft, bVecRot1ShiftedRight);
-
-                Vector512<ulong> thetaVec = Avx512F.Xor(bVecRot4, bVecRot1Rotated);
-
-                c0 = Avx512F.Xor(c0, thetaVec);
-                c1 = Avx512F.Xor(c1, thetaVec);
-                c2 = Avx512F.Xor(c2, thetaVec);
-                c3 = Avx512F.Xor(c3, thetaVec);
-                c4 = Avx512F.Xor(c4, thetaVec);
+                c0 = Avx512F.Xor(c0, theta);
+                c1 = Avx512F.Xor(c1, theta);
+                c2 = Avx512F.Xor(c2, theta);
+                c3 = Avx512F.Xor(c3, theta);
+                c4 = Avx512F.Xor(c4, theta);
 
                 // Rho step
                 Vector512<ulong> rhoVec0 = Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL);
