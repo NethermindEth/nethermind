@@ -24,6 +24,8 @@ public static class EncodingExtensions
             completed = true;
             return new(chars[..charsUsed]);
         }
+        // Thrown when decoder detects that chars array is not enough to contain the result
+        // If this happens, whole array should already be filled
         catch (ArgumentException exception) when (exception.ParamName == "chars")
         {
             completed = false;
@@ -31,6 +33,17 @@ public static class EncodingExtensions
         }
     }
 
+    /// <summary>
+    /// Attempts to decode up to <paramref name="charCount"/> characters from byte <paramref name="sequence"/> using provided <paramref name="encoding"/>.
+    /// </summary>
+    /// <param name="charCount">Maximum number of characters to decode.</param>
+    /// <param name="encoding">Encoding to use.</param>
+    /// <param name="sequence">Bytes sequence.</param>
+    /// <param name="completed"><c>true</c> if the whole <paramref name="sequence"/> was decoded, <c>false</c> otherwise.</param>
+    /// <param name="result">Decoded string of up to <see cref="charCount"/> characters.</param>
+    /// <returns>
+    /// <c>true</c>, if successfully decoded whole string or the specified <paramref name="charCount"/>, <c>false</c> in case of an error.
+    /// </returns>
     public static bool TryGetStringSlice(this Encoding encoding, in ReadOnlySequence<byte> sequence, int charCount,
         out bool completed, [NotNullWhen(true)] out string? result)
     {
@@ -45,6 +58,7 @@ public static class EncodingExtensions
 
             return true;
         }
+        // Failed to parse, should only happen if bytes encoding is invalid
         catch (Exception)
         {
             result = null;
@@ -57,6 +71,7 @@ public static class EncodingExtensions
         }
     }
 
+    /// <inheritdoc cref="TryGetStringSlice(System.Text.Encoding,in System.Buffers.ReadOnlySequence{byte},int,out bool,out string?)"/>
     public static bool TryGetStringSlice(this Encoding encoding, in ReadOnlySequence<byte> sequence, int charCount, [NotNullWhen(true)] out string? result) =>
         TryGetStringSlice(encoding, in sequence, charCount, out _, out result);
 }

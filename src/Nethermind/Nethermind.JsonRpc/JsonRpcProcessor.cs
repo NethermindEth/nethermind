@@ -137,14 +137,16 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
             if (_logger.IsDebug)
             {
+                // Attempt to get and log the request body from the bytes buffer if Debug logging is enabled
                 const int sliceSize = 1000;
                 if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string data))
                 {
                     error = isFullString
                         ? $"{error} Data:\n{data}\n"
                         : $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
+
+                    _logger.Debug(error);
                 }
-                _logger.Debug(error);
             }
 
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
