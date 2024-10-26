@@ -26,4 +26,5 @@ public interface IBlockStore
     // These two are used by blocktree. Try not to use them...
     void SetMetadata(byte[] key, byte[] value);
     byte[]? GetMetadata(byte[] key);
+    bool HasBlock(long blockNumber, Hash256 blockHash);
 }

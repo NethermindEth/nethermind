@@ -135,10 +135,31 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockInfo?[] infos = new BlockInfo[_requestSize];
                 _syncStatusList.GetInfosForBatch(infos);
+
+                long minNumber = 0;
+                bool needMoreInfo = true;
+                while (needMoreInfo)
+                {
+                    token.ThrowIfCancellationRequested();
+                    needMoreInfo = false;
+                    _syncStatusList.GetInfosForBatch(infos);
+
+                    foreach (BlockInfo? blockInfo in infos)
+                    {
+                        minNumber = Math.Max(minNumber, blockInfo.BlockNumber);
+
+                        if (blockInfo is null) continue;
+                        if (!_receiptStorage.HasBlock(blockInfo.BlockNumber, blockInfo.BlockHash)) continue;
+
+                        _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                        needMoreInfo = true;
+                    }
+                }
+
                 if (infos[0] is not null)
                 {
                     batch = new ReceiptsSyncBatch(infos);
-                    batch.MinNumber = infos[0].BlockNumber;
+                    batch.MinNumber = minNumber;
                     batch.Prioritized = true;
                 }
 

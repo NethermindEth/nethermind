@@ -40,6 +40,13 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(key);
     }
 
+    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    {
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        return _blockDb.Get(dbKey) is not null;
+    }
+
     private void TruncateToMaxSize()
     {
         int toDelete = (int)(_blockDb.GatherMetric().Size - _maxSize!);

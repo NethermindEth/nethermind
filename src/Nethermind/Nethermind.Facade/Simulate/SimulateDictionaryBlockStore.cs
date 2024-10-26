@@ -91,4 +91,9 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     {
         return _metadataDict.TryGetValue(key, out var value) ? value : readonlyBaseBlockStore.GetMetadata(key);
     }
+
+    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    {
+        return _blockNumDict.ContainsKey(blockNumber);
+    }
 }
