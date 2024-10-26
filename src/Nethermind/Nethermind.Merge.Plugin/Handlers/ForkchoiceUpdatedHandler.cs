@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
@@ -312,47 +313,59 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     }
 
     private static StringBuilder? _extraDataStringBuilder;
-
     public static string CleanUtf8ByteArray(byte[] bytes)
     {
         int start = 0;
-        int lastValidEnd = 0; // Tracks the end of the last valid UTF-8 sequence
         int end = bytes.Length;
-        bool inMiddle = false;
-        int firstValidStart = -1; // Tracks the first valid position
+        int firstValidIndex = -1;
+        int lastValidIndex = -1;
+        bool inValidSequence = false;
         StringBuilder validStringBuilder = Interlocked.Exchange(ref _extraDataStringBuilder, null) ?? new();
 
         while (start < end)
         {
-            int sequenceLength = GetUtf8SequenceLength(bytes, start);
+            ReadOnlySpan<byte> span = bytes.AsSpan(start);
 
-            if (sequenceLength == 0 || IsControlCharacter(bytes[start]))
+            if (Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed) == OperationStatus.Done)
             {
-                // If we are already in a valid sequence, add a space for invalid or control characters
-                if (inMiddle)
+                if (IsControlCharacter(rune))
                 {
-                    validStringBuilder.Append(' ');
-                    inMiddle = false;
+                    if (inValidSequence)
+                    {
+                        validStringBuilder.Append(' ');
+                        inValidSequence = false;
+                    }
                 }
-                start++;
+                else
+                {
+                    if (firstValidIndex == -1)
+                    {
+                        firstValidIndex = validStringBuilder.Length;
+                    }
+
+                    validStringBuilder.Append(rune.ToString());
+                    lastValidIndex = validStringBuilder.Length;
+                    inValidSequence = true;
+                }
+                start += bytesConsumed;
             }
             else
             {
-                if (firstValidStart == -1) firstValidStart = validStringBuilder.Length;
-
-                // Append the valid UTF-8 sequence
-                validStringBuilder.Append(Encoding.UTF8.GetString(bytes, start, sequenceLength));
-                start += sequenceLength;
-                lastValidEnd = validStringBuilder.Length; // Update last valid position
-                inMiddle = true;
+                if (inValidSequence)
+                {
+                    validStringBuilder.Append(' ');
+                    inValidSequence = false;
+                }
+                start++; // Move past the invalid byte
             }
         }
 
-        if (firstValidStart == -1)
+        // If no valid content was found, return an empty string
+        if (firstValidIndex == -1)
             return string.Empty;
 
-        // Return only the valid portion between firstValidStart and lastValidEnd
-        string extraData = validStringBuilder.ToString(firstValidStart, lastValidEnd - firstValidStart);
+        // Extract the valid content from the StringBuilder
+        string extraData = validStringBuilder.ToString(firstValidIndex, lastValidIndex - firstValidIndex);
 
         // Clear and repool the string builder
         validStringBuilder.Clear();
@@ -361,44 +374,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return extraData;
     }
 
-    // Helper function to determine the length of a valid UTF-8 sequence or return 0 for invalid
-    private static int GetUtf8SequenceLength(byte[] bytes, int start)
+    private static bool IsControlCharacter(Rune rune)
     {
-        if (start >= bytes.Length) return 0;
-
-        byte firstByte = bytes[start];
-
-        if ((firstByte & 0b1000_0000) == 0)
-        {
-            return 1; // 1-byte sequence (ASCII)
-        }
-        else if ((firstByte & 0b1110_0000) == 0b1100_0000 && start + 1 < bytes.Length &&
-                 (bytes[start + 1] & 0b1100_0000) == 0b1000_0000)
-        {
-            return 2; // 2-byte sequence
-        }
-        else if ((firstByte & 0b1111_0000) == 0b1110_0000 && start + 2 < bytes.Length &&
-                 (bytes[start + 1] & 0b1100_0000) == 0b1000_0000 &&
-                 (bytes[start + 2] & 0b1100_0000) == 0b1000_0000)
-        {
-            return 3; // 3-byte sequence
-        }
-        else if ((firstByte & 0b1111_1000) == 0b1111_0000 && start + 3 < bytes.Length &&
-                 (bytes[start + 1] & 0b1100_0000) == 0b1000_0000 &&
-                 (bytes[start + 2] & 0b1100_0000) == 0b1000_0000 &&
-                 (bytes[start + 3] & 0b1100_0000) == 0b1000_0000)
-        {
-            return 4; // 4-byte sequence
-        }
-
-        return 0; // Invalid UTF-8 sequence
-    }
-
-    // Helper function to check if a byte is a control character in the ASCII range
-    private static bool IsControlCharacter(byte b)
-    {
-        // Control characters are in the ASCII range 0x00 to 0x1F
-        return b >= 0x00 && b <= 0x1F;
+        // Control characters are from U+0000 to U+001F and U+007F to U+009F
+        return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
     }
 
     protected virtual bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
