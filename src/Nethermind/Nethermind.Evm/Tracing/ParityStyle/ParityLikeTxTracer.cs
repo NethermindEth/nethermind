@@ -73,8 +73,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.TRANSACTION:
                     return "call";
                 case ExecutionType.CREATE:
-                    return "create";
                 case ExecutionType.CREATE2:
+                case ExecutionType.EOFCREATE:
+                case ExecutionType.TXCREATE:
                     return "create";
                 case ExecutionType.CALL:
                     return "call";
@@ -96,8 +97,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.TRANSACTION:
                     return "call";
                 case ExecutionType.CREATE:
-                    return "create";
                 case ExecutionType.CREATE2:
+                case ExecutionType.EOFCREATE:
+                case ExecutionType.TXCREATE:
                     return "create";
                 case ExecutionType.CALL:
                     return "call";
@@ -259,7 +261,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
-            operationTrace.Pc = pc;
+            operationTrace.Pc = pc + env.CodeInfo.PcOffset();
             operationTrace.Cost = gas;
             _currentOperation = operationTrace;
             _currentPushList.Clear();
@@ -421,6 +423,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "create";
                 case ExecutionType.CREATE2:
                     return "create2";
+                case ExecutionType.EOFCREATE:
+                    return "create3";
+                case ExecutionType.TXCREATE:
+                    return "create4";
                 default:
                     return null;
             }

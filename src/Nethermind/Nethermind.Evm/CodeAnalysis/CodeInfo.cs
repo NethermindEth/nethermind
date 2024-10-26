@@ -5,10 +5,12 @@ using System;
 using System.Threading;
 
 using Nethermind.Evm.Precompiles;
+using System.Diagnostics;
+using Nethermind.Evm.EvmObjectFormat;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo : IThreadPoolWorkItem
+    public class CodeInfo : ICodeInfo, IThreadPoolWorkItem
     {
         public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
@@ -55,5 +57,13 @@ namespace Nethermind.Evm.CodeAnalysis
                 ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
             }
         }
+
+        public SectionHeader CodeSectionOffset(int idx)
+            => throw new UnreachableException();
+
+        public SectionHeader? ContainerSectionOffset(int idx)
+            => throw new UnreachableException();
+
+        public int PcOffset() => 0;
     }
 }

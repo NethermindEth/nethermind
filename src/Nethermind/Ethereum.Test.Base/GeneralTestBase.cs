@@ -32,7 +32,7 @@ namespace Ethereum.Test.Base
     public abstract class GeneralStateTestBase
     {
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
-        private static ILogManager _logManager = LimboLogs.Instance;
+        private static ILogManager _logManager = new TestLogManager(LogLevel.Warn);
         private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
         private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
@@ -167,6 +167,17 @@ namespace Ethereum.Test.Base
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
             testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
+
+            if (differences.Count > 0)
+            {
+                TestContext.Out.WriteLine();
+                TestContext.Out.WriteLine("Differences from expected");
+                TestContext.Out.WriteLine();
+            }
+            foreach (string difference in differences)
+            {
+                TestContext.Out.WriteLine(difference);
+            }
 
             //            Assert.Zero(differences.Count, "differences");
             return testResult;

@@ -19,13 +19,20 @@ namespace Nethermind.Evm
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState : IDisposable // TODO: rename to CallState
     {
+        public struct ReturnState
+        {
+            public int Index;
+            public int Offset;
+            public int Height;
+        }
+
         private class StackPool
         {
             private readonly int _maxCallStackDepth;
-            private readonly struct StackItem(byte[] dataStack, int[] returnStack)
+            private readonly struct StackItem(byte[] dataStack, ReturnState[] returnStack)
             {
                 public readonly byte[] DataStack = dataStack;
-                public readonly int[] ReturnStack = returnStack;
+                public readonly ReturnState[] ReturnStack = returnStack;
             }
 
             // TODO: we have wrong call depth calculation somewhere
@@ -44,12 +51,12 @@ namespace Nethermind.Evm
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
+            public void ReturnStacks(byte[] dataStack, ReturnState[] returnStack)
             {
                 _stackPool.Push(new(dataStack, returnStack));
             }
 
-            public (byte[], int[]) RentStacks()
+            public (byte[], ReturnState[]) RentStacks()
             {
                 if (_stackPool.TryPop(out StackItem result))
                 {
@@ -65,7 +72,7 @@ namespace Nethermind.Evm
                 return
                 (
                     new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32],
-                    new int[EvmStack.ReturnStackSize]
+                    new ReturnState[EvmStack.ReturnStackSize]
                 );
             }
         }
@@ -73,7 +80,7 @@ namespace Nethermind.Evm
 
         public byte[]? DataStack;
 
-        public int[]? ReturnStack;
+        public ReturnState[]? ReturnStack;
 
         /// <summary>
         /// EIP-2929 accessed addresses
@@ -200,6 +207,8 @@ namespace Nethermind.Evm
                     case ExecutionType.CALLCODE:
                     case ExecutionType.CREATE:
                     case ExecutionType.CREATE2:
+                    case ExecutionType.EOFCREATE:
+                    case ExecutionType.TXCREATE:
                     case ExecutionType.TRANSACTION:
                         return Env.Caller;
                     case ExecutionType.DELEGATECALL:
@@ -212,6 +221,7 @@ namespace Nethermind.Evm
 
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
+        public int FunctionIndex { get; set; }
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource ?? Env.ExecutingAccount;

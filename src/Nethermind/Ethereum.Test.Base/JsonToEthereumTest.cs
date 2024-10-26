@@ -12,6 +12,7 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -60,6 +61,7 @@ namespace Ethereum.Test.Base
                 "Cancun" => Cancun.Instance,
                 "Paris" => Paris.Instance,
                 "Prague" => Prague.Instance,
+                "Osaka" => Osaka.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -301,7 +303,62 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<GeneralStateTest> Convert(string json)
+        public static IEnumerable<EofTest> ConvertToEofTests(string json)
+        {
+            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
+            List<EofTest> tests = new();
+            foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
+            {
+                var index = namedTest.Key.IndexOf(".py::");
+                var name = namedTest.Key.Substring(index + 5);
+                string category = namedTest.Key.Substring(0, index).Replace("tests/osaka/eip7692_eof_v1/", "");
+
+                string? description = null;
+                string? url = null;
+                string? spec = null;
+                var info = namedTest.Value?.Info;
+                if (info is not null)
+                {
+                    description = info.Description;
+                    url = info.Url;
+                    spec = info.Spec;
+                }
+
+                foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
+                {
+                    VectorTestJson vectorJson = pair.Value;
+                    VectorTest vector = new();
+                    vector.Code = Bytes.FromHexString(vectorJson.Code);
+                    vector.ContainerKind =
+                        ("INITCODE".Equals(vectorJson.ContainerKind)
+                            ? ValidationStrategy.ValidateInitcodeMode
+                            : ValidationStrategy.ValidateRuntimeMode)
+                        | ValidationStrategy.ValidateFullBody;
+
+                    foreach (var result in vectorJson.Results)
+                    {
+                        EofTest test = new()
+                        {
+                            Name = $"{name}",
+                            Category = $"{category} [{result.Key}]",
+                            Url = url,
+                            Description = description,
+                            Spec = spec
+                        };
+                        test.Vector = vector;
+
+                        test.Result = result.Value.Result
+                            ? new Result { Fork = result.Key, Success = true }
+                            : new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
+                        tests.Add(test);
+                    }
+                }
+            }
+
+            return tests;
+        }
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
@@ -309,7 +366,6 @@ namespace Ethereum.Test.Base
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
-                Console.WriteLine($"Loading {namedTest.Key}\n {namedTest.Value.Post}");
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 

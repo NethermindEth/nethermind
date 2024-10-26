@@ -83,6 +83,9 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOntakeEnabled => spec.IsOntakeEnabled;
     public virtual ulong WithdrawalTimestamp => spec.WithdrawalTimestamp;
     public virtual ulong Eip4844TransitionTimestamp => spec.Eip4844TransitionTimestamp;
+
+    public virtual bool IsEofEnabled => spec.IsEofEnabled;
+
     public virtual bool IsEip158IgnoredAccount(Address address) => spec.IsEip158IgnoredAccount(address);
     public bool IsEip4844FeeCollectorEnabled => spec.IsEip4844FeeCollectorEnabled;
 
