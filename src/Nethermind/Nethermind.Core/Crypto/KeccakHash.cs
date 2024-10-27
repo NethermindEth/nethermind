@@ -315,13 +315,6 @@ namespace Nethermind.Core.Crypto
             st[0] = aba;
         }
 
-        public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
-        {
-            Span<byte> output = new byte[size];
-            ComputeHash(input, output);
-            return output;
-        }
-
         public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
             byte[] output = new byte[size];
@@ -365,24 +358,43 @@ namespace Nethermind.Core.Crypto
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
             Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
-            int inputLength = input.Length;
             int offset = 0;
-
-            // Process full rounds
-            while (inputLength - offset >= roundSize)
+            if (input.Length >= roundSize)
             {
-                XorVectors(stateBytes, input.Slice(offset, roundSize));
-                KeccakF(state);
-                offset += roundSize;
+                // Process full rounds
+                do
+                {
+                    XorVectors(stateBytes, input.Slice(offset, roundSize));
+                    KeccakF(state);
+                    offset += roundSize;
+                } while (input.Length - offset >= roundSize);
+
+                if (input.Length != offset)
+                {
+                    // XOR the remaining input bytes into the state
+                    XorVectors(stateBytes, input.Slice(offset));
+                }
+            }
+            else if (input.Length == Vector256<byte>.Count)
+            {
+                // Hashing Hash256 or UInt256, 32 bytes
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
+            }
+            else if (input.Length == Address.Size)
+            {
+                // Hashing Address, 20 bytes which is uint+Vector128
+                Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(stateBytes)) =
+                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(input));
+                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(stateBytes), sizeof(uint))) =
+                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(input), sizeof(uint)));
+            }
+            else
+            {
+                input.CopyTo(stateBytes);
             }
 
-            int remainingInputLength = inputLength - offset;
-            if (remainingInputLength > 0)
-            {
-                // XOR the remaining input bytes into the state
-                XorVectors(stateBytes, input.Slice(offset, remainingInputLength));
-            }
-
+            int remainingInputLength = input.Length - offset;
             // Apply padding
             if (remainingInputLength != roundSize)
             {
@@ -415,42 +427,60 @@ namespace Nethermind.Core.Crypto
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
         {
-            int length = input.Length;
-            int i = 0;
-            if (Vector256<byte>.IsSupported)
+            ref byte stateRef = ref MemoryMarshal.GetReference(state);
+            if (Vector512<byte>.IsSupported && input.Length >= Vector512<byte>.Count)
             {
                 // Convert to uint for the mod else the Jit does a more complicated signed mod
                 // whereas as uint it just does an And
-                int vectorLength = length - (int)((uint)length % (uint)Vector256<byte>.Count);
-
-                ref byte stateRef = ref MemoryMarshal.GetReference(state);
+                int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector512<byte>.Count);
                 ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < vectorLength; i += Vector512<byte>.Count)
+                {
+                    ref Vector512<byte> state256 = ref Unsafe.As<byte, Vector512<byte>>(ref Unsafe.Add(ref stateRef, i));
+                    Vector512<byte> input256 = Unsafe.As<byte, Vector512<byte>>(ref Unsafe.Add(ref inputRef, i));
+                    state256 = Vector512.Xor(state256, input256);
+                }
 
-                for (; i < vectorLength; i += Vector256<byte>.Count)
+                input = input.Slice(vectorLength);
+                stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
+            }
+
+            if (Vector256<byte>.IsSupported && input.Length >= Vector256<byte>.Count)
+            {
+                // Convert to uint for the mod else the Jit does a more complicated signed mod
+                // whereas as uint it just does an And
+                int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector256<byte>.Count);
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                for (int i = 0; i < vectorLength; i += Vector256<byte>.Count)
                 {
                     ref Vector256<byte> state256 = ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref stateRef, i));
                     Vector256<byte> input256 = Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref inputRef, i));
                     state256 = Vector256.Xor(state256, input256);
                 }
+
+                input = input.Slice(vectorLength);
+                stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
-            else if (Vector128<byte>.IsSupported)
+
+            if (Vector128<byte>.IsSupported && input.Length >= Vector128<byte>.Count)
             {
-                int vectorLength = length - (int)((uint)length % (uint)Vector128<byte>.Count);
-
-                ref byte stateRef = ref MemoryMarshal.GetReference(state);
+                int vectorLength = input.Length - (int)((uint)input.Length % (uint)Vector128<byte>.Count);
                 ref byte inputRef = ref MemoryMarshal.GetReference(input);
-
-                for (; i < vectorLength; i += Vector128<byte>.Count)
+                for (int i = 0; i < vectorLength; i += Vector128<byte>.Count)
                 {
                     ref Vector128<byte> state128 = ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref stateRef, i));
                     Vector128<byte> input128 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref inputRef, i));
                     state128 = Vector128.Xor(state128, input128);
                 }
+
+                input = input.Slice(vectorLength);
+                stateRef = ref Unsafe.Add(ref stateRef, vectorLength);
             }
+
             // Handle remaining elements
-            for (; i < length; i++)
+            for (int i = 0; i < input.Length; i++)
             {
-                state[i] ^= input[i];
+                Unsafe.Add(ref stateRef, i) ^= input[i];
             }
         }
 
