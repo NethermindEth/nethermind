@@ -356,47 +356,102 @@ namespace Nethermind.Core.Crypto
         // compute a Keccak hash (md) of given byte length from "in"
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
-            int size = output.Length;
-            int roundSize = GetRoundSize(size);
+            int roundSize = GetRoundSize(output.Length);
             if (output.Length <= 0 || output.Length > STATE_SIZE)
             {
                 ThrowBadKeccak();
             }
 
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
-            Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
+            Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
-            int remainingInputLength = input.Length;
-            for (; remainingInputLength >= roundSize; remainingInputLength -= roundSize, input = input[roundSize..])
+            int inputLength = input.Length;
+            int offset = 0;
+
+            // Process full rounds
+            while (inputLength - offset >= roundSize)
             {
-                ReadOnlySpan<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[..roundSize]);
-
-                for (int i = 0; i < input64.Length; i++)
-                {
-                    state[i] ^= input64[i];
-                }
-
+                XorVectors(stateBytes, input.Slice(offset, roundSize));
                 KeccakF(state);
+                offset += roundSize;
             }
 
-            // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > roundSize || roundSize + 1 >= TEMP_BUFF_SIZE || roundSize == 0 || roundSize - 1 >= TEMP_BUFF_SIZE)
+            int remainingInputLength = inputLength - offset;
+            if (remainingInputLength > 0)
             {
-                ThrowBadKeccak();
+                // XOR the remaining input bytes into the state
+                XorVectors(stateBytes, input.Slice(offset, remainingInputLength));
             }
 
-            input[..remainingInputLength].CopyTo(temp);
-            temp[remainingInputLength] = 1;
-            temp[roundSize - 1] |= 0x80;
-
-            Span<ulong> tempU64 = MemoryMarshal.Cast<byte, ulong>(temp[..roundSize]);
-            for (int i = 0; i < tempU64.Length; i++)
+            // Apply padding
+            if (remainingInputLength != roundSize)
             {
-                state[i] ^= tempU64[i];
+                // Apply padding within the current block
+                stateBytes[remainingInputLength] ^= 0x01; // Append bit '1' after the input
+                stateBytes[roundSize - 1] ^= 0x80;        // Set the last bit of the block to '1'
             }
 
+            // Process the final block
             KeccakF(state);
-            MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
+
+            if (output.Length == Vector256<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash256
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else if (output.Length == Vector512<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash512
+                Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else
+            {
+                stateBytes[..output.Length].CopyTo(output);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe void XorVectors(Span<byte> state, ReadOnlySpan<byte> input)
+        {
+            int length = input.Length;
+            int i = 0;
+            if (Vector256<byte>.IsSupported)
+            {
+                // Convert to uint for the mod else the Jit does a more complicated signed mod
+                // whereas as uint it just does an And
+                int vectorLength = length - (int)((uint)length % (uint)Vector256<byte>.Count);
+
+                ref byte stateRef = ref MemoryMarshal.GetReference(state);
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+
+                for (; i < vectorLength; i += Vector256<byte>.Count)
+                {
+                    ref Vector256<byte> state256 = ref Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref stateRef, i));
+                    Vector256<byte> input256 = Unsafe.As<byte, Vector256<byte>>(ref Unsafe.Add(ref inputRef, i));
+                    state256 = Vector256.Xor(state256, input256);
+                }
+            }
+            else if (Vector128<byte>.IsSupported)
+            {
+                int vectorLength = length - (int)((uint)length % (uint)Vector128<byte>.Count);
+
+                ref byte stateRef = ref MemoryMarshal.GetReference(state);
+                ref byte inputRef = ref MemoryMarshal.GetReference(input);
+
+                for (; i < vectorLength; i += Vector128<byte>.Count)
+                {
+                    ref Vector128<byte> state128 = ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref stateRef, i));
+                    Vector128<byte> input128 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref inputRef, i));
+                    state128 = Vector128.Xor(state128, input128);
+                }
+            }
+            // Handle remaining elements
+            for (; i < length; i++)
+            {
+                state[i] ^= input[i];
+            }
         }
 
         public void Update(ReadOnlySpan<byte> input)
