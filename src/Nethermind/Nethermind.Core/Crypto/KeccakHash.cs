@@ -571,19 +571,11 @@ namespace Nethermind.Core.Crypto
             {
                 // XOR the remainder buffer into the state
                 XorVectors(stateBytes, _remainderBuffer.AsSpan(0, _remainderLength));
-
-                // Apply padding
-                stateBytes[_remainderLength] ^= 0x01; // Append bit '1' after the input
-                stateBytes[_roundSize - 1] ^= 0x80;   // Set the last bit of the block to '1'
-
-                Pool.ReturnRemainder(ref _remainderBuffer);
             }
-            else
-            {
-                // No remainder; apply padding directly to state
-                stateBytes[0] ^= 0x01;              // Append bit '1' at the beginning
-                stateBytes[_roundSize - 1] ^= 0x80; // Set the last bit of the block to '1'
-            }
+
+            // Apply terminator markers within the current block
+            stateBytes[_remainderLength] ^= 0x01; // Append bit '1' after the input
+            stateBytes[_roundSize - 1] ^= 0x80;   // Set the last bit of the block to '1'
 
             KeccakF(state);
 
