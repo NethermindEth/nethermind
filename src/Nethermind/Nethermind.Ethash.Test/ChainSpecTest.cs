@@ -149,7 +149,6 @@ public class ChainSpecTest
 
         TestTransitions((ForkActivation)0L, r =>
         {
-            // TODO: why it use to pass before with DifficultyBoundDivisor = 0
             r.DifficultyBoundDivisor = 0x800;
             r.MinGasLimit = 11L;
             r.GasLimitBoundDivisor = 13L;
