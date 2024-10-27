@@ -83,8 +83,7 @@ namespace Nethermind.Evm.Test
         {
             (var result, _) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
 
-            Assert.That(result.Fail, Is.True);
-            Assert.That(result.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
+            Assert.That(result, Is.EqualTo(TransactionResult.TransactionSizeOverMaxInitCodeSize));
         }
 
         [Test]
