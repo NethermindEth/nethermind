@@ -1,13 +1,12 @@
 using System.Text.Json;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.T8NUtils;
 using Evm.JsonTypes;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 
 namespace Evm.T8NTool;
 
-public class T8NTool : GeneralStateTestBase
+public class T8NTool : T8nTest
 {
     private readonly EthereumJsonSerializer _ethereumJsonSerializer;
 
@@ -96,20 +95,20 @@ public class T8NTool : GeneralStateTestBase
 
         PostState postState = new PostState();
         postState.StateRoot = res.StateRoot;
-        postState.TxRoot = res.T8NResult.TxRoot;
-        postState.ReceiptsRoot = res.T8NResult.ReceiptsRoot;
-        postState.WithdrawalsRoot = res.T8NResult.WithdrawalsRoot;
-        postState.LogsHash = res.T8NResult.LogsHash;
-        postState.LogsBloom = res.T8NResult.LogsBloom;
-        postState.Receipts = res.T8NResult.Receipts;
-        postState.Rejected = res.T8NResult.Rejected;
-        postState.CurrentDifficulty = res.T8NResult.CurrentDifficulty;
-        postState.GasUsed = res.T8NResult.GasUsed;
-        postState.CurrentBaseFee = res.T8NResult.CurrentBaseFee;
-        postState.CurrentExcessBlobGas = res.T8NResult.CurrentExcessBlobGas;
-        postState.BlobGasUsed = res.T8NResult.BlobGasUsed;
+        postState.TxRoot = res.TxRoot;
+        postState.ReceiptsRoot = res.ReceiptsRoot;
+        postState.WithdrawalsRoot = res.WithdrawalsRoot;
+        postState.LogsHash = res.LogsHash;
+        postState.LogsBloom = res.LogsBloom;
+        postState.Receipts = res.Receipts;
+        postState.Rejected = res.Rejected;
+        postState.CurrentDifficulty = res.CurrentDifficulty;
+        postState.GasUsed = res.GasUsed;
+        postState.CurrentBaseFee = res.CurrentBaseFee;
+        postState.CurrentExcessBlobGas = res.CurrentExcessBlobGas;
+        postState.BlobGasUsed = res.BlobGasUsed;
 
-        return new T8NExecutionResult(postState, res.T8NResult.Accounts, res.T8NResult.TransactionsRlp);
+        return new T8NExecutionResult(postState, res.Accounts, res.TransactionsRlp);
     }
 
     private void WriteToFile(string filename, string? basedir, object outputObject)

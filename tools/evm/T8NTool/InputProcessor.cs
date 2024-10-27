@@ -1,5 +1,4 @@
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.T8NUtils;
 using Evm.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -18,7 +17,7 @@ public class InputProcessor
     private static readonly EthereumJsonSerializer EthereumJsonSerializer = new();
     private static readonly TxDecoder TxDecoder = TxDecoder.Instance;
 
-    public static GeneralStateTest ConvertToGeneralStateTest(string inputAlloc,
+    public static T8nTestCase ConvertToGeneralStateTest(string inputAlloc,
         string inputEnv,
         string inputTxs,
         string stateFork,

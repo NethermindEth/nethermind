@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.IO.Abstractions;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.T8NUtils;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.Ethash;

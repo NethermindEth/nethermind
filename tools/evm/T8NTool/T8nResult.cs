@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.T8NUtils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -18,6 +17,7 @@ namespace Evm.T8NTool;
 
 public class T8nResult
 {
+    public Hash256? StateRoot { get; set; }
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
     public Hash256? WithdrawalsRoot { get; set; }
@@ -64,6 +64,7 @@ public class T8nResult
             ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray())
             : null;
 
+        t8NResult.StateRoot = stateProvider.StateRoot;
         t8NResult.TxRoot = txRoot;
         t8NResult.ReceiptsRoot = receiptsRoot;
         t8NResult.LogsBloom = bloom;

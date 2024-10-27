@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
+using Evm.T8NTool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
