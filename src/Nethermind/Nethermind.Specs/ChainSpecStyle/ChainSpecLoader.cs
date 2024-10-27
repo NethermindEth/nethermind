@@ -175,7 +175,9 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip4844FeeCollectorTransitionTimestamp = chainSpecJson.Params.Eip4844FeeCollectorTransitionTimestamp,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
-            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
+            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
+
+            OntakeTransition = chainSpecJson.Params.OntakeTransition,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

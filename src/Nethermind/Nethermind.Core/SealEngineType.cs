@@ -10,5 +10,6 @@ namespace Nethermind.Core
         public const string Clique = nameof(Clique);
         public const string Ethash = nameof(Ethash);
         public const string BeaconChain = nameof(BeaconChain);
+        public const string Taiko = nameof(Taiko);
     }
 }

@@ -164,6 +164,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
+        builder.RegisterModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider));
 
         IContainer container = builder.Build();
 
