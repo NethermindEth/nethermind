@@ -358,30 +358,7 @@ namespace Nethermind.Core.Crypto
             Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
             Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
-            int offset = 0;
-            if (input.Length >= roundSize)
-            {
-                // Process full rounds
-                do
-                {
-                    XorVectors(stateBytes, input.Slice(offset, roundSize));
-                    KeccakF(state);
-                    offset += roundSize;
-                } while (input.Length - offset >= roundSize);
-
-                if (input.Length != offset)
-                {
-                    // XOR the remaining input bytes into the state
-                    XorVectors(stateBytes, input.Slice(offset));
-                }
-            }
-            else if (input.Length == Vector256<byte>.Count)
-            {
-                // Hashing Hash256 or UInt256, 32 bytes
-                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes)) =
-                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
-            }
-            else if (input.Length == Address.Size)
+            if (input.Length == Address.Size)
             {
                 // Hashing Address, 20 bytes which is uint+Vector128
                 Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(stateBytes)) =
@@ -389,19 +366,36 @@ namespace Nethermind.Core.Crypto
                 Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(stateBytes), sizeof(uint))) =
                         Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(input), sizeof(uint)));
             }
+            else if (input.Length == Vector256<byte>.Count)
+            {
+                // Hashing Hash256 or UInt256, 32 bytes
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
+            }
+            else if (input.Length >= roundSize)
+            {
+                // Process full rounds
+                do
+                {
+                    XorVectors(stateBytes, input.Slice(0, roundSize));
+                    KeccakF(state);
+                    input = input.Slice(roundSize);
+                } while (input.Length >= roundSize);
+
+                if (input.Length > 0)
+                {
+                    // XOR the remaining input bytes into the state
+                    XorVectors(stateBytes, input);
+                }
+            }
             else
             {
                 input.CopyTo(stateBytes);
             }
 
-            int remainingInputLength = input.Length - offset;
-            // Apply padding
-            if (remainingInputLength != roundSize)
-            {
-                // Apply padding within the current block
-                stateBytes[remainingInputLength] ^= 0x01; // Append bit '1' after the input
-                stateBytes[roundSize - 1] ^= 0x80;        // Set the last bit of the block to '1'
-            }
+            // Apply terminator markers within the current block
+            stateBytes[input.Length] ^= 0x01;  // Append bit '1' after remaining input
+            stateBytes[roundSize - 1] ^= 0x80; // Set the last bit of the round to '1'
 
             // Process the final block
             KeccakF(state);
