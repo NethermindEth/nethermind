@@ -41,6 +41,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
+    private OptimismChainSpecEngineParameters? _chainSpecParameters;
     private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
@@ -103,9 +104,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        var chainSpecParams = _api.ChainSpec.EngineChainSpecParametersProvider
+        _chainSpecParameters = _api.ChainSpec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
-        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, chainSpecParams.BedrockBlockNumber!.Value);
+        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _chainSpecParameters.BedrockBlockNumber!.Value);
 
         _blockCacheService = new BlockCacheService();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
@@ -164,7 +165,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
-        builder.RegisterModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider));
+        builder.RegisterModule(new OptimismSynchronizerModule(_chainSpecParameters!.BedrockBlockNumber!.Value, _api.SpecProvider));
 
         IContainer container = builder.Build();
 
