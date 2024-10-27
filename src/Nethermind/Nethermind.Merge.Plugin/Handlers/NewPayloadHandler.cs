@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -86,13 +87,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
-
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid request. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+        }
+
+        string requestStr = $"New Block:  {request}";
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"Received {requestStr}, {ParseExtraData(block)}");
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
@@ -449,6 +453,26 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         return true;
+    }
+
+    private string ParseExtraData(Block block)
+    {
+        byte[]? data = block.ExtraData;
+        if (data is null || data.Length == 0)
+        {
+            // If no extra data just show GasBeneficiary address
+            return $"Address: {(block.Header.GasBeneficiary?.ToString() ?? "0x")}";
+        }
+
+        // Ideally we'd prefer to show text; so convert invalid unicode
+        // and control chars to spaces and trim leading and trailing spaces.
+        string extraData = data.ToCleanUtf8String();
+
+        // If the cleaned text is less than half length of input size,
+        // output it as hex, else output the text.
+        return extraData.Length > data.Length / 2 ?
+            $"Extra Data: {extraData}" :
+            $"Hex: {data.ToHexString(withZeroX: true)}";
     }
 
     private enum ValidationResult

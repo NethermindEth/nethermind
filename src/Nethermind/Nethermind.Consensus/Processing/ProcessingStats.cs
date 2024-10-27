@@ -2,19 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats : IThreadPoolWorkItem
     {
+        private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
         private long _lastBlockNumber;
@@ -35,6 +40,7 @@ namespace Nethermind.Consensus.Processing
         private long _runMicroseconds;
         private long _reportMs;
         private Block? _lastBlock;
+        private Hash256 _lastBranchRoot;
         private long _sloadOpcodeProcessing;
         private long _sstoreOpcodeProcessing;
         private long _callsProcessing;
@@ -42,11 +48,10 @@ namespace Nethermind.Consensus.Processing
         private long _codeDbCacheProcessing;
         private long _contractAnalysedProcessing;
         private long _createsProcessing;
-        private UInt256 _rewards;
-        private bool _isMev;
 
-        public ProcessingStats(ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogger logger)
         {
+            _stateReader = stateReader;
             _logger = logger;
 
             // the line below just to avoid compilation errors
@@ -56,7 +61,7 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
-        public void UpdateStats(Block? block, long blockProcessingTimeInMicros, in UInt256 rewards, bool isMev)
+        public void UpdateStats(Block? block, Hash256 branchRoot, long blockProcessingTimeInMicros)
         {
             if (block is null) return;
 
@@ -85,6 +90,7 @@ namespace Nethermind.Consensus.Processing
             {
                 _lastReportMs = _reportMs;
                 _lastBlock = block;
+                _lastBranchRoot = branchRoot;
                 _sloadOpcodeProcessing = Evm.Metrics.ThreadLocalSLoadOpcode;
                 _sstoreOpcodeProcessing = Evm.Metrics.ThreadLocalSStoreOpcode;
                 _callsProcessing = Evm.Metrics.ThreadLocalCalls;
@@ -92,8 +98,6 @@ namespace Nethermind.Consensus.Processing
                 _codeDbCacheProcessing = Db.Metrics.ThreadLocalCodeDbCache;
                 _contractAnalysedProcessing = Evm.Metrics.ThreadLocalContractsAnalysed;
                 _createsProcessing = Evm.Metrics.ThreadLocalCreates;
-                _rewards = rewards;
-                _isMev = isMev;
                 GenerateReport();
             }
         }
@@ -116,6 +120,20 @@ namespace Nethermind.Consensus.Processing
 
             Block? block = Interlocked.Exchange(ref _lastBlock, null);
             if (block is null) return;
+
+            Transaction[] txs = block.Transactions;
+            Address beneficiary = block.Header.GasBeneficiary;
+            Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
+            bool isMev = false;
+            if (lastTx is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
+            {
+                // Mev reward with in last tx
+                beneficiary = lastTx.To;
+                isMev = true;
+            }
+            UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
+            UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
+            UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
 
             long currentSelfDestructs = Evm.Metrics.SelfDestructs;
 
@@ -157,7 +175,7 @@ namespace Nethermind.Consensus.Processing
 
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}  | {chunkMs,10:N1} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
+                    _logger.Info($"Processed    {block.Number - chunkBlocks + 1,10}...{block.Number,9}   | {chunkMs,10:N1} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
                 }
                 else
                 {
@@ -184,7 +202,7 @@ namespace Nethermind.Consensus.Processing
                         < 2000 => orangeText,
                         _ => redText
                     };
-                    _logger.Info($"Processed          {block.Number,10}        | {chunkColor}{chunkMs,10:N1}{resetColor} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
+                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
                 }
 
                 string mgasPerSecondColor = (mgasPerSecond / (block.GasLimit / 1_000_000.0)) switch
@@ -228,14 +246,14 @@ namespace Nethermind.Consensus.Processing
                 var recoveryQueue = Metrics.RecoveryQueueSize;
                 var processingQueue = Metrics.ProcessingQueueSize;
 
-                _logger.Info($"- Block{(chunkBlocks > 1 ? $"s {chunkBlocks,-9:N0}  " : $"{(_isMev ? " mev" : "    ")} {_rewards.ToDecimal(null) / weiToEth,5:N3}Eth")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
+                _logger.Info($" Block{(chunkBlocks > 1 ? $"s  x{chunkBlocks,-9:N0}  " : $"{(isMev ? " mev" : "    ")} {rewards.ToDecimal(null) / weiToEth,5:N4}{BlocksConfig.GasTokenTicker,4}")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas    | {chunkTx,8:N0}   txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,9:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}");
                 }
                 else
                 {
-                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,9:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |       {bps,7:F2} Blk/s | exec code {resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0}");
                 }
             }
 
@@ -262,5 +280,12 @@ namespace Nethermind.Consensus.Processing
                 _runStopwatch.Start();
             }
         }
+
+        // Help identify mev blocks when doesn't follow regular pattern
+        private static HashSet<AddressAsKey> _alternateMevPayees = new()
+        {
+            new Address("0xa83114A443dA1CecEFC50368531cACE9F37fCCcb"), // Extra data as: beaverbuild.org
+            new Address("0x9FC3da866e7DF3a1c57adE1a97c9f00a70f010c8"), // Extra data as: Titan (titanbuilder.xyz)
+        };
     }
 }

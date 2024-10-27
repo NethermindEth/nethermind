@@ -54,7 +54,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly bool _simulateBlockProduction;
     private readonly ulong _secondsPerSlot;
     private readonly ISyncPeerPool _syncPeerPool;
-    private readonly bool _showExtraData;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -71,8 +70,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         ISyncPeerPool syncPeerPool,
         ILogManager logManager,
         ulong secondsPerSlot,
-        bool simulateBlockProduction = false,
-        bool showExtraData = true)
+        bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
@@ -89,7 +87,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _simulateBlockProduction = simulateBlockProduction;
         _secondsPerSlot = secondsPerSlot;
         _logger = logManager.GetClassLogger();
-        _showExtraData = showExtraData;
     }
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
@@ -285,116 +282,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}{ParseExtraData(newHeadBlock.Header.ExtraData, newHeadBlock.Header.GasBeneficiary)}");
+            if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
         return null;
-    }
-
-    private string ParseExtraData(byte[] data, Address? gasBeneficiary)
-    {
-        if (!_showExtraData) return string.Empty;
-
-        if (data is null || data.Length == 0)
-        {
-            // If no extra data just show GasBeneficiary address
-            return $", Address: {(gasBeneficiary?.ToString() ?? "0x")}";
-        }
-
-        // Ideally we'd prefer to show text; so convert invalid unicode
-        // and control chars to spaces and trim leading and trailing spaces.
-        string extraData = CleanUtf8ByteArray(data);
-
-        // If the cleaned text is less than half length of input size,
-        // output it as hex, else output the text.
-        return extraData.Length > data.Length / 2 ?
-            $", Extra Data: {extraData}" :
-            $", Hex: {data.ToHexString(withZeroX: true)}";
-    }
-
-    public static string CleanUtf8ByteArray(byte[] bytes)
-    {
-        // The maximum number of UTF-16 chars is bytes.Length, but each Rune can be up to 2 chars.
-        // So we allocate bytes.Length to bytes.Length * 2 chars.
-        const int maxOutputChars = 32 * 2;
-
-        if (bytes == null || bytes.Length == 0 || bytes.Length > 32)
-            return string.Empty;
-
-        // Allocate a char buffer on the stack.
-        Span<char> outputBuffer = stackalloc char[maxOutputChars];
-
-        int outputPos = 0;
-        int index = 0;
-        bool hasValidContent = false;
-        bool shouldAddSpace = false;
-
-        while (index < bytes.Length)
-        {
-            ReadOnlySpan<byte> span = bytes.AsSpan(index);
-
-            OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
-            if (status == OperationStatus.Done)
-            {
-                if (!IsControlCharacter(rune))
-                {
-                    if (shouldAddSpace)
-                    {
-                        outputBuffer[outputPos++] = ' ';
-                        shouldAddSpace = false;
-                    }
-
-                    int charsNeeded = rune.Utf16SequenceLength;
-                    if (outputPos + charsNeeded > outputBuffer.Length)
-                    {
-                        // Expand output buffer
-                        int newSize = outputBuffer.Length * 2;
-                        char[] newBuffer = new char[newSize];
-                        outputBuffer.Slice(0, outputPos).CopyTo(newBuffer);
-                        outputBuffer = newBuffer;
-                    }
-
-                    rune.EncodeToUtf16(outputBuffer.Slice(outputPos));
-                    outputPos += charsNeeded;
-                    hasValidContent = true;
-                }
-                else
-                {
-                    // Control character encountered; set flag to add space if needed
-                    if (hasValidContent)
-                        shouldAddSpace = true;
-                }
-                index += bytesConsumed;
-            }
-            else if (status == OperationStatus.InvalidData)
-            {
-                // Invalid data; set flag to add space if needed
-                if (hasValidContent)
-                    shouldAddSpace = true;
-                index++;
-            }
-            else if (status == OperationStatus.NeedMoreData)
-            {
-                // Incomplete sequence at the end; break out of the loop
-                break;
-            }
-            else
-            {
-                // Unexpected status; treat as invalid data
-                if (hasValidContent)
-                    shouldAddSpace = true;
-                index++;
-            }
-        }
-
-        // Create the final string from the output buffer.
-        return outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
-    }
-
-    private static bool IsControlCharacter(Rune rune)
-    {
-        // Control characters are U+0000 to U+001F and U+007F to U+009F
-        return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
     }
 
     protected virtual bool IsPayloadAttributesTimestampValid(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,

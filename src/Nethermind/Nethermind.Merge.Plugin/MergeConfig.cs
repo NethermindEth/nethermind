@@ -34,7 +34,5 @@ namespace Nethermind.Merge.Plugin
         public int NewPayloadTimeout { get; set; } = 7;
 
         public bool SimulateBlockProduction { get; set; } = false;
-
-        public bool ShowExtraData { get; set; } = true;
     }
 }
