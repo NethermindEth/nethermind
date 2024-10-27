@@ -116,8 +116,12 @@ static class EmitExtensions
 
     public static void CleanAndLoadWord<T>(this Emit<T> il, Local local, Local idx)
     {
-        il.CleanWord(local, idx);
-        il.Load(local, idx);
+        il.LoadLocalAddress(local);
+        il.LoadLocal(idx);
+        il.Call(typeof(Span<Word>).GetMethod("get_Item"));
+        il.Duplicate();
+
+        il.InitializeObject(typeof(Word));
     }
 
     public static void ZeroWord<T>(this Emit<T> il, Local local, Local idx)
