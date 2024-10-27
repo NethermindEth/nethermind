@@ -21,13 +21,13 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        public static IReleaseSpec ParseSpec(string network)
+        private static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
-            network = network.Replace("Merged", "Paris");
-            network = network.Replace("Merge", "Paris");
+            network = network.Replace("Merged", "GrayGlacier");
+            network = network.Replace("Merge", "GrayGlacier");
             network = network.Replace("London+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3860", "Shanghai");
@@ -56,7 +56,6 @@ namespace Ethereum.Test.Base
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
-                "ArrowGlacier" => ArrowGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
                 "Paris" => Paris.Instance,
@@ -179,7 +178,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        public static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
+        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
@@ -244,7 +243,7 @@ namespace Ethereum.Test.Base
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value);
-                    test.Transactions = [Convert(stateJson, testJson.Transaction)];
+                    test.Transaction = Convert(stateJson, testJson.Transaction);
 
                     blockchainTests.Add(test);
                     ++iterationNumber;

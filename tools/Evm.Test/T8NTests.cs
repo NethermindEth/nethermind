@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Evm.JsonTypes;
+using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 
@@ -52,201 +53,332 @@ public class T8NTests
     }
 
     [Test]
-    public void Test1()
+    public void TestExitOnBadConfig()
     {
         Execute(
             new InputParams("testdata/1/", "alloc.json", "env.json", "txs.json", "Frontier+1346"),
             new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 3);
+            expectedExitCode: 3
+        );
     }
 
     [Test]
-    public void Test2()
+    public void BaselineTest()
     {
         Execute(
             new InputParams("testdata/1/", "alloc.json", "env.json", "txs.json", "Byzantium"),
             new OutputParams(alloc: "stdout", result: "stdout"),
             expectedExitCode: 0,
-            expectedOutputFile: "testdata/1/exp.json");
+             "testdata/1/exp.json"
+        );
     }
 
-    [Test]
-    public void Test3()
-    {
-        Execute(
-            new InputParams("testdata/3/", "alloc.json", "env.json", "txs.json", "Berlin"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/3/exp.json");
-    }
+[Test]
+public void BlockhashTest()
+{
+    Execute(
+        new InputParams("testdata/3/", "alloc.json", "env.json", "txs.json", "Berlin"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/3/exp.json"
+    );
+}
 
-    [Test]
-    public void Test4()
-    {
-        Execute(
-            new InputParams("testdata/4/", "alloc.json", "env.json", "txs.json", "Berlin"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 4);
-    }
+[Test]
+public void MissingBlockhashTest()
+{
+    Execute(
+        new InputParams("testdata/4/", "alloc.json", "env.json", "txs.json", "Berlin"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 4
+    );
+}
 
-    [Test]
-    public void Test5()
-    {
-        Execute(
-            new InputParams("testdata/5/", "alloc.json", "env.json", "txs.json", "Byzantium", "0x80"),
-            new OutputParams(alloc: "stdout", result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/5/exp.json");
-    }
+[Test]
+public void UncleTest()
+{
+    Execute(
+        new InputParams("testdata/5/", "alloc.json", "env.json", "txs.json", "Byzantium", "0x80"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/5/exp.json"
+    );
+}
 
-    [Test]
-    public void Test6()
-    {
-        Execute(
-            new InputParams("testdata/13/", "alloc.json", "env.json", "txs.json", "London"),
-            new OutputParams(body: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/13/exp.json");
-    }
+[Test]
+public void SignJsonTransactionsTest()
+{
+    Execute(
+        new InputParams("testdata/13/", "alloc.json", "env.json", "txs.json", "London"),
+        new OutputParams(body: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/13/exp.json"
+    );
+}
 
-    [Test]
-    public void Test7()
-    {
-        Execute(
-            new InputParams("testdata/13/", "alloc.json", "env.json", "signed_txs.rlp", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/13/exp2.json");
-    }
+[Test]
+public void AlreadySignedTransactionsTest()
+{
+    Execute(
+        new InputParams("testdata/13/", "alloc.json", "env.json", "signed_txs.rlp", "London"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/13/exp2.json"
+    );
+}
 
-    [Test]
-    public void Test8()
-    {
-        Execute(
-            new InputParams("testdata/14/", "alloc.json", "env.json", "txs.json", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/14/exp.json");
-    }
+[Test]
+public void DifficultyCalculationNoUnclesTest()
+{
+    Execute(
+        new InputParams("testdata/14/", "alloc.json", "env.json", "txs.json", "London"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/14/exp.json"
+    );
+}
 
-    [Test]
-    public void Test9()
-    {
-        Execute(
-            new InputParams("testdata/14/", "alloc.json", "env.uncles.json", "txs.json", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/14/exp2.json");
-    }
+[Test]
+public void DifficultyCalculationWithUnclesTest()
+{
+    Execute(
+        new InputParams("testdata/14/", "alloc.json", "env.uncles.json", "txs.json", "London"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/14/exp2.json"
+    );
+}
 
-    [Test]
-    public void Test10()
-    {
-        Execute(
-            new InputParams("testdata/14/", "alloc.json", "env.uncles.json", "txs.json", "Berlin"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/14/exp_berlin.json");
-    }
+[Test]
+public void DifficultyCalculationWithOmmersBerlinTest()
+{
+    Execute(
+        new InputParams("testdata/14/", "alloc.json", "env.uncles.json", "txs.json", "Berlin"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/14/exp_berlin.json"
+    );
+}
 
-    [Test]
-    public void Test11()
-    {
-        Execute(
-            new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "London"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/19/exp_london.json");
-    }
+[Test]
+public void DifficultyCalculationOnLondonTest()
+{
+    Execute(
+        new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "London"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/19/exp_london.json"
+    );
+}
 
-    [Test]
-    public void Test12()
-    {
-        Execute(
-            new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "ArrowGlacier"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/19/exp_arrowglacier.json");
-    }
+[Test]
+public void DifficultyCalculationOnArrowGlacierTest()
+{
+    Execute(
+        new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "ArrowGlacier"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/19/exp_arrowglacier.json"
+    );
+}
 
-    [Test]
-    public void Test13()
-    {
-        Execute(
-            new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "GrayGlacier"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/19/exp_grayglacier.json");
-    }
+[Test]
+public void DifficultyCalculationOnGrayGlacierTest()
+{
+    Execute(
+        new InputParams("testdata/19/", "alloc.json", "env.json", "txs.json", "GrayGlacier"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/19/exp_grayglacier.json"
+    );
+}
 
-    [Test]
-    public void Test14()
-    {
-        Execute(
-            new InputParams("testdata/23/", "alloc.json", "env.json", "txs.json", "Berlin"),
-            new OutputParams(result: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/23/exp.json");
-    }
+[Test]
+public void SignUnprotectedPreEIP155TransactionTest()
+{
+    Execute(
+        new InputParams("testdata/23/", "alloc.json", "env.json", "txs.json", "Berlin"),
+        new OutputParams(result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/23/exp.json"
+    );
+}
 
-    [Test]
-    public void Test15()
-    {
-        Execute(
-            new InputParams("testdata/24/", "alloc.json", "env.json", "txs.json", "Merge"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/24/exp.json");
-    }
+[Test]
+public void TestPostMergeTransition()
+{
+    Execute(
+        new InputParams("testdata/24/", "alloc.json", "env.json", "txs.json", "Merge"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/24/exp.json"
+    );
+}
 
-    [Test]
-    public void Test16()
-    {
-        Execute(
-            new InputParams("testdata/24/", "alloc.json", "env-missingrandom.json", "txs.json", "Merge"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 3);
-    }
+[Test]
+public void TestPostMergeTransitionWithMissingRandom()
+{
+    Execute(
+        new InputParams("testdata/24/", "alloc.json", "env-missingrandom.json", "txs.json", "Merge"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 3
+    );
+}
 
-    [Test]
-    public void Test17()
-    {
-        Execute(
-            new InputParams("testdata/26/", "alloc.json", "env.json", "txs.json", "Shanghai"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/26/exp.json");
-    }
+[Test]
+public void TestStateRewardNegativeOne()
+{
+    Execute(
+        new InputParams("testdata/3/", "alloc.json", "env.json", "txs.json", "Berlin", "-1"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/3/exp.json"
+    );
+}
 
-    [Test]
-    public void Test18()
-    {
-        Execute(
-            new InputParams("testdata/28/", "alloc.json", "env.json", "txs.rlp", "Cancun"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/28/exp.json");
-    }
+[Test]
+public void ZeroTouchRewardPreEIP150NetworksNegativeOneTxsRlp()
+{
+    Execute(
+        new InputParams("testdata/00-501/", "alloc.json", "env.json", "txs.rlp", "EIP150", "-1"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-501/exp.json"
+    );
+}
 
-    [Test]
-    public void Test19()
-    {
-        Execute(
-            new InputParams("testdata/29/", "alloc.json", "env.json", "txs.json", "Cancun"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/29/exp.json");
-    }
+[Test]
+public void ZeroTouchRewardPreEIP150NetworksTxsRlp()
+{
+    Execute(
+        new InputParams("testdata/00-502/", "alloc.json", "env.json", "txs.rlp", "EIP150"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-502/exp.json"
+    );
+}
 
-    [Test]
-    public void Test20()
-    {
-        Execute(
-            new InputParams("testdata/30/", "alloc.json", "env.json", "txs_more.rlp", "Cancun"),
-            new OutputParams(result: "stdout", alloc: "stdout"),
-            expectedExitCode: 0,
-            expectedOutputFile: "testdata/30/exp.json");
-    }
+[Test]
+public void ZeroTouchRewardPreEIP150NetworksTxsJson()
+{
+    Execute(
+        new InputParams("testdata/00-502/", "alloc.json", "env.json", "txs.json", "EIP150"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-502/exp.json"
+    );
+}
+
+[Test]
+public void CalculateBaseFeeFromParentBaseFeeNegativeOne()
+{
+    Execute(
+        new InputParams("testdata/00-503/", "alloc.json", "env.json", "txs.json", "London", "-1"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-503/exp.json"
+    );
+}
+
+[Test]
+public void CalculateBaseFeeFromParentBaseFee()
+{
+    Execute(
+        new InputParams("testdata/00-504/", "alloc.json", "env.json", "txs.json", "London"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-504/exp.json"
+    );
+}
+
+[Test]
+public void BlockhashOpcodeNegativeOne()
+{
+    Execute(
+        new InputParams("testdata/00-505/", "alloc.json", "env.json", "txs.json", "London", "-1"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-505/exp.json"
+    );
+}
+
+[Test]
+public void BlockhashOpcode()
+{
+    Execute(
+        new InputParams("testdata/00-506/", "alloc.json", "env.json", "txs.json", "London"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-506/exp.json"
+    );
+}
+
+[Test]
+public void TestOpcode40Berlin()
+{
+    Execute(
+        new InputParams("testdata/00-507/", "alloc.json", "env.json", "txs.json", "Berlin", "2000000000000000000"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-507/exp.json"
+    );
+}
+
+[Test]
+public void SuicideCoinbaseStateBerlin()
+{
+    Execute(
+        new InputParams("testdata/00-508/", "alloc.json", "env.json", "txs.json", "Berlin", "2000000000000000000"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-508/exp.json"
+    );
+}
+
+[Test]
+public void BlockhashBounds()
+{
+    Execute(
+        new InputParams("testdata/00-509/", "alloc.json", "env.json", "txs.json", "Berlin", "2000000000000000000"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-509/exp.json"
+    );
+}
+
+[Test]
+public void SuicidesMixingCoinbase()
+{
+    Execute(
+        new InputParams("testdata/00-510/", "alloc.json", "env.json", "txs.json", "Berlin", "2000000000000000000"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-510/exp.json"
+    );
+}
+
+[Test]
+public void WithdrawalsTransition()
+{
+    Execute(
+        new InputParams("testdata/00-511/", "alloc.json", "env.json", "txs.json", "Shanghai"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/00-511/exp.json"
+    );
+}
+
+[Test]
+public void TestWithdrawalsTransition()
+{
+    Execute(
+        new InputParams("testdata/26/", "alloc.json", "env.json", "txs.json", "Shanghai"),
+        new OutputParams(alloc: "stdout", result: "stdout"),
+        expectedExitCode: 0,
+        expectedOutputFile: "testdata/26/exp.json"
+    );
+}
+
 
     private void Execute(InputParams inputParams, OutputParams outputParams, int expectedExitCode, string? expectedOutputFile = null)
     {

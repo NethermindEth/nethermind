@@ -1,21 +1,22 @@
-using System.Collections.Generic;
-using System.Linq;
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Text.Json.Serialization;
-using Microsoft.IdentityModel.Tokens;
+using Ethereum.Test.Base;
+using Ethereum.Test.Base.T8NUtils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle.Custom;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 
-namespace Ethereum.Test.Base.T8NUtils;
+namespace Evm.T8NTool;
 
-public class T8NResult
+public class T8nResult
 {
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }
@@ -35,16 +36,16 @@ public class T8NResult
 
     private static readonly ReceiptMessageDecoder _receiptMessageDecoder = new();
 
-    public static T8NResult ConstructT8NResult(WorldState stateProvider,
+    public static T8nResult ConstructT8NResult(WorldState stateProvider,
         Block block,
-        GeneralStateTest test,
+        T8nTestCase test,
         StorageTxTracer storageTracer,
         BlockReceiptsTracer blockReceiptsTracer,
         ISpecProvider specProvider,
         BlockHeader header,
         TransactionExecutionReport txReport)
     {
-        T8NResult t8NResult = new();
+        T8nResult t8NResult = new();
 
         IReceiptSpec receiptSpec = specProvider.GetSpec(header);
 

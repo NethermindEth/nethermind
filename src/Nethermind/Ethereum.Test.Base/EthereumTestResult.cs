@@ -41,8 +41,6 @@ namespace Ethereum.Test.Base
         public double TimeInMs { get; set; }
 
         public Hash256 StateRoot { get; set; } = Keccak.EmptyTreeHash;
-
-        public T8NResult T8NResult { get; set; }
     }
 }
 

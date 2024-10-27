@@ -74,7 +74,7 @@ public class InputProcessor
 
         envInfo.ApplyChecks(specProvider, spec);
 
-        GeneralStateTest generalStateTest = new();
+        T8nTestCase generalStateTest = new();
         generalStateTest.IsT8NTest = true;
         generalStateTest.Fork = spec;
         generalStateTest.Pre = allocJson;
