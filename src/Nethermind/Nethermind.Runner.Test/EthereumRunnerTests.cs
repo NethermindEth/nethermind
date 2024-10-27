@@ -27,6 +27,7 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Db.Blooms;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Taiko;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -47,9 +48,10 @@ public class EthereumRunnerTests
 
     private static ICollection InitOnce()
     {
-        // we need this to discover OptimismChainSpecEngineParameters and CliqueChainSpecEngineParameters
+        // we need this to discover ChainSpecEngineParameters
         new CliqueConfig();
         new OptimismConfig();
+        new TaikoPlugin();
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
