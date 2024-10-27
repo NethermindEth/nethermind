@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 public class StartBlockProducerAuRa
 {
     private readonly AuRaNethermindApi _api;
-    private readonly AuthorityRoundChainSpecEngineParameters _parameters;
+    private readonly AuRaChainSpecEngineParameters _parameters;
 
     private BlockProducerEnv? _blockProducerContext;
     private INethermindApi NethermindApi => _api;
@@ -49,7 +49,7 @@ public class StartBlockProducerAuRa
     {
         _api = api;
         _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+            .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         _auraConfig = NethermindApi.Config<IAuraConfig>();
     }
 
@@ -358,7 +358,7 @@ public class StartBlockProducerAuRa
     {
         if (api.ChainSpec is null) throw new StepDependencyException(nameof(api.ChainSpec));
         var blockGasLimitContractTransitions = api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>().BlockGasLimitContractTransitions;
+            .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions;
 
         IGasLimitCalculator gasLimitCalculator =
             new TargetAdjustedGasLimitCalculator(api.SpecProvider, api.Config<IBlocksConfig>());

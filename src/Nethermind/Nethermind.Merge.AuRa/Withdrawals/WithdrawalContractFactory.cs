@@ -15,7 +15,7 @@ public class WithdrawalContractFactory : IWithdrawalContractFactory
     private readonly IAbiEncoder _abiEncoder;
     private readonly Address _contractAddress;
 
-    public WithdrawalContractFactory(AuthorityRoundChainSpecEngineParameters parameters, IAbiEncoder abiEncoder)
+    public WithdrawalContractFactory(AuRaChainSpecEngineParameters parameters, IAbiEncoder abiEncoder)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 

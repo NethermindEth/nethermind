@@ -18,6 +18,9 @@ namespace Nethermind.Consensus.Ethash;
 
 public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 {
+    public string? EngineName => "Ethash";
+    public string? SealEngineType => "Ethash";
+
     public long HomesteadTransition { get; set; } = 0;
     public long? DaoHardforkTransition { get; set; }
     public Address DaoHardforkBeneficiary { get; set; }
@@ -33,8 +36,6 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
     [JsonConverter(typeof(DifficultyBombDelaysJsonConverter))]
     public IDictionary<long, long>? DifficultyBombDelays { get; set; }
-
-    public string? SealEngineType => "Ethash";
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {

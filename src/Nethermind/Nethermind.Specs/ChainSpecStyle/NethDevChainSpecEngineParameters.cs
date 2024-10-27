@@ -7,6 +7,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 
 public class NethDevChainSpecEngineParameters : IChainSpecEngineParameters
 {
+    public string? EngineName => "NethDev";
     public string? SealEngineType => "NethDev";
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)

@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<IRewardContract> _contracts;
 
-        public AuRaRewardCalculator(AuthorityRoundChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
+        public AuRaRewardCalculator(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
             ArgumentNullException.ThrowIfNull(auRaParameters);
             ArgumentNullException.ThrowIfNull(abiEncoder);
@@ -106,10 +106,10 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         public class AuRaRewardCalculatorSource : IRewardCalculatorSource
         {
-            private readonly AuthorityRoundChainSpecEngineParameters _auRaParameters;
+            private readonly AuRaChainSpecEngineParameters _auRaParameters;
             private readonly IAbiEncoder _abiEncoder;
 
-            public AuRaRewardCalculatorSource(AuthorityRoundChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder)
+            public AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder)
             {
                 _auRaParameters = auRaParameters;
                 _abiEncoder = abiEncoder;

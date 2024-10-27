@@ -15,9 +15,10 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
-public class AuthorityRoundChainSpecEngineParameters : IChainSpecEngineParameters
+public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? SealEngineType { get; } = "AuRa";
+    public string? EngineName => "AuthorityRound";
+    public string? SealEngineType => "AuRa";
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
     public SortedDictionary<long, long> StepDuration { get; set; }

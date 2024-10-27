@@ -69,7 +69,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
     {
         var withdrawalContractFactory = new WithdrawalContractFactory(
             _auraApi.ChainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>(), _auraApi.AbiEncoder);
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _auraApi.AbiEncoder);
 
         return new AuRaMergeBlockProcessor(
             specProvider,

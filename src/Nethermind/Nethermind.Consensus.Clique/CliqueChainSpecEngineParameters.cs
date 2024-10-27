@@ -10,6 +10,7 @@ namespace Nethermind.Consensus.Clique;
 
 public class CliqueChainSpecEngineParameters : IChainSpecEngineParameters
 {
+    public string? EngineName => "Clique";
     public string? SealEngineType => "Clique";
 
     public ulong Epoch { get; set; }

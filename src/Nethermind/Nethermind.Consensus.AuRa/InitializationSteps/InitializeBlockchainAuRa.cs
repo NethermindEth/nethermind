@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps;
 public class InitializeBlockchainAuRa : InitializeBlockchain
 {
     private readonly AuRaNethermindApi _api;
-    private readonly AuthorityRoundChainSpecEngineParameters _parameters;
+    private readonly AuRaChainSpecEngineParameters _parameters;
     private INethermindApi NethermindApi => _api;
 
     private AuRaSealValidator? _sealValidator;
@@ -48,13 +48,13 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         _api = api;
         _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+            .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         _auraConfig = NethermindApi.Config<IAuraConfig>();
     }
 
     protected override async Task InitBlockchain()
     {
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         _auRaStepCalculator = new AuRaStepCalculator(chainSpecAuRa.StepDuration, _api.Timestamper, _api.LogManager);
         _api.FinalizationManager = new AuRaBlockFinalizationManager(
             _api.BlockTree!,
@@ -100,7 +100,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     protected virtual AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)
     {
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
@@ -138,7 +138,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.NonceManager is null) throw new StepDependencyException(nameof(_api.NonceManager));
 
-        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+        var chainSpecAuRa = _api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
 
         IWorldState worldState = _api.WorldState!;
         IAuRaValidator validator = new AuRaValidatorFactory(

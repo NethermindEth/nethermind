@@ -25,7 +25,7 @@ namespace Nethermind.AuRa.Test.Reward
 {
     public class AuRaRewardCalculatorTests
     {
-        private AuthorityRoundChainSpecEngineParameters _auraParameters;
+        private AuRaChainSpecEngineParameters _auraParameters;
         private IAbiEncoder _abiEncoder;
         private ITransactionProcessor _transactionProcessor;
         private Block _block;
@@ -40,7 +40,7 @@ namespace Nethermind.AuRa.Test.Reward
             _address10 = TestItem.AddressA;
             _address50 = TestItem.AddressB;
             _address150 = TestItem.AddressC;
-            _auraParameters = new AuthorityRoundChainSpecEngineParameters()
+            _auraParameters = new AuRaChainSpecEngineParameters()
             {
                 BlockRewardContractAddress = _address10,
                 BlockRewardContractTransition = 10,

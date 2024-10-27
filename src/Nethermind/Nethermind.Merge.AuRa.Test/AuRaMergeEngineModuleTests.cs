@@ -125,7 +125,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     new ChainSpec
                     {
                         EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
-                            new AuthorityRoundChainSpecEngineParameters
+                            new AuRaChainSpecEngineParameters
                             {
                                 WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
                             }),
@@ -141,7 +141,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             };
 
             WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>(), _api.AbiEncoder);
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _api.AbiEncoder);
             WithdrawalProcessor = new AuraWithdrawalProcessor(
                 withdrawalContractFactory.Create(TxProcessor),
                 LogManager

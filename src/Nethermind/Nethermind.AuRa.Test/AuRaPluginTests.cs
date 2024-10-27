@@ -21,7 +21,7 @@ namespace Nethermind.AuRa.Test
         {
             AuRaPlugin auRaPlugin = new();
             ChainSpec chainSpec = new();
-            chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuthorityRoundChainSpecEngineParameters());
+            chainSpec.EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters());
             Action init = () => auRaPlugin.Init(new AuRaNethermindApi(new ConfigProvider(), new EthereumJsonSerializer(), new TestLogManager(), chainSpec));
             init.Should().NotThrow();
         }

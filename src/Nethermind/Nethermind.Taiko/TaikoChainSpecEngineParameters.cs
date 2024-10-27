@@ -9,6 +9,7 @@ namespace Nethermind.Taiko;
 
 public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 {
+    public string? EngineName => "Taiko";
     public string? SealEngineType => "Taiko";
     public void ApplyToChainSpec(ChainSpec chainSpec)
     {

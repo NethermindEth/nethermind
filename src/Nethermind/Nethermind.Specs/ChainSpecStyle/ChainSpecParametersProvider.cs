@@ -16,9 +16,6 @@ using Nethermind.Core;
 
 public class ChainSpecParametersProvider : IChainSpecParametersProvider
 {
-    // TODO: test that all IChainSpecEngineParameters have this suffix
-    private const string EngineParamsSuffix = "ChainSpecEngineParameters";
-
     private readonly Dictionary<string, JsonElement> _chainSpecParameters =
         new(StringComparer.InvariantCultureIgnoreCase);
 
@@ -67,10 +64,10 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
         IEnumerable<Type> types = TypeDiscovery.FindNethermindBasedTypes(type).Where(x => x.IsClass);
         foreach (Type @class in types)
         {
-            string engineName = @class.Name.Remove(@class.Name.Length - EngineParamsSuffix.Length);
-            if (!_chainSpecParameters.ContainsKey(engineName)) continue;
+            IChainSpecEngineParameters instance = (IChainSpecEngineParameters)Activator.CreateInstance(@class);
+            if (!_chainSpecParameters.ContainsKey(instance.EngineName)) continue;
 
-            var deserialized = _jsonSerializer.Deserialize(_chainSpecParameters[engineName].ToString(), @class);
+            var deserialized = _jsonSerializer.Deserialize(_chainSpecParameters[instance.EngineName].ToString(), @class);
 
             _instances[@class] = (IChainSpecEngineParameters)deserialized;
         }

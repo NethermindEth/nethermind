@@ -22,13 +22,13 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
     public class InitializeBlockchainAuRaMerge : InitializeBlockchainAuRa
     {
         private readonly AuRaNethermindApi _api;
-        private readonly AuthorityRoundChainSpecEngineParameters _parameters;
+        private readonly AuRaChainSpecEngineParameters _parameters;
 
         public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
         {
             _api = api;
             _parameters = _api.ChainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         }
 
         protected override AuRaBlockProcessor NewAuraBlockProcessor(ITxFilter txFilter, BlockCachePreWarmer? preWarmer)

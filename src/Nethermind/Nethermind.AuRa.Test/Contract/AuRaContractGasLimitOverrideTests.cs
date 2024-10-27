@@ -83,7 +83,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override BlockProcessor CreateBlockProcessor()
         {
             KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>().BlockGasLimitContractTransitions
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions
                 .First();
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value,
                 blockGasLimitContractTransition.Key,
@@ -119,7 +119,7 @@ public class AuRaContractGasLimitOverrideTests
         protected override BlockProcessor CreateBlockProcessor()
         {
             var parameters = ChainSpec.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuthorityRoundChainSpecEngineParameters>();
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>();
             KeyValuePair<long, Address> blockGasLimitContractTransition = parameters.BlockGasLimitContractTransitions.First();
             parameters.BlockGasLimitContractTransitions = new Dictionary<long, Address>() { { 10, blockGasLimitContractTransition.Value } };
             return base.CreateBlockProcessor();
