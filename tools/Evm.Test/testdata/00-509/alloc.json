@@ -1,0 +1,37 @@
+{
+  "0x1000000000000000000000000000000000000000" : {
+    "balance" : "0x0",
+    "code" : "0x60004060005563ffffffff4060015567ffffffffffffffff406002556fffffffffffffffffffffffffffffffff406003557fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff40600455",
+    "nonce" : "0x0",
+    "storage" : {
+    }
+  },
+  "0x1000000000000000000000000000000000000001" : {
+    "balance" : "0x0",
+    "code" : "0x60004060005563ffffffff4060015567ffffffffffffffff406002556fffffffffffffffffffffffffffffffff406003557fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff40600455",
+    "nonce" : "0x0",
+    "storage" : {
+    }
+  },
+  "0x37c5d39d78433a054b0a470ade8ac1998abfcc06" : {
+    "balance" : "0x7fffffffffffffff",
+    "code" : "0x",
+    "nonce" : "0x0",
+    "storage" : {
+    }
+  },
+  "0x55d786df68385b59b919e0bfee2a8ada2d23ecf8" : {
+    "balance" : "0x7fffffffffffffff",
+    "code" : "0x",
+    "nonce" : "0x0",
+    "storage" : {
+    }
+  },
+  "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b" : {
+    "balance" : "0x7fffffffffffffff",
+    "code" : "0x",
+    "nonce" : "0x0",
+    "storage" : {
+    }
+  }
+}

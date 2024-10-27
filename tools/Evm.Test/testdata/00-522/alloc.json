@@ -1,0 +1,14 @@
+{
+  "0x00000000000000000000000000000000000000f1": {
+    "code": "0x60016002556002543031303b303f",
+    "storage": {},
+    "balance": "0x0",
+    "nonce": "0x0"
+  },
+  "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+    "code": "0x",
+    "storage": {},
+    "balance": "0xffffffffff",
+    "nonce": "0x0"
+  }
+}

@@ -1,0 +1,12 @@
+{"pc":0,"op":96,"gas":"0xb4803","gasCost":"0x3","memSize":0,"stack":[],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":2,"op":96,"gas":"0xb4800","gasCost":"0x3","memSize":0,"stack":["0x1"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":4,"op":85,"gas":"0xb47fd","gasCost":"0x4e20","memSize":0,"stack":["0x1","0x2"],"depth":1,"refund":0,"opName":"SSTORE"}
+{"pc":5,"op":96,"gas":"0xaf9dd","gasCost":"0x3","memSize":0,"stack":[],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":7,"op":84,"gas":"0xaf9da","gasCost":"0x320","memSize":0,"stack":["0x2"],"depth":1,"refund":0,"opName":"SLOAD"}
+{"pc":8,"op":48,"gas":"0xaf6ba","gasCost":"0x2","memSize":0,"stack":["0x1"],"depth":1,"refund":0,"opName":"ADDRESS"}
+{"pc":9,"op":49,"gas":"0xaf6b8","gasCost":"0x2bc","memSize":0,"stack":["0x1","0xf1"],"depth":1,"refund":0,"opName":"BALANCE"}
+{"pc":10,"op":48,"gas":"0xaf3fc","gasCost":"0x2","memSize":0,"stack":["0x1","0x1"],"depth":1,"refund":0,"opName":"ADDRESS"}
+{"pc":11,"op":59,"gas":"0xaf3fa","gasCost":"0x2bc","memSize":0,"stack":["0x1","0x1","0xf1"],"depth":1,"refund":0,"opName":"EXTCODESIZE"}
+{"pc":12,"op":48,"gas":"0xaf13e","gasCost":"0x2","memSize":0,"stack":["0x1","0x1","0xe"],"depth":1,"refund":0,"opName":"ADDRESS"}
+{"pc":13,"op":63,"gas":"0xaf13c","gasCost":"0x2bc","memSize":0,"stack":["0x1","0x1","0xe","0xf1"],"depth":1,"refund":0,"opName":"EXTCODEHASH"}
+{"output":"","gasUsed":"0x5983"}

@@ -1,0 +1,12 @@
+{"pc":0,"op":96,"gas":"0x79bf88","gasCost":"0x3","memSize":0,"stack":[],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":2,"op":96,"gas":"0x79bf85","gasCost":"0x3","memSize":0,"stack":["0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":4,"op":96,"gas":"0x79bf82","gasCost":"0x3","memSize":0,"stack":["0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":6,"op":96,"gas":"0x79bf7f","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":8,"op":96,"gas":"0x79bf7c","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":10,"op":96,"gas":"0x79bf79","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0","0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":12,"op":90,"gas":"0x79bf76","gasCost":"0x2","memSize":0,"stack":["0x0","0x0","0x0","0x0","0x0","0xf3"],"depth":1,"refund":0,"opName":"GAS"}
+{"pc":13,"op":241,"gas":"0x79bf74","gasCost":"0x77d89f","memSize":0,"stack":["0x0","0x0","0x0","0x0","0x0","0xf3","0x79bf74"],"depth":1,"refund":0,"opName":"CALL"}
+{"pc":0,"op":11,"gas":"0x77ce77","gasCost":"0x5","memSize":0,"stack":[],"depth":2,"refund":0,"opName":"SIGNEXTEND","error":"Opcode Dispatch Error: StackInsufficient, depth=2"}
+{"pc":14,"op":80,"gas":"0x1e6d5","gasCost":"0x2","memSize":0,"stack":["0x0"],"depth":1,"refund":0,"opName":"POP"}
+{"pc":15,"op":152,"gas":"0x1e6d3","gasCost":"0x3","memSize":0,"stack":[],"depth":1,"refund":0,"opName":"SWAP9","error":"Opcode Dispatch Error: StackInsufficient, depth=1"}
+{"output":"","gasUsed":"0x79bf88","error":"Opcode Dispatch Error: StackInsufficient, depth=1"}

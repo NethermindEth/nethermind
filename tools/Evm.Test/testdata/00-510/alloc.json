@@ -1,0 +1,16 @@
+{
+  "a94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+    "nonce": "0x1",
+    "balance": "0x81d63860",
+    "codehash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+    "storageRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+    "storage": {}
+  },
+  "b94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+    "nonce": "0x0",
+    "balance": "0x1bc16d6750132188",
+    "codehash": "0xcb8d91cbd7d300b278f412c51f7d24a853dda10761aef4fd23b5a90f6fa23bf0",
+    "storageRoot": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+    "storage": {}
+  }
+}

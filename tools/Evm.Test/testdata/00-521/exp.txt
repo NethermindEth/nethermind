@@ -1,0 +1,17 @@
+{"pc":0,"op":96,"gas":"0xa54","gasCost":"0x3","memSize":0,"stack":[],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":2,"op":96,"gas":"0xa51","gasCost":"0x3","memSize":0,"stack":["0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":4,"op":96,"gas":"0xa4e","gasCost":"0x3","memSize":0,"stack":["0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":6,"op":96,"gas":"0xa4b","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":8,"op":96,"gas":"0xa48","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0","0x0"],"depth":1,"refund":0,"opName":"PUSH1"}
+{"pc":10,"op":90,"gas":"0xa45","gasCost":"0x2","memSize":0,"stack":["0x0","0x0","0x0","0x0","0xfa"],"depth":1,"refund":0,"opName":"GAS"}
+{"pc":11,"op":244,"gas":"0xa43","gasCost":"0xa43","memSize":0,"stack":["0x0","0x0","0x0","0x0","0xfa","0xa43"],"depth":1,"refund":0,"opName":"DELEGATECALL"}
+{"pc":0,"op":96,"gas":"0x1b","gasCost":"0x3","memSize":0,"stack":[],"depth":2,"refund":0,"opName":"PUSH1"}
+{"pc":2,"op":96,"gas":"0x18","gasCost":"0x3","memSize":0,"stack":["0x0"],"depth":2,"refund":0,"opName":"PUSH1"}
+{"pc":4,"op":96,"gas":"0x15","gasCost":"0x3","memSize":0,"stack":["0x0","0x0"],"depth":2,"refund":0,"opName":"PUSH1"}
+{"pc":6,"op":96,"gas":"0x12","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0"],"depth":2,"refund":0,"opName":"PUSH1"}
+{"pc":8,"op":96,"gas":"0xf","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0","0x0"],"depth":2,"refund":0,"opName":"PUSH1"}
+{"pc":10,"op":96,"gas":"0xc","gasCost":"0x3","memSize":0,"stack":["0x0","0x0","0x0","0x0","0x0"],"depth":2,"refund":0,"opName":"PUSH1"}
+{"pc":12,"op":90,"gas":"0x9","gasCost":"0x2","memSize":0,"stack":["0x0","0x0","0x0","0x0","0x0","0xfa"],"depth":2,"refund":0,"opName":"GAS"}
+{"pc":13,"op":241,"gas":"0x7","gasCost":"0x7","memSize":0,"stack":["0x0","0x0","0x0","0x0","0x0","0xfa","0x7"],"depth":2,"refund":0,"opName":"CALL","error":"Opcode Dispatch Error: OutOfGas, depth=2"}
+{"pc":12,"op":80,"gas":"0x0","gasCost":"0x2","memSize":0,"stack":["0x0"],"depth":1,"refund":0,"opName":"POP","error":"Opcode Dispatch Error: OutOfGas, depth=1"}
+{"output":"","gasUsed":"0xa54","error":"Opcode Dispatch Error: OutOfGas, depth=1"}
