@@ -560,7 +560,28 @@ internal class ILCompiler
                     EmitComparaisonInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.CompareTo), new[] { typeof(Int256.Int256) }), true, evmExceptionLabels, uint256A, uint256B);
                     break;
                 case Instruction.EQ:
-                    EmitBitwiseUInt256Method(method, uint256R, (stack, head), typeof(Vector256).GetMethod(nameof(Vector256.Equals), BindingFlags.Public | BindingFlags.Static)!, evmExceptionLabels);
+                    {
+                        var refWordToRefByteMethod = GetAsMethodInfo<Word, byte>();
+                        var readVector256Method = GetReadUnalignedMethodInfo<Vector256<byte>>();
+                        var writeVector256Method = GetWriteUnalignedMethodInfo<Vector256<byte>>();
+                        var operationUnegenerified = typeof(Vector256).GetMethod(nameof(Vector256.EqualsAll), BindingFlags.Public | BindingFlags.Static)!.MakeGenericMethod(typeof(byte));
+
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.Call(refWordToRefByteMethod);
+                        method.Call(readVector256Method);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.Call(refWordToRefByteMethod);
+                        method.Call(readVector256Method);
+
+                        method.Call(operationUnegenerified);
+                        method.StoreLocal(lbool);
+
+                        method.CleanWord(stack, head);
+                        method.Load(stack, head);
+                        method.LoadLocal(lbool);
+                        method.Call(Word.SetUInt0);
+                        method.StackPush(head);
+                    }
                     break;
                 case Instruction.ISZERO:
                     {// we load the stack

@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Trie;
 using Newtonsoft.Json.Linq;
@@ -13,6 +14,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -108,9 +110,9 @@ internal struct Word
         set
         {
             ReadOnlySpan<byte> buffer = value.Bytes;
-            for (int i = 0; i < 20; i++)
+            fixed (byte* src = buffer, dest = _buffer)
             {
-                _buffer[i] = buffer[i];
+                Buffer.MemoryCopy(src, dest, 32, 32);
             }
         }
     }
