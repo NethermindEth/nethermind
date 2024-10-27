@@ -467,85 +467,58 @@ namespace Nethermind.Core.Crypto
                 return;
             }
 
-            // If our provided state is empty, initialize a new one
             ulong[] state = _state;
             if (state.Length == 0)
             {
+                // If our provided state is empty, initialize a new one
                 _state = state = Pool.RentState();
             }
 
-            // If our remainder is non zero.
+            int offset = 0;
+            Span<byte> stateBytes = MemoryMarshal.AsBytes(state.AsSpan());
+
+            // Handle any existing remainder
             if (_remainderLength != 0)
             {
-                // Copy data to our remainder
-                ReadOnlySpan<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
-                remainderAdditive.CopyTo(_remainderBuffer.AsSpan(_remainderLength));
+                int bytesToFill = _roundSize - _remainderLength;
+                int bytesToCopy = Math.Min(input.Length, bytesToFill);
 
-                // Increment the length
-                _remainderLength += remainderAdditive.Length;
+                input.Slice(0, bytesToCopy).CopyTo(_remainderBuffer.AsSpan(_remainderLength));
+                _remainderLength += bytesToCopy;
+                offset += bytesToCopy;
 
-                // Increment the input
-                input = input[remainderAdditive.Length..];
-
-                // If our remainder length equals a full round
                 if (_remainderLength == _roundSize)
                 {
-                    // Cast our input to ulongs.
-                    Span<ulong> remainderBufferU64 = MemoryMarshal.Cast<byte, ulong>(_remainderBuffer.AsSpan(0, _roundSize));
-
-                    // Eliminate bounds check for state for the loop
-                    _ = state[remainderBufferU64.Length];
-                    // Loop for each ulong in this remainder, and xor the state with the input.
-                    for (int i = 0; i < remainderBufferU64.Length; i++)
-                    {
-                        state[i] ^= remainderBufferU64[i];
-                    }
-
-                    // Perform our KeccakF on our state.
+                    // XOR the remainder buffer into the state using XorVectors
+                    XorVectors(stateBytes, _remainderBuffer);
                     KeccakF(state);
 
-                    // Clear remainder fields
+                    // Reset remainder
                     _remainderLength = 0;
                     Pool.ReturnRemainder(ref _remainderBuffer);
                 }
             }
 
-            // Loop for every round in our size.
-            while (input.Length >= _roundSize)
+            // Process full rounds
+            while (input.Length - offset >= _roundSize)
             {
-                // Cast our input to ulongs.
-                ReadOnlySpan<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
-
-                // Eliminate bounds check for state for the loop
-                _ = state[input64.Length];
-                // Loop for each ulong in this round, and xor the state with the input.
-                for (int i = 0; i < input64.Length; i++)
-                {
-                    state[i] ^= input64[i];
-                }
-
-                // Perform our KeccakF on our state.
+                XorVectors(stateBytes, input.Slice(offset, _roundSize));
                 KeccakF(state);
 
-                // Remove the input data processed this round.
-                input = input[_roundSize..];
+                offset += _roundSize;
             }
 
-            // last block and padding
-            if (input.Length >= TEMP_BUFF_SIZE || input.Length > _roundSize || _roundSize + 1 >= TEMP_BUFF_SIZE || _roundSize == 0 || _roundSize - 1 >= TEMP_BUFF_SIZE)
-            {
-                ThrowBadKeccak();
-            }
-
-            // If we have any remainder here, it means any remainder was processed before, we can copy our data over and set our length
-            if (input.Length > 0)
+            // Handle remaining input (less than a full block)
+            int remainingInputLength = input.Length - offset;
+            if (remainingInputLength > 0)
             {
                 if (_remainderBuffer.Length == 0)
                 {
                     _remainderBuffer = Pool.RentRemainder();
                 }
-                input.CopyTo(_remainderBuffer);
-                _remainderLength = input.Length;
+
+                input.Slice(offset).CopyTo(_remainderBuffer);
+                _remainderLength = remainingInputLength;
             }
         }
 
@@ -567,38 +540,46 @@ namespace Nethermind.Core.Crypto
                 ThrowHashingComplete();
             }
 
+            ulong[] state = _state;
+            Span<byte> stateBytes = MemoryMarshal.AsBytes(state.AsSpan());
+
             if (_remainderLength > 0)
             {
-                Span<byte> remainder = _remainderBuffer.AsSpan(0, _roundSize);
-                // Set a 1 byte after the remainder.
-                remainder[_remainderLength++] = 1;
+                // XOR the remainder buffer into the state
+                XorVectors(stateBytes, _remainderBuffer.AsSpan(0, _remainderLength));
 
-                // Set the highest bit on the last byte.
-                remainder[_roundSize - 1] |= 0x80;
-
-                // Cast the remainder buffer to ulongs.
-                Span<ulong> temp64 = MemoryMarshal.Cast<byte, ulong>(remainder);
-                // Loop for each ulong in this round, and xor the state with the input.
-                for (int i = 0; i < temp64.Length; i++)
-                {
-                    _state[i] ^= temp64[i];
-                }
+                // Apply padding
+                stateBytes[_remainderLength] ^= 0x01; // Append bit '1' after the input
+                stateBytes[_roundSize - 1] ^= 0x80;   // Set the last bit of the block to '1'
 
                 Pool.ReturnRemainder(ref _remainderBuffer);
             }
             else
             {
-                Span<byte> temp = MemoryMarshal.AsBytes<ulong>(_state);
-                // Xor 1 byte as first byte.
-                temp[0] ^= 1;
-                // Xor the highest bit on the last byte.
-                temp[_roundSize - 1] ^= 0x80;
+                // No remainder; apply padding directly to state
+                stateBytes[0] ^= 0x01;              // Append bit '1' at the beginning
+                stateBytes[_roundSize - 1] ^= 0x80; // Set the last bit of the block to '1'
             }
 
-            KeccakF(_state);
+            KeccakF(state);
 
-            // Obtain the state data in the desired (hash) size we want.
-            MemoryMarshal.AsBytes<ulong>(_state)[..HashSize].CopyTo(output);
+            // Copy the hash output
+            if (output.Length == Vector256<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash256
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else if (output.Length == Vector512<byte>.Count)
+            {
+                // Fast Vector sized copy for Hash512
+                Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(output)) =
+                    Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(stateBytes));
+            }
+            else
+            {
+                stateBytes[..output.Length].CopyTo(output);
+            }
 
             Pool.ReturnState(ref _state);
         }
