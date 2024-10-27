@@ -113,6 +113,19 @@ static class EmitExtensions
         il.InitializeObject(typeof(Word));
     }
 
+
+    public static void CleanAndLoadWord<T>(this Emit<T> il, Local local, Local idx)
+    {
+        il.CleanWord(local, idx);
+        il.Load(local, idx);
+    }
+
+    public static void ZeroWord<T>(this Emit<T> il, Local local, Local idx)
+    {
+        il.Load(local, idx);
+        il.Call(typeof(Word).GetMethod(nameof(Word.SetToZero)));
+    }
+
     /// <summary>
     /// Advances the stack one word up.
     /// </summary>
