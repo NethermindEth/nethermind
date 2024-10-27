@@ -3,12 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Jint.Native;
-using McMaster.Extensions.CommandLineUtils;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Config;
@@ -26,16 +26,23 @@ namespace Nethermind.Cli
 
         public static void Main(string[] args)
         {
-            CommandLineApplication app = new() { Name = "Nethermind.Cli" };
-            _ = app.HelpOption("-?|-h|--help");
-
-            var colorSchemeOption = app.Option("-cs|--colorScheme <colorScheme>", "Color Scheme. Possible values: Basic|Dracula", CommandOptionType.SingleValue);
-            var nodeAddressOption = app.Option("-a|--address <address>", "Node Address", CommandOptionType.SingleValue);
-
-            app.OnExecute(() =>
+            CliOption<string> colorSchemeOption = new("--colorScheme", "-cs")
             {
+                Description = "Color Scheme. Possible values: Basic|Dracula",
+                HelpName = "colorScheme"
+            };
+            CliOption<string> nodeAddressOption = new("--address", "-a")
+            {
+                Description = "Node Address",
+                HelpName = "address"
+            };
+            CliRootCommand rootCommand = [colorSchemeOption, nodeAddressOption];
+            
+            rootCommand.SetAction(parseResult =>
+            {
+                string? colorSchemeValue = parseResult.GetValue(colorSchemeOption);
                 ColorScheme? cs;
-                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value()!)) is not null
+                ICliConsole cliConsole = colorSchemeValue is not null && (cs = MapColorScheme(colorSchemeValue)) is not null
                     ? new ColorfulCliConsole(cs)
                     : new CliConsole();
 
@@ -54,9 +61,7 @@ namespace Nethermind.Cli
                 moduleLoader.DiscoverAndLoadModules();
                 ReadLine.AutoCompletionHandler = new AutoCompletionHandler(moduleLoader);
 
-                string nodeAddress = nodeAddressOption.HasValue()
-                    ? nodeAddressOption.Value()!
-                    : "http://localhost:8545";
+                string nodeAddress = parseResult.GetValue(nodeAddressOption) ?? "http://localhost:8545";
                 nodeManager.SwitchUri(new Uri(nodeAddress));
                 historyManager.Init();
                 TestConnection(nodeManager, engine, cliConsole);
@@ -67,14 +72,9 @@ namespace Nethermind.Cli
                 return ExitCodes.Ok;
             });
 
-            try
-            {
-                app.Execute(args);
-            }
-            catch (CommandParsingException)
-            {
-                app.ShowHelp();
-            }
+            CliConfiguration cli = new(rootCommand);
+
+            cli.Invoke(args);
         }
 
         private static void TestConnection(INodeManager nodeManager, ICliEngine cliEngine, ICliConsole cliConsole)
