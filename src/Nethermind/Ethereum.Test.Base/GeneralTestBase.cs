@@ -179,7 +179,7 @@ namespace Ethereum.Test.Base
             BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
             if (!test.IsStateTest && test.ParentBeaconBlockRoot != null)
             {
-                beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+                beaconBlockRootHandler.StoreBeaconRoot(block, spec, storageTxTracer);
             }
 
             int txIndex = 0;

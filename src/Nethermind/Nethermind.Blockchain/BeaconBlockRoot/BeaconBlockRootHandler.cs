@@ -42,7 +42,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
         return (eip4788ContractAddress, builder.Build());
     }
 
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer txTracer)
     {
         (Address? toAddress, AccessList? accessList) = BeaconRootsAccessList(block, spec, includeStorageCells: false);
 
@@ -62,7 +62,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
             transaction.Hash = transaction.CalculateHash();
 
-            processor.Execute(transaction, header, NullTxTracer.Instance);
+            processor.Execute(transaction, header, txTracer);
         }
     }
 }
