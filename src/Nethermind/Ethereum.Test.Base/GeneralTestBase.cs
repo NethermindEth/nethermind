@@ -126,12 +126,6 @@ namespace Ethereum.Test.Base
                 codeInfoRepository,
                 _logManager);
 
-            // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
-            if (test.CurrentCoinbase != null && !stateProvider.AccountExists(test.CurrentCoinbase))
-            {
-                stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-            }
-
             InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId);
@@ -162,7 +156,6 @@ namespace Ethereum.Test.Base
             {
                 throw new T8NException("withdrawals are not supported in state tests", ExitCodes.ErrorEVM);
             }
-
 
             CalculateReward(test.StateReward, test.IsStateTest, block, stateProvider, spec);
             BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
@@ -235,6 +228,16 @@ namespace Ethereum.Test.Base
 
             stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
             stateProvider.CommitTree(test.CurrentNumber);
+
+            // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
+            if (test.CurrentCoinbase != null && !stateProvider.AccountExists(test.CurrentCoinbase))
+            {
+                stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+            }
+
+            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+
+            stateProvider.RecalculateStateRoot();
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
