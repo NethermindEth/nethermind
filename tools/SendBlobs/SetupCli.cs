@@ -23,7 +23,7 @@ internal static class SetupCli
         };
         CliOption<string> blobTxOption = new("--bloboptions")
         {
-            Description = "Options in format '10x1-2', '2x5-5' etc. for the blobs.",
+            Description = "Options in format '10x1-2', '2x5-5' etc. for the blobs",
             HelpName = "options"
         };
         CliOption<string> privateKeyOption = new("--privatekey")
