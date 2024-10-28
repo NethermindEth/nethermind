@@ -34,8 +34,6 @@ namespace Evm.JsonTypes
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
         public Ommer[] Ommers { get; set; } = [];
 
-        public bool IsStateTest { get; set; }
-
         public Hash256? GetCurrentRandomHash256()
         {
             if (CurrentRandom == null) return null;

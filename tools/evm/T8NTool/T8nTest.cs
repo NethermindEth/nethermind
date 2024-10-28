@@ -118,7 +118,7 @@ public abstract class T8nTest
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        CalculateReward(test.StateReward, test.IsStateTest, block, stateProvider, spec);
+        CalculateReward(test.StateReward, block, stateProvider, spec);
         BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
         StorageTxTracer storageTxTracer = new();
         CompositeBlockTracer compositeBlockTracer = new();
@@ -135,7 +135,7 @@ public abstract class T8nTest
         blockReceiptsTracer.StartNewBlockTrace(block);
 
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
-        if (!test.IsStateTest && test.ParentBeaconBlockRoot != null)
+        if (test.ParentBeaconBlockRoot != null)
         {
             beaconBlockRootHandler.StoreBeaconRoot(block, spec, storageTxTracer);
         }
@@ -245,10 +245,10 @@ public abstract class T8nTest
         stateProvider.Reset();
     }
 
-    private static void CalculateReward(string? stateReward, bool isStateTest, Block block,
+    private static void CalculateReward(string? stateReward, Block block,
         WorldState stateProvider, IReleaseSpec spec)
     {
-        if (stateReward == null || isStateTest) return;
+        if (stateReward == null) return;
 
         var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

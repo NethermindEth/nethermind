@@ -51,7 +51,6 @@ public class T8nTestCase
         public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
         public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
         public bool IsTraceEnabled { get; set; } = false;
-        public bool IsStateTest { get; set; }
 
         public BlockHeader GetBlockHeader()
         {
