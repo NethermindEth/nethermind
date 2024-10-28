@@ -12,16 +12,16 @@ namespace Nethermind.Evm
 {
     public struct StackAccessTracker
     {
-        public IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
-        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
-        public ICollection<LogEntry> Logs => _logs;
-        public IReadOnlySet<Address> DestroyList => _destroyList;
-        public IReadOnlySet<AddressAsKey> CreateList => _createList;
-        private JournalSet<Address> _accessedAddresses { get; }
-        private JournalSet<StorageCell> _accessedStorageCells { get; }
-        private JournalCollection<LogEntry> _logs { get; }
-        private JournalSet<Address> _destroyList { get; }
-        private HashSet<AddressAsKey> _createList { get; }
+        public readonly IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
+        public readonly IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
+        public readonly ICollection<LogEntry> Logs => _logs;
+        public readonly IReadOnlySet<Address> DestroyList => _destroyList;
+        public readonly IReadOnlySet<AddressAsKey> CreateList => _createList;
+        private readonly JournalSet<Address> _accessedAddresses;
+        private readonly JournalSet<StorageCell> _accessedStorageCells;
+        private readonly JournalCollection<LogEntry> _logs;
+        private readonly JournalSet<Address> _destroyList;
+        private readonly HashSet<AddressAsKey> _createList;
 
         private int _addressesSnapshots;
         private int _storageKeysSnapshots;
@@ -45,21 +45,21 @@ namespace Nethermind.Evm
             _destroyList = new();
             _createList = new();
         }
-        public bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
+        public readonly bool IsCold(Address? address) => !AccessedAddresses.Contains(address);
 
-        public bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
+        public readonly bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
-        public void WarmUp(Address address)
+        public readonly void WarmUp(Address address)
         {
             _accessedAddresses.Add(address);
         }
 
-        public void WarmUp(in StorageCell storageCell)
+        public readonly void WarmUp(in StorageCell storageCell)
         {
             _accessedStorageCells.Add(storageCell);
         }
 
-        public void WarmUp(AccessList? accessList)
+        public readonly void WarmUp(AccessList? accessList)
         {
             if (accessList?.IsEmpty == false)
             {
