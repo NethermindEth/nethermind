@@ -23,9 +23,9 @@ public class T8NTool : GeneralStateTestBase
         string inputEnv,
         string inputTxs,
         string? outputBasedir,
-        string? outputAlloc,
+        string outputAlloc,
         string? outputBody,
-        string? outputResult,
+        string outputResult,
         ulong stateChainId,
         string stateFork,
         string? stateReward,
@@ -39,10 +39,10 @@ public class T8NTool : GeneralStateTestBase
                 isGnosis, traceOptions);
 
             if (outputAlloc == "stdout") t8NOutput.Alloc = t8NExecutionResult.Alloc;
-            else if (outputAlloc != null) WriteToFile(outputAlloc, outputBasedir, t8NExecutionResult.Alloc);
+            else WriteToFile(outputAlloc, outputBasedir, t8NExecutionResult.Alloc);
 
             if (outputResult == "stdout") t8NOutput.Result = t8NExecutionResult.PostState;
-            else if (outputResult != null) WriteToFile(outputResult, outputBasedir, t8NExecutionResult.PostState);
+            else WriteToFile(outputResult, outputBasedir, t8NExecutionResult.PostState);
 
             if (outputBody == "stdout") t8NOutput.Body = t8NExecutionResult.Body;
             else if (outputBody != null) WriteToFile(outputBody, outputBasedir, t8NExecutionResult.Body);
