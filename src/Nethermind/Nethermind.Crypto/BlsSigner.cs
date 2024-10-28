@@ -8,6 +8,8 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Crypto;
 
+// https://www.ietf.org/archive/id/draft-irtf-cfrg-bls-signature-05.html
+
 using G1 = Bls.P1;
 using G1Affine = Bls.P1Affine;
 using G2 = Bls.P2;
