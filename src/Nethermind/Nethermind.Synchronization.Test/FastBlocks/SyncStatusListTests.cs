@@ -53,7 +53,7 @@ public class SyncStatusListTests
         SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
 
         BlockInfo?[] infos;
-        syncStatusList.TryGetInfosForBatch(500, (_) => false,  out infos);
+        syncStatusList.TryGetInfosForBatch(500, (_) => false, out infos);
 
         infos.Count((it) => it is not null).Should().Be(101);
     }
@@ -63,7 +63,7 @@ public class SyncStatusListTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindCanonicalBlockInfo(Arg.Any<long>())
-            .Returns((Func<CallInfo, BlockInfo>) ((ci) =>
+            .Returns((Func<CallInfo, BlockInfo>)((ci) =>
             {
                 long blockNumber = (long)ci[0];
                 return new BlockInfo(TestItem.KeccakA, 0)
@@ -79,7 +79,7 @@ public class SyncStatusListTests
         List<long> TryGetInfos()
         {
             BlockInfo?[] infos;
-            syncStatusList.TryGetInfosForBatch(50, (bi) => !needToFetchBlocks.Contains(bi.BlockNumber),  out infos);
+            syncStatusList.TryGetInfosForBatch(50, (bi) => !needToFetchBlocks.Contains(bi.BlockNumber), out infos);
             return infos.Where(bi => bi != null).Select((bi) => bi!.BlockNumber).ToList();
         }
 
