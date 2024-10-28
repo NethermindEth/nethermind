@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -15,13 +14,11 @@ using Nethermind.Specs.Forks;
 
 namespace Evm.T8NTool;
 
-public class T8nTestCase : IEthereumTest
+public class T8nTestCase
     {
-        public bool IsT8NTest { get; set; } = false;
         public string? Category { get; set; }
         public string? Name { get; set; }
         public IReleaseSpec? Fork { get; set; }
-        public string? ForkName { get; set; }
         public Address? CurrentCoinbase { get; set; }
         public UInt256? CurrentDifficulty { get; set; }
 
@@ -32,8 +29,6 @@ public class T8nTestCase : IEthereumTest
         public Hash256? PreviousHash { get; set; }
         public Dictionary<Address, AccountState> Pre { get; set; }
         public Hash256? PostHash { get; set; }
-        public Hash256? PostReceiptsRoot { get; set; }
-        public string? LoadFailure { get; set; }
         public Transaction[] Transactions { get; set; } = [];
         public Hash256? CurrentRandom { get; set; }
         public Hash256? CurrentBeaconRoot { get; set; }
@@ -41,8 +36,6 @@ public class T8nTestCase : IEthereumTest
         public ulong? CurrentExcessBlobGas { get; set; }
         public UInt256? ParentBlobGasUsed { get; set; }
         public UInt256? ParentExcessBlobGas { get; set; }
-
-        public Hash256? RequestsRoot { get; set; }
 
         public Withdrawal[] Withdrawals { get; set; } = [];
         public ulong ParentTimestamp { get; set; } // optional?
@@ -59,11 +52,6 @@ public class T8nTestCase : IEthereumTest
         public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
         public bool IsTraceEnabled { get; set; } = false;
         public bool IsStateTest { get; set; }
-
-        public override string ToString()
-        {
-            return $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
-        }
 
         public BlockHeader GetBlockHeader()
         {

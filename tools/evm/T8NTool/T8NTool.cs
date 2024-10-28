@@ -93,7 +93,7 @@ public class T8NTool : T8nTest
 
         var res = RunTest(generalStateTest, isGnosis);
 
-        PostState postState = new PostState();
+        PostState postState = new();
         postState.StateRoot = res.StateRoot;
         postState.TxRoot = res.TxRoot;
         postState.ReceiptsRoot = res.ReceiptsRoot;

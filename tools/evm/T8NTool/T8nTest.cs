@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.IO.Abstractions;
 using Ethereum.Test.Base;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -34,35 +31,11 @@ namespace Evm.T8NTool;
 
 public abstract class T8nTest
 {
-    private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
-    private static ILogManager _logManager = LimboLogs.Instance;
-    private static readonly UInt256 _defaultBaseFeeForStateTest = 0xA;
+    private readonly ILogManager _logManager = LimboLogs.Instance;
     private TxValidator? _txValidator;
-
-    [SetUp]
-    public void Setup()
-    {
-    }
-
-    [OneTimeSetUp]
-    public Task OneTimeSetUp() => KzgPolynomialCommitments.InitializeAsync();
-
-    protected static void Setup(ILogManager logManager)
-    {
-        _logManager = logManager ?? LimboLogs.Instance;
-        _logger = _logManager.GetClassLogger();
-    }
 
     protected T8nResult RunTest(T8nTestCase test, bool isGnosis = false)
     {
-        return RunTest(test, NullTxTracer.Instance, isGnosis);
-    }
-
-    protected T8nResult RunTest(T8nTestCase test, ITxTracer txTracer, bool isGnosis = false)
-    {
-        TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-        Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
-
         _txValidator = new TxValidator(test.StateChainId);
 
         IDb stateDb = new MemDb();
@@ -90,8 +63,8 @@ public abstract class T8nTest
             Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
         }
 
-        IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
-
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+        KzgPolynomialCommitments.InitializeAsync();
         BlockHeader header = test.GetBlockHeader();
         BlockHeader? parentHeader = test.GetParentBlockHeader();
 
@@ -132,8 +105,6 @@ public abstract class T8nTest
             transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
         }
 
-        Stopwatch stopwatch = Stopwatch.StartNew();
-
         BlockHeader[] uncles = test.Ommers
             .Select(ommer => Build.A.BlockHeader
                 .WithNumber(test.CurrentNumber - ommer.Delta)
@@ -144,32 +115,22 @@ public abstract class T8nTest
         Block block = Build.A.Block.WithHeader(header).WithTransactions(test.Transactions)
             .WithWithdrawals(test.Withdrawals).WithUncles(uncles).TestObject;
 
-        if (!test.IsStateTest)
-        {
-            var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
-            withdrawalProcessor.ProcessWithdrawals(block, spec);
-        }
-        else if (test.Withdrawals.Length > 0)
-        {
-            throw new T8NException("withdrawals are not supported in state tests", ExitCodes.ErrorEVM);
-        }
+        var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
+        withdrawalProcessor.ProcessWithdrawals(block, spec);
 
         CalculateReward(test.StateReward, test.IsStateTest, block, stateProvider, spec);
         BlockReceiptsTracer blockReceiptsTracer = new BlockReceiptsTracer();
         StorageTxTracer storageTxTracer = new();
-        if (test.IsT8NTest)
+        CompositeBlockTracer compositeBlockTracer = new();
+        compositeBlockTracer.Add(storageTxTracer);
+        if (test.IsTraceEnabled)
         {
-            CompositeBlockTracer compositeBlockTracer = new();
-            compositeBlockTracer.Add(storageTxTracer);
-            if (test.IsTraceEnabled)
-            {
-                GethLikeBlockFileTracer gethLikeBlockFileTracer =
-                    new(block, test.GethTraceOptions, new FileSystem());
-                compositeBlockTracer.Add(gethLikeBlockFileTracer);
-            }
-
-            blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
+            GethLikeBlockFileTracer gethLikeBlockFileTracer =
+                new(block, test.GethTraceOptions, new FileSystem());
+            compositeBlockTracer.Add(gethLikeBlockFileTracer);
         }
+
+        blockReceiptsTracer.SetOtherTracer(compositeBlockTracer);
 
         blockReceiptsTracer.StartNewBlockTrace(block);
 
@@ -189,11 +150,9 @@ public abstract class T8nTest
             {
                 blockReceiptsTracer.StartNewTxTrace(tx);
                 TransactionResult transactionResult = transactionProcessor
-                    .Execute(tx, new BlockExecutionContext(header),
-                        test.IsT8NTest ? blockReceiptsTracer : txTracer);
+                    .Execute(tx, new BlockExecutionContext(header), blockReceiptsTracer);
                 blockReceiptsTracer.EndTxTrace();
 
-                if (!test.IsT8NTest) continue;
                 transactionExecutionReport.ValidTransactions.Add(tx);
                 if (transactionResult.Success)
                 {
@@ -222,8 +181,6 @@ public abstract class T8nTest
 
         blockReceiptsTracer.EndBlockTrace();
 
-        stopwatch.Stop();
-
         stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
         stateProvider.CommitTree(test.CurrentNumber);
 
@@ -237,11 +194,6 @@ public abstract class T8nTest
 
         stateProvider.RecalculateStateRoot();
 
-        List<string> differences = RunAssertions(test, stateProvider);
-        EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
-        testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
-        testResult.StateRoot = stateProvider.StateRoot;
-
         return T8nResult.ConstructT8NResult(stateProvider, block, test, storageTxTracer,
                 blockReceiptsTracer, specProvider, header, transactionExecutionReport);
     }
@@ -249,11 +201,6 @@ public abstract class T8nTest
     private static IBlockhashProvider GetBlockHashProvider(T8nTestCase test, BlockHeader header,
         BlockHeader? parent)
     {
-        if (!test.IsT8NTest)
-        {
-            return new TestBlockhashProvider();
-        }
-
         var t8NBlockHashProvider = new T8NBlockHashProvider();
 
         if (header.Hash != null) t8NBlockHashProvider.Insert(header.Hash, header.Number);
@@ -269,7 +216,7 @@ public abstract class T8nTest
     private static UInt256 CalculateBaseFeePerGas(T8nTestCase test, BlockHeader? parentHeader)
     {
         if (test.CurrentBaseFee.HasValue) return test.CurrentBaseFee.Value;
-        return test.IsT8NTest ? BaseFeeCalculator.Calculate(parentHeader, test.Fork) : _defaultBaseFeeForStateTest;
+        return BaseFeeCalculator.Calculate(parentHeader, test.Fork);
     }
 
     private static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider,
@@ -298,24 +245,6 @@ public abstract class T8nTest
         stateProvider.Reset();
     }
 
-    private bool IsValidBlock(Block block, ISpecProvider specProvider)
-    {
-        IBlockTree blockTree = Build.A.BlockTree()
-            .WithSpecProvider(specProvider)
-            .WithoutSettingHead
-            .TestObject;
-
-        var difficultyCalculator = new EthashDifficultyCalculator(specProvider);
-        var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(),
-            new Ethash(_logManager), Timestamper.Default);
-        IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, _logManager);
-        IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
-        IBlockValidator blockValidator = new BlockValidator(_txValidator, headerValidator, unclesValidator,
-            specProvider, _logManager);
-
-        return blockValidator.ValidateOrphanedBlock(block, out _);
-    }
-
     private static void CalculateReward(string? stateReward, bool isStateTest, Block block,
         WorldState stateProvider, IReleaseSpec spec)
     {
@@ -335,22 +264,5 @@ public abstract class T8nTest
                 stateProvider.AddToBalance(reward.Address, reward.Value, spec);
             }
         }
-    }
-
-    private List<string> RunAssertions(T8nTestCase test, IWorldState stateProvider)
-    {
-        List<string> differences = [];
-        if (test.IsT8NTest) return differences;
-        if (test.PostHash != stateProvider.StateRoot)
-        {
-            differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
-        }
-
-        foreach (string difference in differences)
-        {
-            _logger.Info(difference);
-        }
-
-        return differences;
     }
 }
