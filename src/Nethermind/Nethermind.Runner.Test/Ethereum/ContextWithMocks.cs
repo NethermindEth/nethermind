@@ -118,7 +118,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                BadBlocksStore = Substitute.For<IBlockStore>(),
+                BadBlocksStore = Substitute.For<IBadBlockStore>(),
 
                 ApiWithNetworkServiceContainer = new ContainerBuilder()
                     .AddSingleton(Substitute.For<ISyncModeSelector>())

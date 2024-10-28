@@ -1924,7 +1924,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (_state.AccountExists(address)
                             && !_state.IsDeadAccount(address)
-                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegatedAddress) || _state.AccountExists(delegatedAddress)))
+                            && (!env.TxExecutionContext.CodeInfoRepository.TryGetDelegation(_state, address, out Address delegatedAddress)
+                            || (_state.AccountExists(delegatedAddress)
+                            && !_state.IsDeadAccount(delegatedAddress))))
                         {
                             stack.PushBytes(env.TxExecutionContext.CodeInfoRepository.GetExecutableCodeHash(_state, address).BytesAsSpan);
                         }
