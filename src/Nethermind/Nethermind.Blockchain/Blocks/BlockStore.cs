@@ -34,7 +34,7 @@ public class BlockStore(IDb blockDb) : IBlockStore
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return blockDb.Get(dbKey) is not null;
+        return blockDb.KeyExists(dbKey);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)

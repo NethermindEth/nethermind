@@ -134,32 +134,21 @@ namespace Nethermind.Synchronization.FastBlocks
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo?[] infos = new BlockInfo[_requestSize];
-
-                long minNumber = 0;
-                bool needMoreInfo = true;
-                while (needMoreInfo)
+                BlockInfo?[] infos = null;
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockStore.HasBlock(info.BlockNumber, info.BlockHash), out infos))
                 {
                     token.ThrowIfCancellationRequested();
-                    needMoreInfo = false;
-                    _syncStatusList.GetInfosForBatch(infos);
 
-                    foreach (BlockInfo? blockInfo in infos)
-                    {
-                        minNumber = Math.Max(minNumber, blockInfo.BlockNumber);
-                        if (blockInfo == null) continue;
-                        if (!_blockStore.HasBlock(blockInfo.BlockNumber, blockInfo.BlockHash)) continue;
-
-                        _syncStatusList.MarkInserted(blockInfo.BlockNumber);
-                        needMoreInfo = true;
-                    }
+                    // Otherwise, the progress does not update correctly
+                    _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    UpdateSyncReport();
                 }
 
                 if (infos[0] is not null)
                 {
                     batch = new BodiesSyncBatch(infos);
                     // Used for peer allocation. It pick peer which have the at least this number
-                    batch.MinNumber = minNumber;
+                    batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
             }

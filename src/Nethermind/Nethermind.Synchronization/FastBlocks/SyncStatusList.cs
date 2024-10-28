@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -11,6 +12,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     internal class SyncStatusList
     {
+        private const int _parallelExistCheckSize = 1024;
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private readonly FastBlockStatusList _statuses;
@@ -35,7 +37,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _lowerBound = lowerBound;
         }
 
-        public void GetInfosForBatch(BlockInfo?[] blockInfos)
+        private void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
             long currentNumber = Volatile.Read(ref _lowestInsertWithoutGaps);
@@ -75,6 +77,80 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 currentNumber--;
             }
+        }
+
+        /// <summary>
+        /// Try get block infos of size `batchSize`.
+        /// </summary>
+        /// <param name="batchSize"></param>
+        /// <param name="blockExist"></param>
+        /// <param name="infos"></param>
+        /// <returns></returns>
+        public bool TryGetInfosForBatch(int batchSize, Func<BlockInfo, bool> blockExist, out BlockInfo?[] infos)
+        {
+            BlockInfo?[] outputArray = new BlockInfo?[batchSize];
+            BlockInfo?[] workingArray = new BlockInfo?[batchSize];
+
+            for (int attempt = 0; attempt < 8; attempt++)
+            {
+                // Because the last clause of GetInfosForBatch increment the _lowestInsertWithoutGap need to be run
+                // sequentially, can't find an easy way to parallelize the checking for block exist part in the check
+                // So here we are...
+                GetInfosForBatch(workingArray);
+
+                bool hasNonNull = false;
+                bool hasInserted = false;
+                Parallel.For(0, workingArray.Length, (i) =>
+                {
+                    if (workingArray[i] is not null)
+                    {
+                        if (blockExist(workingArray[i]))
+                        {
+                            MarkInserted(workingArray[i].BlockNumber);
+                            hasInserted = true;
+                            workingArray[i] = null;
+                        }
+                        else
+                        {
+                            hasNonNull = true;
+                        }
+                    }
+                });
+
+                if (hasNonNull || !hasInserted)
+                {
+                    int slot = 0;
+                    for (int i = 0; i < workingArray.Length; i++)
+                    {
+                        if (workingArray[i] is not null)
+                        {
+                            if (slot < outputArray.Length)
+                            {
+                                outputArray[slot] = workingArray[i];
+                                slot++;
+                            }
+                            else
+                            {
+                                // Not enough space in output we'll need to put back the block
+                                MarkPending(workingArray[i]);
+                            }
+                        }
+                    }
+
+                    infos = outputArray;
+                    return true;
+                }
+
+                // At this point, hasNonNull is false and hasInserted is true, meaning all entry in workingArray
+                // already exist. We switch to a bigger array to improve parallelization throughput
+                if (workingArray.Length < _parallelExistCheckSize)
+                {
+                    workingArray = new BlockInfo[_parallelExistCheckSize];
+                }
+            }
+
+            infos = workingArray;
+            return false;
         }
 
         public void MarkInserted(long blockNumber)
