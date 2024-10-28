@@ -40,14 +40,22 @@ public class BlockTreeSuggestPacer : IDisposable
     public async Task WaitForQueue(long currentBlockNumber, CancellationToken token)
     {
         long currentHeadNumber = _blockTree.Head?.Number ?? 0;
+<<<<<<< HEAD
         if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed == null)
+=======
+        if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed is null)
+>>>>>>> feature/dont-download-existing-block
         {
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
             TaskCompletionSource completionSource = new TaskCompletionSource();
             _dbBatchProcessed = completionSource;
         }
 
+<<<<<<< HEAD
         if (_dbBatchProcessed != null)
+=======
+        if (_dbBatchProcessed is not null)
+>>>>>>> feature/dont-download-existing-block
         {
             await using (token.Register(() => _dbBatchProcessed.TrySetCanceled()))
             {
