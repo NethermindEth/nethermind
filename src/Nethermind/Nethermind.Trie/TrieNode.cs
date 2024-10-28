@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -737,8 +738,7 @@ namespace Nethermind.Trie
             }
 
             EnsureInitialized();
-            int index = IsExtension ? i + 1 : i;
-            _data[index] = child;
+            SetItem(i, child);
         }
 
         public void SetChild(int i, TrieNode? node)
@@ -749,8 +749,7 @@ namespace Nethermind.Trie
             }
 
             EnsureInitialized();
-            int index = IsExtension ? i + 1 : i;
-            _data[index] = node ?? _nullNode;
+            SetItem(i, node);
             Keccak = null;
 
             [DoesNotReturn]
@@ -759,6 +758,26 @@ namespace Nethermind.Trie
             {
                 throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting a child.");
             }
+        }
+
+        /// <summary>
+        /// Method to avoid expensive Stelem_Ref covariant checks
+        /// when setting to object[] array
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetItem(int i, TrieNode node)
+        {
+            int index = IsExtension ? i + 1 : i;
+            var data = _data;
+            if ((uint)index > (uint)data.Length)
+            {
+                // Since we are accessing unsafely we need to do our own
+                // bounds check to ensure is safe; as the Jit won't help us.
+                ThrowIndexOutOfRangeException();
+            }
+
+            ref object obj = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(data), index);
+            obj = node ?? _nullNode;
         }
 
         public long GetMemorySize(bool recursive)
@@ -825,9 +844,20 @@ namespace Nethermind.Trie
             if (data is not null)
             {
                 trieNode.EnsureInitialized();
+
+                object?[] copy = trieNode._data;
+                if ((uint)data.Length > (uint)copy.Length)
+                {
+                    // Since we are accessing unsafely we need to do our own
+                    // bounds check to ensure is safe; as the Jit won't help us.
+                    ThrowIndexOutOfRangeException();
+                }
+
+                // Method to avoid expensive Stelem_Ref covariant checks
+                ref object start = ref MemoryMarshal.GetArrayDataReference(copy);
                 for (int i = 0; i < data.Length; i++)
                 {
-                    trieNode._data[i] = data[i];
+                    Unsafe.Add(ref start, i) = data[i];
                 }
             }
 
@@ -838,6 +868,13 @@ namespace Nethermind.Trie
             }
 
             return trieNode;
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowIndexOutOfRangeException()
+        {
+            throw new IndexOutOfRangeException();
         }
 
         public TrieNode CloneWithChangedValue(in CappedArray<byte> changedValue)
