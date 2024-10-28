@@ -95,7 +95,7 @@ async Task<int> ConfigureAsync(string[] args)
     ParseResult parseResult = cli.Parse(args);
     // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
-        .Any(c => (c is OptionResult or) && (or.Option is HelpOption || or.Option is VersionOption));
+        .Any(c => c is OptionResult { Option: HelpOption or VersionOption });
 
     ConsoleHelpers.EnableConsoleColorOutput();
 
@@ -107,7 +107,7 @@ async Task<int> ConfigureAsync(string[] args)
         logger.Info($"Version: {ProductInfo.Version}");
     }
 
-    AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
+    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
     {
         processExitSource?.Exit(ExitCodes.SigTerm);
         exit.Wait();

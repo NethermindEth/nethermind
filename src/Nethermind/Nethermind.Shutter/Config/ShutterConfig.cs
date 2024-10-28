@@ -16,6 +16,7 @@ namespace Nethermind.Shutter.Config
         public string? ValidatorInfoFile { get; set; }
         public string? P2PProtocolVersion { get; set; } = "/shutter/0.1.0";
         public string? P2PAgentVersion { get; set; } = "github.com/shutter-network/rolling-shutter/rolling-shutter";
+        public string ShutterKeyFile { get; set; } = "shutter.key.plain";
         public ulong ValidatorRegistryMessageVersion { get; set; } = 0;
         public ulong InstanceID { get; set; } = 0;
         public int EncryptedGasLimit { get; set; } = 10000000;

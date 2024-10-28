@@ -25,23 +25,21 @@
   "Blocks": {
     "SecondsPerSlot": 5,
     "BlockProductionTimeoutMs": 3000,
-    "TargetBlockGasLimit": 17000000
+    "TargetBlockGasLimit": 17000000,
+    "GasToken": "XDAI"
   },
   "Aura": {
     "TxPriorityContractAddress": "0x4100000000000000000000000000000000000000",
     "ForceSealing": true
   },
   "Shutter": {
-    "ValidatorRegistryContractAddress": "0xa9289A3Dd14FEBe10611119bE81E5d35eAaC3084",
     "SequencerContractAddress": "0x2aD8E2feB0ED5b2EC8e700edB725f120576994ed",
+    "ValidatorRegistryContractAddress": "0xa9289A3Dd14FEBe10611119bE81E5d35eAaC3084",
     "KeyBroadcastContractAddress": "0x9D31865BEffcE842FBd36CDA587aDDA8bef804B7",
     "KeyperSetManagerContractAddress": "0xC4DE9FAf4ec882b33dA0162CBE628B0D8205D0c0",
     "BootnodeP2PAddresses": [
-      "/ip4/157.230.104.246/tcp/23003/p2p/12D3KooWFUYoPd3bdPuRi6FXkEQRSw7FRf2e23NAypjfDVYuvBAV",
-      "/ip4/134.209.225.234/tcp/23003/p2p/12D3KooWAsBKAj1NEtvu7wcLiEVU49N6Z9GPK3tZ87m17tFdWdNE",
-      "/ip4/157.230.114.117/tcp/23003/p2p/12D3KooWEDk8XJdxHjCHh9wTGVRXtpyCvCP4N4Jztr8zTJd4rMVX",
-      "/ip4/64.225.104.2/tcp/23003/p2p/12D3KooWMXTYrwEz4v5aGa7chYHjVVpjzzkq9JSjZzxbdh9YgAQS",
-      "/ip4/157.230.111.142/tcp/23003/p2p/12D3KooWA3FPqxV8whaFPbLzwbyDEWML4y73D6RJqb2mn7SHz6fg"
+      "/ip4/167.99.177.227/tcp/23005/p2p/12D3KooWSdm5guPBdn8DSaBphVBzUUgPLg9sZLnazEUrcbtLy254",
+      "/ip4/159.89.15.119/tcp/23005/p2p/12D3KooWPP6bp2PJQR8rUvG1SD4qNH4WFrKve6DMgWThyKxwNbbH"
     ],
     "InstanceID": "102000"
   },

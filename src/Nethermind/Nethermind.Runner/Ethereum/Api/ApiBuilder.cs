@@ -11,7 +11,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Hive;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -66,11 +66,11 @@ namespace Nethermind.Runner.Ethereum.Api
 
         private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
         {
-            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
+            IHiveConfig hiveConfig = _configProvider.GetConfig<IHiveConfig>();
             bool hiveChainSpecExists = File.Exists(_initConfig.HiveChainSpecPath);
 
             string chainSpecFile;
-            if (hiveEnabled && hiveChainSpecExists)
+            if (hiveConfig.Enabled && hiveChainSpecExists)
                 chainSpecFile = _initConfig.HiveChainSpecPath;
             else
                 chainSpecFile = _initConfig.ChainSpecPath;
