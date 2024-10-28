@@ -35,7 +35,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly long _flushDbInterval; // About every 10GB on mainnet
 
         private readonly IBlockTree _blockTree;
-        private readonly IBlockStore _blockStore;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -51,7 +50,6 @@ namespace Nethermind.Synchronization.FastBlocks
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
-            IBlockStore blockStore,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
@@ -62,7 +60,6 @@ namespace Nethermind.Synchronization.FastBlocks
             : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -135,7 +132,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (ShouldBuildANewBatch())
             {
                 BlockInfo?[] infos = null;
-                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockStore.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockTree.HasBlock(info.BlockNumber, info.BlockHash), out infos))
                 {
                     token.ThrowIfCancellationRequested();
 

@@ -67,7 +67,6 @@ public class BodiesSyncFeedTests
         _feed = new BodiesSyncFeed(
             MainnetSpecProvider.Instance,
             _syncingToBlockTree,
-            new BlockStore(_blocksDb),
             Substitute.For<ISyncPeerPool>(),
             _syncConfig,
             new NullSyncReport(),
