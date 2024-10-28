@@ -29,7 +29,7 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly ClockKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024);
+        private readonly ClockKeyCacheNonConcurrent<ValueHash256> _codeInsertFilter = new(1_024);
         private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
         private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
@@ -37,7 +37,7 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private readonly IKeyValueStore _codeDb;
 
-        private List<Change?> _changes = new(Resettable.StartCapacity);
+        private readonly List<Change> _changes = new(Resettable.StartCapacity);
         internal readonly StateTree _tree;
         private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
@@ -116,7 +116,7 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
 
@@ -149,7 +149,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when updating code hash");
             }
 
-            if (account.CodeHash != codeHash)
+            if (account.CodeHash.ValueHash256 != codeHash)
             {
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
@@ -186,10 +186,11 @@ namespace Nethermind.State
             {
                 // this also works like this in Geth (they don't follow the spec ¯\_(*~*)_/¯)
                 // however we don't do it because of a consensus issue with Geth, just to avoid
-                // hitting non-existing account when substractin Zero-value from the sender
+                // hitting non-existing account when subtracting Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
                     Account touched = GetThroughCacheCheckExists();
+
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     if (touched.IsEmpty)
                     {
@@ -348,12 +349,12 @@ namespace Nethermind.State
                         }
 
                         _keptInCache.Add(change);
-                        _changes[actualPosition] = null;
+                        _changes[actualPosition] = default;
                         continue;
                     }
                 }
 
-                _changes[currentPosition - i] = null; // TODO: temp, ???
+                _changes[currentPosition - i] = default; // TODO: temp, ???
                 int forChecking = stack.Pop();
                 if (forChecking != currentPosition - i)
                 {
@@ -439,7 +440,7 @@ namespace Nethermind.State
             }
 
             if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {currentPosition})");
-            if (_changes[currentPosition] is null)
+            if (_changes[currentPosition].IsNull)
             {
                 throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
             }
@@ -735,7 +736,7 @@ namespace Nethermind.State
         {
             if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
-                return _changes[value.Peek()]!.Account;
+                return _changes[value.Peek()].Account;
             }
 
             Account account = GetAndAddToCache(address);
@@ -796,6 +797,7 @@ namespace Nethermind.State
 
         private enum ChangeType
         {
+            Null = 0,
             JustCache,
             Touch,
             Update,
@@ -803,7 +805,7 @@ namespace Nethermind.State
             Delete
         }
 
-        private class Change
+        private readonly struct Change
         {
             public Change(ChangeType type, Address address, Account? account)
             {
@@ -812,9 +814,11 @@ namespace Nethermind.State
                 Account = account;
             }
 
-            public ChangeType ChangeType { get; }
-            public Address Address { get; }
-            public Account? Account { get; }
+            public readonly ChangeType ChangeType;
+            public readonly Address Address;
+            public readonly Account? Account;
+
+            public bool IsNull => ChangeType == ChangeType.Null;
         }
 
         public ArrayPoolList<AddressAsKey>? ChangedAddresses()
@@ -846,15 +850,14 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        public void CommitTree(long blockNumber)
+        public void CommitTree()
         {
             if (_needsStateRootUpdate)
             {
                 RecalculateStateRoot();
             }
 
-            _tree.Commit(blockNumber);
-            _preBlockCache?.NoResizeClear();
+            _tree.Commit();
         }
 
         public static void CommitBranch()

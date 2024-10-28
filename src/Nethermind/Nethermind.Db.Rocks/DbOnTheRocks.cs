@@ -11,7 +11,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Config;
@@ -1322,11 +1321,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    public void Flush()
+    public void Flush(bool onlyWal = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
-        InnerFlush();
+        InnerFlush(onlyWal);
     }
 
     public virtual void Compact()
@@ -1334,11 +1333,16 @@ public class DbOnTheRocks : IDb, ITunableDb
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
     }
 
-    private void InnerFlush()
+    private void InnerFlush(bool onlyWal)
     {
         try
         {
-            _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+            _rocksDbNative.rocksdb_flush_wal(_db.Handle, true);
+
+            if (!onlyWal)
+            {
+                _rocksDbNative.rocksdb_flush(_db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+            }
         }
         catch (RocksDbSharpException e)
         {
@@ -1440,7 +1444,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             dbMetricsUpdater.Dispose();
         }
 
-        InnerFlush();
+        InnerFlush(false);
         ReleaseUnmanagedResources();
 
         _dbsByPath.Remove(_fullPath!, out _);

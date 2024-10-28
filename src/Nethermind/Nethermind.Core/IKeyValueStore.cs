@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core

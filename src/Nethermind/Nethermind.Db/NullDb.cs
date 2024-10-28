@@ -43,7 +43,8 @@ namespace Nethermind.Db
             return false;
         }
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear() { }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();

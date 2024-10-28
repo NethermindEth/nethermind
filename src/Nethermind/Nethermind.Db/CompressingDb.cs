@@ -137,7 +137,7 @@ namespace Nethermind.Db
 
             public bool KeyExists(ReadOnlySpan<byte> key) => _wrapped.KeyExists(key);
 
-            public void Flush() => _wrapped.Flush();
+            public void Flush(bool onlyWal) => _wrapped.Flush(onlyWal);
 
             public void Clear() => _wrapped.Clear();
 

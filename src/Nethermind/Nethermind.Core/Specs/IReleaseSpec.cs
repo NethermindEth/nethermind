@@ -202,7 +202,7 @@ namespace Nethermind.Core.Specs
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
+        bool IsEip158IgnoredAccount(Address address) => false;
 
         /// <summary>
         /// BaseFee opcode
@@ -266,7 +266,31 @@ namespace Nethermind.Core.Specs
         /// Parent Beacon Block precompile
         /// </summary>
         bool IsEip4788Enabled { get; }
-        Address Eip4788ContractAddress { get; }
+        Address? Eip4788ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-6110: Supply validator deposits on chain
+        /// </summary>
+        bool IsEip6110Enabled { get; }
+        bool DepositsEnabled => IsEip6110Enabled;
+        Address DepositContractAddress { get; }
+
+        /// <summary>
+        /// Execution layer triggerable exits
+        /// </summary>
+        bool IsEip7002Enabled { get; }
+        bool WithdrawalRequestsEnabled => IsEip7002Enabled;
+        Address Eip7002ContractAddress { get; }
+
+
+        /// <summary>
+        /// EIP-7251: triggered consolidations
+        /// </summary>
+        bool IsEip7251Enabled { get; }
+        bool ConsolidationRequestsEnabled => IsEip7251Enabled;
+        Address Eip7251ContractAddress { get; }
+
 
         /// <summary>
         /// Save historical block hashes in state
@@ -285,9 +309,25 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// Transactions that allows code delegation for EOA
+        /// </summary>
+        bool IsEip7702Enabled { get; }
+
+        /// <summary>
+        /// Blob base fee collection for Gnosis
+        /// </summary>
+        bool IsEip4844FeeCollectorEnabled { get; }
+
+        /// <summary>
         /// Secp256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
+
+        /// OP Granite
+        bool IsOpGraniteEnabled { get; }
+
+        /// Taiko Ontake
+        bool IsOntakeEnabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -370,6 +410,11 @@ namespace Nethermind.Core.Specs
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool IsBlockHashInStateAvailable => IsEip7709Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
+
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+
+        bool IsAuthorizationListEnabled => IsEip7702Enabled;
+
+        public bool RequestsEnabled => ConsolidationRequestsEnabled || WithdrawalRequestsEnabled || DepositsEnabled;
     }
 }

@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
@@ -175,12 +174,17 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public ulong? CanyonTimestamp => Params.CanyonTimestamp;
             public ulong? EcotoneTimestamp => Params.EcotoneTimestamp;
             public ulong? FjordTimestamp => Params.FjordTimestamp;
+            public ulong? GraniteTimestamp => Params.GraniteTimestamp;
             public Address L1FeeRecipient => Params.L1FeeRecipient;
             public Address L1BlockAddress => Params.L1BlockAddress;
             public UInt256 CanyonBaseFeeChangeDenominator => Params.CanyonBaseFeeChangeDenominator;
             public Address Create2DeployerAddress => Params.Create2DeployerAddress;
             public byte[] Create2DeployerCode => Params.Create2DeployerCode;
             public OptimismEngineParamsJson Params { get; set; }
+        }
+
+        internal class TaikoEngineJson
+        {
         }
 
         internal class OptimismEngineParamsJson
@@ -190,6 +194,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public ulong? CanyonTimestamp { get; set; }
             public ulong? EcotoneTimestamp { get; set; }
             public ulong? FjordTimestamp { get; set; }
+            public ulong? GraniteTimestamp { get; set; }
             public Address L1FeeRecipient { get; set; }
             public Address L1BlockAddress { get; set; }
             public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
@@ -207,6 +212,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
             public OptimismEngineJson Optimism { get; set; }
+            public TaikoEngineJson Taiko { get; set; }
             public NethDevJson NethDev { get; set; }
 
             [JsonExtensionData]

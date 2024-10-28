@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -881,11 +880,18 @@ namespace Nethermind.Trie
             ITrieNodeResolver resolver,
             bool skipPersisted,
             in ILogger logger,
+            int maxPathLength = Int32.MaxValue,
             bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)
             {
                 if (logger.IsTrace) logger.Trace($"Skipping {this} - already persisted");
+                return;
+            }
+
+            if (currentPath.Length >= maxPathLength)
+            {
+                action(this, storageAddress, currentPath);
                 return;
             }
 
@@ -900,7 +906,7 @@ namespace Nethermind.Trie
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                             int previousLength = AppendChildPath(ref currentPath, i);
-                            child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger);
+                            child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger, maxPathLength, resolveStorageRoot);
                             currentPath.TruncateMut(previousLength);
                         }
                     }

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -14,10 +15,8 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -81,6 +80,8 @@ namespace Nethermind.Consensus.Ethash
                 new BlockProcessor.BlockProductionTransactionsExecutor(scope, getFromApi!.SpecProvider, getFromApi.LogManager),
                 scope.WorldState,
                 NullReceiptStorage.Instance,
+                scope.TransactionProcessor,
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager);
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +10,7 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -85,10 +85,12 @@ namespace Nethermind.Db
             return _cache.ContainsKey(key);
         }
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear()
         {
             File.Delete(DbPath);
+            _cache.Clear();
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
@@ -208,7 +210,7 @@ namespace Nethermind.Db
 
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(maxLineLength);
+            using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;
@@ -270,7 +272,6 @@ namespace Nethermind.Db
                 read = RandomAccess.Read(fileHandle, rentedBuffer.AsSpan(bytes.Length), offset);
             }
 
-            ArrayPool<byte>.Shared.Return(rentedBuffer);
             if (bytes.Length > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Malformed {Name}. Ignoring...");

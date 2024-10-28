@@ -7,6 +7,6 @@ namespace Nethermind.Optimism;
 
 public interface IOptimismConfig : IConfig
 {
-    [ConfigItem(Description = "Sequencer address", DefaultValue = "null")]
+    [ConfigItem(Description = "The sequencer address.", DefaultValue = "null")]
     string? SequencerUrl { get; set; }
 }

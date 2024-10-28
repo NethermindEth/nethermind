@@ -8,6 +8,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -73,6 +75,12 @@ namespace Nethermind.Synchronization.FastSync
         private int _hintsToResetRoot;
         private long _blockNumber;
         private readonly SyncMode _syncMode;
+
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
+            : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
+        {
+
+        }
 
         public TreeSync(SyncMode syncMode, IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
         {
@@ -167,7 +175,7 @@ namespace Nethermind.Synchronization.FastSync
                         if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
-                    Stopwatch handleWatch = Stopwatch.StartNew();
+                    long startTime = Stopwatch.GetTimestamp();
 
                     bool isMissingRequestData = batch.RequestedNodes is null;
                     if (isMissingRequestData)
@@ -289,24 +297,24 @@ namespace Nethermind.Synchronization.FastSync
 
                     _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
-                    handleWatch.Stop();
-                    long total = handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+                    long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                    long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
                     {
                         // calculate averages
                         if (_logger.IsTrace)
                             _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {handleWatch.ElapsedMilliseconds}ms ({(decimal)handleWatch.ElapsedMilliseconds / total:P0})");
+                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {elapsedTime:N0}ms ({(decimal)elapsedTime / total:P0})");
                     }
 
-                    if (handleWatch.ElapsedMilliseconds > 250)
+                    if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Handle watch {handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                                $"Handle watch {elapsedTime:N0}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, handleWatch.ElapsedMilliseconds);
+                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
                     _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
@@ -679,7 +687,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _nodeStorage.Flush();
+                _nodeStorage.Flush(onlyWal: false);
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);

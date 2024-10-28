@@ -3,9 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -126,39 +130,22 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
+            if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
+                _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
 
-            _api.Synchronizer ??= new Synchronizer(
-                _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-                _api.SpecProvider!,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
-                _syncConfig,
-                blockDownloaderFactory,
-                _api.Pivot,
-                _api.ProcessExit!,
-                _api.BetterPeerStrategy,
-                _api.ChainSpec,
-                _api.StateReader!,
-                _api.LogManager);
+            ContainerBuilder builder = new ContainerBuilder();
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync);
+            builder.RegisterModule(new SynchronizerModule(_syncConfig));
+            IContainer container = builder.Build();
+
+            _api.ApiWithNetworkServiceContainer = container;
+            _api.DisposeStack.Append(container);
         }
 
-        _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
-        _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
-
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
-            _api.SyncModeSelector, _api.SyncProgressResolver, _api.LogManager);
+            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-        _api.DisposeStack.Push(_api.SyncModeSelector);
-        _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
             _api.TrieStore!.TrieNodeRlpStore,
@@ -302,7 +289,7 @@ public class InitializeNetwork : IStep
             _networkConfig, _api.Config<IDiscoveryConfig>(), _api.Config<IInitConfig>(),
             _api.EthereumEcdsa, _api.MessageSerializationService,
             _api.LogManager, _api.Timestamper, _api.CryptoRandom,
-            _api.NodeStatsManager, _api.IpResolver, _api.PeerManager
+            _api.NodeStatsManager, _api.IpResolver
         );
 
         _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
@@ -453,15 +440,24 @@ public class InitializeNetwork : IStep
         // I do not use the key here -> API is broken - no sense to use the node signer here
         NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
         EnrRecordParser enrRecordParser = new(nodeRecordSigner);
-        EnrDiscovery enrDiscovery = new(enrRecordParser, _api.LogManager); // initialize with a proper network
+
+        if (_networkConfig.DiscoveryDns == null)
+        {
+            string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
+            _networkConfig.DiscoveryDns = $"all.{chainName}.ethdisco.net";
+        }
+
+        EnrDiscovery enrDiscovery = new(enrRecordParser, _networkConfig, _api.LogManager); // initialize with a proper network
 
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
-            _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
+            _ = new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50).Run(_api.ProcessExit!.Token);
         }
 
-        CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        CompositeNodeSource nodeSources = _networkConfig.OnlyStaticPeers
+            ? new(_api.StaticNodesManager, nodesLoader)
+            : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
         _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
@@ -469,16 +465,6 @@ public class InitializeNetwork : IStep
             _api.NodeStatsManager,
             _networkConfig,
             _api.LogManager);
-
-        string chainName = BlockchainIds.GetBlockchainName(_api.ChainSpec!.NetworkId).ToLowerInvariant();
-        string domain = _networkConfig.DiscoveryDns ?? $"all.{chainName}.ethdisco.net";
-        _ = enrDiscovery.SearchTree(domain).ContinueWith(t =>
-        {
-            if (t.IsFaulted)
-            {
-                _logger.Error($"ENR discovery failed: {t.Exception}");
-            }
-        });
 
         foreach (INethermindPlugin plugin in _api.Plugins)
         {

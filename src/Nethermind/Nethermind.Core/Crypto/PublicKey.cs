@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using System.Threading;
 
@@ -16,11 +13,6 @@ namespace Nethermind.Core.Crypto
     [JsonConverter(typeof(PublicKeyConverter))]
     public class PublicKey : IEquatable<PublicKey>
     {
-        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
-        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
-        // the performance of the network as a whole.
-        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
-
         public const int PrefixedLengthInBytes = 65;
         public const int LengthInBytes = 64;
         private Address? _address;
@@ -112,19 +104,7 @@ namespace Nethermind.Core.Crypto
             return _hashCode;
         }
 
-        private static int GetHashCode(byte[] bytes)
-        {
-            uint hash = s_instanceRandom;
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetArrayDataReference(bytes)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long))));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 2)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 3)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 4)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 5)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 6)));
-            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 7)));
-            return (int)hash;
-        }
+        private static int GetHashCode(byte[] bytes) => new ReadOnlySpan<byte>(bytes).FastHash();
 
         public override string ToString()
         {

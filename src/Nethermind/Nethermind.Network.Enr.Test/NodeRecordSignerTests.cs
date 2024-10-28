@@ -94,7 +94,7 @@ public class NodeRecordSignerTests
         nodeRecord.EnrSequence = 1; // override
 
         signer.Sign(nodeRecord);
-        Assert.IsTrue(signer.Verify(nodeRecord));
+        Assert.That(signer.Verify(nodeRecord), Is.True);
     }
 
     [TestCase]
@@ -125,7 +125,7 @@ public class NodeRecordSignerTests
         string hex = nodeRecord.GetHex();
         Console.WriteLine(testCase);
         Console.WriteLine(hex);
-        Assert.IsTrue(signer.Verify(nodeRecord));
+        Assert.That(signer.Verify(nodeRecord), Is.True);
     }
 
 

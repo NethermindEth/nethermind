@@ -8,6 +8,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
@@ -116,21 +117,22 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         EndPoint address = packet.Sender;
 
         int size = content.ReadableBytes;
-        byte[] msgBytes = new byte[size];
-        content.ReadBytes(msgBytes);
+        using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
 
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msgBytes.Length);
+        content.ReadBytes(msgBytes, 0, size);
+
+        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
         if (msgBytes.Length < 98)
         {
-            if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msgBytes.Length}, sender: {address}");
+            if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {size}, sender: {address}");
             return false;
         }
 
         byte typeRaw = msgBytes[97];
         if (!FastEnum.IsDefined<MsgType>((int)typeRaw))
         {
-            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.ToHexString()}");
+            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.AsSpan(0, size).ToHexString()}");
             return false;
         }
 
@@ -139,12 +141,12 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
         try
         {
-            msg = Deserialize(type, msgBytes);
+            msg = Deserialize(type, new ArraySegment<byte>(msgBytes, 0, size));
             msg.FarAddress = (IPEndPoint)address;
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msgBytes.ToHexString()}, {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msgBytes.AsSpan(0, size).ToHexString()}, {e.Message}");
             return false;
         }
 
@@ -185,7 +187,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         }
     }
 
-    private DiscoveryMsg Deserialize(MsgType type, byte[] msg)
+    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg)
     {
         return type switch
         {

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -56,6 +57,8 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Trie;
+using Nethermind.Consensus.Processing.CensorshipDetector;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.Api
 {
@@ -184,14 +187,14 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector SyncModeSelector { get; set; } = null!;
+        public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
 
-        public ISyncProgressResolver? SyncProgressResolver { get; set; }
+        public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
-        public ISynchronizer? Synchronizer { get; set; }
+        public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
@@ -208,17 +211,19 @@ namespace Nethermind.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
-        public ITxValidator? TxValidator { get; set; }
+        public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        public IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
         public IEthSyncingInfo? EthSyncingInfo { get; set; }
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
+        public CensorshipDetector CensorshipDetector { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
@@ -239,5 +244,7 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+
+        public IContainer? ApiWithNetworkServiceContainer { get; set; }
     }
 }

@@ -19,7 +19,7 @@ namespace Nethermind.State
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
         protected readonly ILogger _logger;
-        protected readonly List<Change?> _changes = new(Resettable.StartCapacity);
+        protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
 
         // stack of snapshot indexes on changes for start of each transaction
@@ -105,7 +105,7 @@ namespace Nethermind.State
                         }
 
                         _keptInCache.Add(change);
-                        _changes[actualPosition] = null;
+                        _changes[actualPosition] = default;
                         continue;
                     }
                 }
@@ -116,7 +116,7 @@ namespace Nethermind.State
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {currentPosition} - {i}");
                 }
 
-                _changes[currentPosition - i] = null;
+                _changes[currentPosition - i] = default;
 
                 if (stack.Count == 0)
                 {
@@ -230,7 +230,7 @@ namespace Nethermind.State
             {
                 int lastChangeIndex = stack.Peek();
                 {
-                    bytes = _changes[lastChangeIndex]!.Value;
+                    bytes = _changes[lastChangeIndex].Value;
                     return true;
                 }
             }
@@ -293,7 +293,7 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected class Change
+        protected readonly struct Change
         {
             public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
             {
@@ -302,9 +302,11 @@ namespace Nethermind.State
                 ChangeType = changeType;
             }
 
-            public ChangeType ChangeType { get; }
-            public StorageCell StorageCell { get; }
-            public byte[] Value { get; }
+            public readonly ChangeType ChangeType;
+            public readonly StorageCell StorageCell;
+            public readonly byte[] Value;
+
+            public bool IsNull => ChangeType == ChangeType.Null;
         }
 
         /// <summary>
@@ -312,6 +314,7 @@ namespace Nethermind.State
         /// </summary>
         protected enum ChangeType
         {
+            Null = 0,
             JustCache,
             Update,
             Destroy,

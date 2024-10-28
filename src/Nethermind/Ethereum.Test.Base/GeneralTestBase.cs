@@ -57,8 +57,8 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
-            TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
-            Assert.IsNull(test.LoadFailure, "test data loading failure");
+            TestContext.Out.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
 
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
@@ -109,6 +109,7 @@ namespace Ethereum.Test.Base
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
+            header.RequestsRoot = test.RequestsRoot;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -136,11 +137,15 @@ namespace Ethereum.Test.Base
 
             Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
 
-            bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidBlock(block, specProvider);
+            ValidationResult txIsValid = _txValidator.IsWellFormed(test.Transaction, spec);
 
-            if (isValid)
+            if (txIsValid)
             {
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+            }
+            else
+            {
+                _logger.Info($"Skipping invalid tx with error: {txIsValid.Error}");
             }
 
             stopwatch.Stop();

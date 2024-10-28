@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
@@ -295,7 +294,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportMemoryChange(long offset, in ZeroPaddedSpan data)
+    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -307,7 +306,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportMemoryChange(long offset, byte data)
+    public void ReportMemoryChange(UInt256 offset, byte data)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

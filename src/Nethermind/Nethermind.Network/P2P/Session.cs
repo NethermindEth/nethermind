@@ -207,31 +207,38 @@ namespace Nethermind.Network.P2P
 
         public int DeliverMessage<T>(T message) where T : P2PMessage
         {
-            lock (_sessionStateLock)
+            try
             {
-                if (State < SessionState.Initialized)
+                lock (_sessionStateLock)
                 {
-                    throw new InvalidOperationException($"{nameof(DeliverMessage)} called {this}");
+                    if (State < SessionState.Initialized)
+                    {
+                        throw new InvalidOperationException($"{nameof(DeliverMessage)} called {this}");
+                    }
+
+                    // Must allow sending out packet when `DisconnectingProtocols` so that we can send out disconnect reason
+                    // and hello (part of protocol)
+                    if (IsClosed)
+                    {
+                        return 1;
+                    }
                 }
 
-                // Must allow sending out packet when `DisconnectingProtocols` so that we can send out disconnect reason
-                // and hello (part of protocol)
-                if (IsClosed)
-                {
-                    return 1;
-                }
+                if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
+
+                message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
+                int size = _packetSender.Enqueue(message);
+
+                RecordOutgoingMessageMetric(message, size);
+
+                Interlocked.Add(ref Metrics.P2PBytesSent, size);
+
+                return size;
             }
-
-            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
-
-            message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
-            int size = _packetSender.Enqueue(message);
-
-            RecordOutgoingMessageMetric(message, size);
-
-            Interlocked.Add(ref Metrics.P2PBytesSent, size);
-
-            return size;
+            finally
+            {
+                message.Dispose();
+            }
         }
 
         public void ReceiveMessage(Packet packet)

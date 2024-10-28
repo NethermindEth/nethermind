@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {

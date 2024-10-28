@@ -25,7 +25,6 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
@@ -412,11 +411,10 @@ public static partial class Program
         else
         {
             _logger.Info($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
-            stopwatch.Stop();
 
-            _logger.Info($"NLog.config loaded in {stopwatch.ElapsedMilliseconds}ms.");
+            _logger.Info($"NLog.config loaded in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms.");
         }
 
         // TODO: dynamically switch log levels from CLI!

@@ -3,6 +3,7 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -36,6 +37,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -94,8 +96,17 @@ namespace Nethermind.JsonRpc.Benchmark
                  = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
-            BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, NullReceiptStorage.Instance, new BlockhashStore(specProvider, stateProvider), LimboLogs.Instance);
+            BlockProcessor blockProcessor = new(
+                specProvider,
+                Always.Valid,
+                new RewardCalculator(specProvider),
+                transactionsExecutor,
+                stateProvider,
+                NullReceiptStorage.Instance,
+                transactionProcessor,
+                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
+                new BlockhashStore(specProvider, stateProvider),
+                LimboLogs.Instance);
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId);
             BlockchainProcessor blockchainProcessor = new(
