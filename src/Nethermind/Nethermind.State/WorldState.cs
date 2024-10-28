@@ -174,8 +174,11 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            _persistentStorageProvider.CommitTrees(blockNumber);
-            _stateProvider.CommitTree(blockNumber);
+            using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
+            {
+                _persistentStorageProvider.CommitTrees(committer);
+                _stateProvider.CommitTree();
+            }
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
@@ -266,6 +269,10 @@ namespace Nethermind.State
         }
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
+        public void ResetTransient()
+        {
+            _transientStorageProvider.Reset();
+        }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
     }

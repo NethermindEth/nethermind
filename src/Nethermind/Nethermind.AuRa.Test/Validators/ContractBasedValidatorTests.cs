@@ -30,7 +30,6 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Evm;
-using Nethermind.Core.Specs;
 using System.Text.Json;
 using Nethermind.Consensus.Processing;
 

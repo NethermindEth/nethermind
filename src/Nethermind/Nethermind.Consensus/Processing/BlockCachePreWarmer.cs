@@ -13,6 +13,7 @@ using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Core.Eip2930;
@@ -143,11 +144,32 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     tx = block.Transactions[i];
                     tx.CopyTo(systemTransaction);
                     using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+
+                    Address senderAddress = tx.SenderAddress!;
+                    if (!scope.WorldState.AccountExists(senderAddress))
+                    {
+                        scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                    }
+
+                    UInt256 nonceDelta = UInt256.Zero;
+                    for (int prev = 0; prev < i; prev++)
+                    {
+                        if (senderAddress == block.Transactions[prev].SenderAddress)
+                        {
+                            nonceDelta++;
+                        }
+                    }
+
+                    if (!nonceDelta.IsZero)
+                    {
+                        scope.WorldState.IncrementNonce(senderAddress, nonceDelta);
+                    }
+
                     if (spec.UseTxAccessLists)
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = scope.TransactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+                    TransactionResult result = scope.TransactionProcessor.Warmup(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)

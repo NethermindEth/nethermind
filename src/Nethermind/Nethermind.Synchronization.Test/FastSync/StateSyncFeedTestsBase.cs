@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -79,7 +78,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
 
-            remoteStorageTree.Commit(0);
+            remoteStorageTree.Commit();
             return remoteStorageTree;
         }
 

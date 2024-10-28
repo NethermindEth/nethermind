@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -186,14 +187,14 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector SyncModeSelector { get; set; } = null!;
+        public ISyncModeSelector SyncModeSelector => ApiWithNetworkServiceContainer?.Resolve<ISyncModeSelector>()!;
 
-        public ISyncProgressResolver? SyncProgressResolver { get; set; }
+        public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
-        public ISynchronizer? Synchronizer { get; set; }
+        public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
         public ISyncServer? SyncServer { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
@@ -224,7 +225,7 @@ namespace Nethermind.Api
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
         public IWallet? Wallet { get; set; }
-        public IBlockStore? BadBlocksStore { get; set; }
+        public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
@@ -243,5 +244,7 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+
+        public IContainer? ApiWithNetworkServiceContainer { get; set; }
     }
 }

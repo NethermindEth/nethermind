@@ -15,10 +15,8 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -83,7 +81,7 @@ namespace Nethermind.Consensus.Ethash
                 scope.WorldState,
                 NullReceiptStorage.Instance,
                 scope.TransactionProcessor,
-                new BeaconBlockRootHandler(scope.TransactionProcessor),
+                new BeaconBlockRootHandler(scope.TransactionProcessor, scope.WorldState),
                 new BlockhashStore(getFromApi.SpecProvider, scope.WorldState),
                 getFromApi.LogManager);
 

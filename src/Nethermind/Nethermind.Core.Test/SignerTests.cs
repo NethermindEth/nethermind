@@ -6,7 +6,6 @@ using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

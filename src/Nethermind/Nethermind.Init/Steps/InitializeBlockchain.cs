@@ -51,6 +51,7 @@ namespace Nethermind.Init.Steps
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
+            setApi.TxValidator = CreateTxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
@@ -145,6 +146,11 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
+        protected virtual TxValidator? CreateTxValidator(ulong v)
+        {
+            return new TxValidator(_api.SpecProvider!.ChainId);
+        }
+
         protected virtual IBlockValidator CreateBlockValidator()
         {
             return new BlockValidator(
@@ -200,8 +206,8 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
 
-        protected virtual TxPool.TxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
-            new(_api.EthereumEcdsa!,
+        protected virtual ITxPool CreateTxPool(CodeInfoRepository codeInfoRepository) =>
+            new TxPool.TxPool(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!, codeInfoRepository),
                 _api.Config<ITxPoolConfig>(),
@@ -238,7 +244,7 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 _api.TransactionProcessor,
-                new BeaconBlockRootHandler(_api.TransactionProcessor),
+                new BeaconBlockRootHandler(_api.TransactionProcessor, worldState),
                 new BlockhashStore(_api.SpecProvider!, worldState),
                 _api.LogManager,
                 preWarmer: preWarmer

@@ -10,6 +10,7 @@ using Nethermind.Shutter.Config;
 using Nethermind.Logging;
 using Google.Protobuf;
 using Nethermind.Core.Collections;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Shutter;
 
@@ -65,6 +66,7 @@ public class ShutterKeyValidator(
         }
     }
 
+    [SkipLocalsInit]
     private bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys, in IShutterEon.Info eonInfo)
     {
         if (decryptionKeys.InstanceID != _instanceId)

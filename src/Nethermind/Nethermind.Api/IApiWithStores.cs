@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Find;
@@ -29,6 +31,12 @@ namespace Nethermind.Api
         IReceiptFinder? ReceiptFinder { get; set; }
         IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
-        IBlockStore? BadBlocksStore { get; set; }
+        IBadBlockStore? BadBlocksStore { get; set; }
+
+        public ContainerBuilder ConfigureContainerBuilderFromApiWithStores(ContainerBuilder builder)
+        {
+            return ConfigureContainerBuilderFromBasicApi(builder)
+                .AddPropertiesFrom<IApiWithStores>(this);
+        }
     }
 }

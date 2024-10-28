@@ -14,7 +14,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin
 {
-    public sealed class MergeHeaderValidator : HeaderValidator
+    public class MergeHeaderValidator : HeaderValidator
     {
         // https://eips.ethereum.org/EIPS/eip-3675#constants
         private const int MaxExtraDataBytes = 32;
