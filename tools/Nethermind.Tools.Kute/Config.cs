@@ -69,7 +69,7 @@ public static class Config
 
     public static CliOption<int> RequestsPerSecond { get; } = new("--rps", "-e")
     {
-        Description = "If set to higher than 0, then requests will be send in selected RPS (Requests per seconds) rate. If 0 (or lower) then requests will be sent sequentionally.",
+        Description = "If set to higher than 0, then requests will be send in selected RPS (Requests per seconds) rate. If 0 (or lower) then requests will be sent sequentially",
         HelpName = "value"
     };
 
