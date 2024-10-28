@@ -22,9 +22,10 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PivotUpdator
 {
+    private const string Pivot = "pivot";
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    protected readonly ISyncPeerPool _syncPeerPool;
+    private readonly ISyncPeerPool _syncPeerPool;
     private readonly ISyncConfig _syncConfig;
     protected readonly IBlockCacheService _blockCacheService;
     protected readonly IBeaconSyncStrategy _beaconSyncStrategy;
@@ -129,7 +130,13 @@ public class PivotUpdator
     {
         (Hash256 Hash, long Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
 
-        return potentialPivotData is not null && TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
+        if (potentialPivotData is null)
+        {
+            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+            return false;
+        }
+
+        return TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
     }
 
     protected virtual async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
@@ -137,29 +144,28 @@ public class PivotUpdator
         // getting finalized block hash as it is safe, because can't be reorganized
         Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
 
-        if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
+        if (finalizedBlockHash is not null && finalizedBlockHash != Keccak.Zero)
         {
-            PrintWaitingForMessageFromCl();
-            return null;
+            UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
+
+            long? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
+                                         ?? TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash)
+                                         ?? await TryGetFromPeers(finalizedBlockHash, cancellationToken);
+
+            return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
         }
 
-        UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
-
-        long? finalizedBlockNumber = TryGetFinalizedBlockNumberFromBlockCache(finalizedBlockHash);
-        finalizedBlockNumber ??= TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash);
-        finalizedBlockNumber ??= await TryGetFinalizedBlockNumberFromPeers(finalizedBlockHash, cancellationToken);
-
-        return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
+        return null;
     }
 
-    private long? TryGetFinalizedBlockNumberFromBlockCache(Hash256 finalizedBlockHash)
+    protected long? TryGetBlockNumberFromBlockCache(Hash256 finalizedBlockHash, string type = Pivot)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
+        if (_logger.IsDebug) _logger.Debug($"Looking for {type} block in block cache");
         if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
         {
             if (HeaderValidator.ValidateHash(finalizedBlock.Header))
             {
-                if (_logger.IsDebug) _logger.Debug("Found pivot block in block cache");
+                if (_logger.IsDebug) _logger.Debug($"Found {type} block in block cache");
                 return finalizedBlock.Header.Number;
             }
             if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {finalizedBlock.Header.Hash} when expecting {finalizedBlockHash}");
@@ -185,7 +191,11 @@ public class PivotUpdator
         return null;
     }
 
-    private async Task<long?> TryGetFinalizedBlockNumberFromPeers(Hash256 finalizedBlockHash, CancellationToken cancellationToken)
+    protected async Task<long?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
+        (await TryGetFromPeers(hash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
+
+    protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
+        Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)
     {
         foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
         {
@@ -195,26 +205,30 @@ public class PivotUpdator
             }
             try
             {
-                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of pivot block {finalizedBlockHash}");
-                BlockHeader? finalizedHeader = await peer.SyncPeer.GetHeadBlockHeader(finalizedBlockHash, cancellationToken);
+                if (_logger.IsInfo) _logger.Info($"Asking peer {peer.SyncPeer.Node.ClientId} for header of {type} block {id}");
+                BlockHeader? finalizedHeader = await getHeader(peer.SyncPeer, id, cancellationToken);
                 if (finalizedHeader is not null)
                 {
                     if (HeaderValidator.ValidateHash(finalizedHeader))
                     {
-                        if (_logger.IsInfo) _logger.Info($"Received header of pivot block from peer {peer.SyncPeer.Node.ClientId}");
-                        return finalizedHeader.Number;
+                        if (_logger.IsInfo) _logger.Info($"Received header of {type} block from peer {peer.SyncPeer.Node.ClientId}");
+                        return finalizedHeader;
                     }
-                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
+                    if (_logger.IsInfo) _logger.Info($"Hash of header received from peer {peer.SyncPeer.Node.ClientId} is {finalizedHeader.Hash} when expecting {id}");
                 }
             }
             catch (Exception exception) when (exception is TimeoutException or OperationCanceledException)
             {
-                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of pivot block {finalizedBlockHash}");
+                if (_logger.IsInfo) _logger.Info($"Peer {peer.SyncPeer.Node.ClientId} didn't respond to request for header of pivot block {id}");
                 if (_logger.IsDebug) _logger.Debug($"Exception in GetHeadBlockHeader request to peer {peer.SyncPeer.Node.ClientId}. {exception}");
             }
         }
 
-        PrintPotentialNewPivotAndWaiting(finalizedBlockHash.ToString());
+        if (type == Pivot && _logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
+        {
+            _logger.Info($"Potential new pivot block: {id}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
+        }
+
         return null;
     }
 
@@ -248,16 +262,6 @@ public class PivotUpdator
         _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
         _beaconSyncStrategy.AllowBeaconHeaderSync();
-    }
-
-    protected void PrintWaitingForMessageFromCl()
-    {
-        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
-    }
-
-    protected void PrintPotentialNewPivotAndWaiting(string potentialPivotBlockHash)
-    {
-        if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Potential new pivot block: {potentialPivotBlockHash}. Waiting for pivot block header [{_maxAttempts - _attemptsLeft}s]");
     }
 
     protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)
