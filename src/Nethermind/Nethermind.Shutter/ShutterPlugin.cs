@@ -17,7 +17,6 @@ using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
-using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Shutter;
 
@@ -100,21 +99,9 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
             }
 
             _shutterApi = new ShutterApi(
-                _api.AbiEncoder,
-                _api.BlockTree,
-                _api.EthereumEcdsa,
-                _api.LogFinder,
-                _api.ReceiptFinder,
-                _api.LogManager,
-                _api.SpecProvider,
-                _api.Timestamper,
-                _api.WorldStateManager,
-                _api.FileSystem,
-                _api.Config<IKeyStoreConfig>(),
-                _shutterConfig,
+                _api,
                 validatorsInfo,
-                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot),
-                _api.IpResolver.ExternalIp
+                TimeSpan.FromSeconds(_blocksConfig!.SecondsPerSlot)
             );
 
             _ = _shutterApi.StartP2P(bootnodeP2PAddresses, _cts);

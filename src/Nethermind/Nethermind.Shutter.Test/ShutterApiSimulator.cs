@@ -3,53 +3,32 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
-using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Facade.Find;
-using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
-using Nethermind.Shutter.Config;
-using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
 
 public class ShutterApiSimulator(
     ShutterEventSimulator eventSimulator,
-    IAbiEncoder abiEncoder,
-    IBlockTree blockTree,
-    IEthereumEcdsa ecdsa,
-    ILogFinder logFinder,
-    IReceiptStorage receiptStorage,
-    ILogManager logManager,
-    ISpecProvider specProvider,
-    ITimestamper timestamper,
-    IWorldStateManager worldStateManager,
-    IFileSystem fileSystem,
-    IKeyStoreConfig keyStoreConfig,
-    IShutterConfig cfg,
+    INethermindApi api,
     Dictionary<ulong, byte[]> validatorsInfo,
-    Random rnd
-        ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
-        logManager, specProvider, timestamper, worldStateManager, fileSystem,
-        keyStoreConfig, cfg, validatorsInfo, ShutterTestsCommon.SlotLength, IPAddress.None)
+    Random rnd) : ShutterApi(api, validatorsInfo, ShutterTestsCommon.SlotLength)
 {
     public int EonUpdateCalled = 0;
     public int KeysValidated = 0;
     public ShutterTransactions? LoadedTransactions;
 
     private readonly Random _rnd = rnd;
-    private readonly IReceiptStorage _receiptStorage = receiptStorage;
+    private readonly IReceiptStorage _receiptStorage = api.ReceiptStorage!;
 
     public (List<ShutterEventSimulator.Event> events, Dto.DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount = null)
     {
