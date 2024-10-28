@@ -53,7 +53,6 @@ public class ReceiptJsonConverter : JsonConverter<TxReceipt>
         JsonSerializer.Serialize(writer, receipt.ContractAddress ?? Address.Zero, options);
         writer.WritePropertyName("gasUsed");
         JsonSerializer.Serialize(writer, receipt.GasUsed, options);
-        writer.WriteNull("effectiveGasPrice");
         writer.WritePropertyName("blockHash");
         JsonSerializer.Serialize(writer, receipt.BlockHash ?? Keccak.Zero, options);
 

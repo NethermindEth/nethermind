@@ -23,7 +23,6 @@ public class InputProcessor
         string stateFork,
         string? stateReward,
         ulong stateChainId,
-        bool isGnosis,
         TraceOptions traceOptions)
     {
         GethTraceOptions gethTraceOptions = new GethTraceOptions
@@ -63,7 +62,7 @@ public class InputProcessor
             throw new T8NException(e, ExitCodes.ErrorConfig);
         }
 
-        ISpecProvider specProvider = isGnosis ? GnosisSpecProvider.Instance
+        ISpecProvider specProvider = stateChainId == GnosisSpecProvider.Instance.ChainId ? GnosisSpecProvider.Instance
             : new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, spec));
 
         if (spec is Paris)
@@ -73,35 +72,37 @@ public class InputProcessor
 
         envInfo.ApplyChecks(specProvider, spec);
 
-        T8nTestCase generalStateTest = new();
-        generalStateTest.Fork = spec;
-        generalStateTest.Pre = allocJson;
-        generalStateTest.Transactions = transactions;
-        generalStateTest.StateChainId = isGnosis ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
+        var generalStateTest = new T8nTestCase
+        {
+            Fork = spec,
+            SpecProvider = specProvider,
+            Pre = allocJson,
+            Transactions = transactions,
+            CurrentCoinbase = envInfo.CurrentCoinbase,
+            CurrentGasLimit = envInfo.CurrentGasLimit,
+            CurrentTimestamp = envInfo.CurrentTimestamp,
+            CurrentNumber = envInfo.CurrentNumber,
+            Withdrawals = envInfo.Withdrawals,
+            CurrentRandom = envInfo.GetCurrentRandomHash256(),
+            ParentTimestamp = envInfo.ParentTimestamp,
+            ParentDifficulty = envInfo.ParentDifficulty,
+            CurrentBaseFee = envInfo.CurrentBaseFee,
+            CurrentDifficulty = envInfo.CurrentDifficulty,
+            ParentUncleHash = envInfo.ParentUncleHash,
+            ParentBaseFee = envInfo.ParentBaseFee,
+            ParentBeaconBlockRoot = envInfo.ParentBeaconBlockRoot,
+            ParentGasUsed = envInfo.ParentGasUsed,
+            ParentGasLimit = envInfo.ParentGasLimit,
+            ParentExcessBlobGas = envInfo.ParentExcessBlobGas,
+            CurrentExcessBlobGas = envInfo.CurrentExcessBlobGas,
+            ParentBlobGasUsed = envInfo.ParentBlobGasUsed,
+            Ommers = envInfo.Ommers,
+            StateReward = stateReward,
+            BlockHashes = envInfo.BlockHashes,
+            StateChainId = stateChainId,
+            GethTraceOptions = gethTraceOptions,
+        };
 
-        generalStateTest.CurrentCoinbase = envInfo.CurrentCoinbase;
-        generalStateTest.CurrentGasLimit = envInfo.CurrentGasLimit;
-        generalStateTest.CurrentTimestamp = envInfo.CurrentTimestamp;
-        generalStateTest.CurrentNumber = envInfo.CurrentNumber;
-        generalStateTest.Withdrawals = envInfo.Withdrawals;
-        generalStateTest.CurrentRandom = envInfo.GetCurrentRandomHash256();
-        generalStateTest.ParentTimestamp = envInfo.ParentTimestamp;
-        generalStateTest.ParentDifficulty = envInfo.ParentDifficulty;
-        generalStateTest.CurrentBaseFee = envInfo.CurrentBaseFee;
-        generalStateTest.CurrentDifficulty = envInfo.CurrentDifficulty;
-        generalStateTest.ParentUncleHash = envInfo.ParentUncleHash;
-        generalStateTest.ParentBeaconBlockRoot = envInfo.ParentBeaconBlockRoot;
-        generalStateTest.ParentBaseFee = envInfo.ParentBaseFee;
-        generalStateTest.ParentGasUsed = envInfo.ParentGasUsed;
-        generalStateTest.ParentGasLimit = envInfo.ParentGasLimit;
-        generalStateTest.ParentExcessBlobGas = envInfo.ParentExcessBlobGas;
-        generalStateTest.CurrentExcessBlobGas = envInfo.CurrentExcessBlobGas;
-        generalStateTest.ParentBlobGasUsed = envInfo.ParentBlobGasUsed;
-        generalStateTest.Ommers = envInfo.Ommers;
-        generalStateTest.StateReward = stateReward;
-        generalStateTest.BlockHashes = envInfo.BlockHashes;
-        generalStateTest.StateChainId = stateChainId;
-        generalStateTest.GethTraceOptions = gethTraceOptions;
 
         return generalStateTest;
     }

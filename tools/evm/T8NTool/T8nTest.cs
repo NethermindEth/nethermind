@@ -8,7 +8,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -19,51 +18,22 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using NUnit.Framework;
 
 namespace Evm.T8NTool;
-
 
 public abstract class T8nTest
 {
     private readonly ILogManager _logManager = LimboLogs.Instance;
-    private TxValidator? _txValidator;
 
-    protected T8nResult RunTest(T8nTestCase test, bool isGnosis = false)
+    protected T8nResult RunTest(T8nTestCase test)
     {
-        _txValidator = new TxValidator(test.StateChainId);
 
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
-        ISpecProvider specProvider;
-        if (isGnosis)
-        {
-            specProvider = new CustomSpecProvider(
-                ((ForkActivation)0,
-                    GnosisSpecProvider.Instance
-                        .GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Fork));
-        }
-        else
-        {
-            specProvider = new CustomSpecProvider(
-                ((ForkActivation)0,
-                    Frontier
-                        .Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                ((ForkActivation)1, test.Fork));
-        }
 
-        if (specProvider.GenesisSpec != Frontier.Instance)
-        {
-            Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-        }
-
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+        IReleaseSpec spec = test.SpecProvider.GetSpec((ForkActivation)test.CurrentNumber);
         KzgPolynomialCommitments.InitializeAsync();
         BlockHeader header = test.GetBlockHeader();
         BlockHeader? parentHeader = test.GetParentBlockHeader();
@@ -85,20 +55,20 @@ public abstract class T8nTest
         CodeInfoRepository codeInfoRepository = new();
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
-            specProvider,
+            test.SpecProvider,
             codeInfoRepository,
             _logManager);
 
         TransactionProcessor transactionProcessor = new(
-            specProvider,
+            test.SpecProvider,
             stateProvider,
             virtualMachine,
             codeInfoRepository,
             _logManager);
 
-        InitializeTestPreState(test.Pre, stateProvider, specProvider);
+        GeneralStateTestBase.InitializeTestState(test.Pre, stateProvider, test.SpecProvider);
 
-        var ecdsa = new EthereumEcdsa(specProvider.ChainId);
+        var ecdsa = new EthereumEcdsa(test.SpecProvider.ChainId);
         foreach (var transaction in test.Transactions)
         {
             transaction.ChainId ??= test.StateChainId;
@@ -143,9 +113,11 @@ public abstract class T8nTest
         int txIndex = 0;
         TransactionExecutionReport transactionExecutionReport = new();
 
+        var txValidator = new TxValidator(test.StateChainId);
+
         foreach (var tx in test.Transactions)
         {
-            ValidationResult txIsValid = _txValidator.IsWellFormed(tx, spec);
+            ValidationResult txIsValid = txValidator.IsWellFormed(tx, spec);
             if (txIsValid)
             {
                 blockReceiptsTracer.StartNewTxTrace(tx);
@@ -181,21 +153,20 @@ public abstract class T8nTest
 
         blockReceiptsTracer.EndBlockTrace();
 
-        stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+        stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
         stateProvider.CommitTree(test.CurrentNumber);
 
-        // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
         if (test.CurrentCoinbase != null && !stateProvider.AccountExists(test.CurrentCoinbase))
         {
             stateProvider.CreateAccount(test.CurrentCoinbase, 0);
         }
 
-        stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+        stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
 
         stateProvider.RecalculateStateRoot();
 
         return T8nResult.ConstructT8NResult(stateProvider, block, test, storageTxTracer,
-                blockReceiptsTracer, specProvider, header, transactionExecutionReport);
+                blockReceiptsTracer, test.SpecProvider, header, transactionExecutionReport);
     }
 
     private static IBlockhashProvider GetBlockHashProvider(T8nTestCase test, BlockHeader header,
@@ -217,32 +188,6 @@ public abstract class T8nTest
     {
         if (test.CurrentBaseFee.HasValue) return test.CurrentBaseFee.Value;
         return BaseFeeCalculator.Calculate(parentHeader, test.Fork);
-    }
-
-    private static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider,
-        ISpecProvider specProvider)
-    {
-        foreach (KeyValuePair<Address, AccountState> accountState in pre)
-        {
-            if (accountState.Value.Storage is not null)
-            {
-                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
-                {
-                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
-                }
-            }
-
-            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
-            if (accountState.Value.Code is not null)
-            {
-                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-            }
-        }
-
-        stateProvider.Commit(specProvider.GenesisSpec);
-        stateProvider.CommitTree(0);
-        stateProvider.Reset();
     }
 
     private static void CalculateReward(string? stateReward, Block block,

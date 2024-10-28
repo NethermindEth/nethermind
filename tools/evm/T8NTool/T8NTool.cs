@@ -33,9 +33,7 @@ public class T8NTool : T8nTest
         T8NOutput t8NOutput = new();
         try
         {
-            var isGnosis = GnosisSpecProvider.Instance.ChainId == stateChainId;
-            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId,
-                isGnosis, traceOptions);
+            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward, stateChainId, traceOptions);
 
             if (outputAlloc == "stdout") t8NOutput.Alloc = t8NExecutionResult.Alloc;
             else if (outputAlloc != null) WriteToFile(outputAlloc, outputBasedir, t8NExecutionResult.Alloc);
@@ -85,13 +83,12 @@ public class T8NTool : T8nTest
         string stateFork,
         string? stateReward,
         ulong stateChainId,
-        bool isGnosis,
         TraceOptions traceOptions)
     {
         var generalStateTest = InputProcessor.ConvertToGeneralStateTest(inputAlloc, inputEnv, inputTxs, stateFork,
-            stateReward, stateChainId, isGnosis, traceOptions);
+            stateReward, stateChainId, traceOptions);
 
-        var res = RunTest(generalStateTest, isGnosis);
+        var res = RunTest(generalStateTest);
 
         PostState postState = new();
         postState.StateRoot = res.StateRoot;

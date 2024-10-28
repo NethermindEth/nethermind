@@ -92,10 +92,15 @@ public class T8nResult
             accounts.Add(header.Beneficiary, GetAccountState(header.Beneficiary, stateProvider, storageTracer.Storages));
         }
 
-        t8NResult.Accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();
+        t8NResult.Accounts = accounts.Where(account => !IsEmptyAccount(account.Value)).ToDictionary();
         t8NResult.TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes;
 
         return t8NResult;
+    }
+
+    private static bool IsEmptyAccount(AccountState account)
+    {
+        return account.Balance.IsZero && account.Nonce.IsZero && account.Code.Length == 0 && account.Storage.Count == 0;
     }
 
     private static AccountState GetAccountState(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, byte[]>> storages)
@@ -106,7 +111,7 @@ public class T8nResult
         {
             Nonce = account.Nonce,
             Balance = account.Balance,
-            Code = code.Length == 0 ? null : code
+            Code = code
         };
 
         if (storages.TryGetValue(address, out var storage))

@@ -40,7 +40,7 @@ public class AccountStateConverter : JsonConverter<AccountState>
                 JsonSerializer.Serialize(writer, value.Nonce, options);
             }
 
-            if (value.Code is not null)
+            if (value.Code.Length != 0)
             {
                 writer.WritePropertyName("code"u8);
                 JsonSerializer.Serialize(writer, value.Code, options);
