@@ -125,7 +125,7 @@ public class BodiesSyncFeedTests
         _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 2)!);
         _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 4)!);
 
-        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
         req.Infos
             .Where((bi) => bi is not null)
             .Select((bi) => bi!.BlockNumber)
@@ -138,8 +138,6 @@ public class BodiesSyncFeedTests
                 _pivotBlock.Number - 3,
                 // Skipped
                 _pivotBlock.Number - 5]);
-
-        req.Dispose();
     }
 
     [Test]
