@@ -173,7 +173,7 @@ public class TestBlockchain : IDisposable
             new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
             DbProvider.BlockInfosDb,
             DbProvider.MetadataDb,
-            new BlockStore(new TestMemDb(), 100),
+            new BadBlockStore(new TestMemDb(), 100),
             ChainLevelInfoRepository,
             SpecProvider,
             NullBloomStorage.Instance,

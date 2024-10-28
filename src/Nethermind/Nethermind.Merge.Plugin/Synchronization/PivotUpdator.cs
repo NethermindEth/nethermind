@@ -120,6 +120,7 @@ public class PivotUpdator
         {
             _syncModeSelector.Changed -= OnSyncModeChanged;
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            _beaconSyncStrategy.AllowBeaconHeaderSync();
             if (_logger.IsInfo) _logger.Info("Skipping pivot update");
         }
     }

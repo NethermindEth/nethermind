@@ -32,7 +32,7 @@ public class DebugBridge : IDebugBridge
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
 
@@ -45,7 +45,7 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore)
+        IBadBlockStore badBlockStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -177,14 +177,13 @@ public class DebugBridge : IDebugBridge
     {
         BlockHeader? header = _blockTree.FindHeader(blockHash);
         if (header is null) return null;
-
-        return _blockStore.GetRaw(header.Number, blockHash);
+        return _blockStore.GetRlp(header.Number, blockHash);
     }
 
     public byte[] GetBlockRlp(long number)
     {
         Hash256 hash = _blockTree.FindHash(number);
-        return hash is null ? null : _blockStore.GetRaw(number, hash);
+        return hash is null ? null : _blockStore.GetRlp(number, hash);
     }
 
     public Block? GetBlock(BlockParameter param)

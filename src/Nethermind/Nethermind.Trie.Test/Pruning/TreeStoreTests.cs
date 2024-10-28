@@ -78,6 +78,26 @@ namespace Nethermind.Trie.Test.Pruning
                 trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
 
+        [Test]
+        public void Flush_ShouldBeCalledOnEachPersist()
+        {
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
+
+            TestMemDb testMemDb = new TestMemDb();
+            using TrieStore fullTrieStore = CreateTrieStore(persistenceStrategy: Archive.Instance, kvStore: testMemDb);
+            PatriciaTree pt = new PatriciaTree(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+
+            for (int i = 0; i < 4; i++)
+            {
+                pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
+                using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
+                {
+                    pt.Commit();
+                }
+            }
+
+            testMemDb.FlushCount.Should().Be(4);
+        }
 
         [Test]
         public void Pruning_off_cache_should_not_change_commit_node()
@@ -978,8 +998,9 @@ namespace Nethermind.Trie.Test.Pruning
                 pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
                 persistenceStrategy: isPruningPersistenceStrategy);
 
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
+            TaskCompletionSource tcs = new TaskCompletionSource();
+            fullTrieStore.OnMemoryPruneCompleted += (sender, args) => tcs.TrySetResult();
 
             for (int i = 0; i < 64; i++)
             {
@@ -990,7 +1011,8 @@ namespace Nethermind.Trie.Test.Pruning
                 }
 
                 // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                await tcs.Task;
+                tcs = new TaskCompletionSource();
             }
 
             memDb.Count.Should().Be(61);

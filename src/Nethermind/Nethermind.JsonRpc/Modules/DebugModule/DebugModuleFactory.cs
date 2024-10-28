@@ -36,7 +36,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyDbProvider _dbProvider;
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger _logger;
 
@@ -53,7 +53,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore,
+        IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager)
     {

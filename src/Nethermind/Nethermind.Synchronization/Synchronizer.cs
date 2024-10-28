@@ -290,6 +290,9 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<HeadersSyncBatch>>()
 
+            // Default TotalDifficulty calculation strategy used when processing headers
+            .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
+
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
             .Register(ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))

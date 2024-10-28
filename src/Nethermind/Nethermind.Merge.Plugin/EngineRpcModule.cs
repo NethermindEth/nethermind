@@ -18,7 +18,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
+    protected readonly ILogger _logger;
 
     public EngineRpcModule(
         IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
@@ -33,7 +33,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IGetPayloadBodiesByRangeV2Handler executionGetPayloadBodiesByRangeV2Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
-        IAsyncHandler<byte[][], GetBlobsV1Result> getBlobsHandler,
+        IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         ILogManager logManager)
