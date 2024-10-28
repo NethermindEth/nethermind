@@ -178,7 +178,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     {
                         worldState.Restore(snapshot);
 
-                        if (executionResult.Error == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
+                        if (executionResult == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                         {
                             CommitAndDisposeBatch(batch);
 

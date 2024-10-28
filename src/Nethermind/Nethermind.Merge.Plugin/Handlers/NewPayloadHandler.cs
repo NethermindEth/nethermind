@@ -12,6 +12,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -86,13 +87,16 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        string requestStr = $"New Block:  {request}";
-        if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
-
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid request. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"New Block Request Invalid: {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+        }
+
+        string requestStr = $"New Block:  {request}";
+        if (_logger.IsInfo)
+        {
+            _logger.Info($"Received {requestStr}, {block.ParsedExtraData()}");
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
