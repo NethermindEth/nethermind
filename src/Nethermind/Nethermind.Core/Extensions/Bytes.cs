@@ -1142,7 +1142,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static string ToCleanUtf8String(this byte[] bytes)
+        public static string ToCleanUtf8String(this ReadOnlySpan<byte> bytes)
         {
             // The maximum number of UTF-16 chars is bytes.Length, but each Rune can be up to 2 chars.
             // So we allocate bytes.Length to bytes.Length * 2 chars.
@@ -1191,16 +1191,14 @@ namespace Nethermind.Core.Extensions
                     else
                     {
                         // Control character encountered; set flag to add space if needed
-                        if (hasValidContent)
-                            shouldAddSpace = true;
+                        shouldAddSpace |= hasValidContent;
                     }
                     index += bytesConsumed;
                 }
                 else if (status == OperationStatus.InvalidData)
                 {
                     // Invalid data; set flag to add space if needed
-                    if (hasValidContent)
-                        shouldAddSpace = true;
+                    shouldAddSpace |= hasValidContent;
                     index++;
                 }
                 else if (status == OperationStatus.NeedMoreData)
@@ -1211,8 +1209,7 @@ namespace Nethermind.Core.Extensions
                 else
                 {
                     // Unexpected status; treat as invalid data
-                    if (hasValidContent)
-                        shouldAddSpace = true;
+                    shouldAddSpace |= hasValidContent;
                     index++;
                 }
             }
