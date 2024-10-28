@@ -5,14 +5,9 @@ using System.Text.Json;
 
 namespace Nethermind.Tools.Kute.ResponseTracer;
 
-public class FileResponseTracer : IResponseTracer
+public class FileResponseTracer(string tracesFilePath) : IResponseTracer
 {
-    private readonly string? _tracesFilePath;
-
-    public FileResponseTracer(string? tracesFilePath)
-    {
-        _tracesFilePath = tracesFilePath;
-    }
+    private readonly string _tracesFilePath = tracesFilePath ?? throw new ArgumentNullException(nameof(tracesFilePath));
 
     public async Task TraceResponse(JsonDocument? response)
     {
