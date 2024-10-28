@@ -296,6 +296,19 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     steps:
+      - name: Destroy VM (if initialization failed)
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        if: ${{ failure() && needs.create_a_runner.result == 'failure' }}
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+          
       - name: Destroy Runner
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
