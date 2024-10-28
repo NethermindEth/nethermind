@@ -144,7 +144,8 @@ namespace Nethermind.Synchronization
 
             _progressTracker = new(
                 blockTree,
-                new MemDb(), // TODO: replace with proper state
+                //new MemDb(), // TODO: replace with proper state
+                _dbProvider.StateDb,
                 _stateFactory,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
