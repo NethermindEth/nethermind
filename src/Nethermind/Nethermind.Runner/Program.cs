@@ -107,7 +107,7 @@ async Task<int> ConfigureAsync(string[] args)
         logger.Info($"Version: {ProductInfo.Version}");
     }
 
-    AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
+    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
     {
         processExitSource?.Exit(ExitCodes.SigTerm);
         exit.Wait();
