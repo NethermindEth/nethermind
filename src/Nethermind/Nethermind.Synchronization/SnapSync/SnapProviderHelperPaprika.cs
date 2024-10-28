@@ -105,9 +105,20 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            state.Commit(false);
+            if (sortedBoundaryList?.Count > 0)
+            {
+                Span<byte> packed = stackalloc byte[sortedBoundaryList.Count * 33];
 
-            StitchBoundaries(sortedBoundaryList, state, Keccak.Zero);
+                for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
+                {
+                    (_, TreePath path) = sortedBoundaryList[i];
+                    int idx = sortedBoundaryList.Count - (i + 1);
+                    packed[idx * 33] = (byte)path.Length;
+                    path.Path.Bytes.CopyTo(packed.Slice(idx * 33 + 1));
+                }
+
+                state.ProcessProofNodes(Keccak.Zero, packed, sortedBoundaryList.Count);
+            }
 
             state.Commit(false);
 
@@ -258,9 +269,21 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            state.Commit(false);
+            if (sortedBoundaryList?.Count > 0)
+            {
+                Span<byte> packed = stackalloc byte[sortedBoundaryList.Count * 33];
 
-            StitchBoundaries(sortedBoundaryList, state, account.Path);
+                for (int i = sortedBoundaryList.Count - 1; i >= 0; i--)
+                {
+                    (_, TreePath path) = sortedBoundaryList[i];
+                    int idx = sortedBoundaryList.Count - (i + 1);
+                    packed[idx * 33] = (byte)path.Length;
+                    path.Path.Bytes.CopyTo(packed.Slice(idx * 33 + 1));
+                }
+
+                state.ProcessProofNodes(account.Path, packed, sortedBoundaryList.Count);
+            }
+
 
             state.Commit(false);
 
