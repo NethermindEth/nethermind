@@ -51,6 +51,8 @@ public partial class EngineModuleTests
     [SetUp]
     public Task Setup()
     {
+        ThreadPool.GetMaxThreads(out int worker, out int completion);
+        ThreadPool.SetMinThreads(worker, completion);
         return KzgPolynomialCommitments.InitializeAsync();
     }
 
