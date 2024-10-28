@@ -10,7 +10,7 @@ public static class Config
 {
     public static CliOption<string> MessagesFilePath { get; } = new("--input", "-i")
     {
-        Description = "Path to a file containing JSON RPC messages",
+        Description = "Path to a file or directory containing JSON RPC messages",
         HelpName = "path",
         Required = true,
     };
