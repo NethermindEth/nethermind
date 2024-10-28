@@ -79,9 +79,9 @@ public static class BlsSigner
     }
 
     [SkipLocalsInit]
-    public static bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, Signature signature, ReadOnlySpan<byte> message)
+    public static bool VerifyAggregate(ReadOnlySpan<byte> publicKeyBytes, Signature signature, ReadOnlySpan<byte> message)
     {
-        if (publicKeys.Length % PkCompressedSz != 0)
+        if (publicKeyBytes.Length % PkCompressedSz != 0)
         {
             throw new Bls.BlsException(Bls.ERROR.WRONGSIZE);
         }
@@ -90,9 +90,9 @@ public static class BlsSigner
         G1 agg = new(stackalloc long[G1.Sz]);
         agg.Zero();
 
-        for (int i = 0; i < publicKeys.Length; i += PkCompressedSz)
+        for (int i = 0; i < publicKeyBytes.Length; i += PkCompressedSz)
         {
-            pk.Decode(publicKeys.Slice(i, PkCompressedSz));
+            pk.Decode(publicKeyBytes.Slice(i, PkCompressedSz));
             agg.Aggregate(pk);
         }
 
