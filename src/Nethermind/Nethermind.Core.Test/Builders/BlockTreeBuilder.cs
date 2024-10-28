@@ -143,12 +143,12 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb MetadataDb { get; set; }
 
-        private IBlockStore? _badBlockStore;
-        public IBlockStore BadBlockStore
+        private IBadBlockStore? _badBlockStore;
+        public IBadBlockStore BadBlockStore
         {
             get
             {
-                return _badBlockStore ??= new BlockStore(BadBlocksDb, 100);
+                return _badBlockStore ??= new BadBlockStore(BadBlocksDb, 100);
             }
             set
             {
@@ -411,7 +411,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockTreeBuilder WithBadBlockStore(IBlockStore blockStore)
+        public BlockTreeBuilder WithBadBlockStore(IBadBlockStore blockStore)
         {
             BadBlockStore = blockStore;
             return this;

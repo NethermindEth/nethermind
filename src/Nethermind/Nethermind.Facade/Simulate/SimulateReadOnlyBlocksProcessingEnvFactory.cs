@@ -47,7 +47,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         const int badBlocksStored = 1;
 
         SimulateDictionaryBlockStore tmpBlockStore = new(mainblockStore);
-        IBlockStore badBlockStore = new BlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
+        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
 
         return new(tmpBlockStore,
             tmpHeaderStore,
