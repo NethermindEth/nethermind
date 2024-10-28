@@ -37,7 +37,7 @@ namespace Nethermind.Cli
                 HelpName = "address"
             };
             CliRootCommand rootCommand = [colorSchemeOption, nodeAddressOption];
-            
+
             rootCommand.SetAction(parseResult =>
             {
                 string? colorSchemeValue = parseResult.GetValue(colorSchemeOption);
