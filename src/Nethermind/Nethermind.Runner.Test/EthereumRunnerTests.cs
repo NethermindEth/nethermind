@@ -7,14 +7,21 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
+using System.Net;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
@@ -24,7 +31,17 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Db.Blooms;
+using Nethermind.Init.Steps;
+using Nethermind.Network;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Rlpx;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -96,6 +113,65 @@ public class EthereumRunnerTests
         }
 
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
+    }
+
+    [TestCaseSource(nameof(ChainSpecRunnerTests))]
+    public void BuildTest((string file, ConfigProvider configProvider) testCase, int _)
+    {
+        if (testCase.configProvider is null)
+        {
+            // some weird thing, not worth investigating
+            return;
+        }
+
+        using IContainer container = new ApiBuilder(testCase.configProvider, Substitute.For<IProcessExitSource>(), LimboLogs.Instance)
+            .Create(Array.Empty<Type>());
+
+        {
+            // Ideally, we don't have any of there blocks.
+            INethermindApi nethermindApi = container.Resolve<INethermindApi>();
+            nethermindApi.BlockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
+            nethermindApi.StateReader = Substitute.For<IStateReader>();
+            nethermindApi.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
+            nethermindApi.DbProvider = TestMemDbProvider.Init();
+            nethermindApi.ReceiptStorage = Substitute.For<IReceiptStorage>();
+            nethermindApi.ReceiptFinder = Substitute.For<IReceiptFinder>();
+            nethermindApi.BlockValidator = Substitute.For<IBlockValidator>();
+            nethermindApi.NodeKey = new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.GetTempPath());
+            nethermindApi.EthereumEcdsa = new EthereumEcdsa(0);
+            nethermindApi.BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>();
+            nethermindApi.TxPool = Substitute.For<ITxPool>();
+            nethermindApi.TrieStore = Substitute.For<ITrieStore>();
+
+            IIPResolver ipResolver = Substitute.For<IIPResolver>();
+            ipResolver.ExternalIp.Returns(IPAddress.Loopback);
+            nethermindApi.IpResolver = ipResolver;
+
+            INetworkConfig networkConfig = container.Resolve<INetworkConfig>();
+            networkConfig.ExternalIp = "127.0.0.1";
+            networkConfig.LocalIp = "127.0.0.1";
+        }
+
+        container.Resolve<EthereumRunner>();
+        foreach (StepInfo loadStep in container.Resolve<IEthereumStepsLoader>().LoadSteps())
+        {
+            container.Resolve(loadStep.StepType);
+        }
+
+        // TODO: Ideally, these should not be here and declared in the constructor of the steps. But until we stop
+        // resolving things manually because of steps manually updating api, we can't really do much.
+        container.Resolve<ISynchronizer>();
+        container.Resolve<SyncedTxGossipPolicy>();
+        container.Resolve<ISyncServer>();
+        container.Resolve<IDiscoveryApp>();
+        container.Resolve<IPeerManager>();
+        container.Resolve<ISessionMonitor>();
+        container.Resolve<IRlpxHost>();
+        container.Resolve<IStaticNodesManager>();
+        container.Resolve<Func<NodeSourceToDiscV4Feeder>>();
+        container.Resolve<IProtocolsManager>();
+        container.Resolve<SnapCapabilitySwitcher>();
+        container.Resolve<ISyncPeerPool>();
     }
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)

@@ -94,9 +94,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        if (_api.ChainSpec.SealEngineType == SealEngineType.Clique)
-            _syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
-
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
@@ -106,8 +103,7 @@ public class InitializeNetwork : IStep
             await plugin.InitSynchronization();
         }
 
-        // TODO: This whole thing can be injected into `InitializeNetwork`, but the container then
-        // need to be put at a higher level.
+        // TODO: Plugins can change something in `InitSynchronization`, so these need to be delayed
         SyncedTxGossipPolicy txGossipPolicy = _api.BaseContainer.Resolve<SyncedTxGossipPolicy>();
         ISyncServer _ = _api.BaseContainer.Resolve<ISyncServer>();
         IDiscoveryApp discoveryApp = _api.BaseContainer.Resolve<IDiscoveryApp>();
@@ -304,6 +300,13 @@ public class NetworkModule(INetworkConfig networkConfig, ISyncConfig syncConfig)
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        builder
+            .RegisterBuildCallback(ctx =>
+            {
+                if (ctx.Resolve<ChainSpec>().SealEngineType == SealEngineType.Clique)
+                    syncConfig.NeedToWaitForHeader = true; // Should this be in chainspec itself?
+            });
 
         builder.RegisterModule(new SynchronizerModule(syncConfig));
 
