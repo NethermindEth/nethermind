@@ -36,7 +36,7 @@ namespace Nethermind.Hive
             _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            Enabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || _hiveConfig.Enabled;
+            Enabled = _hiveConfig.Enabled;
 
             return Task.CompletedTask;
         }
