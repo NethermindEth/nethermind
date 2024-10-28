@@ -119,6 +119,31 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task ShouldNotReDownloadExistingBlock()
+    {
+        _feed.InitializeFeed();
+
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 2)!);
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 4)!);
+
+        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Infos
+            .Where((bi) => bi is not null)
+            .Select((bi) => bi!.BlockNumber)
+            .Take(4)
+            .Should()
+            .BeEquivalentTo([
+                _pivotBlock.Number,
+                _pivotBlock.Number - 1,
+                // Skipped
+                _pivotBlock.Number - 3,
+                // Skipped
+                _pivotBlock.Number - 5]);
+
+        req.Dispose();
+    }
+
+    [Test]
     public async Task ShouldRecoverOnInsertFailure()
     {
         _feed.InitializeFeed();
