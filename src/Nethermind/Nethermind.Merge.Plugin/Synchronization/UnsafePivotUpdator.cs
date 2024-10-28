@@ -31,9 +31,6 @@ public class UnsafePivotUpdator(
     : PivotUpdator(blockTree, syncModeSelector, syncPeerPool, syncConfig,
         blockCacheService, beaconSyncStrategy, metadataDb, logManager)
 {
-
-    private const int NumberOfBlocksBehindHeadForSettingPivot = 64;
-
     protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
@@ -46,9 +43,9 @@ public class UnsafePivotUpdator(
                                     ?? await TryGetFromPeers(headBlockHash, cancellationToken, head)
                                     ?? 0;
 
-            if (headBlockNumber > NumberOfBlocksBehindHeadForSettingPivot)
+            if (headBlockNumber > Reorganization.MaxDepth)
             {
-                long potentialPivotBlockNumber = (long)headBlockNumber - NumberOfBlocksBehindHeadForSettingPivot;
+                long potentialPivotBlockNumber = headBlockNumber.Value - Reorganization.MaxDepth;
 
                 Hash256? potentialPivotBlockHash =
                     TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockNumber)
