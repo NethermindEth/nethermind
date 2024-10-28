@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Update = (byte[] Message, byte[] Signature);
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
+using System.Linq;
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -55,10 +56,12 @@ public class ValidatorRegistryContract(
             }
 
             Message msg = new(update.Message.AsSpan());
+            ulong startValidatorIndex = msg.StartValidatorIndex;
+            ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count;
 
-            // skip untracked validators
-            if (!validatorsInfo.IsIndexRegistered(msg.ValidatorIndex))
+            if (msg.Count == 0)
             {
+                if (_logger.IsDebug) _logger.Debug($"Registration message has zero registration keys");
                 continue;
             }
 
@@ -80,28 +83,66 @@ public class ValidatorRegistryContract(
                 continue;
             }
 
-            if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
+            // only check validators in info file
+            bool untrackedValidator = false;
+            for (ulong v = msg.StartValidatorIndex; v < endValidatorIndex; v++)
             {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
+                if (!validatorsInfo.IsIndexRegistered(v))
+                {
+                    untrackedValidator = true;
+                    break;
+                }
+            }
+            if (untrackedValidator)
+            {
                 continue;
             }
 
-            if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo.GetPubKey(msg.ValidatorIndex), update.Signature, update.Message))
+            // if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo.GetPubKey(msg.ValidatorIndex), update.Signature, update.Message))
+
+            // if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
+            // {
+            //     if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
+            //     continue;
+            // }
+
+            // todo: fix overflows
+            uint sz = BlsSigner.PkCompressedSz * msg.Count;
+            // using ArrayPoolList<byte> buf = new(sz, sz);
+            // Span<byte> publicKeys = new byte[sz];
+
+            // for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
+            // {
+            //     validatorsInfo.GetPubKey(v).CopyTo(publicKeys[((int)v * BlsSigner.PkCompressedSz)..]);
+            // }
+
+            // validatorsInfo.GetPubKey(msg.ValidatorIndex)
+            BlsSigner.AggregatedPublicKey aggregatedPublicKey = new();
+            if (!ShutterCrypto.CheckValidatorRegistrySignatures(aggregatedPublicKey, update.Signature, update.Message))
             {
                 if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
                 continue;
             }
 
-            // message is valid
-            nonces[msg.ValidatorIndex] = msg.Nonce;
+            for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
+            {
+                if (nonces[v].HasValue && msg.Nonce <= nonces[v])
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Registration message for validator index {v} has incorrect nonce ({msg.Nonce}) should be {nonces[v] + 1}");
+                    continue;
+                }
 
-            if (msg.IsRegistration)
-            {
-                unregistered.Remove(msg.ValidatorIndex);
-            }
-            else
-            {
-                unregistered.Add(msg.ValidatorIndex);
+                // message is valid
+                nonces[v] = msg.Nonce;
+
+                if (msg.IsRegistration)
+                {
+                    unregistered.Remove(v);
+                }
+                else
+                {
+                    unregistered.Add(v);
+                }
             }
         }
 
@@ -114,8 +155,9 @@ public class ValidatorRegistryContract(
         public readonly byte Version;
         public readonly ulong ChainId;
         public readonly ReadOnlySpan<byte> ContractAddress;
-        public readonly ulong ValidatorIndex;
-        public readonly ulong Nonce;
+        public readonly ulong StartValidatorIndex;
+        public readonly uint Count;
+        public readonly uint Nonce;
         public readonly bool IsRegistration;
 
         public Message(Span<byte> encodedMessage)
@@ -128,8 +170,9 @@ public class ValidatorRegistryContract(
             Version = encodedMessage[0];
             ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[1..]);
             ContractAddress = encodedMessage[9..29];
-            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..]);
-            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[37..]);
+            StartValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..37]);
+            Count = BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[37..41]);
+            Nonce = BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[41..45]);
             IsRegistration = encodedMessage[45] == 1;
         }
     }
