@@ -159,7 +159,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error, validateHashes: false))
             {
-                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid. {error}"));
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
                 return NewPayloadV1Result.Invalid(error);
             }
 
