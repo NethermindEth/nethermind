@@ -290,7 +290,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         ICLConfig clConfig = _api.Config<ICLConfig>();
         _cl = new OptimismCL(_api.SpecProvider, clConfig, _api.EthereumJsonSerializer, _api.EthereumEcdsa, new CancellationToken(), _api.Timestamper, _api!.LogManager, opEngine);
-        // _cl.Start();
+        _cl.Start();
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
     }

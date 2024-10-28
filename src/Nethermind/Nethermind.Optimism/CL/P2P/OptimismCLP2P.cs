@@ -87,11 +87,11 @@ public class OptimismCLP2P
             DefaultSignaturePolicy = Settings.SignaturePolicy.StrictNoSign,
             GetMessageId = (message => CalculateMessageId(message))
         }, token: _cancellationTokenSource.Token);
-        // proto.OnAddPeer?.Invoke(["/ip4/5.9.87.214/tcp/9222/p2p/16Uiu2HAm39UNArTiqPNakHqA58Rss4Fz8f41otDj4sWKbaA7BazG"]);
+        proto.OnAddPeer?.Invoke(["/ip4/5.9.87.214/tcp/9222/p2p/16Uiu2HAm39UNArTiqPNakHqA58Rss4Fz8f41otDj4sWKbaA7BazG"]);
         proto.OnAddPeer?.Invoke(["/ip4/217.22.153.164/tcp/31660/p2p/16Uiu2HAmG5hBYavoanawCzz1cu5H7XNNSaA7BYNvwa7DNmojei6g"]);
     }
 
-    void OnMessage(byte[] msg)
+    async void OnMessage(byte[] msg)
     {
         int length = Snappy.GetUncompressedLength(msg);
         byte[] decompressed = new byte[length];
@@ -131,15 +131,15 @@ public class OptimismCLP2P
 
         // await Task.Delay(5000);
 
-        // var npResult = await _engineRpcModule.engine_newPayloadV3(payloadDecoded, Array.Empty<byte[]>(),
-        //     payloadDecoded.ParentBeaconBlockRoot);
-        //
-        // _logger.Error($"NP RESULT {npResult.Data.Status}");
-        //
-        // var fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
-        //     new ForkchoiceStateV1(payloadDecoded.BlockHash, payloadDecoded.BlockHash, payloadDecoded.BlockHash), null);
-        //
-        // _logger.Error($"FCU RESULT {fcuResult.Data.PayloadStatus.Status}");
+        var npResult = await _engineRpcModule.engine_newPayloadV3(payloadDecoded, Array.Empty<byte[]>(),
+            payloadDecoded.ParentBeaconBlockRoot);
+
+        _logger.Error($"NP RESULT {npResult.Data.Status}");
+
+        var fcuResult = await _engineRpcModule.engine_forkchoiceUpdatedV3(
+            new ForkchoiceStateV1(payloadDecoded.BlockHash, payloadDecoded.BlockHash, payloadDecoded.BlockHash), null);
+
+        _logger.Error($"FCU RESULT {fcuResult.Data.PayloadStatus.Status}");
     }
 
     private MessageId CalculateMessageId(Message message)

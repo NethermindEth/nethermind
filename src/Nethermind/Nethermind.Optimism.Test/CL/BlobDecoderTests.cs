@@ -44,6 +44,65 @@ public class BlobDecoderTests
         var end = ChannelDecoder.DecodeChannel(frames[0]);
     }
 
+    [TestCase(12123921)]
+    public void Vectors(int index)
+    {
+        StreamReader inputReader = new StreamReader($"/home/deffrian/Documents/vectors/input{index}");
+        StreamReader outputReader = new StreamReader($"/home/deffrian/Documents/vectors/output{index}");
+        byte[] blob = StringToByteArray(inputReader.ReadToEnd());
+        byte[] decoded = StringToByteArray(outputReader.ReadToEnd());
+        inputReader.Close();
+        outputReader.Close();
+        byte[] result = BlobDecoder.DecodeBlob(new BlobSidecar { Blob = blob });
+        Assert.That(decoded, Is.EqualTo(result));
+
+        var frames = FrameDecoder.DecodeFrames(result);
+        Assert.That(frames.Length, Is.EqualTo(1));
+        Assert.That(frames[0].IsLast, Is.True);
+
+        var end = ChannelDecoder.DecodeChannel(frames[0]);
+    }
+
+    [Test]
+    public void Another_test()
+    {
+        StreamReader inputReader = new StreamReader($"/home/deffrian/Documents/vectors/frames/input47623837");
+        StreamReader outputReader = new StreamReader($"/home/deffrian/Documents/vectors/frames/data47623837");
+        byte[] input = StringToByteArray(inputReader.ReadToEnd());
+        byte[] data = StringToByteArray(outputReader.ReadToEnd());
+        inputReader.Close();
+        outputReader.Close();
+
+        var frames = FrameDecoder.DecodeFrames(input);
+        Assert.That(frames.Length, Is.EqualTo(1));
+        //Assert.That(frames[0].IsLast, Is.True);
+
+        Assert.That(frames[0].FrameData, Is.EquivalentTo(data));
+
+        var end = ChannelDecoder.DecodeChannel(frames[0]);
+    }
+
+    [Test]
+    public void Another_test2()
+    {
+        StreamReader inputReader = new StreamReader($"/home/deffrian/Documents/testvectors/channels/input125142");
+        StreamReader outputReader = new StreamReader($"/home/deffrian/Documents/testvectors/channels/decompressed125142");
+        byte[] input = StringToByteArray(inputReader.ReadToEnd());
+        byte[] data = StringToByteArray(outputReader.ReadToEnd());
+        inputReader.Close();
+        outputReader.Close();
+
+        // BatchV1 decoded = BatchDecoder.Instance.DecodeSpanBatch(input)
+        BatchV1 batch = BatchDecoder.Instance.DecodeSpanBinary(data);
+        // (BatchV1[] batches, byte[] decompressed)  = ChannelDecoder.DecodeChannel(new Frame(){FrameData = input});
+        // Assert.That(batches, Is.EqualTo(1));
+        //Assert.That(frames[0].IsLast, Is.True);
+
+        // Assert.That(decompressed, Is.EquivalentTo(data));
+
+        // var end = ChannelDecoder.DecodeChannel(frames[0]);
+    }
+
     public static IEnumerable BlobTestCases
     {
         get

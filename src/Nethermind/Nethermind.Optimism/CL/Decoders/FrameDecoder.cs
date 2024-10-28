@@ -26,7 +26,7 @@ public class FrameDecoder
             ChannelId = channelId,
             FrameNumber = frameNumber,
             FrameData = frameData,
-            IsLast = isLast == 0
+            IsLast = isLast == 1
         }, 23 + (int)frameDataLength);
     }
 

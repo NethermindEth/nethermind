@@ -41,7 +41,7 @@ public class OptimismCL
     public void Start()
     {
         _p2p.Start();
-        _l1Bridge.Start();
-        _driver.Start();
+        // _l1Bridge.Start();
+        // _driver.Start();
     }
 }

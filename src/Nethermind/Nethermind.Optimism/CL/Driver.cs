@@ -54,7 +54,7 @@ public class Driver
     {
         if (_logger.IsError)
         {
-            _logger.Error($"GOT BLOB TRANSACTION To: {transaction.To}, From: {transaction.SenderAddress}");
+            // _logger.Error($"GOT BLOB TRANSACTION To: {transaction.To}, From: {transaction.SenderAddress}");
         }
         BlobSidecar[] blobSidecars = await _l1Bridge.GetBlobSidecars(slotNumber);
         for (int i = 0; i < transaction.BlobVersionedHashes!.Length; i++)
@@ -63,10 +63,10 @@ public class Driver
             {
                 if (blobSidecars[j].BlobVersionedHash.SequenceEqual(transaction.BlobVersionedHashes[i]!))
                 {
-                    _logger.Error($"GOT BLOB VERSIONED HASH: {BitConverter.ToString(transaction.BlobVersionedHashes[i]!).Replace("-", "")}");
-                    _logger.Error($"BLOB: {BitConverter.ToString(blobSidecars[j].Blob[..32]).Replace("-", "")}");
-                    byte[] data = BlobDecoder.DecodeBlob(blobSidecars[j]);
-                    FrameDecoder.DecodeFrames(data);
+                    // _logger.Error($"GOT BLOB VERSIONED HASH: {BitConverter.ToString(transaction.BlobVersionedHashes[i]!).Replace("-", "")}");
+                    // _logger.Error($"BLOB: {BitConverter.ToString(blobSidecars[j].Blob[..32]).Replace("-", "")}");
+                    // byte[] data = BlobDecoder.DecodeBlob(blobSidecars[j]);
+                    // FrameDecoder.DecodeFrames(data);
                     // _logger.Error($"DATA: {BitConverter.ToString(data).Replace("-", "")}");
                 }
             }
