@@ -34,6 +34,8 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly LruKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16, "");
 
         private bool _usePaprika;
+        private int _paprikaFlushEvery = 10_000;
+        private int _paprikaCommitCount;
 
         public SnapProvider(ProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
@@ -44,6 +46,7 @@ namespace Nethermind.Synchronization.SnapSync
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
             _usePaprika = true;
+            _paprikaCommitCount = 0;
         }
 
         public bool CanSync() => _progressTracker.CanSync();
@@ -96,6 +99,13 @@ namespace Nethermind.Synchronization.SnapSync
 
                     (result, moreChildrenToRight, accountsWithStorage, codeHashes) =
                         SnapProviderHelperPaprika.AddAccountRange(rawState, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+
+                    if (result == AddRangeResult.OK)
+                    {
+                        Interlocked.Increment(ref _paprikaCommitCount);
+                        if (_paprikaCommitCount % _paprikaFlushEvery == 0)
+                            _progressTracker.FlushPaprika();
+                    }
                 }
                 else
                 {
@@ -208,6 +218,13 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     using IRawState rawState = _progressTracker.GetNewRawState();
                     (result, moreChildrenToRight) = SnapProviderHelperPaprika.AddStorageRange(rawState, pathWithAccount, blockNumber, startingHash, slots, expectedRootHash, proofs);
+
+                    if (result == AddRangeResult.OK)
+                    {
+                        Interlocked.Increment(ref _paprikaCommitCount);
+                        if (_paprikaCommitCount % _paprikaFlushEvery == 0)
+                            _progressTracker.FlushPaprika();
+                    }
                 }
                 else
                 {

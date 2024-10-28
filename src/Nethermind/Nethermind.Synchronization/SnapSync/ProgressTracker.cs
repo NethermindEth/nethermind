@@ -143,6 +143,11 @@ namespace Nethermind.Synchronization.SnapSync
             return _stateFactory.GetRaw();
         }
 
+        public void FlushPaprika()
+        {
+            _stateFactory.ForceFlush();
+        }
+
         public void UpdatePivot()
         {
             _pivot.UpdateHeaderForcefully();
