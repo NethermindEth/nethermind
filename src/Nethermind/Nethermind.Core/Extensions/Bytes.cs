@@ -1152,6 +1152,7 @@ namespace Nethermind.Core.Extensions
                 return string.Empty;
 
             // Allocate a char buffer on the stack.
+            char[]? charsArray = null;
             Span<char> outputBuffer = stackalloc char[maxOutputChars];
 
             int outputPos = 0;
@@ -1161,7 +1162,7 @@ namespace Nethermind.Core.Extensions
 
             while (index < bytes.Length)
             {
-                ReadOnlySpan<byte> span = bytes.AsSpan(index);
+                ReadOnlySpan<byte> span = bytes.Slice(index);
 
                 OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
                 if (status == OperationStatus.Done)
@@ -1179,9 +1180,14 @@ namespace Nethermind.Core.Extensions
                         {
                             // Expand output buffer
                             int newSize = outputBuffer.Length * 2;
-                            char[] newBuffer = new char[newSize];
+                            char[] newBuffer = ArrayPool<char>.Shared.Rent(newSize);
                             outputBuffer.Slice(0, outputPos).CopyTo(newBuffer);
                             outputBuffer = newBuffer;
+                            if (charsArray is not null)
+                            {
+                                ArrayPool<char>.Shared.Return(charsArray);
+                            }
+                            charsArray = newBuffer;
                         }
 
                         rune.EncodeToUtf16(outputBuffer.Slice(outputPos));
@@ -1194,12 +1200,6 @@ namespace Nethermind.Core.Extensions
                         shouldAddSpace |= hasValidContent;
                     }
                     index += bytesConsumed;
-                }
-                else if (status == OperationStatus.InvalidData)
-                {
-                    // Invalid data; set flag to add space if needed
-                    shouldAddSpace |= hasValidContent;
-                    index++;
                 }
                 else if (status == OperationStatus.NeedMoreData)
                 {
@@ -1215,7 +1215,13 @@ namespace Nethermind.Core.Extensions
             }
 
             // Create the final string from the output buffer.
-            return outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
+            string outputString = outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
+            if (charsArray is not null)
+            {
+                ArrayPool<char>.Shared.Return(charsArray);
+            }
+
+            return outputString;
         }
 
         private static bool IsControlCharacter(Rune rune)

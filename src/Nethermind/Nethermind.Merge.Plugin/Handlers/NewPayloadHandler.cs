@@ -96,7 +96,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {
-            _logger.Info($"Received {requestStr}, {ParseExtraData(block)}");
+            _logger.Info($"Received {requestStr}, {block.ParsedExtraData()}");
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
@@ -453,26 +453,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         return true;
-    }
-
-    private string ParseExtraData(Block block)
-    {
-        byte[]? data = block.ExtraData;
-        if (data is null || data.Length == 0)
-        {
-            // If no extra data just show GasBeneficiary address
-            return $"Address: {(block.Header.GasBeneficiary?.ToString() ?? "0x")}";
-        }
-
-        // Ideally we'd prefer to show text; so convert invalid unicode
-        // and control chars to spaces and trim leading and trailing spaces.
-        string extraData = data.ToCleanUtf8String();
-
-        // If the cleaned text is less than half length of input size,
-        // output it as hex, else output the text.
-        return extraData.Length > data.Length / 2 ?
-            $"Extra Data: {extraData}" :
-            $"Hex: {data.ToHexString(withZeroX: true)}";
     }
 
     private enum ValidationResult
