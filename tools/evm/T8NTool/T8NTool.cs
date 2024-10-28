@@ -114,7 +114,14 @@ public class T8NTool : GeneralStateTestBase
 
     private void WriteToFile(string filename, string? basedir, object outputObject)
     {
-        FileInfo fileInfo = new(basedir + filename);
+        if (basedir is not null)
+        {
+            basedir = basedir.TrimEnd('/');
+            basedir += '/';
+        }
+
+        var fileInfo = new FileInfo(basedir + filename);
+
         Directory.CreateDirectory(fileInfo.DirectoryName!);
         using StreamWriter writer = new(fileInfo.FullName);
         writer.Write(_ethereumJsonSerializer.Serialize(outputObject, true));
