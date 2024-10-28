@@ -23,13 +23,13 @@ namespace Evm
             var outputBaseDirOpt = new Option<string>("--output.basedir", description: "Output base directory");
             var outputBodyOpt = new Option<string>("--output.body", description: "Output body");
             var outputResultOpt = new Option<string>("--output.result", description: "Output result");
-            var stateChainIdOpt = new Option<ulong>("--state.chainId", description: "State chain id", getDefaultValue: () => 1);
+            var stateChainIdOpt = new Option<ulong>("--state.chainid", description: "State chain id", getDefaultValue: () => 1);
             var stateForkOpt = new Option<string>("--state.fork", description: "State fork", getDefaultValue: () => "GrayGlacier");
             var stateRewardOpt = new Option<string>("--state.reward", description: "State reward");
             var traceMemoryOpt = new Option<bool>("--trace.memory", description: "Trace memory", getDefaultValue: () => false);
             var traceOpt = new Option<bool>("--trace", description: "Configures the use of the JSON opcode tracer. This tracer emits traces to files as trace-<txIndex>-<txHash>.jsonl", getDefaultValue: () => false);
-            var traceNoStackOpt = new Option<bool>("--trace.noStack", description: "Trace no stack", getDefaultValue: () => false);
-            var traceReturnDataOpt = new Option<bool>("--trace.returnData", description: "Trace return data", getDefaultValue: () => false);
+            var traceNoStackOpt = new Option<bool>("--trace.nostack", description: "Trace no stack", getDefaultValue: () => false);
+            var traceReturnDataOpt = new Option<bool>("--trace.returndata", description: "Trace return data", getDefaultValue: () => false);
 
             var cmd = new Command("t8n", "EVM State Transition command")
             {
