@@ -75,6 +75,6 @@ public static class Config
 
     public static CliOption<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
-        Description = "If true then each batched request will be unwraped to single requests."
+        Description = "If true then each batched request will be unwraped to single requests"
     };
 }
