@@ -112,17 +112,6 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static Block Convert(PostStateJson postStateJson, TestBlockJson testBlockJson)
-        {
-            BlockHeader? header = Convert(testBlockJson.BlockHeader);
-            BlockHeader[] uncles = testBlockJson.UncleHeaders?.Select(Convert).ToArray()
-                                   ?? Array.Empty<BlockHeader>();
-            Transaction[] transactions = testBlockJson.Transactions?.Select(Convert).ToArray()
-                                         ?? Array.Empty<Transaction>();
-            Block block = new(header, transactions, uncles);
-            return block;
-        }
-
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
@@ -162,13 +151,51 @@ namespace Ethereum.Test.Base
             {
                 transaction.AuthorizationList =
                     transactionJson.AuthorizationList
-                    .Select(i => new AuthorizationTuple(
-                        i.ChainId,
-                        i.Address,
-                        i.Nonce,
-                        i.V,
-                        i.R,
-                        i.S)).ToArray();
+                    .Select(i =>
+                    {
+                        if (i.ChainId > ulong.MaxValue)
+                        {
+                            i.ChainId = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        if (i.Nonce > ulong.MaxValue)
+                        {
+                            i.Nonce = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        UInt256 s = UInt256.Zero;
+                        if (i.S.Length > 66)
+                        {
+                            i.S = "0x0";
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        else
+                        {
+                            s = UInt256.Parse(i.S);
+                        }
+                        UInt256 r = UInt256.Zero;
+                        if (i.R.Length > 66)
+                        {
+                            i.R = "0x0";
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        else
+                        {
+                            r = UInt256.Parse(i.R);
+                        }
+                        if (i.V > byte.MaxValue)
+                        {
+                            i.V = 0;
+                            transaction.SenderAddress = Address.Zero;
+                        }
+                        return new AuthorizationTuple(
+                            i.ChainId.u0,
+                            i.Address,
+                            i.Nonce.u0,
+                            (byte)i.V,
+                            r,
+                            s);
+                    }).ToArray();
                 if (transaction.AuthorizationList.Any())
                 {
                     transaction.Type = TxType.SetCode;

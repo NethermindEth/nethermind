@@ -4,17 +4,13 @@
 using System.Collections.Generic;
 using Nethermind.Int256;
 
-namespace Ethereum.Test.Base;
-
-public class AccountState
+namespace Ethereum.Test.Base
 {
-    public byte[]? Code { get; set; }
-    public UInt256 Balance { get; set; }
-    public UInt256 Nonce { get; set; }
-    public Dictionary<UInt256, byte[]>? Storage { get; set; }
-
-    public bool IsEmptyAccount()
+    public class AccountState
     {
-        return Balance.IsZero && Nonce.IsZero && (Code == null || Code.Length == 0) && (Storage == null || Storage.Count == 0);
+        public byte[] Code { get; set; } = [];
+        public UInt256 Balance { get; set; }
+        public UInt256 Nonce { get; set; }
+        public Dictionary<UInt256, byte[]> Storage { get; set; } = new();
     }
 }

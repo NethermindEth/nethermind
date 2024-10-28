@@ -296,6 +296,19 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
     steps:
+      - name: Destroy VM (if initialization failed)
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        if: ${{ failure() && needs.create_a_runner.result == 'failure' }}
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
+          
       - name: Destroy Runner
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
         with:
@@ -321,7 +334,7 @@ jobs:
           repositories: "nethermind,post-merge-smoke-tests"
           
       - name: Trigger notification action on test repo
-        if: github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'release/')
+        if: startsWith(github.event.workflow_run.head_branch, 'release/')
         continue-on-error: true
         uses: benc-uk/workflow-dispatch@v1
         with:

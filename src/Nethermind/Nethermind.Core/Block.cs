@@ -45,7 +45,7 @@ public class Block
     )
     { }
 
-    public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
     public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
 

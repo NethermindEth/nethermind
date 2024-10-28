@@ -18,6 +18,7 @@ using System.Text;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Buffers;
 
 namespace Nethermind.Core.Extensions
 {
@@ -1140,5 +1141,94 @@ namespace Nethermind.Core.Extensions
                     (BinaryPrimitives.ReverseEndianness(endIth), BinaryPrimitives.ReverseEndianness(ith));
             }
         }
+
+        public static string ToCleanUtf8String(this ReadOnlySpan<byte> bytes)
+        {
+            // The maximum number of UTF-16 chars is bytes.Length, but each Rune can be up to 2 chars.
+            // So we allocate bytes.Length to bytes.Length * 2 chars.
+            const int maxOutputChars = 32 * 2;
+
+            if (bytes == null || bytes.Length == 0 || bytes.Length > 32)
+                return string.Empty;
+
+            // Allocate a char buffer on the stack.
+            char[]? charsArray = null;
+            Span<char> outputBuffer = stackalloc char[maxOutputChars];
+
+            int outputPos = 0;
+            int index = 0;
+            bool hasValidContent = false;
+            bool shouldAddSpace = false;
+
+            while (index < bytes.Length)
+            {
+                ReadOnlySpan<byte> span = bytes.Slice(index);
+
+                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
+                if (status == OperationStatus.Done)
+                {
+                    if (!IsControlCharacter(rune))
+                    {
+                        if (shouldAddSpace)
+                        {
+                            outputBuffer[outputPos++] = ' ';
+                            shouldAddSpace = false;
+                        }
+
+                        int charsNeeded = rune.Utf16SequenceLength;
+                        if (outputPos + charsNeeded > outputBuffer.Length)
+                        {
+                            // Expand output buffer
+                            int newSize = outputBuffer.Length * 2;
+                            char[] newBuffer = ArrayPool<char>.Shared.Rent(newSize);
+                            outputBuffer.Slice(0, outputPos).CopyTo(newBuffer);
+                            outputBuffer = newBuffer;
+                            if (charsArray is not null)
+                            {
+                                ArrayPool<char>.Shared.Return(charsArray);
+                            }
+                            charsArray = newBuffer;
+                        }
+
+                        rune.EncodeToUtf16(outputBuffer.Slice(outputPos));
+                        outputPos += charsNeeded;
+                        hasValidContent = true;
+                    }
+                    else
+                    {
+                        // Control character encountered; set flag to add space if needed
+                        shouldAddSpace |= hasValidContent;
+                    }
+                    index += bytesConsumed;
+                }
+                else if (status == OperationStatus.NeedMoreData)
+                {
+                    // Incomplete sequence at the end; break out of the loop
+                    break;
+                }
+                else
+                {
+                    // Unexpected status; treat as invalid data
+                    shouldAddSpace |= hasValidContent;
+                    index++;
+                }
+            }
+
+            // Create the final string from the output buffer.
+            string outputString = outputPos > 0 ? new string(outputBuffer[..outputPos]) : string.Empty;
+            if (charsArray is not null)
+            {
+                ArrayPool<char>.Shared.Return(charsArray);
+            }
+
+            return outputString;
+        }
+
+        private static bool IsControlCharacter(Rune rune)
+        {
+            // Control characters are U+0000 to U+001F and U+007F to U+009F
+            return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
+        }
+
     }
 }

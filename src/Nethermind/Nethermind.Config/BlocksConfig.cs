@@ -53,5 +53,9 @@ namespace Nethermind.Config
         {
             return _extraDataBytes;
         }
+
+        public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
+
+        public static string GasTokenTicker { get; set; } = "ETH";
     }
 }
