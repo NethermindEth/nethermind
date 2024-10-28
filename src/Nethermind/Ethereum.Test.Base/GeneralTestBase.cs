@@ -78,6 +78,10 @@ namespace Ethereum.Test.Base
                         GnosisSpecProvider.Instance
                             .GenesisSpec), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
+                if (specProvider.GenesisSpec != GnosisSpecProvider.Instance.GenesisSpec)
+                {
+                    Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
+                }
             }
             else
             {
@@ -86,12 +90,13 @@ namespace Ethereum.Test.Base
                         Frontier
                             .Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     ((ForkActivation)1, test.Fork));
+                if (specProvider.GenesisSpec != Frontier.Instance)
+                {
+                    Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
+                }
             }
 
-            if (specProvider.GenesisSpec != Frontier.Instance)
-            {
-                Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
-            }
+
 
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
