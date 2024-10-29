@@ -6,8 +6,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Unicode;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
@@ -54,6 +56,9 @@ namespace Nethermind.Serialization.Json
 
         private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
         {
+            var encoderSettings = new TextEncoderSettings(UnicodeRanges.BasicLatin);
+            encoderSettings.AllowCharacter('+');
+
             var options = new JsonSerializerOptions
             {
                 WriteIndented = indented,
@@ -63,6 +68,7 @@ namespace Nethermind.Serialization.Json
                 DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
+                Encoder = JavaScriptEncoder.Create(encoderSettings),
                 Converters =
                 {
                     new LongConverter(),
