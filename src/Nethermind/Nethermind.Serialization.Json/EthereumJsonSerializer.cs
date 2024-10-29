@@ -56,9 +56,6 @@ namespace Nethermind.Serialization.Json
 
         private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
         {
-            var encoderSettings = new TextEncoderSettings(UnicodeRanges.BasicLatin);
-            encoderSettings.AllowCharacter('+');
-
             var options = new JsonSerializerOptions
             {
                 WriteIndented = indented,
@@ -68,7 +65,7 @@ namespace Nethermind.Serialization.Json
                 DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
-                Encoder = JavaScriptEncoder.Create(encoderSettings),
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                 Converters =
                 {
                     new LongConverter(),
