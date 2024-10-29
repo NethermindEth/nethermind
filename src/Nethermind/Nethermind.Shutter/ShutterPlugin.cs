@@ -89,15 +89,11 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 try
                 {
                     validatorsInfo.Load(_shutterConfig!.ValidatorInfoFile);
+                    validatorsInfo.Validate();
                 }
                 catch (Exception e)
                 {
                     throw new ShutterLoadingException("Could not load Shutter validator info file", e);
-                }
-
-                if (!validatorsInfo.Validate(out string err))
-                {
-                    throw new ShutterLoadingException(err);
                 }
             }
 

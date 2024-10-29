@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Crypto;
@@ -12,42 +13,37 @@ namespace Nethermind.Shutter.Config;
 
 public class ValidatorsInfo
 {
-    public bool IsEmpty { get => _indexToPubKey is null || _indexToPubKey.Count == 0; }
-    public IEnumerable<ulong> ValidatorIndices { get => _indexToPubKey!.Keys; }
-    private Dictionary<ulong, byte[]>? _indexToPubKey;
+    public bool IsEmpty { get => _indexToPubKeyBytes is null || _indexToPubKeyBytes.Count == 0; }
+    public IEnumerable<ulong> ValidatorIndices { get => _indexToPubKeyBytes!.Keys; }
+    public class ShutterValidatorsInfoException(string message) : Exception(message);
+
+    private Dictionary<ulong, byte[]>? _indexToPubKeyBytes;
+    private readonly Dictionary<ulong, long[]> _indexToPubKey = [];
 
     public void Load(string fp)
     {
         FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.None);
-        _indexToPubKey = new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
+        _indexToPubKeyBytes = new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
     }
 
-    public bool Validate(out string err)
+    public void Validate()
     {
-        if (_indexToPubKey is null)
-        {
-            err = "Validator info file not loaded.";
-            return false;
-        }
-
         G1Affine pk = new(stackalloc long[G1Affine.Sz]);
 
-        foreach ((ulong index, byte[] pubkey) in _indexToPubKey)
+        foreach ((ulong index, byte[] pubkey) in _indexToPubKeyBytes!)
         {
             if (!pk.TryDecode(pubkey, out Bls.ERROR _))
             {
-                err = $"Validator info file contains invalid public key with index {index}";
-                return false;
+                throw new ShutterValidatorsInfoException($"Validator info file contains invalid public key with index {index}.");
             }
-        }
 
-        err = "";
-        return true;
+            _indexToPubKey.Add(index, pk.Point.ToArray());
+        }
     }
 
     public bool IsIndexRegistered(ulong index)
-        => _indexToPubKey!.ContainsKey(index);
+        => _indexToPubKeyBytes!.ContainsKey(index);
 
-    public byte[] GetPubKey(ulong index)
-        => _indexToPubKey![index];
+    public G1Affine GetPubKey(ulong index)
+        => new(_indexToPubKey[index]);
 }
