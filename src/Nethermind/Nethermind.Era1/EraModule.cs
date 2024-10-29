@@ -14,9 +14,16 @@ public class EraModule: Module
         base.Load(builder);
 
         builder
+            // Does the importing to IBlockTree/IReceiptStore
             .AddSingleton<IEraImporter, EraImporter>()
+
+            // Does the exporting to a directory
             .AddSingleton<IEraExporter, EraExporter>()
+
+            // Create IEraStore which is the main high level reader for other code
             .AddSingleton<IEraStoreFactory, EraStoreFactory>()
+
+            // Calls IEraImporter or IEraExporter
             .AddSingleton<EraCliRunner>();
 
         builder.RegisterBuildCallback((ctx) =>

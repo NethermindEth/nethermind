@@ -116,7 +116,7 @@ public class EraStore : IEraStore
         return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
-    public async Task<Block?> FindBlock(long blockNumber, bool ensureVerified = true, CancellationToken cancellation = default)
+    public async Task<Block?> FindBlock(long blockNumber, bool ensureValidated = true, CancellationToken cancellation = default)
     {
         ThrowIfNegative(blockNumber);
 
@@ -125,7 +125,7 @@ public class EraStore : IEraStore
             return null;
 
         using EraRenter _r = RentReader(partOfEpoch, out EraReader reader);
-        if (ensureVerified) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
+        if (ensureValidated) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
         (Block b, _) = await reader.GetBlockByNumber(blockNumber, cancellation);
         return b;
     }
@@ -151,7 +151,7 @@ public class EraStore : IEraStore
         return reader.LastBlock + 1;
     }
 
-    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureVerified = true, CancellationToken cancellation = default)
+    public async Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default)
     {
         ThrowIfNegative(number);
 
@@ -160,7 +160,7 @@ public class EraStore : IEraStore
             return (null, null);
 
         using EraRenter _ = RentReader(partOfEpoch, out EraReader reader);
-        if (ensureVerified) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
+        if (ensureValidated) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
         (Block b, TxReceipt[] r) = await reader.GetBlockByNumber(number, cancellation);
         return (b, r);
     }

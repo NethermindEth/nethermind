@@ -15,6 +15,11 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Era1;
+
+/// <summary>
+/// Main reader for era file. Uses E2StoreReader which internally mmap the whole file. This reader is thread safe
+/// allowing multiple thread to read from it at the same time.
+/// </summary>
 public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private bool _disposedValue;

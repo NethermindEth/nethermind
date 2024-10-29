@@ -128,7 +128,6 @@ public class EraExporter : IEraExporter
 
             using EraWriter builder = new EraWriter(_fileSystem.File.Create(filePath), _specProvider);
 
-            //TODO read directly from RocksDb with range reads
             for (var y = startingIndex; y < startingIndex + _era1Size && y <= end; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
@@ -145,11 +144,9 @@ public class EraExporter : IEraExporter
                     throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
                 }
 
-                // TODO: Check why
-                // UInt256 td = block.TotalDifficulty ?? _blockTree.GetInfo(block.Number, block.Hash).Info?.TotalDifficulty ?? block.Difficulty;
                 if (block.TotalDifficulty is null)
                 {
-                    throw new EraException($"Block does not have total difficulty specified");
+                    throw new EraException($"Block {block.ToString(Block.Format.FullHashAndNumber)} does  not have total difficulty specified");
                 }
 
                 await builder.Add(block, receipts, cancellation);
