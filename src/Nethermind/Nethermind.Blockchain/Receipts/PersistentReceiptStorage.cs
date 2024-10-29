@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Receipts
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan());
+                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan(), writeFlags);
             }
 
             if (blockNumber < MigratedBlockNumber)
