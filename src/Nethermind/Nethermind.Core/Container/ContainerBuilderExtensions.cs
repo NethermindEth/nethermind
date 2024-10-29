@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Core.Container;
@@ -132,6 +133,13 @@ public static class ContainerBuilderExtensions
     {
         builder.Register(ctx => ctx.Resolve<TImpl>())
             .As<TAs>();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    {
+        builder.RegisterModule(module);
 
         return builder;
     }

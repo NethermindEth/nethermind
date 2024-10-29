@@ -334,7 +334,7 @@ public class SynchronizerTests
 
             ContainerBuilder builder = new ContainerBuilder();
             dbProvider.ConfigureServiceCollection(builder);
-
+            BlockCacheService blockCacheService = new BlockCacheService();
             builder
                 .AddInstance(dbProvider)
                 .AddInstance(nodeStorage)
@@ -347,21 +347,19 @@ public class SynchronizerTests
                 .AddInstance(syncConfig)
                 .AddInstance<IPoSSwitcher>(poSSwitcher)
                 .AddInstance<IMergeConfig>(mergeConfig)
-                .AddInstance(invalidChainTracker)
                 .AddInstance(Substitute.For<IProcessExitSource>())
                 .AddInstance(new ChainSpec())
                 .AddInstance<IStateReader>(reader)
                 .AddInstance<ISealValidator>(Always.Valid)
                 .AddInstance<IBlockValidator>(Always.Valid)
                 .AddInstance<IGossipPolicy>(Policy.FullGossip)
-                .AddInstance<IBlockCacheService>(new BlockCacheService())
                 .AddInstance(_logManager);
 
             builder.RegisterModule(new NetworkModule(new NetworkConfig(), syncConfig));
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeNetworkModule());
+                builder.RegisterModule(new MergeNetworkModule(blockCacheService, invalidChainTracker));
             }
 
             IContainer container = builder.Build();

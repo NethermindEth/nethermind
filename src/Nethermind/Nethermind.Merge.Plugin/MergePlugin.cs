@@ -395,11 +395,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         if (!MergeEnabled) return;
 
         builder
-            .AddInstance<IBlockCacheService>(_blockCacheService)
-            .AddInstance<IInvalidChainTracker>(_invalidChainTracker);
-
-        builder
-            .RegisterModule(new MergeNetworkModule());
+            .RegisterModule(new MergeNetworkModule(_blockCacheService, _invalidChainTracker));
     }
 
     public Task InitSynchronization(IContainer container)
@@ -455,12 +451,15 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public bool MustInitialize { get => true; }
 }
 
-public class MergeNetworkModule : Module
+public class MergeNetworkModule(IBlockCacheService blockCacheService, IInvalidChainTracker invalidChainTracker) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
         builder
+            .AddInstance<IBlockCacheService>(blockCacheService)
+            .AddInstance<IInvalidChainTracker>(invalidChainTracker)
             .AddSingleton<IPeerRefresher, PeerRefresher>()
             .AddSingleton<PivotUpdator>()
             .AddSingleton<IBeaconSyncStrategy, BeaconSync>();

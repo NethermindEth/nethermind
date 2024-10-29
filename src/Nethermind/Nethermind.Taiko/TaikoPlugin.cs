@@ -37,6 +37,7 @@ using Nethermind.Core;
 using Autofac;
 using Nethermind.Synchronization;
 using System.Linq;
+using Nethermind.Core.Container;
 
 namespace Nethermind.Taiko;
 
@@ -278,7 +279,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     public bool MustInitialize => true;
 
     // ISynchronizationPlugin
-    public Task InitSynchronization()
+    public Task InitSynchronization(IContainer container)
     {
         if (_api is null || !ShouldRunSteps(_api))
             return Task.CompletedTask;
@@ -296,39 +297,10 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
-        _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
-        _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
-        _api.Pivot = _beaconPivot;
-
-        ContainerBuilder builder = new ContainerBuilder();
-
-        ((INethermindApi)_api).ConfigureContainerBuilderFromApiWithNetwork(builder)
-            .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
-            .AddSingleton<IBeaconPivot>(_beaconPivot)
-            .AddSingleton(_mergeConfig)
-            .AddSingleton<IInvalidChainTracker>(_api.InvalidChainTracker);
-
-        builder.RegisterModule(new SynchronizerModule(_syncConfig));
-        builder.RegisterModule(new MergeSynchronizerModule());
-
-        IContainer container = builder.Build();
-
-        _api.ApiWithNetworkServiceContainer = container;
-        _api.DisposeStack.Append(container);
-
-        PivotUpdator pivotUpdator = new(
-            _api.BlockTree,
-            _api.SyncModeSelector,
-            _api.SyncPeerPool,
-            _syncConfig,
-            _blockCacheService,
-            _beaconSync,
-            _api.DbProvider.MetadataDb,
-            _api.LogManager);
+        _peerRefresher = container.Resolve<PeerRefresher>();
+        _beaconPivot = container.Resolve<IBeaconPivot>();
+        _beaconSync = container.Resolve<BeaconSync>();
+        _ = container.Resolve<PivotUpdator>();
 
         return Task.CompletedTask;
     }
@@ -337,6 +309,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
     // IConsensusPlugin
+
+    public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
+    {
+        builder
+            .RegisterModule(new MergeNetworkModule(_blockCacheService!, _api!.InvalidChainTracker!));
+    }
 
     public INethermindApi CreateApi(
         IConfigProvider configProvider,
