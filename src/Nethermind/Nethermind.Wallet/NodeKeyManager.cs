@@ -114,7 +114,7 @@ namespace Nethermind.Wallet
                         return privateKey;
                     }
 
-                    if (_logger.IsError) _logger.Error($"Not able to unlock the key for {account}");
+                    if (_logger.IsError) _logger.Error($"Not able to unlock the key for {account} due to error: '{result.Error}'");
                     // continue to the other methods
                 }
                 catch (Exception e)

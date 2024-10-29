@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
@@ -184,6 +183,10 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public OptimismEngineParamsJson Params { get; set; }
         }
 
+        internal class TaikoEngineJson
+        {
+        }
+
         internal class OptimismEngineParamsJson
         {
             public ulong RegolithTimestamp { get; set; }
@@ -209,6 +212,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
             public OptimismEngineJson Optimism { get; set; }
+            public TaikoEngineJson Taiko { get; set; }
             public NethDevJson NethDev { get; set; }
 
             [JsonExtensionData]

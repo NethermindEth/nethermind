@@ -9,7 +9,6 @@ using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
 using Prometheus;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Monitoring
 {

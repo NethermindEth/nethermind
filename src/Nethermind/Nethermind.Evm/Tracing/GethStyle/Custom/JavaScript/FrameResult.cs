@@ -3,7 +3,6 @@
 
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
-using Microsoft.ClearScript.V8;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 

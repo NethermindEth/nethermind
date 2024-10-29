@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -19,7 +18,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -38,7 +36,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyDbProvider _dbProvider;
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger _logger;
 
@@ -55,7 +53,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBlockStore badBlockStore,
+        IBadBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager)
     {
