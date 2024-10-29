@@ -41,7 +41,7 @@ public class ShutterValidatorsInfo
         }
     }
 
-    public bool IsIndexRegistered(ulong index)
+    public bool ContainsIndex(ulong index)
         => _indexToPubKeyBytes!.ContainsKey(index);
 
     public G1Affine GetPubKey(ulong index)

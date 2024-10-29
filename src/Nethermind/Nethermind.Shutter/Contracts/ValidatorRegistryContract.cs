@@ -15,6 +15,7 @@ using Update = (byte[] Message, byte[] Signature);
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -34,6 +35,7 @@ public class ValidatorRegistryContract(
     public Update GetUpdate(BlockHeader header, in UInt256 i)
         => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
 
+    [SkipLocalsInit]
     public bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
     {
         Dictionary<ulong, ulong?> nonces = [];
@@ -45,6 +47,8 @@ public class ValidatorRegistryContract(
         }
 
         uint updates = (uint)GetNumUpdates(header);
+        BlsSigner.AggregatedPublicKey pk = new(stackalloc long[Bls.P1.Sz]);
+
         for (uint i = 0; i < updates; i++)
         {
             Update update = GetUpdate(header, updates - i - 1);
@@ -87,7 +91,7 @@ public class ValidatorRegistryContract(
             bool untrackedValidator = false;
             for (ulong v = msg.StartValidatorIndex; v < endValidatorIndex; v++)
             {
-                if (!validatorsInfo.IsIndexRegistered(v))
+                if (!validatorsInfo.ContainsIndex(v))
                 {
                     untrackedValidator = true;
                     break;
@@ -98,27 +102,13 @@ public class ValidatorRegistryContract(
                 continue;
             }
 
-            // if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo.GetPubKey(msg.ValidatorIndex), update.Signature, update.Message))
+            pk.Reset();
+            for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
+            {
+                pk.Aggregate(validatorsInfo.GetPubKey(v));
+            }
 
-            // if (nonces[msg.ValidatorIndex].HasValue && msg.Nonce <= nonces[msg.ValidatorIndex])
-            // {
-            //     if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect nonce ({msg.Nonce}) should be {nonces[msg.ValidatorIndex]}");
-            //     continue;
-            // }
-
-            // todo: fix overflows
-            uint sz = BlsSigner.PkCompressedSz * msg.Count;
-            // using ArrayPoolList<byte> buf = new(sz, sz);
-            // Span<byte> publicKeys = new byte[sz];
-
-            // for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
-            // {
-            //     validatorsInfo.GetPubKey(v).CopyTo(publicKeys[((int)v * BlsSigner.PkCompressedSz)..]);
-            // }
-
-            // validatorsInfo.GetPubKey(msg.ValidatorIndex)
-            BlsSigner.AggregatedPublicKey aggregatedPublicKey = new();
-            if (!ShutterCrypto.CheckValidatorRegistrySignatures(aggregatedPublicKey, update.Signature, update.Message))
+            if (!ShutterCrypto.CheckValidatorRegistrySignatures(pk, update.Signature, update.Message))
             {
                 if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
                 continue;
