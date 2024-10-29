@@ -104,7 +104,7 @@ public class PaprikaStateFactory : IStateFactory
     private static PaprikaKeccak Convert(Hash256 keccak) => new(keccak.Bytes);
     private static PaprikaKeccak Convert(in ValueHash256 keccak) => new(keccak.Bytes);
     private static Hash256 Convert(PaprikaKeccak keccak) => new(keccak.BytesAsSpan);
-    private static PaprikaKeccak Convert(Address address) => Convert(ValueKeccak.Compute(address.Bytes));
+    private static PaprikaKeccak Convert(Address address) => Convert(KeccakCache.Compute(address.Bytes));
 
     // shamelessly stolen from storage trees
     private const int CacheSize = 1024;
@@ -120,8 +120,8 @@ public class PaprikaStateFactory : IStateFactory
 
         index.ToBigEndian(key);
 
-        // in situ calculation
-        KeccakHash.ComputeHashBytesToSpan(key, key);
+        // TODO: KeccakCache
+        KeccakCache.Compute(key).BytesAsSpan.CopyTo(key);
     }
 
     //TODO: optimize by removing materialization and replacing it with value capturing construct like Vector256
@@ -170,6 +170,29 @@ public class PaprikaStateFactory : IStateFactory
         return true;
     }
 
+    [SkipLocalsInit]
+    private static ReadOnlySpan<byte> GetStorageAtImpl(IStateStorageAccessor worldState, scoped in StorageCell cell)
+    {
+        if (cell.IsHash)
+        {
+            return GetStorageAtImpl(worldState, cell.Address, cell.Hash);
+        }
+
+        Span<byte> bytes = stackalloc byte[32];
+        GetKey(cell.Index, bytes);
+
+        bytes = worldState.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+        return MaterializeStorageValue(bytes);
+    }
+
+    [SkipLocalsInit]
+    private static ReadOnlySpan<byte> GetStorageAtImpl(IStateStorageAccessor worldState, Address address,
+        scoped in ValueHash256 hash)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        bytes = worldState.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+        return MaterializeStorageValue(bytes);
+    }
 
     [SkipLocalsInit]
     class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
@@ -180,20 +203,10 @@ public class PaprikaStateFactory : IStateFactory
         }
 
 
-        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell)
-        {
-            Span<byte> bytes = stackalloc byte[32];
-            GetKey(cell.Index, bytes);
-            bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return MaterializeStorageValue(bytes);
-        }
+        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell) => GetStorageAtImpl(wrapped, cell);
 
-        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash)
-        {
-            Span<byte> bytes = stackalloc byte[32];
-            bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return MaterializeStorageValue(bytes);
-        }
+        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash) =>
+            GetStorageAtImpl(wrapped, address, hash);
 
         public Hash256 StateRoot => Convert(wrapped.Hash);
 
@@ -223,23 +236,10 @@ public class PaprikaStateFactory : IStateFactory
             return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         }
 
-        [SkipLocalsInit]
-        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell)
-        {
-            Span<byte> bytes = stackalloc byte[32];
-            GetKey(cell.Index, bytes);
+        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell) => GetStorageAtImpl(wrapped, cell);
 
-            bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return MaterializeStorageValue(bytes);
-        }
-
-        [SkipLocalsInit]
-        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash)
-        {
-            Span<byte> bytes = stackalloc byte[32];
-            bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return MaterializeStorageValue(bytes);
-        }
+        public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash) =>
+            GetStorageAtImpl(wrapped, address, hash);
 
         [SkipLocalsInit]
         public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
