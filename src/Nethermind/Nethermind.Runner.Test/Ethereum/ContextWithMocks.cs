@@ -113,8 +113,14 @@ namespace Nethermind.Runner.Test.Ethereum
                 UnclesValidator = Substitute.For<IUnclesValidator>(),
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                BadBlocksStore = Substitute.For<IBlockStore>(),
                 BackgroundTaskScheduler = Substitute.For<IBackgroundTaskScheduler>(),
+                BadBlocksStore = Substitute.For<IBadBlockStore>(),
+
+                ApiWithNetworkServiceContainer = new ContainerBuilder()
+                    .AddInstance(Substitute.For<ISyncModeSelector>())
+                    .AddInstance(Substitute.For<ISyncProgressResolver>())
+                    .AddInstance(Substitute.For<ISynchronizer>())
+                    .Build(),
             };
 
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);

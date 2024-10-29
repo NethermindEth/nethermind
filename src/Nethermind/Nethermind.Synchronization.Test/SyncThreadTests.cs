@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 txProcessor,
-                new BeaconBlockRootHandler(txProcessor),
+                new BeaconBlockRootHandler(txProcessor, stateProvider),
                 new BlockhashStore(specProvider, stateProvider),
                 logManager);
 
@@ -324,7 +324,7 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 devTxProcessor,
-                new BeaconBlockRootHandler(devTxProcessor),
+                new BeaconBlockRootHandler(devTxProcessor, devState),
                 new BlockhashStore(specProvider, devState),
                 logManager);
 

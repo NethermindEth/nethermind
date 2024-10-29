@@ -133,11 +133,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             return;
 
         builder
-            .AddInstance<IBlockCacheService>(_blockCacheService!)
-            .AddInstance<IInvalidChainTracker>(_invalidChainTracker!);
-
-        builder
-            .RegisterModule(new MergeNetworkModule());
+            .AddModule(new MergeNetworkModule(_blockCacheService!, _invalidChainTracker!))
+            .AddModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider!))
+            .AddSingleton<PivotUpdator, UnsafePivotUpdator>();
     }
 
     public Task InitSynchronization(IContainer container)
@@ -153,7 +151,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _peerRefresher = container.Resolve<PeerRefresher>();
         _beaconPivot = container.Resolve<IBeaconPivot>();
         _beaconSync = container.Resolve<BeaconSync>();
-        _ = container.Resolve<PivotUpdator>();
+        _ = container.Resolve<UnsafePivotUpdator>();
 
         return Task.CompletedTask;
     }

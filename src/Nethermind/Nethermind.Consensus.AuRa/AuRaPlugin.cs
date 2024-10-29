@@ -8,7 +8,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

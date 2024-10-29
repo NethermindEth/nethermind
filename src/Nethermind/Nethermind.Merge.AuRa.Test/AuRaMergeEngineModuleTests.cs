@@ -153,7 +153,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor),
+                new BeaconBlockRootHandler(TxProcessor, State),
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
                 WithdrawalProcessor,

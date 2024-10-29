@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Globalization;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json
 {
     using System.Buffers;
-    using System.Buffers.Binary;
     using System.Buffers.Text;
     using System.Runtime.CompilerServices;
     using System.Text.Json;

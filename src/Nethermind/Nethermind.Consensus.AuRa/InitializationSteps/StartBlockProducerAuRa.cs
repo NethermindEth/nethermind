@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -155,7 +154,7 @@ public class StartBlockProducerAuRa
             _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
             changeableTxProcessingEnv.WorldState,
             _api.ReceiptStorage,
-            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor),
+            new BeaconBlockRootHandler(changeableTxProcessingEnv.TransactionProcessor, changeableTxProcessingEnv.WorldState),
             _api.LogManager,
             _api.BlockTree,
             NullWithdrawalProcessor.Instance,

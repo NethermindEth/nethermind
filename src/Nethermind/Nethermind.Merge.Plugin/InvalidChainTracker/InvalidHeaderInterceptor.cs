@@ -71,5 +71,4 @@ public class InvalidHeaderInterceptor : IHeaderValidator
     {
         return !HeaderValidator.ValidateHash(header);
     }
-
 }
