@@ -303,7 +303,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
 
-        PivotUpdator pivotUpdator = new(
+        UnsafePivotUpdator pivotUpdator = new(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool!,
