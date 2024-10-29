@@ -5,6 +5,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -73,32 +74,5 @@ public class T8nTestCase
         header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
 
         return header;
-    }
-
-    public BlockHeader? GetParentBlockHeader()
-    {
-        if (ParentBlobGasUsed is not null && ParentExcessBlobGas is not null)
-        {
-            BlockHeader parent = new(
-                parentHash: Keccak.Zero,
-                unclesHash: Keccak.OfAnEmptySequenceRlp,
-                beneficiary: CurrentCoinbase,
-                difficulty: ParentDifficulty ?? CurrentDifficulty ?? UInt256.Zero,
-                number: CurrentNumber - 1,
-                gasLimit: ParentGasLimit,
-                timestamp: ParentTimestamp,
-                extraData: []
-            )
-            {
-                BlobGasUsed = (ulong)ParentBlobGasUsed,
-                ExcessBlobGas = (ulong)ParentExcessBlobGas,
-            };
-            if (ParentBaseFee.HasValue) parent.BaseFeePerGas = ParentBaseFee.Value;
-            parent.GasUsed = ParentGasUsed;
-            if (ParentUncleHash != null) parent.UnclesHash = ParentUncleHash;
-            return parent;
-        }
-
-        return null;
     }
 }

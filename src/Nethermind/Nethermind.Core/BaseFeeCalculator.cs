@@ -11,24 +11,29 @@ namespace Nethermind.Core
     {
         public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
         {
-            UInt256 expectedBaseFee = parent.BaseFeePerGas;
+            return Calculate(parent.BaseFeePerGas, parent.GasLimit, parent.Number, parent.GasUsed, specFor1559);
+        }
+
+        public static UInt256 Calculate(UInt256 baseFeePerGas, long gasLimit, long number, long gasUsed, IEip1559Spec specFor1559)
+        {
+            UInt256 expectedBaseFee = baseFeePerGas;
             if (specFor1559.IsEip1559Enabled)
             {
-                UInt256 parentBaseFee = parent.BaseFeePerGas;
+                UInt256 parentBaseFee = baseFeePerGas;
                 long gasDelta;
                 UInt256 feeDelta;
-                bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
-                long parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
+                bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == number + 1;
+                long parentGasTarget = gasLimit / specFor1559.ElasticityMultiplier;
                 if (isForkBlockNumber)
-                    parentGasTarget = parent.GasLimit;
+                    parentGasTarget = gasLimit;
 
-                if (parent.GasUsed == parentGasTarget)
+                if (gasUsed == parentGasTarget)
                 {
-                    expectedBaseFee = parent.BaseFeePerGas;
+                    expectedBaseFee = baseFeePerGas;
                 }
-                else if (parent.GasUsed > parentGasTarget)
+                else if (gasUsed > parentGasTarget)
                 {
-                    gasDelta = parent.GasUsed - parentGasTarget;
+                    gasDelta = gasUsed - parentGasTarget;
                     feeDelta = UInt256.Max(
                         parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator,
                         UInt256.One);
@@ -36,7 +41,7 @@ namespace Nethermind.Core
                 }
                 else
                 {
-                    gasDelta = parentGasTarget - parent.GasUsed;
+                    gasDelta = parentGasTarget - gasUsed;
                     feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator;
                     expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
                 }

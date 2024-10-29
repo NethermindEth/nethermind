@@ -84,27 +84,41 @@ public class T8nResult
             address => GetAccountState(address, stateProvider, storageTracer.Storages));
         foreach (var ommer in test.Ommers)
         {
-            accounts.Add(ommer.Address, GetAccountState(ommer.Address, stateProvider, storageTracer.Storages));
+            accounts[ommer.Address] = GetAccountState(ommer.Address, stateProvider, storageTracer.Storages);
         }
 
         if (header.Beneficiary != null)
         {
-            accounts.Add(header.Beneficiary, GetAccountState(header.Beneficiary, stateProvider, storageTracer.Storages));
+            accounts[header.Beneficiary] = GetAccountState(header.Beneficiary, stateProvider, storageTracer.Storages);
         }
 
-        t8NResult.Accounts = accounts.Where(account => !IsEmptyAccount(account.Value)).ToDictionary();
+        foreach (var tx in test.Transactions)
+        {
+            if (tx.To is not null && !accounts.ContainsKey(tx.To))
+            {
+                accounts[tx.To] = GetAccountState(tx.To, stateProvider, storageTracer.Storages);
+            }
+
+            if (tx.SenderAddress is not null && !accounts.ContainsKey(tx.SenderAddress))
+            {
+                accounts[tx.SenderAddress] = GetAccountState(tx.SenderAddress, stateProvider, storageTracer.Storages);
+            }
+        }
+
+        t8NResult.Accounts = accounts
+            .Where(addressAndAccount => addressAndAccount.Value is not null)
+            .ToDictionary(addressAndAccount => addressAndAccount.Key, addressAndAccount => addressAndAccount.Value!);
         t8NResult.TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes;
 
         return t8NResult;
     }
 
-    private static bool IsEmptyAccount(AccountState account)
+    private static AccountState? GetAccountState(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, byte[]>> storages)
     {
-        return account.Balance.IsZero && account.Nonce.IsZero && account.Code.Length == 0 && account.Storage.Count == 0;
-    }
-
-    private static AccountState GetAccountState(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, byte[]>> storages)
-    {
+        if (!stateProvider.AccountExists(address))
+        {
+            return null;
+        }
         var account = stateProvider.GetAccount(address);
         var code = stateProvider.GetCode(address);
         var accountState = new AccountState

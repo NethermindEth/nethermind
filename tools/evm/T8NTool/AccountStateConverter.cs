@@ -27,11 +27,8 @@ public class AccountStateConverter : JsonConverter<AccountState>
             writer.WriteStartObject();
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
-            if (value.Balance != UInt256.Zero)
-            {
-                writer.WritePropertyName("balance"u8);
-                JsonSerializer.Serialize(writer, value.Balance, options);
-            }
+            writer.WritePropertyName("balance"u8);
+            JsonSerializer.Serialize(writer, value.Balance, options);
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
             if (value.Nonce != UInt256.Zero)

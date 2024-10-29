@@ -3,11 +3,14 @@
 
 using System.IO.Abstractions;
 using Ethereum.Test.Base;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -36,23 +39,23 @@ public abstract class T8nTest
         IReleaseSpec spec = test.SpecProvider.GetSpec((ForkActivation)test.CurrentNumber);
         KzgPolynomialCommitments.InitializeAsync();
         BlockHeader header = test.GetBlockHeader();
-        BlockHeader? parentHeader = test.GetParentBlockHeader();
 
-        if (test.Fork.IsEip1559Enabled)
+        if (test.CurrentBaseFee.HasValue)
         {
-            test.CurrentBaseFee = header.BaseFeePerGas = CalculateBaseFeePerGas(test, parentHeader);
+            header.BaseFeePerGas = test.CurrentBaseFee.Value;
         }
 
-        if (parentHeader != null)
+        if (test.ParentExcessBlobGas.HasValue && test.ParentBlobGasUsed.HasValue)
         {
+            var parentHeader = Build.A.BlockHeader.WithExcessBlobGas((ulong)test.ParentExcessBlobGas)
+                .WithBlobGasUsed((ulong)test.ParentBlobGasUsed).TestObject;
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
         }
-
-        var blockhashProvider = GetBlockHashProvider(test, header, parentHeader);
 
         TrieStore trieStore = new(stateDb, _logManager);
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
         CodeInfoRepository codeInfoRepository = new();
+        IBlockhashProvider blockhashProvider = GetBlockHashProvider(test);
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             test.SpecProvider,
@@ -66,6 +69,14 @@ public abstract class T8nTest
             codeInfoRepository,
             _logManager);
 
+        if (test.CurrentCoinbase != null && !stateProvider.AccountExists(test.CurrentCoinbase))
+        {
+            stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+        }
+
+        stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
+
+        stateProvider.RecalculateStateRoot();
         GeneralStateTestBase.InitializeTestState(test.Pre, stateProvider, test.SpecProvider);
 
         var ecdsa = new EthereumEcdsa(test.SpecProvider.ChainId);
@@ -156,27 +167,15 @@ public abstract class T8nTest
         stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
         stateProvider.CommitTree(test.CurrentNumber);
 
-        if (test.CurrentCoinbase != null && !stateProvider.AccountExists(test.CurrentCoinbase))
-        {
-            stateProvider.CreateAccount(test.CurrentCoinbase, 0);
-        }
-
-        stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
-
-        stateProvider.RecalculateStateRoot();
-
         return T8nResult.ConstructT8NResult(stateProvider, block, test, storageTxTracer,
                 blockReceiptsTracer, test.SpecProvider, header, transactionExecutionReport);
     }
 
-    private static IBlockhashProvider GetBlockHashProvider(T8nTestCase test, BlockHeader header,
-        BlockHeader? parent)
+    private static IBlockhashProvider GetBlockHashProvider(T8nTestCase test)
     {
         var t8NBlockHashProvider = new T8NBlockHashProvider();
 
-        if (header.Hash != null) t8NBlockHashProvider.Insert(header.Hash, header.Number);
-        if (parent?.Hash != null) t8NBlockHashProvider.Insert(parent.Hash, parent.Number);
-        foreach (var blockHash in test.BlockHashes)
+        foreach (KeyValuePair<string, Hash256> blockHash in test.BlockHashes)
         {
             t8NBlockHashProvider.Insert(blockHash.Value, long.Parse(blockHash.Key));
         }
@@ -184,16 +183,10 @@ public abstract class T8nTest
         return t8NBlockHashProvider;
     }
 
-    private static UInt256 CalculateBaseFeePerGas(T8nTestCase test, BlockHeader? parentHeader)
-    {
-        if (test.CurrentBaseFee.HasValue) return test.CurrentBaseFee.Value;
-        return BaseFeeCalculator.Calculate(parentHeader, test.Fork);
-    }
-
     private static void CalculateReward(string? stateReward, Block block,
         WorldState stateProvider, IReleaseSpec spec)
     {
-        if (stateReward == null) return;
+        if (string.IsNullOrEmpty(stateReward) || stateReward == "-1") return; // (-1 means rewards are disabled)
 
         var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);

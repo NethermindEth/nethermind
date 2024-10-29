@@ -1,9 +1,11 @@
+using System.Runtime.InteropServices.JavaScript;
 using Ethereum.Test.Base;
 using Evm.T8NTool;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -64,8 +66,12 @@ namespace Evm.JsonTypes
 
             if (!ParentBaseFee.HasValue || CurrentNumber == 0)
             {
-                throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", ExitCodes.ErrorConfig);
+                throw new T8NException("EIP-1559 config but missing 'parentBaseFee' in env section", ExitCodes.ErrorConfig);
             }
+
+            var parent = Build.A.BlockHeader.WithNumber(CurrentNumber - 1).WithBaseFee(ParentBaseFee.Value)
+                .WithGasUsed(ParentGasUsed).WithGasLimit(ParentGasLimit).TestObject;
+            CurrentBaseFee = BaseFeeCalculator.Calculate(parent, spec);
         }
 
         private void ApplyShanghaiChecks(IReleaseSpec spec)

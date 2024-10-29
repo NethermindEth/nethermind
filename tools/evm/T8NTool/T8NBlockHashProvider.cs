@@ -10,8 +10,15 @@ namespace Evm.T8NTool;
 public class T8NBlockHashProvider : IBlockhashProvider
 {
     private readonly Dictionary<long, Hash256?> _blockHashes = new();
-    public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+    private static readonly int _maxDepth = 256;
+
+    public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
     {
+        long current = currentBlock.Number;
+        if (number >= current || number < current - Math.Min(current, _maxDepth))
+        {
+            return null;
+        }
         return _blockHashes.GetValueOrDefault(number, null)
                ?? throw new T8NException($"BlockHash for block {number} not provided", ExitCodes.ErrorMissingBlockhash);
     }
