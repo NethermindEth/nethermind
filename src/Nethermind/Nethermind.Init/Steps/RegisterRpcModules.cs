@@ -137,7 +137,6 @@ public class RegisterRpcModules : IStep
 
         IContainer eraContainer = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
             .AddModule(new EraModule())
-            .AddSingleton<IAdminEraService, AdminEraService>()
             .Build();
         _api.DisposeStack.Push((IAsyncDisposable)eraContainer);
 

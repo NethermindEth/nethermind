@@ -9,6 +9,7 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
@@ -131,13 +132,13 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
-    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo)
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start, int end)
     {
-        return _eraService.ExportHistory(destination, epochFrom, epochTo);
+        return ResultWrapper<string>.Success(_eraService.ExportHistory(destination, start, end));
     }
 
     public Task<ResultWrapper<string>> admin_importHistory(string source, int start, int end, string? accumulatorFile)
     {
-        return _eraService.ImportHistory(source, accumulatorFile, start, end);
+        return ResultWrapper<string>.Success(_eraService.ImportHistory(source, start, end, accumulatorFile));
     }
 }

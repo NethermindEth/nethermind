@@ -24,7 +24,8 @@ public class EraModule: Module
             .AddSingleton<IEraStoreFactory, EraStoreFactory>()
 
             // Calls IEraImporter or IEraExporter
-            .AddSingleton<EraCliRunner>();
+            .AddSingleton<EraCliRunner>()
+            .AddSingleton<IAdminEraService, AdminEraService>();
 
         builder.RegisterBuildCallback((ctx) =>
             {

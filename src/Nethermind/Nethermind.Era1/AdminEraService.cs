@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Era1;
 using Nethermind.Logging;
 
-namespace Nethermind.JsonRpc.Modules.Admin;
+namespace Nethermind.Era1;
 public class AdminEraService : IAdminEraService
 {
     private readonly ILogger _logger;
@@ -30,47 +26,41 @@ public class AdminEraService : IAdminEraService
         _logger = logManager.GetClassLogger();
     }
 
-    public ResultWrapper<string> ExportHistory(string destination, long from, long to)
+    public string ExportHistory(string destination, long from, long to)
     {
-        if (Interlocked.Exchange(ref _canEnterExport, 0) == 1)
-        {
-            try
-            {
-                _ = StartExportTask(destination, from, to);
-            }
-            catch (Exception ex)
-            {
-                Interlocked.Exchange(ref _canEnterExport, 1);
-                return ResultWrapper<string>.Fail(ex.ToString());
-            }
+        if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
+            throw new InvalidOperationException("An export job is already running.");
 
-            return ResultWrapper<string>.Success("Started export task");
-        }
-        else
+        try
         {
-            return ResultWrapper<string>.Fail("An export job is already running.");
+            _ = StartExportTask(destination, from, to);
         }
+        catch (Exception)
+        {
+            Interlocked.Exchange(ref _canEnterExport, 1);
+            throw;
+        }
+
+        return "Started export task";
     }
-    public ResultWrapper<string> ImportHistory(string source, string accumulatorFile, long from, long to)
-    {
-        if (Interlocked.Exchange(ref _canEnterImport, 0) == 1)
-        {
-            try
-            {
-                _ = StartImportTask(source, accumulatorFile, from, to);
-            }
-            catch (Exception ex)
-            {
-                Interlocked.Exchange(ref _canEnterImport, 1);
-                return ResultWrapper<string>.Fail(ex.ToString());
-            }
 
-            return ResultWrapper<string>.Success("Started import task");
-        }
-        else
+    public string ImportHistory(string source, long from, long to, string? accumulatorFile)
+    {
+        if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
+            throw new InvalidOperationException("An import job is already running.");
+
+        try
         {
-            return ResultWrapper<string>.Fail("An import job is already running.");
+            _ = StartImportTask(source, accumulatorFile, from, to);
         }
+        catch (Exception)
+        {
+            Interlocked.Exchange(ref _canEnterImport, 1);
+            throw;
+        }
+
+        return "Started import task";
+
     }
 
     private async Task StartExportTask(string destination, long from, long to)
@@ -106,7 +96,7 @@ public class AdminEraService : IAdminEraService
         }
     }
 
-    private async Task StartImportTask(string source, string accumulatorFile, long from, long to)
+    private async Task StartImportTask(string source, string? accumulatorFile, long from, long to)
     {
         Task task = _eraImporter.Import(
             source,
