@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -122,7 +123,7 @@ internal class EraReaderTests
 
         ValueHash256 root = calculator.ComputeRoot();
         using EraReader sut = new EraReader(tmpFile.FilePath);
-        ValueHash256 fileRoot = await sut.ReadAndVerifyAccumulator(Substitute.For<ISpecProvider>(), default);
+        ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         root.Should().BeEquivalentTo(fileRoot);
     }
 }

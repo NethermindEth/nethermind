@@ -56,7 +56,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        Assert.That(() => sut.Import(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.Import(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
     }
 
     [Test]

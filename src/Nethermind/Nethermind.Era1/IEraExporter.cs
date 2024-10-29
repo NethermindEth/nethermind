@@ -5,7 +5,5 @@ namespace Nethermind.Era1;
 
 public interface IEraExporter
 {
-    string NetworkName { get; }
-
     Task Export(string destinationPath, long start, long end, bool createAccumulator = true, CancellationToken cancellation = default);
 }

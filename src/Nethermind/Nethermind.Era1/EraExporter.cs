@@ -18,11 +18,10 @@ public class EraExporter : IEraExporter
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
+    private readonly IEraStoreFactory _eraStoreFactory;
     private readonly string _networkName;
     private readonly ILogger _logger;
     private readonly int _era1Size;
-
-    public string NetworkName => _networkName;
 
     public const string AccumulatorFileName = "accumulators.txt";
 
@@ -31,14 +30,16 @@ public class EraExporter : IEraExporter
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
+        IEraStoreFactory eraStoreFactory,
         IEraConfig eraConfig,
         ILogManager logManager,
         [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
     {
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _fileSystem = fileSystem;
+        _blockTree = blockTree;
+        _receiptStorage = receiptStorage;
+        _specProvider = specProvider;
+        _eraStoreFactory = eraStoreFactory;
         _era1Size = eraConfig.MaxEra1Size;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _logger = logManager.GetClassLogger<EraExporter>();
@@ -100,7 +101,8 @@ public class EraExporter : IEraExporter
         if (createAccumulator)
         {
             string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-            await new EraStore(destinationPath, null, _specProvider, _networkName, _fileSystem, _era1Size).CreateAccumulatorFile(accumulatorPath, cancellation);
+            using IEraStore eraStore = _eraStoreFactory.Create(destinationPath, null);
+            await eraStore.CreateAccumulatorFile(accumulatorPath, cancellation);
         }
 
         LogExportProgress(

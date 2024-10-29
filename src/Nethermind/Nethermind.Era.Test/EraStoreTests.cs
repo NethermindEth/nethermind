@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Autofac;
 using FluentAssertions;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Era1.Test;
 
@@ -18,14 +16,7 @@ public class EraStoreTests
         await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(chainLength, start, end);
         TmpDirectory tmpDirectory = ctx.Resolve<TmpDirectory>();
 
-        EraStore eraStore = new EraStore(
-               tmpDirectory.DirectoryPath,
-               null,
-               ctx.Resolve<ISpecProvider>(),
-               ctx.ResolveKeyed<string>(EraComponentKeys.NetworkName),
-               ctx.Resolve<IFileSystem>(),
-               ctx.Resolve<IEraConfig>().MaxEra1Size
-            );
+        IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory.DirectoryPath, null);
 
         eraStore.FirstBlock.Should().Be(start);
         eraStore.LastBlock.Should().Be(end);

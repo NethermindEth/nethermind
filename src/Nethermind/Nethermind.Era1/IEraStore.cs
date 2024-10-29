@@ -12,4 +12,8 @@ public interface IEraStore: IDisposable
 {
     Task<Block?> FindBlock(long number, bool ensureVerified = true, CancellationToken cancellation = default);
     Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureVerified = true, CancellationToken cancellation = default);
+    long LastBlock { get; }
+    long FirstBlock { get; }
+    long NextEraStart(long blockNumber);
+    Task CreateAccumulatorFile(string accumulatorPath, CancellationToken cancellation);
 }

@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -19,39 +18,32 @@ public class EraImporter : IEraImporter
 {
     private readonly IFileSystem _fileSystem;
     private readonly IBlockTree _blockTree;
-    private readonly IBlockValidator _blockValidator;
     private readonly IReceiptStorage _receiptStorage;
-    private readonly ISpecProvider _specProvider;
-    private readonly string _networkName;
     private readonly ILogger _logger;
     private readonly int _maxEra1Size;
     private readonly ITunableDb _blocksDb;
     private readonly ITunableDb _receiptsDb;
     private readonly ISyncConfig _syncConfig;
+    private readonly IEraStoreFactory _eraStoreFactory;
 
     public EraImporter(
         IFileSystem fileSystem,
         IBlockTree blockTree,
-        IBlockValidator blockValidator,
         IReceiptStorage receiptStorage,
-        ISpecProvider specProvider,
         ILogManager logManager,
         IEraConfig eraConfig,
         ISyncConfig syncConfig,
+        IEraStoreFactory eraStoreFactory,
         [KeyFilter(DbNames.Blocks)] ITunableDb blocksDb,
-        [KeyFilter(DbNames.Receipts)] ITunableDb receiptsDb,
-        [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
+        [KeyFilter(DbNames.Receipts)] ITunableDb receiptsDb)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
-        _blockValidator = blockValidator;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _receiptsDb = receiptsDb;
         _blocksDb = blocksDb;
+        _eraStoreFactory = eraStoreFactory;
         _logger = logManager.GetClassLogger<EraImporter>();
-        if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
-        _networkName = networkName.Trim().ToLower();
         _maxEra1Size = eraConfig.MaxEra1Size;
         _syncConfig = syncConfig;
     }
@@ -93,7 +85,8 @@ public class EraImporter : IEraImporter
             string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
             trustedAccumulators = lines.Select(s => new ValueHash256(s)).ToHashSet();
         }
-        using EraStore eraStore = new(src, trustedAccumulators, _specProvider, _networkName, _fileSystem, _maxEra1Size);
+
+        using IEraStore eraStore = _eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (end == 0) end = long.MaxValue;
@@ -252,14 +245,6 @@ public class EraImporter : IEraImporter
 
     private async Task SuggestAndProcessBlock(Block block)
     {
-        // Well... this is weird
-        block.Header.TotalDifficulty = null;
-
-        if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
-        {
-            throw new EraImportException($"Invalid block in Era1 archive. {error}");
-        }
-
         var addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)
         {

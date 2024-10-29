@@ -7,6 +7,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -157,7 +158,7 @@ public class Era1ModuleTests
 
         using EraReader eraReader = new EraReader(tmpFile.FilePath);
 
-        Func<Task> verifyTask = () => eraReader.ReadAndVerifyAccumulator(testBlockchain.SpecProvider, default);
+        Func<Task> verifyTask = () => eraReader.VerifyContent(testBlockchain.SpecProvider, Always.Valid, default);
         await verifyTask.Should().NotThrowAsync();
     }
 

@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,6 +18,7 @@ public class EraStore : IEraStore
 
     private readonly IFileSystem _fileSystem;
     private readonly ISpecProvider _specProvider;
+    private readonly IBlockValidator _blockValidator;
     private readonly ISet<ValueHash256>? _trustedAccumulators;
 
     private readonly Dictionary<long, string> _epochs;
@@ -68,18 +70,20 @@ public class EraStore : IEraStore
     }
 
     public EraStore(
-        string directory,
-        ISet<ValueHash256>? trustedAcccumulators,
         ISpecProvider specProvider,
-        string networkName,
+        IBlockValidator blockValidator,
         IFileSystem fileSystem,
-        int maxEraSize
-    )
-    {
-        _maxOpenFile = Environment.ProcessorCount * 2;
-        _trustedAccumulators = trustedAcccumulators;
+        string networkName,
+        int maxEraSize,
+        ISet<ValueHash256>? trustedAcccumulators,
+        string directory
+    ) {
         _specProvider = specProvider;
+        _blockValidator = blockValidator;
+        _fileSystem = fileSystem;
+        _trustedAccumulators = trustedAcccumulators;
         _maxEraFile = maxEraSize;
+        _maxOpenFile = Environment.ProcessorCount * 2;
 
         var eraFiles = EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem).ToArray();
         _epochs = new();
@@ -95,8 +99,6 @@ public class EraStore : IEraStore
             if (epoch < SmallestEpoch)
                 SmallestEpoch = epoch;
         }
-
-        _fileSystem = fileSystem;
     }
 
     private long GetEpochNumber(long blockNumber)
@@ -132,7 +134,7 @@ public class EraStore : IEraStore
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
-            var eraAccumulator = await reader.ReadAndVerifyAccumulator(_specProvider, cancellation);
+            var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, cancellation);
             if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
             {
                 throw new EraVerificationException( $"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");

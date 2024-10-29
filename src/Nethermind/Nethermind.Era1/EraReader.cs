@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using DotNetty.Buffers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -57,11 +57,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     }
 
     /// <summary>
-    /// Verify that the accumulator matches the archive data.
+    /// Verify the content of this file. Notably, it verify that the accumulator match, but not necessarily trusted.
+    /// It also validate the block with IBlockValidator. Ideally all verification is done here so that
+    /// the file is easy to read directly without having to import.
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
-    public async Task<ValueHash256> ReadAndVerifyAccumulator(ISpecProvider specProvider, CancellationToken cancellation = default)
+    public async Task<ValueHash256> VerifyContent(ISpecProvider specProvider, IBlockValidator blockValidator, CancellationToken cancellation = default)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
@@ -80,11 +82,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
 
-                Hash256 txRoot = new TxTrie(err.Block.Transactions).RootHash;
-                if (err.Block.Header.TxRoot != txRoot)
+                UInt256? totalDifficulty = err.Block.TotalDifficulty;
+                err.Block.Header.TotalDifficulty = null;
+                if (!blockValidator.ValidateSuggestedBlock(err.Block, out string? blockValidationErr))
                 {
-                    throw new EraVerificationException($"Mismatched tx root. Block number {blockNumber}.");
+                    throw new EraVerificationException($"Invalid block {blockValidationErr}");
                 }
+                err.Block.Header.TotalDifficulty = totalDifficulty;
 
                 Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number),
                     err.Receipts, _receiptDecoder).RootHash;
@@ -92,6 +96,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 {
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
                 }
+
 
                 // Note: Header.Hash is calculated by HeaderDecoder.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);

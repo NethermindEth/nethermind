@@ -16,6 +16,7 @@ public class EraModule: Module
         builder
             .AddSingleton<IEraImporter, EraImporter>()
             .AddSingleton<IEraExporter, EraExporter>()
+            .AddSingleton<IEraStoreFactory, EraStoreFactory>()
             .AddSingleton<EraCliRunner>();
 
         builder
