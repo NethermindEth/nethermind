@@ -19,18 +19,22 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class UnsafePivotUpdator(
-    IBlockTree blockTree,
-    ISyncModeSelector syncModeSelector,
-    ISyncPeerPool syncPeerPool,
-    ISyncConfig syncConfig,
-    IBlockCacheService blockCacheService,
-    IBeaconSyncStrategy beaconSyncStrategy,
-    IDb metadataDb,
-    ILogManager logManager)
-    : PivotUpdator(blockTree, syncModeSelector, syncPeerPool, syncConfig,
-        blockCacheService, beaconSyncStrategy, metadataDb, logManager)
+public class UnsafePivotUpdator : PivotUpdator
 {
+    public UnsafePivotUpdator(
+        IBlockTree blockTree,
+        ISyncModeSelector syncModeSelector,
+        ISyncPeerPool syncPeerPool,
+        ISyncConfig syncConfig,
+        IBlockCacheService blockCacheService,
+        IBeaconSyncStrategy beaconSyncStrategy,
+        IDb metadataDb,
+        ILogManager logManager) : base(blockTree, syncModeSelector, syncPeerPool, syncConfig,
+            blockCacheService, beaconSyncStrategy, metadataDb, logManager)
+    {
+        _beaconSyncStrategy.AllowBeaconHeaderSync();
+    }
+
     protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
