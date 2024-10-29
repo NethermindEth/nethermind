@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -26,7 +27,7 @@ public class UnsafePivotUpdator(
     ISyncConfig syncConfig,
     IBlockCacheService blockCacheService,
     IBeaconSyncStrategy beaconSyncStrategy,
-    IDb metadataDb,
+    [KeyFilter(DbNames.Metadata)] IDb metadataDb,
     ILogManager logManager)
     : PivotUpdator(blockTree, syncModeSelector, syncPeerPool, syncConfig,
         blockCacheService, beaconSyncStrategy, metadataDb, logManager)

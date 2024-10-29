@@ -135,7 +135,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         builder
             .AddModule(new MergeNetworkModule(_blockCacheService!, _invalidChainTracker!))
             .AddModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider!))
-            .AddSingleton<PivotUpdator, UnsafePivotUpdator>();
+            .AddSingleton<UnsafePivotUpdator>();
     }
 
     public Task InitSynchronization(IContainer container)
