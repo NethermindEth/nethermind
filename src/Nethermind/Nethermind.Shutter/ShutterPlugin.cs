@@ -83,7 +83,7 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 throw new ShutterLoadingException("Invalid Shutter config", e);
             }
 
-            ValidatorsInfo validatorsInfo = new();
+            ShutterValidatorsInfo validatorsInfo = new();
             if (_shutterConfig!.ValidatorInfoFile is not null)
             {
                 try

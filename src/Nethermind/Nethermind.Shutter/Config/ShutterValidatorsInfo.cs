@@ -11,7 +11,7 @@ using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.Shutter.Config;
 
-public class ValidatorsInfo
+public class ShutterValidatorsInfo
 {
     public bool IsEmpty { get => _indexToPubKeyBytes is null || _indexToPubKeyBytes.Count == 0; }
     public IEnumerable<ulong> ValidatorIndices { get => _indexToPubKeyBytes!.Keys; }

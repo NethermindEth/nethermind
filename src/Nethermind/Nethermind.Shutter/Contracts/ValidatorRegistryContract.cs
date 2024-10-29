@@ -33,7 +33,7 @@ public class ValidatorRegistryContract(
     public Update GetUpdate(BlockHeader header, in UInt256 i)
         => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
 
-    public bool IsRegistered(in BlockHeader header, in ValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
+    public bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
     {
         Dictionary<ulong, ulong?> nonces = [];
         unregistered = [];
