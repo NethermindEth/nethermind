@@ -2181,7 +2181,7 @@ internal class ILCompiler
         il.LoadConstant(0);
         il.BranchIfLess(signIsNeg);
 
-        il.CleanAndLoadWord(stack.span, stack.idx);
+        il.CleanWord(stack.span, stack.idx);
         il.StackPush(stack.idx);
         il.Branch(endOfOpcode);
 
