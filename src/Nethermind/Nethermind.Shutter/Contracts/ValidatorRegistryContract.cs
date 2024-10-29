@@ -35,8 +35,10 @@ public class ValidatorRegistryContract(
     public Update GetUpdate(BlockHeader header, in UInt256 i)
         => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
 
-    [SkipLocalsInit]
     public bool IsRegistered(in BlockHeader header, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
+        => IsRegistered(GetUpdates(header), validatorsInfo, out unregistered);
+
+    internal bool IsRegistered(IEnumerable<(uint, Update)> updates, in ShutterValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
     {
         Dictionary<ulong, ulong?> nonces = [];
         unregistered = [];
@@ -46,97 +48,122 @@ public class ValidatorRegistryContract(
             unregistered.Add(index);
         }
 
-        uint updates = (uint)GetNumUpdates(header);
-        BlsSigner.AggregatedPublicKey pk = new(stackalloc long[Bls.P1.Sz]);
-
-        for (uint i = 0; i < updates; i++)
+        foreach ((uint i, Update update) in updates)
         {
-            Update update = GetUpdate(header, updates - i - 1);
-
-            if (update.Message.Length != Message.Sz || update.Signature.Length != BlsSigner.Signature.Sz)
+            if (!IsUpdateValid(update, validatorsInfo, out string err))
             {
-                if (_logger.IsDebug) _logger.Debug("Registration message was wrong length.");
+                if (_logger.IsDebug) _logger.Debug($"Update {i} was invalid: {err}");
                 continue;
             }
 
             Message msg = new(update.Message.AsSpan());
-            ulong startValidatorIndex = msg.StartValidatorIndex;
-            ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count;
-
-            if (msg.Count == 0)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has zero registration keys");
-                continue;
-            }
-
-            if (msg.Version != messageVersion)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has wrong version ({msg.Version}) should be {messageVersion}");
-                continue;
-            }
-
-            if (msg.ChainId != chainId)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}");
-                continue;
-            }
-
-            if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}");
-                continue;
-            }
-
-            // only check validators in info file
-            bool untrackedValidator = false;
-            for (ulong v = msg.StartValidatorIndex; v < endValidatorIndex; v++)
-            {
-                if (!validatorsInfo.ContainsIndex(v))
-                {
-                    untrackedValidator = true;
-                    break;
-                }
-            }
-            if (untrackedValidator)
-            {
-                continue;
-            }
-
-            pk.Reset();
-            for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
-            {
-                pk.Aggregate(validatorsInfo.GetPubKey(v));
-            }
-
-            if (!ShutterCrypto.CheckValidatorRegistrySignatures(pk, update.Signature, update.Message))
-            {
-                if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
-                continue;
-            }
-
-            for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
-            {
-                if (nonces[v].HasValue && msg.Nonce <= nonces[v])
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Registration message for validator index {v} has incorrect nonce ({msg.Nonce}) should be {nonces[v] + 1}");
-                    continue;
-                }
-
-                // message is valid
-                nonces[v] = msg.Nonce;
-
-                if (msg.IsRegistration)
-                {
-                    unregistered.Remove(v);
-                }
-                else
-                {
-                    unregistered.Add(v);
-                }
-            }
+            UpdateRegistrations(msg, nonces, unregistered);
         }
 
         return unregistered.Count == 0;
+    }
+
+    private IEnumerable<(uint, Update)> GetUpdates(BlockHeader header)
+    {
+        uint updates = (uint)GetNumUpdates(header);
+        for (uint i = 0; i < updates; i++)
+        {
+            yield return (i, GetUpdate(header, updates - i - 1));
+        }
+    }
+
+    private void UpdateRegistrations(Message msg, Dictionary<ulong, ulong?> nonces, HashSet<ulong> unregistered)
+    {
+        ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count - 1;
+        for (ulong v = msg.StartValidatorIndex; v <= endValidatorIndex; v++)
+        {
+            if (nonces[v].HasValue && msg.Nonce <= nonces[v])
+            {
+                if (_logger.IsDebug) _logger.Debug($"Registration message for validator index {v} has incorrect nonce ({msg.Nonce}) should be {nonces[v] + 1}");
+                continue;
+            }
+
+            nonces[v] = msg.Nonce;
+
+            if (msg.IsRegistration)
+            {
+                unregistered.Remove(v);
+            }
+            else
+            {
+                unregistered.Add(v);
+            }
+        }
+    }
+
+    [SkipLocalsInit]
+    private bool IsUpdateValid(in Update update, in ShutterValidatorsInfo validatorsInfo, out string err)
+    {
+        if (update.Message.Length != Message.Sz || update.Signature.Length != BlsSigner.Signature.Sz)
+        {
+            err = "Registration message was wrong length.";
+            return false;
+        }
+
+        Message msg = new(update.Message.AsSpan());
+        ulong startValidatorIndex = msg.StartValidatorIndex;
+        ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count;
+
+        if (msg.Count == 0)
+        {
+            err = "Registration message has zero registration keys.";
+            return false;
+        }
+
+        if (msg.Version != messageVersion)
+        {
+            err = $"Registration message has wrong version ({msg.Version}) should be {messageVersion}.";
+            return false;
+        }
+
+        if (msg.ChainId != chainId)
+        {
+            err = $"Registration message has incorrect chain ID ({msg.ChainId}) should be {chainId}.";
+            return false;
+        }
+
+        if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
+        {
+            err = $"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}.";
+            return false;
+        }
+
+        // only check validators in info file
+        bool skip = true;
+        for (ulong v = msg.StartValidatorIndex; v < endValidatorIndex; v++)
+        {
+            if (validatorsInfo.ContainsIndex(v))
+            {
+                skip = false;
+                break;
+            }
+        }
+
+        if (skip)
+        {
+            err = "";
+            return false;
+        }
+
+        BlsSigner.AggregatedPublicKey pk = new(stackalloc long[Bls.P1.Sz]);
+        for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
+        {
+            pk.Aggregate(validatorsInfo.GetPubKey(v));
+        }
+
+        if (!ShutterCrypto.CheckValidatorRegistrySignatures(pk, update.Signature, update.Message))
+        {
+            err = "Registration message has invalid signature.";
+            return false;
+        }
+
+        err = "";
+        return true;
     }
 
     private readonly ref struct Message
