@@ -55,42 +55,18 @@ public class EraImporter : IEraImporter
     public Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!_fileSystem.Directory.Exists(src))
-            throw new ArgumentException("Import directory does not exist", nameof(start));
+            throw new ArgumentException("Import directory does not exist", nameof(src));
         if (accumulatorFile != null && !_fileSystem.File.Exists(accumulatorFile))
             throw new ArgumentException("Accumulator file not exist", nameof(accumulatorFile));
-        if (start > end)
-            throw new ArgumentException("Start block must not be after end block", nameof(start));
 
-        _receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
-        _blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
-
-        return ImportInternal(src, start, end, accumulatorFile, true, cancellation)
-            .ContinueWith((t) =>
-            {
-                _receiptsDb.Tune(ITunableDb.TuneType.Default);
-                _blocksDb.Tune(ITunableDb.TuneType.Default);
-
-                if (t.IsFaulted)
-                    throw t.Exception?.InnerException!;
-            }, cancellation);
-    }
-
-    private async Task ImportInternal(
-        string src,
-        long start,
-        long end,
-        string? accumulatorFile,
-        bool processBlock,
-        CancellationToken cancellation)
-    {
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
         {
-            string[] lines = await _fileSystem.File.ReadAllLinesAsync(accumulatorFile, cancellation);
+            string[] lines = _fileSystem.File.ReadAllLines(accumulatorFile);
             trustedAccumulators = lines.Select(s => new ValueHash256(s)).ToHashSet();
         }
 
-        using IEraStore eraStore = _eraStoreFactory.Create(src, trustedAccumulators);
+        IEraStore eraStore = _eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
         if (end == 0) end = long.MaxValue;
@@ -112,9 +88,32 @@ public class EraImporter : IEraImporter
         {
             throw new EraImportException($"The directory given for import '{src}' have lowest block number {firstBlockInStore} which is lower then last requested block {start}.");
         }
+        if (start > end && end != 0)
+            throw new ArgumentException("Start block must not be after end block", nameof(start));
 
+        _receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
+        _blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
+
+        return ImportInternal(start, end, eraStore, cancellation)
+            .ContinueWith((t) =>
+            {
+                _receiptsDb.Tune(ITunableDb.TuneType.Default);
+                _blocksDb.Tune(ITunableDb.TuneType.Default);
+
+                if (t.IsFaulted)
+                    throw t.Exception?.InnerException!;
+            }, cancellation);
+    }
+
+    private async Task ImportInternal(
+        long start,
+        long end,
+        IEraStore eraStore,
+        CancellationToken cancellation)
+    {
         if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
-        if (_logger.IsInfo) _logger.Info($"Head is {_blockTree.Head}");
+
+        using IEraStore _ = eraStore;
 
         DateTime lastProgress = DateTime.Now;
         DateTime startTime = DateTime.Now;
@@ -131,6 +130,13 @@ public class EraImporter : IEraImporter
         {
             // Its syncing right now. So no state.
             suggestFromBlock = long.MaxValue;
+        }
+
+        // Add last header first.
+        // This set BestSuggestedHeader so that the receipt insert does not create tx index unnecessarily
+        {
+            Block b = (await eraStore.FindBlock(eraStore.LastBlock, cancellation: cancellation))!;
+            _blockTree.Insert(b.Header);
         }
 
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
@@ -209,7 +215,7 @@ public class EraImporter : IEraImporter
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
 
-            if (processBlock && suggestFromBlock <= b.Number)
+            if (suggestFromBlock <= b.Number)
             {
                 await pacer.WaitForQueue(b.Number, cancellation);
                 await SuggestAndProcessBlock(b);
@@ -244,7 +250,7 @@ public class EraImporter : IEraImporter
         if (_blockTree.FindBlock(b.Number) is null)
             _blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
         if (!_receiptStorage.HasBlock(b.Number, b.Hash!))
-            _receiptStorage.Insert(b, r);
+            _receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL);
     }
 
     private async Task SuggestAndProcessBlock(Block block)

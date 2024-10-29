@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
 public class EraExporter : IEraExporter
@@ -18,7 +19,6 @@ public class EraExporter : IEraExporter
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
-    private readonly IEraStoreFactory _eraStoreFactory;
     private readonly string _networkName;
     private readonly ILogger _logger;
     private readonly int _era1Size;
@@ -31,7 +31,6 @@ public class EraExporter : IEraExporter
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
-        IEraStoreFactory eraStoreFactory,
         IEraConfig eraConfig,
         ILogManager logManager)
     {
@@ -39,7 +38,6 @@ public class EraExporter : IEraExporter
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _specProvider = specProvider;
-        _eraStoreFactory = eraStoreFactory;
         _era1Size = eraConfig.MaxEra1Size;
         string? networkName = eraConfig.NetworkName;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
@@ -139,10 +137,8 @@ public class EraExporter : IEraExporter
                 }
 
                 TxReceipt[]? receipts = _receiptStorage.Get(block, true, false);
-                if (receipts is null)
+                if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length != 0))
                 {
-                    // Can this even happen?
-                    // Well yea... it happens a lot unfortunately
                     throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
                 }
 

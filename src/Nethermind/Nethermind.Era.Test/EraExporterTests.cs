@@ -14,7 +14,9 @@ public class EraExporterTests
     [TestCase(1, 0, 1 - 1, 1, 1)]
     [TestCase(3, 0, 3 - 1, 1, 3)]
     [TestCase(16, 0, 16 - 1, 16, 1)]
+    [TestCase(16, 0, 0, 16, 1)]
     [TestCase(32, 0, 32 - 1, 16, 2)]
+    [TestCase(32, 8, 0, 16, 2)]
     [TestCase(48, 8, 40 - 1, 16, 2)]
     [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
     public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
@@ -54,7 +56,7 @@ public class EraExporterTests
             .Build();
 
         TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
-        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>()).ReturnsNull();
+        container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).ReturnsNull();
 
         IEraExporter sut = container.Resolve<IEraExporter>();
 

@@ -289,6 +289,7 @@ public class Era1ModuleTests
 
     [TestCase(true, 0, 0, 1000, 1001, 9999)]
     [TestCase(true, 0, 2000, 1000, 1001, 2000)]
+    [TestCase(true, 3000, 0, 5000, 5001, 9999)]
     [TestCase(true, 0, 0, 0, null, 0)]
     [TestCase(false, 0, 0, 0, 1, 9999)]
     [TestCase(false, 0, 0, 2000, 2001, 9999)]
