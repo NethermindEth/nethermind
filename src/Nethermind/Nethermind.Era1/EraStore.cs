@@ -36,7 +36,21 @@ public class EraStore : IEraStore
     private readonly int _maxEraFile;
 
     private int BiggestEpoch { get; set; }
-    private int SmallestEpoch { get; set; }
+    private int SmallestEpoch { get; set; } = int.MaxValue;
+
+    private long? _firstBlock = null;
+    public long FirstBlock
+    {
+        get
+        {
+            if (_firstBlock == null)
+            {
+                using EraRenter _ = RentReader(SmallestEpoch, out EraReader smallestEraReader);
+                _firstBlock = smallestEraReader.StartBlock;
+            }
+            return _firstBlock.Value;
+        }
+    }
 
     private long? _lastBlock = null;
 
@@ -87,7 +101,9 @@ public class EraStore : IEraStore
 
     private long GetEpochNumber(long blockNumber)
     {
-        return blockNumber / _maxEraFile;
+        // This seems to be the geth way of encoding blocks.
+        long epochOffset = (blockNumber - FirstBlock) / _maxEraFile;
+        return SmallestEpoch + epochOffset;
     }
 
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);

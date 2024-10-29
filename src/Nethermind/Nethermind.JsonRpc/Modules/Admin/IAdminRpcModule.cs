@@ -70,5 +70,11 @@ public interface IAdminRpcModule : IRpcModule
     EdgeCaseHint = "",
     ExampleResponse = "\"Export task started.\"",
     IsImplemented = true)]
-    Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo);
+    Task<ResultWrapper<string>> admin_exportHistory(string destination, int start, int end);
+
+    [JsonRpcMethod(Description = "Import a range of historic block from era1 directory.",
+    EdgeCaseHint = "",
+    ExampleResponse = "\"Export task started.\"",
+    IsImplemented = true)]
+    Task<ResultWrapper<string>> admin_importHistory(string source, int start, int end, string? accumulatorFile);
 }

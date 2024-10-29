@@ -56,34 +56,37 @@ public class EraImporter : IEraImporter
         _syncConfig = syncConfig;
     }
 
-    public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
+    public Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
     {
+        if (!_fileSystem.Directory.Exists(src))
+            throw new ArgumentException("Import directory does not exist", nameof(start));
+        if (accumulatorFile != null && !_fileSystem.File.Exists(accumulatorFile))
+            throw new ArgumentException("Accumulator file not exist", nameof(accumulatorFile));
+        if (start > end)
+            throw new ArgumentException("Start block must not be after end block", nameof(start));
+
         _receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         _blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
-        try
-        {
-            await ImportInternal(src, start, end, accumulatorFile, true, cancellation);
-        }
-        finally
-        {
-            _receiptsDb.Tune(ITunableDb.TuneType.Default);
-            _blocksDb.Tune(ITunableDb.TuneType.Default);
-        }
+
+        return ImportInternal(src, start, end, accumulatorFile, true, cancellation)
+            .ContinueWith((t) =>
+            {
+                _receiptsDb.Tune(ITunableDb.TuneType.Default);
+                _blocksDb.Tune(ITunableDb.TuneType.Default);
+
+                if (t.IsFaulted)
+                    throw t.Exception;
+            }, cancellation);
     }
 
     private async Task ImportInternal(
         string src,
-        long startNumber,
+        long start,
         long end,
         string? accumulatorFile,
         bool processBlock,
         CancellationToken cancellation)
     {
-        if (!_fileSystem.Directory.Exists(src))
-        {
-            throw new EraImportException($"The directory given for import '{src}' does not exist.");
-        }
-
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
         {
@@ -103,17 +106,28 @@ public class EraImporter : IEraImporter
             end = lastBlockInStore;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Starting history import from {startNumber} to {end}");
+        long firstBlockInStore = eraStore.FirstBlock;
+        if (start == 0 && firstBlockInStore != 0)
+        {
+            start = firstBlockInStore;
+        }
+        else if (start < firstBlockInStore)
+        {
+            throw new EraImportException($"The directory given for import '{src}' have lowest block number {firstBlockInStore} which is lower then last requested block {start}.");
+        }
+
+        if (_logger.IsInfo) _logger.Info($"Starting history import from {start} to {end}");
+        if (_logger.IsInfo) _logger.Info($"Head is {_blockTree.Head}");
 
         DateTime lastProgress = DateTime.Now;
         DateTime startTime = DateTime.Now;
         TimeSpan elapsed = TimeSpan.Zero;
-        long totalblocks = end - startNumber + 1;
+        long totalblocks = end - start + 1;
         long blocksProcessed = 0;
         long blocksProcessedAtLastLog = 0;
 
         using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(_blockTree);
-        long blockNumber = startNumber;
+        long blockNumber = start;
 
         long suggestFromBlock = (_blockTree.Head?.Number ?? 0) + 1;
         if (_syncConfig.FastSync && suggestFromBlock == 1)
@@ -136,7 +150,7 @@ public class EraImporter : IEraImporter
 
         // Earlier part can be parallelized
         long partitionSize = _maxEra1Size;
-        if (startNumber + partitionSize < suggestFromBlock)
+        if (start + partitionSize < suggestFromBlock)
         {
             ConcurrentQueue<long> partitionStartBlocks = new ConcurrentQueue<long>();
             for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < end; blockNumber += partitionSize)
@@ -168,7 +182,7 @@ public class EraImporter : IEraImporter
         elapsed = DateTime.Now.Subtract(lastProgress);
         LogImportProgress(DateTime.Now.Subtract(startTime), blocksProcessedAtLastLog, elapsed, blocksProcessed, totalblocks);
 
-        if (_logger.IsInfo) _logger.Info($"Finished history import from {startNumber} to {end}");
+        if (_logger.IsInfo) _logger.Info($"Finished history import from {start} to {end}");
 
         async Task ImportBlock(long blockNumber)
         {
@@ -182,6 +196,10 @@ public class EraImporter : IEraImporter
             if (r is null)
             {
                 throw new EraImportException($"Unable to find receipt for block {blockNumber}");
+            }
+            if (b.Number != blockNumber)
+            {
+                throw new EraImportException($"Unexpected block number. Expected {blockNumber}. Got {b.Number}");
             }
 
             if (b.IsGenesis)

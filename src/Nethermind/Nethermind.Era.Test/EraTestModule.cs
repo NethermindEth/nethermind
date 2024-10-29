@@ -33,10 +33,10 @@ public class EraTestModule : Module
             .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(length).TestObject);
     }
 
-    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512)
+    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, int start = 0, int end = 0)
     {
         IContainer testCtx = BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
-        await testCtx.Resolve<IEraExporter>().Export(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, chainLength-1);
+        await testCtx.Resolve<IEraExporter>().Export(testCtx.Resolve<TmpDirectory>().DirectoryPath, start, end);
         return testCtx;
     }
 

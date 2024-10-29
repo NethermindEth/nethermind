@@ -1,19 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
-using Microsoft.ClearScript.JavaScript;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.Era1;
 
 public class EraCliRunner(
     IEraConfig eraConfig,
-    IBlockTree blockTree,
     IEraImporter eraImporter,
     IEraExporter eraExporter,
     IProcessExitSource processExitSource,
@@ -36,10 +31,6 @@ public class EraCliRunner(
     private async Task Export(CancellationToken cancellation) {
         var start = eraConfig.Start;
         var end = eraConfig.End;
-        if (end == 0)
-        {
-            end = blockTree.Head?.Number ?? 0;
-        }
 
         try
         {

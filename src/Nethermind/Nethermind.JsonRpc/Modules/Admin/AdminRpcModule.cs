@@ -2,19 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
-using MathNet.Numerics.LinearAlgebra.Factorization;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
@@ -140,5 +134,10 @@ public class AdminRpcModule : IAdminRpcModule
     public Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo)
     {
         return _eraService.ExportHistory(destination, epochFrom, epochTo);
+    }
+
+    public Task<ResultWrapper<string>> admin_importHistory(string source, int start, int end, string? accumulatorFile)
+    {
+        return _eraService.ImportHistory(source, accumulatorFile, start, end);
     }
 }

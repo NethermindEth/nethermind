@@ -14,7 +14,6 @@ using Nethermind.Logging;
 namespace Nethermind.Era1;
 public class EraExporter : IEraExporter
 {
-    private const int MergeBlock = 15537393;
     private readonly IFileSystem _fileSystem;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
@@ -46,7 +45,7 @@ public class EraExporter : IEraExporter
         _networkName = networkName.Trim().ToLower();
     }
 
-    public async Task Export(
+    public Task Export(
         string destinationPath,
         long start,
         long end,
@@ -54,9 +53,23 @@ public class EraExporter : IEraExporter
         CancellationToken cancellation = default)
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
-        if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
-        if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
+        if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Cannot be a file.", nameof(destinationPath));
+        if (end == 0) end = _blockTree.Head?.Number ?? 0;
+        if (end > (_blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {_blockTree.Head?.Number ?? 0}.", nameof(end));
+        if (start > end) throw new ArgumentException("Start must be before end block", nameof(start));
 
+        return DoExport(destinationPath, start, end, cancellation: cancellation);
+    }
+
+    private async Task DoExport(
+        string destinationPath,
+        long start,
+        long end,
+        bool createAccumulator = true,
+        CancellationToken cancellation = default)
+    {
+
+        if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
         if (!_fileSystem.Directory.Exists(destinationPath))
         {
             //TODO look into permission settings - should it be set?
@@ -100,7 +113,7 @@ public class EraExporter : IEraExporter
             DateTime.Now.Subtract(lastProgress),
             DateTime.Now.Subtract(startTime));
 
-        if (_logger.IsInfo) _logger.Info("Export completed");
+        if (_logger.IsInfo) _logger.Info($"Finished history export from {start} to {end}");
 
         async Task WriteEpoch(long epochIdx)
         {
