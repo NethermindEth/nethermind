@@ -7,6 +7,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class OptimismProtocolVersionTest
 {
     private static IEnumerable<(string, OptimismProtocolVersion.V0)> V0ParseCases()
