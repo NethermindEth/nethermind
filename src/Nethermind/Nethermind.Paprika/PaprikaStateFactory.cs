@@ -120,7 +120,6 @@ public class PaprikaStateFactory : IStateFactory
 
         index.ToBigEndian(key);
 
-        // TODO: KeccakCache
         KeccakCache.Compute(key).BytesAsSpan.CopyTo(key);
     }
 
@@ -202,7 +201,6 @@ public class PaprikaStateFactory : IStateFactory
             return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         }
 
-
         public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell) => GetStorageAtImpl(wrapped, cell);
 
         public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash) =>
@@ -213,33 +211,46 @@ public class PaprikaStateFactory : IStateFactory
         public void Dispose() => wrapped.Dispose();
     }
 
-    class State(IWorldState wrapped, PaprikaStateFactory factory) : IState
+    class State : IState
     {
+        private readonly IWorldState _wrapped;
+        private readonly PaprikaStateFactory _factory;
+        private readonly IPreCommitPrefetcher? _prefetch;
+        private readonly HashSet<int> _prefetched;
+
+        public State(IWorldState wrapped, PaprikaStateFactory factory)
+        {
+            _wrapped = wrapped;
+            _factory = factory;
+            _prefetch = _wrapped.OpenPrefetcher();
+            _prefetched = new HashSet<int>();
+        }
+
         public void Set(Address address, Account? account, bool isNewHint = false)
         {
             PaprikaKeccak key = Convert(address);
 
             if (account == null)
             {
-                wrapped.DestroyAccount(key);
+                _wrapped.DestroyAccount(key);
             }
             else
             {
                 PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
                     Convert(account.StorageRoot));
-                wrapped.SetAccount(key, actual, isNewHint);
+                _wrapped.SetAccount(key, actual, isNewHint);
             }
         }
 
         public bool TryGet(Address address, out AccountStruct account)
         {
-            return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
+            return ConvertPaprikaAccount(_wrapped.GetAccount(Convert(address)), out account);
         }
 
-        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell) => GetStorageAtImpl(wrapped, cell);
+        public ReadOnlySpan<byte> GetStorageAt(scoped in StorageCell cell) => GetStorageAtImpl(_wrapped, cell);
 
         public ReadOnlySpan<byte> GetStorageAt(Address address, in ValueHash256 hash) =>
-            GetStorageAtImpl(wrapped, address, hash);
+            GetStorageAtImpl(_wrapped, address, hash);
 
         [SkipLocalsInit]
         public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
@@ -252,25 +263,41 @@ public class PaprikaStateFactory : IStateFactory
             if (value.IsZero())
                 value = ReadOnlySpan<byte>.Empty;
 
-            wrapped.SetStorage(converted, new PaprikaKeccak(key), value);
+            _wrapped.SetStorage(converted, new PaprikaKeccak(key), value);
         }
 
+        [SkipLocalsInit]
         public void StorageMightBeSet(in StorageCell cell)
         {
-            // TODO: notify world state about prefetching
+            if (_prefetch == null || !_prefetched.Add(cell.GetHashCode()))
+                return;
+
+            PaprikaKeccak contract = Convert(cell.Address);
+
+            if (cell.IsHash)
+            {
+                _prefetch.PrefetchStorage(contract, Convert(cell.Hash));
+            }
+            else
+            {
+                Span<byte> bytes = stackalloc byte[32];
+                GetKey(cell.Index, bytes);
+
+                _prefetch.PrefetchStorage(contract, new PaprikaKeccak(bytes));
+            }
         }
 
         public void Commit(long blockNumber)
         {
-            wrapped.Commit((uint)blockNumber);
-            factory.Committed(wrapped);
+            _wrapped.Commit((uint)blockNumber);
+            _factory.Committed(_wrapped);
         }
 
-        public void Reset() => wrapped.Reset();
+        public void Reset() => _wrapped.Reset();
 
-        public Hash256 StateRoot => Convert(wrapped.Hash);
+        public Hash256 StateRoot => Convert(_wrapped.Hash);
 
-        public void Dispose() => wrapped.Dispose();
+        public void Dispose() => _wrapped.Dispose();
     }
 
     private void Committed(IWorldState block)
