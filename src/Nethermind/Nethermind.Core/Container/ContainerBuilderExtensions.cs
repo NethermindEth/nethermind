@@ -37,11 +37,16 @@ public static class ContainerBuilderExtensions
                 ComponentKeyAttribute? componentKeyAttribute = propertyInfo.GetCustomAttribute<ComponentKeyAttribute>();
                 if (componentKeyAttribute != null)
                 {
-                    configuration.RegisterInstance(val).Keyed(componentKeyAttribute.Key, propertyInfo.PropertyType);
+                    configuration
+                        .RegisterInstance(val)
+                        .Keyed(componentKeyAttribute.Key, propertyInfo.PropertyType)
+                        .ExternallyOwned();
                 }
                 else
                 {
-                    configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+                    configuration.RegisterInstance(val)
+                        .As(propertyInfo.PropertyType)
+                        .ExternallyOwned();
                 }
             }
         }
@@ -63,7 +68,8 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .As<T>()
-            .SingleInstance();
+            .SingleInstance()
+            .ExternallyOwned();
 
         return builder;
     }
@@ -132,7 +138,8 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder Bind<TImpl, TAs>(this ContainerBuilder builder) where TImpl : notnull where TAs : notnull
     {
         builder.Register(ctx => ctx.Resolve<TImpl>())
-            .As<TAs>();
+            .As<TAs>()
+            .ExternallyOwned();
 
         return builder;
     }
