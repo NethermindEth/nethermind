@@ -32,7 +32,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         {
             if (preBlockCaches.ClearCaches())
             {
-                if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
+                if (_logger.IsDebug) _logger.Debug("Caches are not empty. Clearing them.");
             }
 
             var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
