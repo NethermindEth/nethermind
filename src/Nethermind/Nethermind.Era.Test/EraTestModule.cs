@@ -5,6 +5,8 @@ using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -31,6 +33,13 @@ public class EraTestModule : Module
             .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(length).TestObject);
     }
 
+    public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512)
+    {
+        IContainer testCtx = BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
+        await testCtx.Resolve<IEraExporter>().Export(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, chainLength-1);
+        return testCtx;
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -40,6 +49,10 @@ public class EraTestModule : Module
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<ISpecProvider>(Substitute.For<ISpecProvider>())
             .AddSingleton<IBlockValidator>(Always.Valid)
+            .AddSingleton<IProcessExitSource>(Substitute.For<IProcessExitSource>())
+            .AddSingleton<ISyncConfig>(new SyncConfig()
+            {
+            })
             .AddSingleton<TmpDirectory>()
             .AddKeyedSingleton<ITunableDb>(DbNames.Receipts, Substitute.For<ITunableDb>())
             .AddKeyedSingleton<ITunableDb>(DbNames.Blocks, Substitute.For<ITunableDb>())

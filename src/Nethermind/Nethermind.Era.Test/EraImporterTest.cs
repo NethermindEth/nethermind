@@ -5,7 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using NSubstitute;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Core;
@@ -45,7 +44,7 @@ public class EraImporterTest
     [Test]
     public async Task ImportAsArchiveSync_BlockCannotBeValidated_ThrowEraImportException()
     {
-        await using IContainer testCtx = await CreateExportedEraTests();
+        await using IContainer testCtx = await EraTestModule.CreateExportedEraEnv(512);
         IBlockTree sourceBlocktree = testCtx.Resolve<IBlockTree>();
 
         IBlockTree blockTree = Build.A.BlockTree().TestObject;
@@ -64,7 +63,7 @@ public class EraImporterTest
     public async Task VerifyEraFiles_VerifyAccumulatorsWithExpected_DoesNotThrow()
     {
         const int ChainLength = 128;
-        await using IContainer fromCtx = await CreateExportedEraTests(ChainLength);
+        await using IContainer fromCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
 
         TmpDirectory tmpDirectory = fromCtx.Resolve<TmpDirectory>();
         string destinationPath = tmpDirectory.DirectoryPath;
@@ -83,7 +82,7 @@ public class EraImporterTest
     [Test]
     public async Task VerifyEraFiles_VerifyAccumulatorsWithUnexpected_ThrowEraVerificationException()
     {
-        using IContainer outputCtx = await CreateExportedEraTests(64);
+        using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
         IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
         string destinationPath = outputCtx.Resolve<TmpDirectory>().DirectoryPath;
 
@@ -103,12 +102,5 @@ public class EraImporterTest
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
 
         Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
-    }
-
-    private async Task<IContainer> CreateExportedEraTests(int chainLength = 512)
-    {
-        IContainer testCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
-        await testCtx.Resolve<IEraExporter>().Export(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, chainLength-1);
-        return testCtx;
     }
 }

@@ -1,29 +1,19 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
-using System.IO.Abstractions;
-using System.IO.Abstractions.TestingHelpers;
 using System.IO.MemoryMappedFiles;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework.Constraints;
@@ -295,38 +285,58 @@ public class Era1ModuleTests
         }
     }
 
-    [Test]
-    public async Task EraExportAndImport()
+    [TestCase(true, 0, 0, 1000, 1001, 9999)]
+    [TestCase(true, 0, 2000, 1000, 1001, 2000)]
+    [TestCase(true, 0, 0, 0, null, 0)]
+    [TestCase(false, 0, 0, 0, 1, 9999)]
+    [TestCase(false, 0, 0, 2000, 2001, 9999)]
+    public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock)
     {
         const int ChainLength = 10000;
-        await using IContainer outCtx = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(ChainLength).Build();
+        await using IContainer outCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
         TmpDirectory tmpDir = outCtx.Resolve<TmpDirectory>();
         IBlockTree outTree = outCtx.Resolve<IBlockTree>();
 
-        IEraExporter exporter = outCtx.Resolve<IEraExporter>();
-        await exporter.Export(tmpDir.DirectoryPath, 0, ChainLength - 1);
-
         BlockTree inTree = Build.A.BlockTree()
-            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+            .WithBlocks(outTree.FindBlock(0, BlockTreeLookupOptions.None)!)
+            .TestObject;
+
+        Block headBlock = outTree.FindBlock(headBlockNumber)!;
+        if (headBlockNumber != 0)
+        {
+            inTree.Insert(headBlock, BlockTreeInsertBlockOptions.SaveHeader);
+            inTree.UpdateMainChain(new[] { headBlock }, true);
+        }
 
         await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
             .AddSingleton<IBlockTree>(inTree)
+            .AddSingleton<ISyncConfig>(new SyncConfig()
+            {
+                FastSync = fastSync
+            })
+            .AddSingleton<IEraConfig>(new EraConfig()
+            {
+                Start = start,
+                End = end,
+                ImportDirectory = tmpDir.DirectoryPath,
+                TrustedAccumulatorFile = Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName),
+                MaxEra1Size = 16,
+            })
             .Build();
 
-        int bestSuggestedNumber = 0;
+        long? minSuggestedNumber = null;
+        long maxSuggestedBlock = 0;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
-            bestSuggestedNumber++;
+            minSuggestedNumber ??= args.Block.Number;
+            maxSuggestedBlock = args.Block.Number;
             inTree.UpdateMainChain([args.Block], true);
         };
 
-        IEraImporter importer = inCtx.Resolve<IEraImporter>();
-        await importer.Import(tmpDir.DirectoryPath, 0, 0, Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName), CancellationToken.None);
+        EraCliRunner cliRunner = inCtx.Resolve<EraCliRunner>();
+        await cliRunner.Run(default);
 
-        Assert.That(inTree.BestSuggestedHeader, Is.Not.Null);
-        Assert.That(inTree.BestSuggestedHeader!.Hash, Is.EqualTo(outTree.HeadHash));
-        // Test with fastheader
-        // Assert.That(inTree.LowestInsertedHeader, Is.Not.Null);
-        Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
+        Assert.That(minSuggestedNumber, Is.EqualTo(expectedMinSuggestedBlock));
+        Assert.That(maxSuggestedBlock, Is.EqualTo(expectedMaxSuggestedBlock));
     }
 }

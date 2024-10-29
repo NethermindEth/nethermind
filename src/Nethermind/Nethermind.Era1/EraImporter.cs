@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,6 +27,7 @@ public class EraImporter : IEraImporter
     private readonly int _maxEra1Size;
     private readonly ITunableDb _blocksDb;
     private readonly ITunableDb _receiptsDb;
+    private readonly ISyncConfig _syncConfig;
 
     public EraImporter(
         IFileSystem fileSystem,
@@ -35,6 +37,7 @@ public class EraImporter : IEraImporter
         ISpecProvider specProvider,
         ILogManager logManager,
         IEraConfig eraConfig,
+        ISyncConfig syncConfig,
         [KeyFilter(DbNames.Blocks)] ITunableDb blocksDb,
         [KeyFilter(DbNames.Receipts)] ITunableDb receiptsDb,
         [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
@@ -50,6 +53,7 @@ public class EraImporter : IEraImporter
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
         _maxEra1Size = eraConfig.MaxEra1Size;
+        _syncConfig = syncConfig;
     }
 
     public async Task Import(string src, long start, long end, string? accumulatorFile, CancellationToken cancellation = default)
@@ -111,6 +115,13 @@ public class EraImporter : IEraImporter
         using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(_blockTree);
         long blockNumber = startNumber;
 
+        long suggestFromBlock = (_blockTree.Head?.Number ?? 0) + 1;
+        if (_syncConfig.FastSync && suggestFromBlock == 1)
+        {
+            // Its syncing right now. So no state.
+            suggestFromBlock = long.MaxValue;
+        }
+
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.
         // This make the `blockNumber` aligned to era file boundary so that when running parallel, each thread does not
         // work on the same era file as other thread.
@@ -125,10 +136,10 @@ public class EraImporter : IEraImporter
 
         // Earlier part can be parallelized
         long partitionSize = _maxEra1Size;
-        if (_blockTree.Head is not null && startNumber + partitionSize < _blockTree.Head.Number)
+        if (startNumber + partitionSize < suggestFromBlock)
         {
             ConcurrentQueue<long> partitionStartBlocks = new ConcurrentQueue<long>();
-            for (; blockNumber + partitionSize < _blockTree.Head.Number && blockNumber + partitionSize < end; blockNumber += partitionSize)
+            for (; blockNumber + partitionSize < suggestFromBlock && blockNumber + partitionSize < end; blockNumber += partitionSize)
             {
                 partitionStartBlocks.Enqueue(blockNumber);
             }
@@ -183,7 +194,7 @@ public class EraImporter : IEraImporter
                 throw new EraImportException($"Unexpected block without a body found for block number {blockNumber}. Archive might be corrupted.");
             }
 
-            if (processBlock && (_blockTree.Head?.Number ?? 0) < b.Number)
+            if (processBlock && suggestFromBlock <= b.Number)
             {
                 await pacer.WaitForQueue(b.Number, cancellation);
                 await SuggestAndProcessBlock(b);
