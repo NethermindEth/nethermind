@@ -219,12 +219,10 @@ public static class ShutterCrypto
     [SkipLocalsInit]
     public static bool CheckValidatorRegistrySignature(ReadOnlySpan<byte> pkBytes, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
     {
-        BlsSigner.Signature sig = new(sigBytes);
         ValueHash256 h = ValueKeccak.Compute(msgBytes);
-
         G1Affine pk = new(stackalloc long[G1Affine.Sz]);
         pk.Decode(pkBytes);
-        return BlsSigner.Verify(pk, sig, h.Bytes);
+        return BlsSigner.Verify(pk, sigBytes, h.Bytes);
     }
 
     public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, ReadOnlySpan<byte> sigma)
