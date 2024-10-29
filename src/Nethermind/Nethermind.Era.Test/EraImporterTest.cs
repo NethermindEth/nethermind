@@ -21,7 +21,7 @@ public class EraImporterTest
         TmpDirectory tmpDirectory = testContext.Resolve<TmpDirectory>();
         IEraImporter sut = testContext.Resolve<IEraImporter>();
 
-        Assert.That(() => sut.Import(tmpDirectory.DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraImportException>());
+        Assert.That(() => sut.Import(tmpDirectory.DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

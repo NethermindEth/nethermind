@@ -75,7 +75,7 @@ public class EraImporter : IEraImporter
                 _blocksDb.Tune(ITunableDb.TuneType.Default);
 
                 if (t.IsFaulted)
-                    throw t.Exception;
+                    throw t.Exception?.InnerException!;
             }, cancellation);
     }
 

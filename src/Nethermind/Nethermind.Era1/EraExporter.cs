@@ -58,7 +58,7 @@ public class EraExporter : IEraExporter
         if (end > (_blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {_blockTree.Head?.Number ?? 0}.", nameof(end));
         if (start > end) throw new ArgumentException("Start must be before end block", nameof(start));
 
-        return DoExport(destinationPath, start, end, cancellation: cancellation);
+        return DoExport(destinationPath, start, end, createAccumulator: createAccumulator, cancellation: cancellation);
     }
 
     private async Task DoExport(
@@ -68,7 +68,6 @@ public class EraExporter : IEraExporter
         bool createAccumulator = true,
         CancellationToken cancellation = default)
     {
-
         if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
         if (!_fileSystem.Directory.Exists(destinationPath))
         {
@@ -82,8 +81,7 @@ public class EraExporter : IEraExporter
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
-        long totalLengthWithStartOffset = (start % _era1Size) + (end - start + 1);
-        long epochCount = (long)Math.Ceiling(totalLengthWithStartOffset / (decimal)_era1Size);
+        long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)_era1Size);
 
         long startEpoch = start / _era1Size;
         byte[][] eraRoots = new byte[epochCount][];
@@ -117,10 +115,10 @@ public class EraExporter : IEraExporter
 
         async Task WriteEpoch(long epochIdx)
         {
-            // TODO: Add export test on offset block
+            // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
+            // if the start is not of module _era1Size. This seems to match geth's behaviour.
             long epoch = startEpoch + epochIdx;
-            long startingIndex = epoch * _era1Size;
-            if (startingIndex < start) startingIndex = start;
+            long startingIndex = start + epochIdx * _era1Size;
 
             string filePath = Path.Combine(
                 destinationPath,

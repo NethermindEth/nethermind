@@ -11,12 +11,13 @@ using Autofac;
 namespace Nethermind.Era1.Test;
 public class EraExporterTests
 {
-    [TestCase(1, 1, 1)]
-    [TestCase(3, 1, 3)]
-    [TestCase(16, 16, 1)]
-    [TestCase(32, 16, 2)]
-    [TestCase(64 * 2 + 1, 64, 3)]
-    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int size, int expectedNumberOfFiles)
+    [TestCase(1, 0, 1 - 1, 1, 1)]
+    [TestCase(3, 0, 3 - 1, 1, 3)]
+    [TestCase(16, 0, 16 - 1, 16, 1)]
+    [TestCase(32, 0, 32 - 1, 16, 2)]
+    [TestCase(48, 8, 40 - 1, 16, 2)]
+    [TestCase(64 * 2 + 1, 0, 64 * 2 + 1 - 1, 64, 3)]
+    public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int start, int end, int size, int expectedNumberOfFiles)
     {
         await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(chainlength)
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
@@ -24,7 +25,7 @@ public class EraExporterTests
 
         TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(tmpDirectory.DirectoryPath, 0, chainlength - 1, createAccumulator: false);
+        await sut.Export(tmpDirectory.DirectoryPath, start, end, createAccumulator: false);
 
         int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory.DirectoryPath).Length;
         Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles));
@@ -42,7 +43,7 @@ public class EraExporterTests
         IEraExporter sut = container.Resolve<IEraExporter>();
         TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
 
-        Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, to), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, to), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
