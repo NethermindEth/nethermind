@@ -126,6 +126,7 @@ public class Era1ModuleTests
         UInt256 nonce = 0;
 
         List<Block> blocks = [genesis];
+        BlockHeader uncle = Build.A.BlockHeader.TestObject;
 
         for (int i = 0; i < numOfBlocks; i++)
         {
@@ -139,7 +140,7 @@ public class Era1ModuleTests
                                                      .TestObject;
                 nonce++;
             }
-            blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
+            blocks.Add(Build.A.Block.WithUncles(uncle)
                                     .WithBaseFeePerGas(1)
                                     .WithTotalDifficulty(blocks[i].TotalDifficulty + blocks[i].Difficulty)
                                     .WithTransactions(transactions)

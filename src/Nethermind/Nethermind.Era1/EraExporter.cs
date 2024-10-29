@@ -138,7 +138,7 @@ public class EraExporter : IEraExporter
                     throw new EraException($"Could not find a block with number {y}.");
                 }
 
-                TxReceipt[]? receipts = _receiptStorage.Get(block);
+                TxReceipt[]? receipts = _receiptStorage.Get(block, true, false);
                 if (receipts is null)
                 {
                     // Can this even happen?
