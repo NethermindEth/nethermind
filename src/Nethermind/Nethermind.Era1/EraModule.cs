@@ -27,9 +27,13 @@ public class EraModule : Module
             .AddSingleton<EraCliRunner>()
             .AddSingleton<IAdminEraService, AdminEraService>();
 
-        builder.RegisterBuildCallback((ctx) =>
+            builder.RegisterBuildCallback((ctx) =>
             {
-                ctx.Resolve<IEraConfig>().NetworkName ??= BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
+                IEraConfig eraConfig = ctx.Resolve<IEraConfig>();
+                if (string.IsNullOrWhiteSpace(eraConfig.NetworkName))
+                {
+                    eraConfig.NetworkName = BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
+                }
             });
     }
 }
