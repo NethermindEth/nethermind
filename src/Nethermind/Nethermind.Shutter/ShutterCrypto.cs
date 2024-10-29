@@ -220,14 +220,8 @@ public static class ShutterCrypto
     public static bool CheckValidatorRegistrySignature(ReadOnlySpan<byte> pkBytes, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
     {
         ValueHash256 h = ValueKeccak.Compute(msgBytes);
-
         G1Affine pk = new(stackalloc long[G1Affine.Sz]);
-
-        if (!pk.TryDecode(pkBytes, out _))
-        {
-            return false;
-        }
-
+        pk.Decode(pkBytes);
         return BlsSigner.Verify(pk, sigBytes, h.Bytes);
     }
 
