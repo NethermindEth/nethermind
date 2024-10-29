@@ -12,17 +12,11 @@ namespace Nethermind.Core.Utils;
 /// <summary>
 /// Batches writes into a set of concurrent batches. For cases where throughput matter, but not atomicity.
 /// </summary>
-public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
+public class ConcurrentNodeWriteBatcher(INodeStorage underlyingDb) : INodeStorage.WriteBatch
 {
     private long _counter = 0;
     private readonly ConcurrentQueue<INodeStorage.WriteBatch> _batches = new();
-    private readonly INodeStorage _underlyingDb;
     private bool _disposing = false;
-
-    public ConcurrentNodeWriteBatcher(INodeStorage underlyingDb)
-    {
-        _underlyingDb = underlyingDb;
-    }
 
     public void Dispose()
     {
@@ -35,30 +29,37 @@ public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
 
     public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
     {
-        INodeStorage.WriteBatch? currentBatch = RentBatch();
+        INodeStorage.WriteBatch currentBatch = RentBatch();
         currentBatch.Set(address, path, currentNodeKeccak, data, writeFlags);
         ReturnBatch(currentBatch);
     }
 
     public void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak)
     {
-        INodeStorage.WriteBatch? currentBatch = RentBatch();
+        INodeStorage.WriteBatch currentBatch = RentBatch();
         currentBatch.Remove(address, path, currentNodeKeccak);
         ReturnBatch(currentBatch);
     }
 
-    private INodeStorage.WriteBatch? RentBatch()
+    public void Set(long blockNumber)
+    {
+        INodeStorage.WriteBatch currentBatch = RentBatch();
+        currentBatch.Set(blockNumber);
+        ReturnBatch(currentBatch);
+    }
+
+    private INodeStorage.WriteBatch RentBatch()
     {
         if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
-        if (!_batches.TryDequeue(out INodeStorage.WriteBatch? currentBatch))
+        if (!_batches.TryDequeue(out INodeStorage.WriteBatch currentBatch))
         {
-            currentBatch = _underlyingDb.StartWriteBatch();
+            currentBatch = underlyingDb.StartWriteBatch();
         }
 
         return currentBatch;
     }
 
-    private void ReturnBatch(INodeStorage.WriteBatch? currentBatch)
+    private void ReturnBatch(INodeStorage.WriteBatch currentBatch)
     {
         long val = Interlocked.Increment(ref _counter);
         if (val % 10000 == 0)

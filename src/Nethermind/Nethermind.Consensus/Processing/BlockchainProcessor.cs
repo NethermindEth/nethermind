@@ -386,9 +386,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (!shouldProcess)
         {
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
             return null;
         }
 
@@ -624,16 +622,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }
 
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
             if (toBeProcessed.IsGenesis)
             {
                 break;
             }
 
-            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (branchingPoint is null)
             {
                 // genesis block
@@ -652,16 +647,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
             bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
-            if (_logger.IsTrace)
-                _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
             toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
             if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
             bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
             if (toBeProcessed is null)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                if (_logger.IsDebug) _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                 break;
             }
 
@@ -697,25 +689,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
             branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInForceProcessing;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+            if (_logger.IsTrace) _logger.Trace($" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
 
         } while (branchingCondition);
 
         if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
-            if (_logger.IsTrace)
-                _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"Head block was: {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
         }
         else
         {
-            if (_logger.IsTrace)
-                _logger.Trace(branchingPoint is null
-                    ? "Setting as genesis block"
-                    : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace(branchingPoint is null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
         }
 
         Hash256 stateRoot = branchingPoint?.StateRoot;
@@ -731,19 +716,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (suggestedBlock.Number != 0 &&
             !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
         {
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
+            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with unknown parent");
             return false;
         }
 
         if (suggestedBlock.Header.TotalDifficulty is null)
         {
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
-            throw new InvalidOperationException(
-                "Block without total difficulty calculated was suggested for processing");
+            if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
+            throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
         }
 
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)

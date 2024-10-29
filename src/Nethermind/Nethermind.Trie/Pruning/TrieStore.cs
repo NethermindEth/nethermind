@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -45,12 +46,12 @@ namespace Nethermind.Trie.Pruning
         private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
+            : this(keyValueStore, No.Pruning, Persist.EveryBlock, logManager)
         {
         }
 
         public TrieStore(INodeStorage nodeStorage, ILogManager? logManager)
-            : this(nodeStorage, No.Pruning, Pruning.Persist.EveryBlock, logManager)
+            : this(nodeStorage, No.Pruning, Persist.EveryBlock, logManager)
         {
         }
 
@@ -58,7 +59,7 @@ namespace Nethermind.Trie.Pruning
             IKeyValueStoreWithBatching? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager) : this(new NodeStorage(keyValueStore), pruningStrategy, persistenceStrategy, logManager)
+            ILogManager? logManager) : this(new NodeStorage(keyValueStore!), pruningStrategy, persistenceStrategy, logManager)
         {
         }
 
@@ -313,34 +314,34 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {root}, block {set.BlockNumber}");
                         set.Seal(root);
-                    }
 
-                    bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
-                    if (shouldPersistSnapshot)
-                    {
-                        _currentBatch ??= _nodeStorage.StartWriteBatch();
-                        try
+                        bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
+                        if (shouldPersistSnapshot)
                         {
-                            PersistBlockCommitSet(address, set, _currentBatch, writeFlags: writeFlags);
+                            _currentBatch ??= _nodeStorage.StartWriteBatch();
+                            try
+                            {
+                                PersistBlockCommitSet(address, set, _currentBatch, writeFlags: writeFlags);
+                                PruneCurrentSet();
+                            }
+                            finally
+                            {
+                                // For safety, we prefer to commit half of the batch rather than not commit at all.
+                                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
+                                _currentBatch?.Dispose();
+                                _currentBatch = null;
+                            }
+                        }
+                        else
+                        {
                             PruneCurrentSet();
                         }
-                        finally
-                        {
-                            // For safety we prefer to commit half of the batch rather than not commit at all.
-                            // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                            _currentBatch?.Dispose();
-                            _currentBatch = null;
-                        }
-                    }
-                    else
-                    {
-                        PruneCurrentSet();
-                    }
 
-                    CurrentPackage = null;
-                    if (_pruningStrategy.PruningEnabled && Monitor.IsEntered(_dirtyNodesLock))
-                    {
-                        Monitor.Exit(_dirtyNodesLock);
+                        CurrentPackage = null;
+                        if (_pruningStrategy.PruningEnabled && Monitor.IsEntered(_dirtyNodesLock))
+                        {
+                            Monitor.Exit(_dirtyNodesLock);
+                        }
                     }
                 }
             }
@@ -680,7 +681,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly ILogger _logger;
 
-        private ConcurrentQueue<BlockCommitSet> _commitSetQueue;
+        private ConcurrentQueue<BlockCommitSet> _commitSetQueue = null!;
 
         private long _memoryUsedByDirtyCache;
 
@@ -754,6 +755,7 @@ namespace Nethermind.Trie.Pruning
             commitSet.Root?.CallRecursively(PersistNode, address, ref path, GetTrieStore(null), true, _logger);
             long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             Metrics.SnapshotPersistenceTime = elapsedMilliseconds;
+            writeBatch.Set(commitSet.BlockNumber);
 
             if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {elapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
@@ -799,7 +801,7 @@ namespace Nethermind.Trie.Pruning
             // However, anything that we are trying to persist here should still be in dirty cache.
             // So parallel read should go there first instead of to the database for these dataset,
             // so it should be fine for these to be non atomic.
-            using BlockingCollection<INodeStorage.WriteBatch> disposeQueue = new BlockingCollection<INodeStorage.WriteBatch>(4);
+            using BlockingCollection<INodeStorage.WriteBatch> disposeQueue = new(4);
 
             for (int index = 0; index < _disposeTasks.Length; index++)
             {
@@ -821,7 +823,8 @@ namespace Nethermind.Trie.Pruning
             disposeQueue.CompleteAdding();
             Task.WaitAll(_disposeTasks);
 
-            // Dispose top level last in case something goes wrong, at least the root wont be stored
+            // Dispose top level last in case something goes wrong, at least the root won't be stored
+            topLevelWriteBatch.Set(commitSet.BlockNumber);
             topLevelWriteBatch.Dispose();
 
             long elapsedMilliseconds = (long)Stopwatch.GetElapsedTime(start).TotalMilliseconds;

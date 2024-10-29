@@ -3,27 +3,19 @@
 
 namespace Nethermind.Trie.Pruning
 {
-    internal class BlockCommitSet
+    public class BlockCommitSet(long blockNumber)
     {
-        public long BlockNumber { get; }
+        public long BlockNumber { get; } = blockNumber;
 
         public TrieNode? Root { get; private set; }
 
         public bool IsSealed => Root is not null;
-
-        public BlockCommitSet(long blockNumber)
-        {
-            BlockNumber = blockNumber;
-        }
 
         public void Seal(TrieNode? root)
         {
             Root = root;
         }
 
-        public override string ToString()
-        {
-            return $"{BlockNumber}({Root})";
-        }
+        public override string ToString() => $"{BlockNumber}({Root})";
     }
 }

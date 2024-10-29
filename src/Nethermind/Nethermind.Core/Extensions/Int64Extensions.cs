@@ -72,12 +72,12 @@ public static class Int64Extensions
     {
         if (skipLeadingZeros)
         {
-            if (value == default)
+            if (value.IsZero)
             {
                 return "0x0";
             }
 
-            if (value == UInt256.One)
+            if (value.IsOne)
             {
                 return "0x1";
             }
