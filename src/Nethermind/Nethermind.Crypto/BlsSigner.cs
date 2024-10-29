@@ -23,96 +23,121 @@ public static class BlsSigner
     private const int InputLength = 64;
 
     [SkipLocalsInit]
-    public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
+    // buf must be of size G2.Sz
+    public static Signature Sign(Span<long> buf, Bls.SecretKey sk, ReadOnlySpan<byte> message)
     {
-        G2 p = new(stackalloc long[G2.Sz]);
-        p.HashTo(message, Cryptosuite);
-        p.SignWith(sk);
-        return new(p.Compress());
-    }
-
-    [SkipLocalsInit]
-    public static Signature SignAggregate(ReadOnlySpan<byte> skBytes, ReadOnlySpan<byte> message)
-    {
-        if (skBytes.Length % 32 != 0)
+        if (buf.Length != G2.Sz)
         {
             throw new Bls.BlsException(Bls.ERROR.WRONGSIZE);
         }
 
-        G2 p = new(stackalloc long[G2.Sz]);
-        G2 agg = new(stackalloc long[G2.Sz]);
-        agg.Zero();
-
-        for (int i = 0; i < skBytes.Length; i += 32)
-        {
-            Bls.SecretKey sk = new(skBytes.Slice(i, 32));
-            p.HashTo(message, Cryptosuite);
-            p.SignWith(sk);
-            agg.Aggregate(p.ToAffine());
-        }
-
-        return new(agg.Compress());
+        G2 p = new(buf);
+        Signature s = new(p);
+        s.Sign(sk, message);
+        return s;
     }
 
-    [SkipLocalsInit]
+    public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
+        => Sign(new long[G2.Sz], sk, message);
+
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
         int len = 2 * GT.Sz;
         using ArrayPoolList<long> buf = new(len, len);
-        try
-        {
-            G2Affine sig = new(stackalloc long[G2Affine.Sz]);
-            sig.Decode(signature.Bytes);
-            GT p1 = new(buf.AsSpan()[..GT.Sz]);
-            p1.MillerLoop(sig, G1Affine.Generator(stackalloc long[G1Affine.Sz]));
 
-            G2 m = new(stackalloc long[G2.Sz]);
-            m.HashTo(message, Cryptosuite);
-            GT p2 = new(buf.AsSpan()[GT.Sz..]);
-            p2.MillerLoop(m.ToAffine(), publicKey);
+        GT p1 = new(buf.AsSpan()[..GT.Sz]);
+        p1.MillerLoop(signature.Point, G1Affine.Generator(stackalloc long[G1Affine.Sz]));
 
-            return GT.FinalVerify(p1, p2);
-        }
-        catch (Bls.BlsException)
-        {
-            // point not on curve
-            return false;
-        }
+        G2 m = new(stackalloc long[G2.Sz]);
+        m.HashTo(message, Cryptosuite);
+        GT p2 = new(buf.AsSpan()[GT.Sz..]);
+        p2.MillerLoop(m.ToAffine(), publicKey);
+
+        return GT.FinalVerify(p1, p2);
     }
 
     [SkipLocalsInit]
-    public static bool VerifyAggregate(ReadOnlySpan<byte> publicKeyBytes, Signature signature, ReadOnlySpan<byte> message)
+    public static bool Verify(G1Affine publicKey, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> message)
     {
-        if (publicKeyBytes.Length % PkCompressedSz != 0)
+        G2 p = new(stackalloc long[G2.Sz]);
+        Signature s = new(p);
+
+        //TryDecode
+        //cache Sz size
+        try
         {
-            throw new Bls.BlsException(Bls.ERROR.WRONGSIZE);
+            p.Decode(sigBytes);
+        }
+        catch (Bls.BlsException)
+        {
+            // invalid signature
+            return false;
         }
 
-        G1Affine pk = new(stackalloc long[G1Affine.Sz]);
-        G1 agg = new(stackalloc long[G1.Sz]);
-        agg.Zero();
-
-        for (int i = 0; i < publicKeyBytes.Length; i += PkCompressedSz)
-        {
-            pk.Decode(publicKeyBytes.Slice(i, PkCompressedSz));
-            agg.Aggregate(pk);
-        }
-
-        return Verify(agg.ToAffine(), signature, message);
+        return Verify(publicKey, s, message);
     }
 
-    // Compressed G2 point
-    public readonly ref struct Signature()
-    {
-        public readonly ReadOnlySpan<byte> Bytes;
+    public static bool VerifyAggregate(AggregatedPublicKey aggregatedPublicKey, Signature signature, ReadOnlySpan<byte> message)
+        => Verify(aggregatedPublicKey.PublicKey, signature, message);
 
-        public Signature(ReadOnlySpan<byte> s) : this()
+    public readonly ref struct Signature
+    {
+        public readonly ReadOnlySpan<byte> Bytes { get => _point.Compress(); }
+        public readonly G2Affine Point { get => _point.ToAffine(); }
+        private readonly G2 _point;
+
+        public Signature()
         {
-            if (s.Length != 96)
+            _point = new();
+        }
+
+        public Signature(G2 point)
+        {
+            _point = point;
+        }
+
+        public void Decode(ReadOnlySpan<byte> bytes)
+            => _point.Decode(bytes);
+
+        public void Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
+        {
+            _point.HashTo(message, Cryptosuite);
+            _point.SignWith(sk);
+        }
+
+        public void Aggregate(Signature s)
+            => _point.Aggregate(s.Point);
+    }
+
+    public readonly ref struct AggregatedPublicKey
+    {
+        public G1Affine PublicKey { get => _point.ToAffine(); }
+        private readonly G1 _point;
+
+        public AggregatedPublicKey()
+        {
+            _point = new();
+        }
+
+        public AggregatedPublicKey(G1 point)
+        {
+            point.Zero();
+            _point = point;
+        }
+
+        public void Aggregate(G1Affine publicKey)
+            => _point.Aggregate(publicKey);
+
+        public void Aggregate(ReadOnlySpan<byte> publicKeyBytes)
+        {
+            if (publicKeyBytes.Length != PkCompressedSz)
             {
-                throw new Bls.BlsException(Bls.ERROR.BADENCODING);
+                throw new Bls.BlsException(Bls.ERROR.WRONGSIZE);
             }
-            Bytes = s;
+
+            G1Affine pk = new(stackalloc long[G1Affine.Sz]);
+            pk.Decode(publicKeyBytes);
+            Aggregate(pk);
         }
     }
 }
