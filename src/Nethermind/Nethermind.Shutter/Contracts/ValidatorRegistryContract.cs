@@ -74,8 +74,8 @@ public class ValidatorRegistryContract(
 
     private void UpdateRegistrations(Message msg, Dictionary<ulong, ulong?> nonces, HashSet<ulong> unregistered)
     {
-        ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count - 1;
-        for (ulong v = msg.StartValidatorIndex; v <= endValidatorIndex; v++)
+        ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count;
+        for (ulong v = msg.StartValidatorIndex; v < endValidatorIndex; v++)
         {
             if (nonces[v].HasValue && msg.Nonce <= nonces[v])
             {
