@@ -312,6 +312,9 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public void ConfigureSynchronizationBuilder(ContainerBuilder builder)
     {
+        if (_api is null || !ShouldRunSteps(_api))
+            return;
+
         builder
             .RegisterModule(new MergeNetworkModule(_blockCacheService!, _api!.InvalidChainTracker!));
     }
