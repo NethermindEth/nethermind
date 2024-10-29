@@ -3,8 +3,10 @@
 
 using System.IO.Compression;
 using System.IO.MemoryMappedFiles;
+using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
 using Snappier;
 
 namespace Nethermind.Era1;
@@ -195,4 +197,10 @@ public class E2StoreReader : IDisposable
         }
     }
 
+    public ValueHash256 CalculateChecksum()
+    {
+        using MemoryMappedViewStream viewStream = _mappedFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read);
+        using SHA256 sha = SHA256.Create();
+        return new ValueHash256(sha.ComputeHash(viewStream));
+    }
 }

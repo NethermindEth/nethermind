@@ -3,10 +3,10 @@
 
 using System.Diagnostics;
 using System.IO.Abstractions;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -24,6 +24,7 @@ public class EraExporter : IEraExporter
     private readonly int _era1Size;
 
     public const string AccumulatorFileName = "accumulators.txt";
+    public const string ChecksumsFileName = "checksums.txt";
 
     public EraExporter(
         IFileSystem fileSystem,
@@ -50,7 +51,6 @@ public class EraExporter : IEraExporter
         string destinationPath,
         long start,
         long end,
-        bool createAccumulator = true,
         CancellationToken cancellation = default)
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
@@ -59,14 +59,13 @@ public class EraExporter : IEraExporter
         if (end > (_blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {_blockTree.Head?.Number ?? 0}.", nameof(end));
         if (start > end) throw new ArgumentException("Start must be before end block", nameof(start));
 
-        return DoExport(destinationPath, start, end, createAccumulator: createAccumulator, cancellation: cancellation);
+        return DoExport(destinationPath, start, end, cancellation: cancellation);
     }
 
     private async Task DoExport(
         string destinationPath,
         long start,
         long end,
-        bool createAccumulator = true,
         CancellationToken cancellation = default)
     {
         if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
@@ -85,25 +84,28 @@ public class EraExporter : IEraExporter
         long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)_era1Size);
 
         long startEpoch = start / _era1Size;
-        byte[][] eraRoots = new byte[epochCount][];
 
-        List<long> epochIdxs = new List<long>();
+        using ArrayPoolList<long> epochIdxs = new((int)epochCount);
         for (long i = 0; i < epochCount; i++)
         {
             epochIdxs.Add(i);
         }
+
+        using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
+        using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
 
         await Parallel.ForEachAsync(epochIdxs, cancellation, async (epochIdx, cancel) =>
         {
             await WriteEpoch(epochIdx);
         });
 
-        if (createAccumulator)
-        {
-            string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
-            using IEraStore eraStore = _eraStoreFactory.Create(destinationPath, null);
-            await eraStore.CreateAccumulatorFile(accumulatorPath, cancellation);
-        }
+        string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
+        _fileSystem.File.Delete(accumulatorPath);
+        await _fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select((v) => v.ToString()), cancellation);
+
+        string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
+        _fileSystem.File.Delete(checksumPath);
+        await _fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select((v) => v.ToString()), cancellation);
 
         LogExportProgress(
             end - start,
@@ -169,15 +171,17 @@ public class EraExporter : IEraExporter
                 }
             }
 
-            byte[] root = await builder.Finalize(cancellation);
+            (ValueHash256 accumulator, ValueHash256 sha256) = await builder.Finalize(cancellation);
+            accumulators[(int)epochIdx] = accumulator;
+            checksums[(int)epochIdx] = sha256;
+
             string rename = Path.Combine(
                 destinationPath,
-                EraWriter.Filename(_networkName, epoch, new Hash256(root)));
+                EraWriter.Filename(_networkName, epoch, new Hash256(accumulator)));
             _fileSystem.File.Move(
                 filePath,
                 rename, true);
 
-            eraRoots[epochIdx] = root;
             builder.Dispose();
         }
     }

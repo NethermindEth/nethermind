@@ -32,6 +32,9 @@ public class EraImporterTest
 
         IFileSystem fileSystem = testContext.Resolve<IFileSystem>();
         fileSystem.Directory.CreateDirectory(tempDirectory.DirectoryPath);
+
+        await fileSystem.File.WriteAllBytesAsync(Path.Join(tempDirectory.DirectoryPath, EraExporter.ChecksumsFileName), []);
+
         string badFilePath = Path.Join(tempDirectory.DirectoryPath, "abc-00000-00000000.era1");
         FileSystemStream stream = fileSystem.File.Create(badFilePath);
         await stream.WriteAsync(new byte[]{0, 0});
@@ -90,6 +93,31 @@ public class EraImporterTest
         var accumulators = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(accumulatorPath).Select(s => Bytes.FromHexString(s)).ToArray();
         accumulators[accumulators.Length - 1] = new byte[32];
         await fileSystem.File.WriteAllLinesAsync(accumulatorPath, accumulators.Select(acc => acc.ToHexString()));
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .Build();
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Func<Task> importTask = () => sut.Import(destinationPath, 0, long.MaxValue,
+            Path.Join(destinationPath, EraExporter.AccumulatorFileName), default);
+
+        Assert.That(importTask, Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task VerifyEraFiles_ModifiedChecksum_ThrowEraVerificationException()
+    {
+        using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
+        string destinationPath = outputCtx.Resolve<TmpDirectory>().DirectoryPath;
+
+        string checksumPath = Path.Combine(destinationPath, EraExporter.ChecksumsFileName);
+        var checksums = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(checksumPath).Select(s => Bytes.FromHexString(s)).ToArray();
+        checksums[checksums.Length - 1] = new byte[32];
+        await fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select(acc => acc.ToHexString()));
 
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;

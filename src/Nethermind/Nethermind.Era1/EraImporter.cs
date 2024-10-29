@@ -11,6 +11,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Era1.Exceptions;
 using Nethermind.Logging;
 
 namespace Nethermind.Era1;
@@ -19,6 +20,7 @@ public class EraImporter : IEraImporter
     private readonly IFileSystem _fileSystem;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IBlockValidator _blockValidator;
     private readonly ILogger _logger;
     private readonly int _maxEra1Size;
     private readonly ITunableDb _blocksDb;
@@ -30,6 +32,7 @@ public class EraImporter : IEraImporter
         IFileSystem fileSystem,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        IBlockValidator blockValidator,
         ILogManager logManager,
         IEraConfig eraConfig,
         ISyncConfig syncConfig,
@@ -40,6 +43,7 @@ public class EraImporter : IEraImporter
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        _blockValidator = blockValidator;
         _receiptsDb = receiptsDb;
         _blocksDb = blocksDb;
         _eraStoreFactory = eraStoreFactory;
@@ -245,6 +249,18 @@ public class EraImporter : IEraImporter
 
     private async Task SuggestAndProcessBlock(Block block)
     {
+        // Confusingly it will get the header with `BlockTreeLookupOptions.TotalDifficultyNotNeeded` then
+        // proceed to validate the total difficulty if its not null with the code
+        // `parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty`
+        // when clearly, the `parent.TotalDifficulty` is going to be null or 0.
+        block.Header.TotalDifficulty = null;
+
+        // Should this be in suggest instead?
+        if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
+        {
+            throw new EraVerificationException($"Block validation failed: {error}");
+        }
+
         var addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)
         {

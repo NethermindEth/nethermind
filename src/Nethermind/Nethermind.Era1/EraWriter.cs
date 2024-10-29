@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using DotNetty.Buffers;
+using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
@@ -95,13 +93,13 @@ public class EraWriter : IDisposable
         _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, block.TotalDifficulty!.Value.ToLittleEndian(), cancellation);
     }
 
-    public async Task<byte[]> Finalize(CancellationToken cancellation = default)
+    public async Task<(ValueHash256, ValueHash256)> Finalize(CancellationToken cancellation = default)
     {
         if (_firstBlock)
             throw new EraException("Finalize was called, but no blocks have been added yet.");
 
-        byte[] root = _accumulatorCalculator.ComputeRoot().ToByteArray();
-        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Accumulator, root, cancellation);
+        ValueHash256 root = _accumulatorCalculator.ComputeRoot();
+        _totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Accumulator, root.ToByteArray(), cancellation);
 
         long blockIndexPosition = _totalWritten;
 
@@ -128,7 +126,7 @@ public class EraWriter : IDisposable
         _entryIndexes.Clear();
         _accumulatorCalculator.Clear();
         _finalized = true;
-        return root;
+        return (root, _e2StoreWriter.FinalizeChecksum());
     }
 
     private static void WriteInt64(Span<byte> destination, int off, long value)

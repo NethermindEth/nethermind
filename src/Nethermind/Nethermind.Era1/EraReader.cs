@@ -87,13 +87,15 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
 
-                UInt256? totalDifficulty = err.Block.TotalDifficulty;
-                err.Block.Header.TotalDifficulty = null;
-                if (!blockValidator.ValidateSuggestedBlock(err.Block, out string? blockValidationErr))
+                if (!BlockValidator.ValidateBodyAgainstHeader(err.Block.Header, err.Block.Body))
                 {
-                    throw new EraVerificationException($"Invalid block {blockValidationErr}");
+                    throw new EraVerificationException($"Mismatched block body againts header. Block number {blockNumber}.");
                 }
-                err.Block.Header.TotalDifficulty = totalDifficulty;
+
+                if (!blockValidator.ValidateOrphanedBlock(err.Block, out string? error))
+                {
+                    throw new EraVerificationException($"Invalid block {error}");
+                }
 
                 Hash256 receiptRoot = new ReceiptTrie<TxReceipt>(specProvider.GetReceiptSpec(err.Block.Number),
                     err.Receipts, _receiptDecoder).RootHash;
@@ -196,6 +198,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     private TxReceipt[] DecodeReceipts(IByteBuffer buf)
     {
         return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
+    }
+
+    public ValueHash256 CalculateChecksum()
+    {
+        return _fileReader.CalculateChecksum();
     }
 
     protected virtual void Dispose(bool disposing)

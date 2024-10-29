@@ -17,7 +17,6 @@ public interface IEraStore: IDisposable
     Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default);
     long LastBlock { get; }
     long FirstBlock { get; }
-    Task CreateAccumulatorFile(string accumulatorPath, CancellationToken cancellation);
 
     /// Used for optimization where multiple tasks should not read on the same era file.
     /// Ideally not necessary in the future.

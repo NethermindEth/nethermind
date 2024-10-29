@@ -25,10 +25,11 @@ public class EraExporterTests
 
         TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(tmpDirectory.DirectoryPath, start, end, createAccumulator: false);
+        await sut.Export(tmpDirectory.DirectoryPath, start, end);
 
         int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory.DirectoryPath).Length;
-        Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles));
+        int metaFile = 2;
+        Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles + metaFile));
     }
 
     [TestCase(1, 1)]

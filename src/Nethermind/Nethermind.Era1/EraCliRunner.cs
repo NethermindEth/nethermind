@@ -34,7 +34,7 @@ public class EraCliRunner(
 
         try
         {
-            await eraExporter.Export(eraConfig.ExportDirectory!, start, end, createAccumulator: true, cancellation: cancellation);
+            await eraExporter.Export(eraConfig.ExportDirectory!, start, end, cancellation: cancellation);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {

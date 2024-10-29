@@ -3,10 +3,13 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 namespace Nethermind.Era1;
@@ -18,6 +21,7 @@ public class E2StoreWriter : IDisposable
     private readonly Stream _stream;
     private bool _disposedValue;
     private MemoryStream? _compressedData;
+    private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
     public long Position => _stream.Position;
 
@@ -49,7 +53,10 @@ public class E2StoreWriter : IDisposable
             await compressor!.WriteAsync(bytes, cancellation);
             await compressor.FlushAsync();
 
-            bytes = _compressedData!.ToArray();
+            bool canGetBuffer = _compressedData!.TryGetBuffer(out ArraySegment<byte> arraySegment);
+            Debug.Assert(canGetBuffer);
+
+            bytes = arraySegment;
         }
 
         headerBuffer.Add((byte)type);
@@ -63,6 +70,10 @@ public class E2StoreWriter : IDisposable
         headerBuffer.Add(0);
 
         ReadOnlyMemory<byte> headerMemory = headerBuffer.AsReadOnlyMemory()[..HeaderSize];
+
+        _checksumCalculator.AppendData(headerMemory.Span);
+        _checksumCalculator.AppendData(bytes.Span);
+
         await _stream.WriteAsync(headerMemory, cancellation);
         if (length > 0)
         {
@@ -102,5 +113,10 @@ public class E2StoreWriter : IDisposable
         // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
+    }
+
+    public ValueHash256 FinalizeChecksum()
+    {
+        return new ValueHash256(_checksumCalculator.GetHashAndReset());
     }
 }

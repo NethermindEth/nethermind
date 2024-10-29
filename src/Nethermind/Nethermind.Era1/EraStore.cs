@@ -16,12 +16,12 @@ public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
 
-    private readonly IFileSystem _fileSystem;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockValidator _blockValidator;
     private readonly ISet<ValueHash256>? _trustedAccumulators;
 
     private readonly Dictionary<long, string> _epochs;
+    private readonly ValueHash256[] _checksums;
     private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
 
     /// <summary>
@@ -80,10 +80,14 @@ public class EraStore : IEraStore
     ) {
         _specProvider = specProvider;
         _blockValidator = blockValidator;
-        _fileSystem = fileSystem;
         _trustedAccumulators = trustedAcccumulators;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
+
+        // Geth behaviour seems to be to always read the checksum and fail when its missing.
+        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
+            .Select((chk) => new ValueHash256(chk))
+            .ToArray();
 
         var eraFiles = EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem).ToArray();
         _epochs = new();
@@ -108,9 +112,9 @@ public class EraStore : IEraStore
         return SmallestEpoch + epochOffset;
     }
 
-    public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
+    private bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
 
-    public EraReader GetReader(long epoch)
+    private EraReader GetReader(long epoch)
     {
         GuardMissingEpoch(epoch);
         return new EraReader(new E2StoreReader(_epochs[epoch]));
@@ -134,6 +138,13 @@ public class EraStore : IEraStore
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
+            ValueHash256 checksum = reader.CalculateChecksum();
+            ValueHash256 expectedChecksum = _checksums[epoch - SmallestEpoch];
+            if (checksum != expectedChecksum)
+            {
+                throw new EraVerificationException($"Checksum verification failed. Checksum: {checksum}, Expected: {expectedChecksum}");
+            }
+
             var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, cancellation);
             if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
             {
@@ -206,27 +217,6 @@ public class EraStore : IEraStore
 
         // Still failed, so we just dispose ourself
         reader.Dispose();
-    }
-
-    public async Task CreateAccumulatorFile(string accumulatorPath, CancellationToken cancellationToken)
-    {
-        _fileSystem.File.Delete(accumulatorPath);
-        using StreamWriter stream = new StreamWriter(_fileSystem.File.Create(accumulatorPath), System.Text.Encoding.UTF8);
-        bool first = true;
-
-        foreach (var kv in _epochs)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using (EraReader reader = GetReader(kv.Key))
-            {
-                string root = (reader.ReadAccumulator()).BytesAsSpan.ToHexString(true);
-                if (!first)
-                    root = Environment.NewLine + root;
-                else
-                    first = false;
-                await stream.WriteAsync(root);
-            }
-        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
