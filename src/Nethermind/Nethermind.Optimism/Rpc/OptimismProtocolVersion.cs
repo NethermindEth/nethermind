@@ -10,13 +10,15 @@ namespace Nethermind.Optimism.Rpc;
 
 public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersion>, IComparable<OptimismProtocolVersion>
 {
+    public const int ByteLength = 32;
+
     public class ParseException(string message) : Exception(message);
 
     private OptimismProtocolVersion() { }
 
     public static OptimismProtocolVersion Read(ReadOnlySpan<byte> span)
     {
-        if (span.Length < 32) throw new ParseException("Expected at least 32 bytes");
+        if (span.Length < ByteLength) throw new ParseException($"Expected at least {ByteLength} bytes");
 
         var version = span[0];
         return version switch
@@ -88,8 +90,7 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
             if (other is null) return 1;
 
-            if (other is not V0 otherVersion)
-                throw new ArgumentException("Object is not a valid OptimismProtocolVersion.V0", nameof(other));
+            if (other is not V0 otherVersion) throw new ArgumentException("Object is not a valid OptimismProtocolVersion.V0", nameof(other));
 
             var majorComparison = Major.CompareTo(otherVersion.Major);
             if (majorComparison != 0) return majorComparison;

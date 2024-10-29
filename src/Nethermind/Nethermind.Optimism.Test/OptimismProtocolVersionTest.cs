@@ -23,12 +23,17 @@ public class OptimismProtocolVersionTest
         yield return ("0x0000000000000001020304050607080000002a00000000000000020000000000", new([1, 2, 3, 4, 5, 6, 7, 8], 42, 0, 2, 0));
     }
     [TestCaseSource(nameof(V0ParseCases))]
-    public void Parse_OptimismProtocolVersionV0((string HexString, OptimismProtocolVersion.V0 Expected) testCase)
+    public void ReadWrite_OptimismProtocolVersionV0((string HexString, OptimismProtocolVersion.V0 Expected) testCase)
     {
         var bytes = Bytes.FromHexString(testCase.HexString);
         var actual = OptimismProtocolVersion.Read(bytes);
 
+        var bytesWritten = new byte[OptimismProtocolVersion.ByteLength];
+        actual.Write(bytesWritten);
+        var bytesWrittenHex = bytesWritten.ToHexString(withZeroX: true);
+
         actual.Should().Be(testCase.Expected);
+        testCase.HexString.Should().Be(bytesWrittenHex);
     }
 
     private static IEnumerable<(OptimismProtocolVersion.V0, OptimismProtocolVersion.V0, int)> V0CompareCases()
