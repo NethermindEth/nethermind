@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) { }
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags) { }
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = false) => Array.Empty<TxReceipt>();
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => Array.Empty<TxReceipt>();
