@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -12,8 +11,6 @@ using Nethermind.Core;
 using Nethermind.Shutter.Config;
 using Nethermind.Merge.Plugin;
 using Nethermind.Logging;
-using System.IO;
-using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Config;
 using Multiformats.Address;
@@ -86,16 +83,21 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 throw new ShutterLoadingException("Invalid Shutter config", e);
             }
 
-            Dictionary<ulong, byte[]> validatorsInfo = [];
+            ValidatorsInfo validatorsInfo = new();
             if (_shutterConfig!.ValidatorInfoFile is not null)
             {
                 try
                 {
-                    validatorsInfo = LoadValidatorInfo(_shutterConfig!.ValidatorInfoFile);
+                    validatorsInfo.Load(_shutterConfig!.ValidatorInfoFile);
                 }
                 catch (Exception e)
                 {
                     throw new ShutterLoadingException("Could not load Shutter validator info file", e);
+                }
+
+                if (!validatorsInfo.Validate(out string err))
+                {
+                    throw new ShutterLoadingException(err);
                 }
             }
 
@@ -134,11 +136,5 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
     {
         _cts.Dispose();
         await (_shutterApi?.DisposeAsync() ?? default);
-    }
-
-    private static Dictionary<ulong, byte[]> LoadValidatorInfo(string fp)
-    {
-        FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.None);
-        return new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
     }
 }

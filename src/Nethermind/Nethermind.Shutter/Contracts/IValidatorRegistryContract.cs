@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Shutter.Config;
 using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
@@ -15,7 +16,7 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="message"></param>
     /// <param name="signature"></param>
-    bool IsRegistered(BlockHeader header, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered);
+    bool IsRegistered(BlockHeader header, in ValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.

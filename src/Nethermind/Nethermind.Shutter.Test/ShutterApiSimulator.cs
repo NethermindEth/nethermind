@@ -38,7 +38,7 @@ public class ShutterApiSimulator(
     IFileSystem fileSystem,
     IKeyStoreConfig keyStoreConfig,
     IShutterConfig cfg,
-    Dictionary<ulong, byte[]> validatorsInfo,
+    ValidatorsInfo validatorsInfo,
     Random rnd
         ) : ShutterApi(abiEncoder, blockTree, ecdsa, logFinder, receiptStorage,
         logManager, specProvider, timestamper, worldStateManager, fileSystem,

@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Update = (byte[] Message, byte[] Signature);
 using Nethermind.Crypto;
+using Nethermind.Shutter.Config;
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -32,14 +33,14 @@ public class ValidatorRegistryContract(
     public Update GetUpdate(BlockHeader header, in UInt256 i)
         => (Update)Call(header, nameof(GetUpdate), Address.Zero, [i])[0];
 
-    public bool IsRegistered(BlockHeader header, in Dictionary<ulong, byte[]> validatorsInfo, out HashSet<ulong> unregistered)
+    public bool IsRegistered(BlockHeader header, in ValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered)
     {
         Dictionary<ulong, ulong?> nonces = [];
         unregistered = [];
-        foreach (KeyValuePair<ulong, byte[]> validatorInfo in validatorsInfo)
+        foreach (ulong index in validatorsInfo.ValidatorIndices)
         {
-            nonces.Add(validatorInfo.Key, null);
-            unregistered.Add(validatorInfo.Key);
+            nonces.Add(index, null);
+            unregistered.Add(index);
         }
 
         uint updates = (uint)GetNumUpdates(header);
@@ -56,7 +57,7 @@ public class ValidatorRegistryContract(
             Message msg = new(update.Message.AsSpan());
 
             // skip untracked validators
-            if (!validatorsInfo.ContainsKey(msg.ValidatorIndex))
+            if (!validatorsInfo.IsIndexRegistered(msg.ValidatorIndex))
             {
                 continue;
             }
@@ -85,7 +86,7 @@ public class ValidatorRegistryContract(
                 continue;
             }
 
-            if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo[msg.ValidatorIndex], update.Signature, update.Message))
+            if (!ShutterCrypto.CheckValidatorRegistrySignature(validatorsInfo.GetPubKey(msg.ValidatorIndex), update.Signature, update.Message))
             {
                 if (_logger.IsDebug) _logger.Debug("Registration message has invalid signature.");
                 continue;

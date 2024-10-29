@@ -63,7 +63,7 @@ public class ShutterApi : IShutterApi
         IFileSystem fileSystem,
         IKeyStoreConfig keyStoreConfig,
         IShutterConfig cfg,
-        Dictionary<ulong, byte[]> validatorsInfo,
+        ValidatorsInfo validatorsInfo,
         TimeSpan slotLength,
         IPAddress ip
         )
