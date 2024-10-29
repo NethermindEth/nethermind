@@ -5,6 +5,7 @@ using System;
 using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -24,7 +25,7 @@ public sealed class OptimismSynchronizerModule(OptimismParameters parameters, IS
     {
         if (provider.ChainId == OptimismMainnetChainId)
         {
-            builder.AddSingleton<ITotalDifficultyStrategy>(
+            builder.AddInstance<ITotalDifficultyStrategy>(
                 new FixedTotalDifficultyStrategy(
                     new CumulativeTotalDifficultyStrategy(),
                     fixesBlockNumber: parameters.BedrockBlockNumber - 1,

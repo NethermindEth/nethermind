@@ -6,9 +6,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Container;
 
 public static class ContainerBuilderExtensions
 {
@@ -33,7 +34,20 @@ public static class ContainerBuilderExtensions
             object? val = propertyInfo.GetValue(source);
             if (val != null)
             {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+                ComponentKeyAttribute? componentKeyAttribute = propertyInfo.GetCustomAttribute<ComponentKeyAttribute>();
+                if (componentKeyAttribute != null)
+                {
+                    configuration
+                        .RegisterInstance(val)
+                        .Keyed(componentKeyAttribute.Key, propertyInfo.PropertyType)
+                        .ExternallyOwned();
+                }
+                else
+                {
+                    configuration.RegisterInstance(val)
+                        .As(propertyInfo.PropertyType)
+                        .ExternallyOwned();
+                }
             }
         }
 
@@ -50,11 +64,12 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, T instance) where T : class
+    public static ContainerBuilder AddInstance<T>(this ContainerBuilder builder, T instance) where T : class
     {
         builder.RegisterInstance(instance)
             .As<T>()
-            .SingleInstance();
+            .SingleInstance()
+            .ExternallyOwned();
 
         return builder;
     }
@@ -112,6 +127,26 @@ public static class ContainerBuilderExtensions
     {
         builder.Register<ILifetimeScope, T>(ctx => ctx.BeginLifetimeScope(configurator).Resolve<T>())
             .Named<T>(name);
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Shorthand for registering a constructor that resolve TImpl as TAs.
+    /// This is useful for clarity or for conditional registration where TImpl is declared somewhere else.
+    /// </summary>
+    public static ContainerBuilder Bind<TImpl, TAs>(this ContainerBuilder builder) where TImpl : notnull where TAs : notnull
+    {
+        builder.Register(ctx => ctx.Resolve<TImpl>())
+            .As<TAs>()
+            .ExternallyOwned();
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    {
+        builder.RegisterModule(module);
 
         return builder;
     }

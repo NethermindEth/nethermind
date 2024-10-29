@@ -17,6 +17,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -93,20 +94,24 @@ namespace Nethermind.Api
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
-        IEthSyncingInfo? EthSyncingInfo { get; set; }
+        IEthSyncingInfo? EthSyncingInfo { get; }
 
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         INodeStorageFactory NodeStorageFactory { get; set; }
-        BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
+        IBackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
 
         public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
         {
-            return ConfigureContainerBuilderFromApiWithStores(builder)
+            ConfigureContainerBuilderFromApiWithStores(builder)
                 .AddPropertiesFrom<IApiWithBlockchain>(this)
-                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+                .AddInstance<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+
+            if (TrieStore != null) builder.AddInstance<IReadOnlyTrieStore>(TrieStore.AsReadOnly());
+
+            return builder;
         }
     }
 }
