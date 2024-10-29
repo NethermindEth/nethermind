@@ -32,8 +32,7 @@ public class EraExporter : IEraExporter
         ISpecProvider specProvider,
         IEraStoreFactory eraStoreFactory,
         IEraConfig eraConfig,
-        ILogManager logManager,
-        [KeyFilter(EraComponentKeys.NetworkName)] string networkName)
+        ILogManager logManager)
     {
         _fileSystem = fileSystem;
         _blockTree = blockTree;
@@ -41,6 +40,7 @@ public class EraExporter : IEraExporter
         _specProvider = specProvider;
         _eraStoreFactory = eraStoreFactory;
         _era1Size = eraConfig.MaxEra1Size;
+        string? networkName = eraConfig.NetworkName;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _logger = logManager.GetClassLogger<EraExporter>();
         _networkName = networkName.Trim().ToLower();

@@ -13,8 +13,7 @@ public class EraStoreFactory(
     ISpecProvider specProvider,
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
-    IEraConfig eraConfig,
-    [KeyFilter(EraComponentKeys.NetworkName)] string networkName
+    IEraConfig eraConfig
 ): IEraStoreFactory
 {
     public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
@@ -23,7 +22,7 @@ public class EraStoreFactory(
             specProvider,
             blockValidator,
             fileSystem,
-            networkName,
+            eraConfig.NetworkName!,
             eraConfig.MaxEra1Size,
             trustedAccumulators,
             src);

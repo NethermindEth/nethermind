@@ -60,9 +60,9 @@ public class EraTestModule : Module
             .AddSingleton<IEraConfig>(new EraConfig()
             {
                 MaxEra1Size = 16,
+                NetworkName = TestNetwork,
             })
             .AddSingleton<IBlockTree>(Build.A.BlockTree().TestObject)
-            .AddKeyedSingleton(EraComponentKeys.NetworkName, TestNetwork)
             .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>());
     }
 }

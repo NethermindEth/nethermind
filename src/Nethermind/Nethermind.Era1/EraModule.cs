@@ -19,8 +19,9 @@ public class EraModule: Module
             .AddSingleton<IEraStoreFactory, EraStoreFactory>()
             .AddSingleton<EraCliRunner>();
 
-        builder
-            .Register(ctx => BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId))
-            .Keyed<string>(EraComponentKeys.NetworkName);
+        builder.RegisterBuildCallback((ctx) =>
+            {
+                ctx.Resolve<IEraConfig>().NetworkName ??= BlockchainIds.GetBlockchainName(ctx.Resolve<ISpecProvider>().NetworkId);
+            });
     }
 }

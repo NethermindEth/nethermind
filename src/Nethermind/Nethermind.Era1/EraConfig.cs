@@ -13,4 +13,5 @@ public class EraConfig : IEraConfig
     public long End { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
     public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
+    public string? NetworkName { get; set; }
 }

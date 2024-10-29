@@ -322,6 +322,7 @@ public class Era1ModuleTests
                 ImportDirectory = tmpDir.DirectoryPath,
                 TrustedAccumulatorFile = Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName),
                 MaxEra1Size = 16,
+                NetworkName = EraTestModule.TestNetwork
             })
             .Build();
 
