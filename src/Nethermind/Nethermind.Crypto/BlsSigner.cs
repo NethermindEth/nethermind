@@ -28,7 +28,7 @@ public static class BlsSigner
     {
         if (buf.Length != G2.Sz)
         {
-            throw new Bls.BlsException(Bls.ERROR.WRONGSIZE);
+            throw new ArgumentException($"Signature buffer {nameof(buf)} must be of size {G2.Sz}.");
         }
 
         G2 p = new(buf);
@@ -62,15 +62,8 @@ public static class BlsSigner
         G2 p = new(stackalloc long[G2.Sz]);
         Signature s = new(p);
 
-        //TryDecode
-        //cache Sz size
-        try
+        if (!p.TryDecode(sigBytes, out _))
         {
-            p.Decode(sigBytes);
-        }
-        catch (Bls.BlsException)
-        {
-            // invalid signature
             return false;
         }
 
@@ -82,6 +75,7 @@ public static class BlsSigner
 
     public readonly ref struct Signature
     {
+        public const int Sz = 96;
         public readonly ReadOnlySpan<byte> Bytes { get => _point.Compress(); }
         public readonly G2Affine Point { get => _point.ToAffine(); }
         private readonly G2 _point;
@@ -119,25 +113,39 @@ public static class BlsSigner
             _point = new();
         }
 
-        public AggregatedPublicKey(G1 point)
+        public AggregatedPublicKey(Span<long> buf)
         {
-            point.Zero();
-            _point = point;
+            if (buf.Length != G1.Sz)
+            {
+                throw new ArgumentException($"Public key buffer {nameof(buf)} must be of size {G1.Sz}.");
+            }
+
+            _point = new(buf);
         }
+
+        public bool TryDecode(ReadOnlySpan<byte> publicKeyBytes, out Bls.ERROR err)
+            => _point.TryDecode(publicKeyBytes, out err);
+
+        public void Decode(ReadOnlySpan<byte> publicKeyBytes)
+            => _point.Decode(publicKeyBytes);
 
         public void Aggregate(G1Affine publicKey)
             => _point.Aggregate(publicKey);
 
-        public void Aggregate(ReadOnlySpan<byte> publicKeyBytes)
+        public void Aggregate(AggregatedPublicKey aggregatedPublicKey)
+            => _point.Aggregate(aggregatedPublicKey.PublicKey);
+
+        public bool TryAggregate(ReadOnlySpan<byte> publicKeyBytes, out Bls.ERROR err)
         {
-            if (publicKeyBytes.Length != PkCompressedSz)
+            G1Affine pk = new(stackalloc long[G1Affine.Sz]);
+
+            if (!pk.TryDecode(publicKeyBytes, out err))
             {
-                throw new Bls.BlsException(Bls.ERROR.WRONGSIZE);
+                return false;
             }
 
-            G1Affine pk = new(stackalloc long[G1Affine.Sz]);
-            pk.Decode(publicKeyBytes);
             Aggregate(pk);
+            return true;
         }
     }
 }

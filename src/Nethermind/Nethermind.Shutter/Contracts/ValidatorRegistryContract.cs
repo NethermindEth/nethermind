@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Update = (byte[] Message, byte[] Signature);
+using Nethermind.Crypto;
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -46,7 +47,7 @@ public class ValidatorRegistryContract(
         {
             Update update = GetUpdate(header, updates - i - 1);
 
-            if (update.Message.Length != 46 || update.Signature.Length != 96)
+            if (update.Message.Length != Message.Sz || update.Signature.Length != BlsSigner.Signature.Sz)
             {
                 if (_logger.IsDebug) _logger.Debug("Registration message was wrong length.");
                 continue;
@@ -108,6 +109,7 @@ public class ValidatorRegistryContract(
 
     private readonly ref struct Message
     {
+        public const int Sz = 46;
         public readonly byte Version;
         public readonly ulong ChainId;
         public readonly ReadOnlySpan<byte> ContractAddress;
@@ -117,7 +119,7 @@ public class ValidatorRegistryContract(
 
         public Message(Span<byte> encodedMessage)
         {
-            if (encodedMessage.Length != 46)
+            if (encodedMessage.Length != Sz)
             {
                 throw new ArgumentException("Validator registry contract message was wrong length.");
             }

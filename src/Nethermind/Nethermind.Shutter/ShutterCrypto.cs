@@ -222,7 +222,12 @@ public static class ShutterCrypto
         ValueHash256 h = ValueKeccak.Compute(msgBytes);
 
         G1Affine pk = new(stackalloc long[G1Affine.Sz]);
-        pk.Decode(pkBytes);
+
+        if (!pk.TryDecode(pkBytes, out _))
+        {
+            return false;
+        }
+
         return BlsSigner.Verify(pk, sigBytes, h.Bytes);
     }
 
