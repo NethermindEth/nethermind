@@ -45,6 +45,7 @@ namespace Nethermind.Config.Test
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() {
                 { "NETHERMIND_CLI_SWITCH_LOCAL", "http://localhost:80" },
                 { "NETHERMIND_MONITORING_JOB", "nethermindJob" },
+                { "NETHERMIND_MONITORING_GROUP", "nethermindGroup" },
                 { "NETHERMIND_ENODE_IPADDRESS", "1.2.3.4" },
                 { "NETHERMIND_URL", "http://test:80" },
                 { "NETHERMIND_CORS_ORIGINS", "*" },

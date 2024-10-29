@@ -12,6 +12,9 @@ public interface INoCategoryConfig : IConfig
     [ConfigItem(Description = "Sets the job name for metrics monitoring.", EnvironmentVariable = "NETHERMIND_MONITORING_JOB")]
     public string MonitoringJob { get; set; }
 
+    [ConfigItem(Description = "Sets the default group name for metrics monitoring.", EnvironmentVariable = "NETHERMIND_MONITORING_GROUP")]
+    public string MonitoringGroup { get; set; }
+
     [ConfigItem(Description = "Sets the external IP for the node.", EnvironmentVariable = "NETHERMIND_ENODE_IPADDRESS")]
     public string EnodeIpAddress { get; set; }
 
