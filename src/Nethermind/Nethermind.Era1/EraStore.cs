@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
 using NonBlocking;
@@ -22,6 +21,9 @@ public class EraStore : IEraStore
 
     private readonly Dictionary<long, string> _epochs;
     private readonly ValueHash256[] _checksums;
+
+    // Probably should be persisted in the directory so that on restart we would not verify the epoch again.
+    // But that is more relevant when we read directly from the directory
     private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
 
     /// <summary>
