@@ -130,7 +130,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
-            public TxReceipt[] Get(Block block, bool recover = true) => _inStorage.Get(block, recover);
+            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => _inStorage.Get(block, recover, recoverSender);
 
             public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
 
