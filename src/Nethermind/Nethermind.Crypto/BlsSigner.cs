@@ -123,6 +123,9 @@ public static class BlsSigner
             _point = new(buf);
         }
 
+        public void FromSk(Bls.SecretKey sk)
+            => _point.FromSk(sk);
+
         public bool TryDecode(ReadOnlySpan<byte> publicKeyBytes, out Bls.ERROR err)
             => _point.TryDecode(publicKeyBytes, out err);
 
