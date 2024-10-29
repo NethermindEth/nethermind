@@ -222,7 +222,8 @@ public class PaprikaStateFactory : IStateFactory
         {
             _wrapped = wrapped;
             _factory = factory;
-            _prefetch = _wrapped.OpenPrefetcher();
+            //_prefetch = _wrapped.OpenPrefetcher();
+            _prefetch = default;
             _prefetched = new HashSet<int>();
         }
 
