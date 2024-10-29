@@ -16,7 +16,7 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="message"></param>
     /// <param name="signature"></param>
-    bool IsRegistered(BlockHeader header, in ValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered);
+    bool IsRegistered(in BlockHeader header, in ValidatorsInfo validatorsInfo, out HashSet<ulong> unregistered);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.
