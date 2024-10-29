@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Receipts
             return receipt?.BlockHash;
         }
 
-        public TxReceipt[] Get(Block block, bool recover = true) => Get(block.Hash);
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => Get(block.Hash);
 
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true) =>
             _receipts.TryGetValue(blockHash, out TxReceipt[] receipts) ? receipts : Array.Empty<TxReceipt>();
