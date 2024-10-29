@@ -1,40 +1,16 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using McMaster.Extensions.CommandLineUtils;
-using Nethermind.Cli;
-using Nethermind.Cli.Console;
-using Nethermind.Consensus;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Facade.Proxy.Models;
-using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
-using Org.BouncyCastle.Utilities.Encoders;
 using SendBlobs;
+using System.CommandLine;
 
-CommandLineApplication app = new() { Name = "SendBlobs" };
+CliRootCommand rootCommand = [];
 
-SetupCli.SetupExecute(app);
-SetupCli.SetupDistributeCommand(app);
-SetupCli.SetupReclaimCommand(app);
-SetupCli.SetupSendFileCommand(app);
+SetupCli.SetupExecute(rootCommand);
+SetupCli.SetupDistributeCommand(rootCommand);
+SetupCli.SetupReclaimCommand(rootCommand);
+SetupCli.SetupSendFileCommand(rootCommand);
 
-try
-{
-    app.Execute(args);
-}
-catch (CommandParsingException ex)
-{
-    Console.WriteLine(ex.Message);
-    app.ShowHelp();
-}
+CliConfiguration cli = new(rootCommand);
 
-
-
-
-
+return await cli.InvokeAsync(args);
