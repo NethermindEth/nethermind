@@ -13,7 +13,7 @@ public class EraStoreFactory(
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
     IEraConfig eraConfig
-): IEraStoreFactory
+) : IEraStoreFactory
 {
     public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
     {

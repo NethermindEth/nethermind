@@ -79,7 +79,8 @@ public class EraStore : IEraStore
         int maxEraSize,
         ISet<ValueHash256>? trustedAcccumulators,
         string directory
-    ) {
+    )
+    {
         _specProvider = specProvider;
         _blockValidator = blockValidator;
         _trustedAccumulators = trustedAcccumulators;
@@ -150,7 +151,7 @@ public class EraStore : IEraStore
             var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, cancellation);
             if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
             {
-                throw new EraVerificationException( $"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
+                throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
             }
 
             _verifiedEpochs.TryAdd(epoch, true);

@@ -28,7 +28,8 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Export(CancellationToken cancellation) {
+    private async Task Export(CancellationToken cancellation)
+    {
         var start = eraConfig.Start;
         var end = eraConfig.End;
 
@@ -51,7 +52,8 @@ public class EraCliRunner(
         }
     }
 
-    private async Task Import() {
+    private async Task Import()
+    {
         try
         {
             await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.Start, eraConfig.End, eraConfig.TrustedAccumulatorFile, processExitSource.Token);

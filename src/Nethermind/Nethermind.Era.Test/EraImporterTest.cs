@@ -37,7 +37,7 @@ public class EraImporterTest
 
         string badFilePath = Path.Join(tempDirectory.DirectoryPath, "abc-00000-00000000.era1");
         FileSystemStream stream = fileSystem.File.Create(badFilePath);
-        await stream.WriteAsync(new byte[]{0, 0});
+        await stream.WriteAsync(new byte[] { 0, 0 });
         stream.Close();
 
         IEraImporter sut = testContext.Resolve<IEraImporter>();

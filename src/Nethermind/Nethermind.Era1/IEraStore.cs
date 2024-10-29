@@ -11,7 +11,7 @@ namespace Nethermind.Era1;
 ///
 /// Internally it uses EraReader, but that should be considered implementation details.
 /// </summary>
-public interface IEraStore: IDisposable
+public interface IEraStore : IDisposable
 {
     Task<Block?> FindBlock(long number, bool ensureValidated = true, CancellationToken cancellation = default);
     Task<(Block?, TxReceipt[]?)> FindBlockAndReceipts(long number, bool ensureValidated = true, CancellationToken cancellation = default);

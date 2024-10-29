@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Era1;
 
-public class EraModule: Module
+public class EraModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
