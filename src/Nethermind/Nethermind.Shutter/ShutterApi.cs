@@ -9,19 +9,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.State;
 
 namespace Nethermind.Shutter;
 
@@ -50,60 +47,52 @@ public class ShutterApi : IShutterApi
     private readonly IShutterConfig _cfg;
     private readonly TimeSpan _blockWaitCutoff;
 
-    public ShutterApi(
-        IAbiEncoder abiEncoder,
-        IBlockTree blockTree,
-        IEthereumEcdsa ecdsa,
-        ILogFinder logFinder,
-        IReceiptFinder receiptFinder,
-        ILogManager logManager,
-        ISpecProvider specProvider,
-        ITimestamper timestamper,
-        IWorldStateManager worldStateManager,
-        IFileSystem fileSystem,
-        IKeyStoreConfig keyStoreConfig,
-        IShutterConfig cfg,
-        Dictionary<ulong, byte[]> validatorsInfo,
-        TimeSpan slotLength,
-        IPAddress ip
-        )
+    public ShutterApi(INethermindApi api, Dictionary<ulong, byte[]> validatorsInfo, TimeSpan slotLength)
     {
-        _cfg = cfg;
-        _blockTree = blockTree;
-        _readOnlyBlockTree = blockTree.AsReadOnly();
-        _abiEncoder = abiEncoder;
-        _logManager = logManager;
+        _cfg = api.Config<IShutterConfig>();
+        _blockTree = api.BlockTree!;
+        _readOnlyBlockTree = _blockTree.AsReadOnly();
+        _abiEncoder = api.AbiEncoder;
+        _logManager = api.LogManager;
+        _fileSystem = api.FileSystem;
+        _keyStoreConfig = api.Config<IKeyStoreConfig>();
         _slotLength = slotLength;
-        _fileSystem = fileSystem;
-        _keyStoreConfig = keyStoreConfig;
         _blockUpToDateCutoff = slotLength;
         _blockWaitCutoff = _slotLength / 3;
 
-        _txProcessingEnvFactory = new(worldStateManager, blockTree, specProvider, logManager);
+        _txProcessingEnvFactory = new(api.WorldStateManager!, _blockTree, api.SpecProvider, _logManager);
 
-        Time = InitTime(specProvider, timestamper);
-        TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
+        Time = InitTime(api.SpecProvider!, api.Timestamper);
+        TxLoader = new(
+            api.LogFinder!,
+            _cfg,
+            Time,
+            api.SpecProvider!,
+            api.EthereumEcdsa!,
+            _abiEncoder,
+            _logManager
+        );
         Eon = InitEon();
         BlockHandler = new ShutterBlockHandler(
-            specProvider.ChainId,
+            api.SpecProvider!.ChainId,
             _cfg,
             _txProcessingEnvFactory,
-            blockTree,
-            abiEncoder,
-            receiptFinder,
+            _blockTree,
+            _abiEncoder,
+            api.ReceiptFinder!,
             validatorsInfo,
             Eon,
             TxLoader,
             Time,
-            logManager,
+            _logManager,
             _slotLength,
             BlockWaitCutoff);
 
-        TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
+        TxSource = new ShutterTxSource(TxLoader, _cfg, Time, _logManager);
 
-        KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
+        KeyValidator = new ShutterKeyValidator(_cfg, Eon, _logManager);
 
-        InitP2P(ip);
+        InitP2P(api.IpResolver!.ExternalIp);
     }
 
     public Task StartP2P(Multiaddress[] bootnodeP2PAddresses, CancellationTokenSource? cancellationTokenSource = null)

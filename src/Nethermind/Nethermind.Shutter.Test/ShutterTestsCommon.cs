@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -50,26 +51,31 @@ class ShutterTestsCommon
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
-        ILogFinder logFinder = Substitute.For<ILogFinder>();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        return new(
-            eventSimulator ?? InitEventSimulator(rnd),
-            AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
-            LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            worldStateManager, Substitute.For<IFileSystem>(),
-            Substitute.For<IKeyStoreConfig>(), Cfg, [], rnd
-        );
+        INethermindApi api = Substitute.For<INethermindApi>();
+        api.AbiEncoder.Returns(AbiEncoder);
+        api.EthereumEcdsa.Returns(Ecdsa);
+        api.Timestamper.Returns(timestamper ?? Substitute.For<ITimestamper>());
+        api.Config<IShutterConfig>().Returns(Cfg);
+
+        return new(eventSimulator ?? InitEventSimulator(rnd), api, [], rnd);
     }
 
     public static ShutterApiSimulator InitApi(Random rnd, MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
-        => new(
-            eventSimulator ?? InitEventSimulator(rnd),
-            AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, [], rnd
-        );
+    {
+        INethermindApi api = Substitute.For<INethermindApi>();
+        api.AbiEncoder.Returns(AbiEncoder);
+        api.EthereumEcdsa.Returns(chain.EthereumEcdsa);
+        api.Timestamper.Returns(timestamper ?? Substitute.For<ITimestamper>());
+        api.BlockTree.Returns(chain.BlockTree);
+        api.LogFinder.Returns(chain.LogFinder);
+        api.ReceiptStorage.Returns(chain.ReceiptStorage);
+        api.LogManager.Returns(chain.LogManager);
+        api.SpecProvider.Returns(chain.SpecProvider);
+        api.WorldStateManager.Returns(chain.WorldStateManager);
+        api.Config<IShutterConfig>().Returns(Cfg);
+
+        return new(eventSimulator ?? InitEventSimulator(rnd), api, [], rnd);
+    }
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)
         => new(

@@ -33,10 +33,11 @@ public class ShutterTxLoader(
     ILogManager logManager)
 {
     private readonly ShutterLogScanner _logScanner = new(
-                new(new Address(cfg.SequencerContractAddress!)),
-                logFinder,
-                logManager,
-                abiEncoder);
+        new SequencerContract(new Address(cfg.SequencerContractAddress!)),
+        logFinder,
+        logManager,
+        abiEncoder
+    );
 
     private readonly ShutterEventQueue _events = new(cfg.EncryptedGasLimit, logManager);
     private ulong _txPointer = ulong.MaxValue;
