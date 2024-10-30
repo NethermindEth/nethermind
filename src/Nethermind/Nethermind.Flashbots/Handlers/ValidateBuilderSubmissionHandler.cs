@@ -198,7 +198,7 @@ public class ValidateSubmissionHandler
         IWorldState currentState = processingScope.WorldState;
         ITransactionProcessor transactionProcessor = processingScope.TransactionProcessor;
 
-        UInt256 feeRecipientBalanceBefore = currentState.AccountExists(feeRecipient) ?  currentState.GetBalance(feeRecipient) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = currentState.HasStateForRoot(currentState.StateRoot) ?  ( currentState.AccountExists(feeRecipient) ?  currentState.GetBalance(feeRecipient) : UInt256.Zero): UInt256.Zero;
 
         BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor);
 
@@ -391,7 +391,7 @@ public class ValidateSubmissionHandler
             stateProvider,
             _receiptStorage,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             new BlockhashStore(_txProcessingEnv.SpecProvider, stateProvider),
             logManager: _txProcessingEnv.LogManager,
             withdrawalProcessor: new WithdrawalProcessor(stateProvider, _txProcessingEnv.LogManager!),
