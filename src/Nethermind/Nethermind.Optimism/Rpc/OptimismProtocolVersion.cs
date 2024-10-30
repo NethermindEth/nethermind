@@ -37,6 +37,13 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
     public override bool Equals(object? obj) => obj is OptimismProtocolVersion other && Equals(other);
     public abstract override int GetHashCode();
 
+    public static bool operator >(OptimismProtocolVersion left, OptimismProtocolVersion right) => left.CompareTo(right) > 0;
+    public static bool operator <(OptimismProtocolVersion left, OptimismProtocolVersion right) => left.CompareTo(right) < 0;
+    public static bool operator >=(OptimismProtocolVersion left, OptimismProtocolVersion right) => left.CompareTo(right) >= 0;
+    public static bool operator <=(OptimismProtocolVersion left, OptimismProtocolVersion right) => left.CompareTo(right) <= 0;
+    public static bool operator ==(OptimismProtocolVersion left, OptimismProtocolVersion right) => left.Equals(right);
+    public static bool operator !=(OptimismProtocolVersion left, OptimismProtocolVersion right) => !left.Equals(right);
+
     public sealed class V0 : OptimismProtocolVersion
     {
         public byte[] Build { get; }
