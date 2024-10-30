@@ -11,9 +11,6 @@ public sealed class ScopedTrieStore(ITrieStore fullTrieStore, Hash256? address) 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         fullTrieStore.FindCachedOrUnknown(address, path, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.LoadRlp(address, path, hash, flags);
-
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.TryLoadRlp(address, path, hash, flags);
 

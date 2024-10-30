@@ -79,6 +79,9 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 16,
+
+        // Used by HealingTrieStore to know if it must return something
+        MustRead = 32,
     }
 
     [Flags]

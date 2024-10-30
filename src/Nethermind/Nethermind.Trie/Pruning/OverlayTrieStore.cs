@@ -18,9 +18,6 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOn
         return node.NodeType == NodeType.Unknown ? store.FindCachedOrUnknown(address, in path, hash) : node;
     }
 
-    public override byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        base.TryLoadRlp(address, in path, hash, flags) ?? store.LoadRlp(address, in path, hash, flags);
-
     public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         base.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
 }

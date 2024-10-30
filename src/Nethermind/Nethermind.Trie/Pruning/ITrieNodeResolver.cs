@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -23,7 +25,23 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags readFlags = ReadFlags.None)
+        {
+            byte[]? rlp = TryLoadRlp(path, hash, readFlags | ReadFlags.MustRead);
+            if (rlp is null)
+            {
+                ThrowMissingNode(hash);
+            }
+
+            return rlp;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowMissingNode(Hash256 keccak)
+            {
+                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+            }
+        }
 
         /// <summary>
         /// Loads RLP of the node, but return null instead of throwing if does not exist.

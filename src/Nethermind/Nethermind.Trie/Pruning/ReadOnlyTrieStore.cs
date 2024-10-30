@@ -19,8 +19,6 @@ namespace Nethermind.Trie.Pruning
         public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath treePath, Hash256 hash) =>
             _trieStore.FindCachedOrUnknown(address, treePath, hash, true);
 
-        public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.LoadRlp(address, treePath, hash, readOnlyStore, flags);
         public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
             _trieStore.TryLoadRlp(address, treePath, hash, readOnlyStore, flags);
 
@@ -55,9 +53,6 @@ namespace Nethermind.Trie.Pruning
         {
             public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
                 fullTrieStore.FindCachedOrUnknown(address, path, hash);
-
-            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-                fullTrieStore.LoadRlp(address, path, hash, flags);
 
             public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => fullTrieStore.TryLoadRlp(address, path, hash, flags);
 

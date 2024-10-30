@@ -377,25 +377,6 @@ namespace Nethermind.Trie.Pruning
         }
 
 
-        public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
-        {
-            byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
-            if (rlp is null)
-            {
-                ThrowMissingNode(keccak);
-            }
-
-            return rlp;
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowMissingNode(Hash256 keccak)
-            {
-                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
-            }
-        }
-
-        public virtual byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
         public virtual byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => TryLoadRlp(address, path, hash, null, flags);
 
         public virtual bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)

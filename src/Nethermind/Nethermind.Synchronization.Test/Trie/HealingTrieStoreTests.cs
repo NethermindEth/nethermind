@@ -29,7 +29,9 @@ public class HealingTrieStoreTests
         NodeStorage storage = new NodeStorage(db);
         storage.Set(null, TreePath.Empty, TestItem.KeccakA, new byte[] { 1, 2 });
         HealingTrieStore healingTrieStore = new(storage, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
-        healingTrieStore.LoadRlp(null, TreePath.Empty, TestItem.KeccakA);
+        IScopedTrieStore stateTrieStore = healingTrieStore.GetTrieStore(null);
+
+        stateTrieStore.LoadRlp(TreePath.Empty, TestItem.KeccakA);
     }
 
     [Test]
@@ -47,7 +49,9 @@ public class HealingTrieStoreTests
             .Returns(successfullyRecovered ? Task.FromResult<byte[]?>(rlp) : Task.FromResult<byte[]?>(null));
 
         healingTrieStore.InitializeNetwork(recovery);
-        Action action = () => healingTrieStore.LoadRlp(null, TreePath.Empty, hash, ReadFlags.None);
+        IScopedTrieStore stateTrieStore = healingTrieStore.GetTrieStore(null);
+
+        Action action = () => stateTrieStore.LoadRlp(TreePath.Empty, hash, ReadFlags.None);
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();

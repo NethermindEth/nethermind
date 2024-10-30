@@ -444,7 +444,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage.Set(null, TreePath.Empty, Keccak.Zero, new byte[] { 1, 2, 3 }, WriteFlags.None);
 
             using TrieStore trieStore = CreateTrieStore(kvStore: memDb);
-            trieStore.LoadRlp(null, TreePath.Empty, Keccak.Zero).Should().NotBeNull();
+            trieStore.TryLoadRlp(null, TreePath.Empty, Keccak.Zero).Should().NotBeNull();
         }
 
         [Test]

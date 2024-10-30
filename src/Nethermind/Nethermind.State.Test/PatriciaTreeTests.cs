@@ -86,13 +86,14 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot = stateTree.RootHash;
             stateTree.Commit(skipRoot);
 
+            IScopedTrieStore stateTrieStore = trieStore.GetTrieStore(null);
             if (hasRoot)
             {
-                trieStore.LoadRlp(null, TreePath.Empty, stateRoot).Length.Should().BeGreaterThan(0);
+                stateTrieStore.LoadRlp(TreePath.Empty, stateRoot).Length.Should().BeGreaterThan(0);
             }
             else
             {
-                trieStore.Invoking(ts => ts.LoadRlp(null, TreePath.Empty, stateRoot)).Should().Throw<TrieException>();
+                stateTrieStore.Invoking(ts => ts.LoadRlp(TreePath.Empty, stateRoot)).Should().Throw<TrieException>();
             }
         }
     }

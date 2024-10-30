@@ -14,7 +14,6 @@ public class PreCachedTrieStore : ITrieStore
 {
     private readonly ITrieStore _inner;
     private readonly ConcurrentDictionary<NodeKey, byte[]?> _preBlockCache;
-    private readonly Func<NodeKey, byte[]> _loadRlp;
     private readonly Func<NodeKey, byte[]> _tryLoadRlp;
 
     public PreCachedTrieStore(ITrieStore inner,
@@ -24,7 +23,6 @@ public class PreCachedTrieStore : ITrieStore
         _preBlockCache = preBlockCache;
 
         // Capture the delegate once for default path to avoid the allocation of the lambda per call
-        _loadRlp = (NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
         _tryLoadRlp = (NodeKey key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags: ReadFlags.None);
     }
 
@@ -72,11 +70,6 @@ public class PreCachedTrieStore : ITrieStore
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
-
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
-            flags == ReadFlags.None ? _loadRlp :
-            key => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, hash),
