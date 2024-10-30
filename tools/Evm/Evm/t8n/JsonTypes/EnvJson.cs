@@ -13,7 +13,7 @@ public class EnvJson
     public long CurrentGasLimit { get; set; }
     public long CurrentNumber { get; set; }
     public ulong CurrentTimestamp { get; set; }
-    public Withdrawal[] Withdrawals { get; set; } = [];
+    public Withdrawal[]? Withdrawals { get; set; }
 
     public UInt256? CurrentRandom { get; set; }
     public ulong ParentTimestamp { get; set; }
