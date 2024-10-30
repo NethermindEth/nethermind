@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Clique
             Block head = _blockTree.Head;
             if (number is not null && head.Number != number)
             {
-                head = _blockTree.FindBlock((long)number);
+                head = _blockTree.FindBlock(number.Value);
             }
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
