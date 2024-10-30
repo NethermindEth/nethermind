@@ -7,7 +7,6 @@ using System.Collections.Generic;
 
 public interface IChainSpecEngineParameters
 {
-    //
     string? EngineName { get; }
     string? SealEngineType { get; }
 

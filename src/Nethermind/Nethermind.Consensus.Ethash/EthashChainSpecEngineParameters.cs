@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
 
 namespace Nethermind.Consensus.Ethash;
 
@@ -31,7 +29,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     public long DurationLimit { get; set; } = 13;
     public UInt256 MinimumDifficulty { get; set; } = 0;
 
-    [JsonConverter(typeof(BlockRewardJsonConverter))]
+    [JsonConverter(typeof(LongUInt256DictionaryConverter))]
     public SortedDictionary<long, UInt256> BlockReward { get; set; }
 
     [JsonConverter(typeof(DifficultyBombDelaysJsonConverter))]
@@ -99,66 +97,6 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
         chainSpec.GrayGlacierBlockNumber = DifficultyBombDelays?.Keys.Skip(5).FirstOrDefault();
         chainSpec.HomesteadBlockNumber = HomesteadTransition;
         chainSpec.DaoForkBlockNumber = DaoHardforkTransition;
-    }
-
-    internal class BlockRewardJsonConverter : JsonConverter<SortedDictionary<long, UInt256>>
-    {
-        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
-            JsonSerializerOptions options)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
-            JsonSerializerOptions options)
-        {
-            var value = new SortedDictionary<long, UInt256>();
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
-                value.Add(0, blockReward);
-            }
-            else if (reader.TokenType == JsonTokenType.Number)
-            {
-                value.Add(0, new UInt256(reader.GetUInt64()));
-            }
-            else if (reader.TokenType == JsonTokenType.StartObject)
-            {
-                reader.Read();
-                while (reader.TokenType != JsonTokenType.EndObject)
-                {
-                    if (reader.TokenType != JsonTokenType.PropertyName)
-                    {
-                        throw new ArgumentException("Cannot deserialize BlockReward.");
-                    }
-
-                    var property =
-                        UInt256Converter.Read(reader.HasValueSequence
-                            ? reader.ValueSequence.ToArray()
-                            : reader.ValueSpan);
-                    var key = (long)property;
-                    reader.Read();
-                    if (reader.TokenType != JsonTokenType.String)
-                    {
-                        throw new ArgumentException("Cannot deserialize BlockReward.");
-                    }
-
-                    var blockReward =
-                        UInt256Converter.Read(reader.HasValueSequence
-                            ? reader.ValueSequence.ToArray()
-                            : reader.ValueSpan);
-                    value.Add(key, blockReward);
-
-                    reader.Read();
-                }
-            }
-            else
-            {
-                throw new ArgumentException("Cannot deserialize BlockReward.");
-            }
-
-            return value;
-        }
     }
 
     private class DifficultyBombDelaysJsonConverter : JsonConverter<IDictionary<long, long>>

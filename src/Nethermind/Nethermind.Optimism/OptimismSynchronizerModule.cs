@@ -16,7 +16,7 @@ namespace Nethermind.Optimism;
 /// Calculation is still the same: the current block's <see cref="BlockHeader.TotalDifficulty"/> is the parent's <see cref="BlockHeader.TotalDifficulty"/> plus the current block's <see cref="BlockHeader.Difficulty"/>.
 /// <seealso href="https://github.com/NethermindEth/nethermind/issues/7626"/>
 /// </remarks>
-public sealed class OptimismSynchronizerModule(long bedrockBlockNumber, ISpecProvider provider) : Module
+public sealed class OptimismSynchronizerModule(OptimismChainSpecEngineParameters parameters, ISpecProvider provider) : Module
 {
     private const ulong OptimismMainnetChainId = 0xA;
 
@@ -27,7 +27,7 @@ public sealed class OptimismSynchronizerModule(long bedrockBlockNumber, ISpecPro
             builder.AddSingleton<ITotalDifficultyStrategy>(
                 new FixedTotalDifficultyStrategy(
                     new CumulativeTotalDifficultyStrategy(),
-                    fixesBlockNumber: bedrockBlockNumber - 1,
+                    fixesBlockNumber: parameters.BedrockBlockNumber!.Value - 1,
                     toTotalDifficulty: provider.TerminalTotalDifficulty ?? throw new ArgumentNullException(nameof(provider.TerminalTotalDifficulty))
                 )
             );

@@ -55,9 +55,10 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
+        ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
         if (CanyonTimestamp <= startTimestamp)
         {
-            spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator!.Value;
+            spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
     }
 

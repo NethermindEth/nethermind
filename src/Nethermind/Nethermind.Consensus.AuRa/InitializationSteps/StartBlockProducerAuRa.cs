@@ -278,7 +278,7 @@ public class StartBlockProducerAuRa
         bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
         {
             const long transitionDisabled = long.MaxValue;
-            if (auRaPosdaoTransition < transitionDisabled && _validator is ITxSource validatorSource)
+            if (auRaPosdaoTransition != transitionDisabled && _validator is ITxSource validatorSource)
             {
                 list.Insert(0, validatorSource);
                 return true;

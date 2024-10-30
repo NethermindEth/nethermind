@@ -165,7 +165,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
-        builder.RegisterModule(new OptimismSynchronizerModule(_chainSpecParameters!.BedrockBlockNumber!.Value, _api.SpecProvider));
+        builder.RegisterModule(new OptimismSynchronizerModule(_chainSpecParameters!, _api.SpecProvider));
 
         IContainer container = builder.Build();
 

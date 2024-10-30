@@ -30,8 +30,8 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 
     protected override async Task InitBlockchain()
     {
-        api.SpecHelper = new(api.ChainSpec.Optimism);
-        api.L1CostHelper = new(api.SpecHelper, api.ChainSpec.Optimism.L1BlockAddress);
+        api.SpecHelper = new(_chainSpecParameters);
+        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
 
         await base.InitBlockchain();
 
