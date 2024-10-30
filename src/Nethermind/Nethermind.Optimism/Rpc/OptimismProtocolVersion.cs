@@ -46,6 +46,8 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
     public static bool operator ==(OptimismProtocolVersion left, OptimismProtocolVersion right) => left.Equals(right);
     public static bool operator !=(OptimismProtocolVersion left, OptimismProtocolVersion right) => !left.Equals(right);
 
+    public abstract override string ToString();
+
     public sealed class V0 : OptimismProtocolVersion
     {
         public byte[] Build { get; }
@@ -135,6 +137,8 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
         public override bool Equals(object? obj) => ReferenceEquals(this, obj) || obj is V0 other && Equals(other);
 
         public override int GetHashCode() => HashCode.Combine(Build, Major, Minor, Patch, PreRelease);
+
+        public override string ToString() => $"v{Major}.{Minor}.{Patch}{(PreRelease == 0 ? "" : $"-{PreRelease}")}";
     }
 }
 
