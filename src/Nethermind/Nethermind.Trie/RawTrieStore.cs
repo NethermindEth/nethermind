@@ -8,10 +8,18 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
+/// <summary>
+/// This is an <see cref="IScopedTrieStore"/> that does not have any caching or block related handling.
+/// It fetch directly from `INodeStorage` and have the minimum interface for `PatriciaTrie` to work.
+///
+/// Things that does not need any block related handling such as trie root hash calculation should use this.
+/// </summary>
+/// <param name="nodeStorage"></param>
+/// <param name="address"></param>
 public class RawTrieStore(INodeStorage nodeStorage, Hash256? address): IScopedTrieStore
 {
 
-    public RawTrieStore(IKeyValueStore keyValueStore, ILogManager _): this(new NodeStorage(keyValueStore), null)
+    public RawTrieStore(IKeyValueStore keyValueStore, Hash256? address): this(new NodeStorage(keyValueStore), address)
     {
     }
 

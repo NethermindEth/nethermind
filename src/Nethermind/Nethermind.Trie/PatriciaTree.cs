@@ -102,7 +102,7 @@ namespace Nethermind.Trie
             ILogManager logManager,
             ICappedArrayPool? bufferPool = null)
             : this(
-                new RawTrieStore(keyValueStore, logManager),
+                new RawTrieStore(keyValueStore, null),
                 rootHash,
                 parallelBranches,
                 allowCommits,
