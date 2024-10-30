@@ -148,6 +148,8 @@ public sealed class OptimismSuperchainSignal(
 public interface IOptimismSuperchainSignalHandler
 {
     OptimismProtocolVersion CurrentVersion { get; }
-    Task OnBehindRecommended();
-    Task OnBehindRequired();
+    Task OnBehindRecommended(OptimismProtocolVersion recommended);
+    Task OnBehindRequired(OptimismProtocolVersion required);
+}
+
 }

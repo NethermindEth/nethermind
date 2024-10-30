@@ -14,7 +14,7 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class OptimismEngineRpcModuleTest
 {
-    private static IEnumerable<(OptimismProtocolVersion, OptimismSuperchainSignal, bool behindRecommended, bool behindRequired)> SignalSuperchainCases()
+    private static IEnumerable<(OptimismProtocolVersion, OptimismSuperchainSignal, bool behindRecommended, bool behindRequired)> SignalSuperchainV1Cases()
     {
         yield return (
             new OptimismProtocolVersion.V0(new byte[8], 3, 0, 0, 0),
@@ -62,7 +62,7 @@ public class OptimismEngineRpcModuleTest
         );
     }
 
-    [TestCaseSource(nameof(SignalSuperchainCases))]
+    [TestCaseSource(nameof(SignalSuperchainV1Cases))]
     public async Task SignalSuperchainV1_ComparesRequiredAndRecommendedVersion((OptimismProtocolVersion current, OptimismSuperchainSignal signal, bool behindRecommended, bool behindRequired) testCase)
     {
         var current = testCase.current;
@@ -74,9 +74,9 @@ public class OptimismEngineRpcModuleTest
 
         var _ = await rpcModule.engine_signalSuperchainV1(signal);
 
-        await handler.Received(testCase.behindRecommended ? 1 : 0).OnBehindRecommended();
+        await handler.Received(testCase.behindRecommended ? 1 : 0).OnBehindRecommended(testCase.signal.Recommended);
 
-        await handler.Received(testCase.behindRequired ? 1 : 0).OnBehindRequired();
+        await handler.Received(testCase.behindRequired ? 1 : 0).OnBehindRequired(testCase.signal.Required);
     }
 
     [Test]

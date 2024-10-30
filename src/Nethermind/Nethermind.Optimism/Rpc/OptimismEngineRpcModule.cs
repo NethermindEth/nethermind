@@ -70,11 +70,11 @@ public class OptimismEngineRpcModule(
 
         if (currentVersion < signal.Recommended)
         {
-            await _signalSuperchainHandler.OnBehindRecommended();
+            await _signalSuperchainHandler.OnBehindRecommended(signal.Recommended);
         }
         if (currentVersion < signal.Required)
         {
-            await _signalSuperchainHandler.OnBehindRequired();
+            await _signalSuperchainHandler.OnBehindRequired(signal.Required);
         }
 
         return ResultWrapper<OptimismProtocolVersion>.Success(currentVersion);
