@@ -27,7 +27,9 @@ public static class T8NInputProcessor
             throw new T8NException("Env is not provided", T8NErrorCodes.ErrorIO);
         }
 
-        (ISpecProvider specProvider, IReleaseSpec spec) = GetSpec(arguments);
+        (ISpecProvider specProvider, IReleaseSpec spec) = GetSpec(arguments, inputData.Env);
+
+        T8NValidator.ApplyChecks(inputData.Env, specProvider, spec);
 
         var gethTraceOptions = new GethTraceOptions
         {
@@ -44,7 +46,7 @@ public static class T8NInputProcessor
             CurrentTimestamp = inputData.Env.CurrentTimestamp,
             CurrentNumber = inputData.Env.CurrentNumber,
             Withdrawals = inputData.Env.Withdrawals,
-            CurrentRandom = inputData.Env.GetCurrentRandom(),
+            CurrentRandom = inputData.Env.GetCurrentRandomHash256(),
             ParentTimestamp = inputData.Env.ParentTimestamp,
             ParentDifficulty = inputData.Env.ParentDifficulty,
             CurrentBaseFee = inputData.Env.CurrentBaseFee,
@@ -61,12 +63,13 @@ public static class T8NInputProcessor
             BlockHashes = inputData.Env.BlockHashes,
             StateChainId = arguments.StateChainId,
             GethTraceOptions = gethTraceOptions,
+            IsTraceEnabled = arguments.Trace,
         };
 
         return test;
     }
 
-    private static (ISpecProvider, IReleaseSpec) GetSpec(T8NCommandArguments arguments)
+    private static (ISpecProvider, IReleaseSpec) GetSpec(T8NCommandArguments arguments, EnvJson env)
     {
         IReleaseSpec spec;
         try
@@ -87,6 +90,11 @@ public static class T8NInputProcessor
             ? GnosisSpecProvider.Instance
             : new CustomSpecProvider(((ForkActivation)0, Frontier.Instance),
                 ((ForkActivation)1, overridableReleaseSpec));
+
+        if (spec is Paris)
+        {
+            specProvider.UpdateMergeTransitionInfo(env.CurrentNumber, 0);
+        }
 
         return (specProvider, overridableReleaseSpec);
     }

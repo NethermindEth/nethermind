@@ -32,7 +32,7 @@ public static class T8NInputReader
 
         if (arguments.InputEnv != Stdin)
         {
-            inputData.Env = LoadDataFromFile<EnvJson>(arguments.InputAlloc, "env");
+            inputData.Env = LoadDataFromFile<EnvJson>(arguments.InputEnv, "env");
         }
 
         if (arguments.InputTxs != Stdin)

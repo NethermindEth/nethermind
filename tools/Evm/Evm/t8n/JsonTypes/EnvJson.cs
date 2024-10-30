@@ -15,7 +15,7 @@ public class EnvJson
     public ulong CurrentTimestamp { get; set; }
     public Withdrawal[] Withdrawals { get; set; } = [];
 
-    private UInt256? CurrentRandom { get; set; }
+    public string? CurrentRandom { get; set; }
     public ulong ParentTimestamp { get; set; }
     public UInt256? ParentDifficulty { get; set; }
     public UInt256? CurrentBaseFee { get; set; }
@@ -32,12 +32,13 @@ public class EnvJson
     public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
     public Ommer[] Ommers { get; set; } = [];
 
-    public Hash256? GetCurrentRandom()
+    public Hash256? GetCurrentRandomHash256()
     {
-        if (CurrentRandom == null) return null;
+        // if (CurrentRandom == null)
+            return null;
 
-        Span<byte> bytes = stackalloc byte[32];
-        CurrentRandom?.ToBigEndian(bytes);
-        return new Hash256(bytes);
+        // Span<byte> bytes = stackalloc byte[32];
+        // CurrentRandom?.ToBigEndian(bytes);
+        // return new Hash256(bytes);
     }
 }
