@@ -12,41 +12,23 @@ namespace Nethermind.Shutter.Config;
 
 public class ShutterValidatorsInfo
 {
-    public bool IsEmpty { get => _indexToPubKeyBytes is null || _indexToPubKeyBytes.Count == 0; }
-    public IEnumerable<ulong> ValidatorIndices { get => _indexToPubKeyBytes!.Keys; }
+    public bool IsEmpty { get => _indexToPubKey is null || _indexToPubKey.Count == 0; }
+    public IEnumerable<ulong> ValidatorIndices { get => _indexToPubKey!.Keys; }
     public class ShutterValidatorsInfoException(string message) : Exception(message);
 
-    private Dictionary<ulong, byte[]>? _indexToPubKeyBytes;
-    private readonly Dictionary<ulong, long[]> _indexToPubKey = [];
-    private ulong _minIndex = ulong.MaxValue;
-    private ulong _maxIndex = ulong.MinValue;
+    protected readonly Dictionary<ulong, long[]> _indexToPubKey = [];
+    protected ulong _minIndex = ulong.MaxValue;
+    protected ulong _maxIndex = ulong.MinValue;
 
     public void Load(string fp)
     {
         FileStream fstream = new(fp, FileMode.Open, FileAccess.Read, FileShare.None);
-        _indexToPubKeyBytes = new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
-    }
-
-    public void Validate()
-    {
-        G1Affine pk = new(stackalloc long[G1Affine.Sz]);
-
-        foreach ((ulong index, byte[] pubkey) in _indexToPubKeyBytes!)
-        {
-            if (!pk.TryDecode(pubkey, out Bls.ERROR _))
-            {
-                throw new ShutterValidatorsInfoException($"Validator info file contains invalid public key with index {index}.");
-            }
-
-            _minIndex = Math.Min(_minIndex, index);
-            _maxIndex = Math.Max(_maxIndex, index + 1);
-
-            _indexToPubKey.Add(index, pk.Point.ToArray());
-        }
+        Dictionary<ulong, byte[]> indexToPubKeyBytes = new EthereumJsonSerializer().Deserialize<Dictionary<ulong, byte[]>>(fstream);
+        AddPublicKeys(indexToPubKeyBytes);
     }
 
     public bool ContainsIndex(ulong index)
-        => _indexToPubKeyBytes!.ContainsKey(index);
+        => _indexToPubKey!.ContainsKey(index);
 
     // non inclusive of end index
     public bool MayContainIndexInRange(ulong startIndex, ulong endIndex)
@@ -54,4 +36,26 @@ public class ShutterValidatorsInfo
 
     public G1Affine GetPubKey(ulong index)
         => new(_indexToPubKey[index]);
+
+    internal void Add(ulong index, long[] pubkey)
+    {
+        _indexToPubKey.Add(index, pubkey);
+        _minIndex = Math.Min(_minIndex, index);
+        _maxIndex = Math.Max(_maxIndex, index + 1);
+    }
+
+    private void AddPublicKeys(Dictionary<ulong, byte[]> indexToPubKeyBytes)
+    {
+        G1Affine pk = new(stackalloc long[G1Affine.Sz]);
+
+        foreach ((ulong index, byte[] pubkey) in indexToPubKeyBytes)
+        {
+            if (!pk.TryDecode(pubkey, out Bls.ERROR _))
+            {
+                throw new ShutterValidatorsInfoException($"Validator info file contains invalid public key with index {index}.");
+            }
+
+            Add(index, pk.Point.ToArray());
+        }
+    }
 }

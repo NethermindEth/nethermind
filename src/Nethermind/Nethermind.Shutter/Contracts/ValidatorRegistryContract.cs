@@ -14,7 +14,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using System.Linq;
-using System.Runtime.CompilerServices;
 
 using Update = (byte[] Message, byte[] Signature);
 
@@ -97,7 +96,6 @@ public class ValidatorRegistryContract(
         }
     }
 
-    [SkipLocalsInit]
     private bool IsUpdateValid(in Update update, in ShutterValidatorsInfo validatorsInfo, out string err)
     {
         if (update.Message.Length != Message.Sz || update.Signature.Length != BlsSigner.Signature.Sz)
@@ -157,16 +155,16 @@ public class ValidatorRegistryContract(
         return true;
     }
 
-    private readonly ref struct Message
+    internal readonly ref struct Message
     {
         public const int Sz = 46;
-        public readonly byte Version;
-        public readonly ulong ChainId;
-        public readonly ReadOnlySpan<byte> ContractAddress;
-        public readonly ulong StartValidatorIndex;
-        public readonly uint Count;
-        public readonly uint Nonce;
-        public readonly bool IsRegistration;
+        public readonly byte Version { get; init; }
+        public readonly ulong ChainId { get; init; }
+        public readonly ReadOnlySpan<byte> ContractAddress { get; init; }
+        public readonly ulong StartValidatorIndex { get; init; }
+        public readonly uint Count { get; init; }
+        public readonly uint Nonce { get; init; }
+        public readonly bool IsRegistration { get; init; }
 
         public Message(Span<byte> encodedMessage)
         {
@@ -182,6 +180,19 @@ public class ValidatorRegistryContract(
             Count = BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[37..41]);
             Nonce = BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[41..45]);
             IsRegistration = encodedMessage[45] == 1;
+        }
+
+        internal byte[] Encode()
+        {
+            byte[] encoded = new byte[Sz];
+            encoded[0] = Version;
+            BinaryPrimitives.WriteUInt64BigEndian(encoded.AsSpan()[1..], ChainId);
+            ContractAddress.CopyTo(encoded.AsSpan()[9..]);
+            BinaryPrimitives.WriteUInt64BigEndian(encoded.AsSpan()[29..], StartValidatorIndex);
+            BinaryPrimitives.WriteUInt32BigEndian(encoded.AsSpan()[37..], Count);
+            BinaryPrimitives.WriteUInt32BigEndian(encoded.AsSpan()[41..], Nonce);
+            encoded[45] = IsRegistration ? (byte)1 : (byte)0;
+            return encoded;
         }
     }
 }
