@@ -381,8 +381,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     IConfigSource argsSource = new ArgsConfigSource(configArgs);
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
-
-    string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory) ?? "configs";
+    
     string configFile = parseResult.GetValue(BasicOptions.Configuration)
         ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
         ?? "mainnet";
@@ -390,13 +389,15 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     // If configFile is not a path, handle it
     if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
     {
+        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory) ?? "configs";
+
         // If configsDir is rooted, AppContext.BaseDirectory is ignored
         configFile = Path.Combine(AppContext.BaseDirectory, configsDir, configFile);
 
-        // If the configFile doesn't an extension, append a supported file extension
+        // If the configFile doesn't have an extension, try with supported file extensions
         if (!Path.HasExtension(configFile))
         {
-            string? fallback = null;
+            string? fallback;
 
             foreach (var ext in new[] { ".json", ".cfg" })
             {
@@ -411,8 +412,11 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         }
     }
 
+    // Resolve the full path for logging purposes
+    configFile = Path.GetFullPath(configFile);
+
     if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration not found.", configFile);
+        throw new FileNotFoundException("Configuration file not found.", configFile);
 
     logger.Info($"Loading configuration from {configFile}");
 
@@ -423,7 +427,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
     if (incorrectSettings.Errors.Any())
     {
-        logger.Warn($"Incorrect config settings found:\n{incorrectSettings.ErrorMsg}");
+        logger.Warn($"Invalid configuration settings:\n{incorrectSettings.ErrorMsg}");
     }
 
     return configProvider;
