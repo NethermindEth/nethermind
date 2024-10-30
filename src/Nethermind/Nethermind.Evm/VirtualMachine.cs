@@ -2680,24 +2680,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
         }
 
-        if (newSameAsCurrent)
+        if (!newSameAsCurrent)
         {
-            return EvmExceptionType.None;
-        }
+            _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
 
-        _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+            {
+                ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
+                byte[] storageBytes = new byte[32]; // do not stackalloc here
+                storageCell.Index.ToBigEndian(storageBytes);
+                _txTracer.ReportStorageChange(storageBytes, valueToStore);
+            }
 
-        if (typeof(TTracingInstructions) == typeof(IsTracing))
-        {
-            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
-            byte[] storageBytes = new byte[32]; // do not stackalloc here
-            storageCell.Index.ToBigEndian(storageBytes);
-            _txTracer.ReportStorageChange(storageBytes, valueToStore);
-        }
-
-        if (typeof(TTracingStorage) == typeof(IsTracing))
-        {
-            _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            if (typeof(TTracingStorage) == typeof(IsTracing))
+            {
+                _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
+            }
         }
 
         return EvmExceptionType.None;
