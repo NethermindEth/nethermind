@@ -80,6 +80,26 @@ public class OptimismProtocolVersionTest
         testCase.Right.CompareTo(testCase.Left).Should().Be(testCase.Expected * -1);
     }
 
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", false)]
+    [TestCase("0x0010000000000000000000000000000000000000000000000000000000000000", true)]
+    [TestCase("0x0001000000000000000000000000000000000000000000000000000000000000", true)]
+    [TestCase("0x0000000000001000000000000000000000000000000000000000000000000000", true)]
+    [TestCase("0x0000000000000100000000000000000000000000000000000000000000000000", true)]
+    public void OptimismProtocolVersionV0_ReservedIsZero(string hexString, bool shouldThrow)
+    {
+        var bytes = Bytes.FromHexString(hexString);
+        Action read = () => OptimismProtocolVersion.Read(bytes);
+
+        if (shouldThrow)
+        {
+            read.Should().Throw<OptimismProtocolVersion.ParseException>();
+        }
+        else
+        {
+            read.Should().NotThrow();
+        }
+    }
+
     private static IEnumerable<byte[]> InvalidByteArrays()
     {
         yield return new byte[8];
