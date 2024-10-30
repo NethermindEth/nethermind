@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -9,9 +10,13 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.Rpc;
 
-public class OptimismEngineRpcModule : IOptimismEngineRpcModule
+public class OptimismEngineRpcModule(
+    IEngineRpcModule engineRpcModule,
+    IOptimismSuperchainSignalHandler signalSuperchainHandler
+) : IOptimismEngineRpcModule
 {
-    private readonly IEngineRpcModule _engineRpcModule;
+    private readonly IEngineRpcModule _engineRpcModule = engineRpcModule;
+    private readonly IOptimismSuperchainSignalHandler _signalSuperchainHandler = signalSuperchainHandler;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
     {
@@ -59,8 +64,19 @@ public class OptimismEngineRpcModule : IOptimismEngineRpcModule
         return _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
     }
 
-    public OptimismEngineRpcModule(IEngineRpcModule engineRpcModule)
+    public async Task<ResultWrapper<OptimismProtocolVersion>> engine_signalSuperchainV1(OptimismSuperchainSignal signal)
     {
-        _engineRpcModule = engineRpcModule;
+        var currentVersion = _signalSuperchainHandler.CurrentVersion;
+
+        if (currentVersion < signal.Recommended)
+        {
+            await _signalSuperchainHandler.OnBehindRecommended();
+        }
+        if (currentVersion < signal.Required)
+        {
+            await _signalSuperchainHandler.OnBehindRequired();
+        }
+
+        return ResultWrapper<OptimismProtocolVersion>.Success(currentVersion);
     }
 }

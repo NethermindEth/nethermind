@@ -69,4 +69,11 @@ public interface IOptimismEngineRpcModule : IRpcModule
         IsImplemented = true)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload,
         byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
+
+    [JsonRpcMethod(
+        Description = "Signals which protocol version is recommended and required.",
+        IsSharable = true,
+        IsImplemented = false
+    )]
+    Task<ResultWrapper<OptimismProtocolVersion>> engine_signalSuperchainV1(OptimismSuperchainSignal signal);
 }

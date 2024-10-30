@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Optimism.Rpc;
@@ -142,4 +143,11 @@ public sealed class OptimismSuperchainSignal(
 {
     public OptimismProtocolVersion Recommended { get; } = recommended;
     public OptimismProtocolVersion Required { get; } = required;
+}
+
+public interface IOptimismSuperchainSignalHandler
+{
+    OptimismProtocolVersion CurrentVersion { get; }
+    Task OnBehindRecommended();
+    Task OnBehindRequired();
 }
