@@ -72,7 +72,7 @@ public class OptimismEngineRpcModuleTest
         handler.CurrentVersion.Returns(current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
-        var _ = await rpcModule.engine_signalSuperchainV1(signal);
+        _ = await rpcModule.engine_signalSuperchainV1(signal);
 
         await handler.Received(testCase.behindRecommended ? 1 : 0).OnBehindRecommended(testCase.signal.Recommended);
 
