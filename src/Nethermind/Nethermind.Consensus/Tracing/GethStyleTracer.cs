@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Tracing;
 
 public class GethStyleTracer : IGethStyleTracer
 {
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
@@ -43,7 +43,7 @@ public class GethStyleTracer : IGethStyleTracer
         IWorldState worldState,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
-        IBlockStore badBlockStore,
+        IBadBlockStore badBlockStore,
         ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
         IFileSystem fileSystem,

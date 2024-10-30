@@ -146,5 +146,13 @@ namespace Nethermind.Db
             }
             _db[key] = value;
         }
+
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+        {
+            return new IDbMeta.DbMetric()
+            {
+                Size = Count
+            };
+        }
     }
 }

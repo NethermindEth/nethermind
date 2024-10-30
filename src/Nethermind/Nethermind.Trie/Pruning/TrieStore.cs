@@ -768,7 +768,14 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            if (_pruningStrategy.PruningEnabled)
+            {
+                if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            }
 
             long start = Stopwatch.GetTimestamp();
 

@@ -42,7 +42,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
         Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
         Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(1), nameof(entry.Storage));
+        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
         Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
         Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
     }
@@ -135,7 +135,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(entry.GasCost, Is.EqualTo(GasCostOf.VeryLow), nameof(entry.GasCost));
         Assert.That(entry.Memory.Count, Is.EqualTo(0), nameof(entry.Memory));
         Assert.That(entry.Stack.Count, Is.EqualTo(1), nameof(entry.Stack));
-        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(1), nameof(entry.Storage));
+        Assert.That(trace.Entries[4].Storage.Count, Is.EqualTo(0), nameof(entry.Storage));
         Assert.That(entry.ProgramCounter, Is.EqualTo(2), nameof(entry.ProgramCounter));
         Assert.That(entry.Opcode, Is.EqualTo("PUSH1"), nameof(entry.Opcode));
     }

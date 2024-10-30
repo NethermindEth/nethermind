@@ -90,7 +90,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
-        _stats = new ProcessingStats(_logger);
+        _stats = new ProcessingStats(stateReader, _logger);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -419,7 +419,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
             Metrics.RecoveryQueueSize = _recoveryQueue.Count;
             Metrics.ProcessingQueueSize = _blockQueue.Count;
-            _stats.UpdateStats(lastProcessed, blockProcessingTimeInMicrosecs);
+
+            _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);

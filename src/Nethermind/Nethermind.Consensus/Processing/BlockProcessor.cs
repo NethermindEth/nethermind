@@ -345,7 +345,7 @@ public partial class BlockProcessor(
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {
@@ -399,7 +399,7 @@ public partial class BlockProcessor(
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.CreateCopy(headerForProcessing);
+        return suggestedBlock.WithReplacedHeader(headerForProcessing);
     }
 
     // TODO: block processor pipeline

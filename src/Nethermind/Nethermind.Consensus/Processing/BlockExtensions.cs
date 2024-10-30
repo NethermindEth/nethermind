@@ -8,19 +8,15 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.State.Proofs;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
 
 namespace Nethermind.Consensus.Processing
 {
-    internal static class BlockExtensions
+    public static class BlockExtensions
     {
-        public static Block CreateCopy(this Block block, BlockHeader header) =>
-            block is BlockToProduce blockToProduce
-                ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Uncles, blockToProduce.Withdrawals, blockToProduce.Requests)
-                : new Block(header, block.Transactions, block.Uncles, block.Withdrawals, block.Requests);
-
         public static IEnumerable<Transaction> GetTransactions(this Block block) =>
             block is BlockToProduce blockToProduce
                 ? blockToProduce.Transactions
@@ -45,5 +41,25 @@ namespace Nethermind.Consensus.Processing
             Ascii.IsValid(block.ExtraData)
             && Encoding.ASCII.GetString(block.ExtraData ?? Array.Empty<byte>())
                 .Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
+
+        public static string ParsedExtraData(this Block block)
+        {
+            byte[]? data = block.ExtraData;
+            if (data is null || data.Length == 0)
+            {
+                // If no extra data just show GasBeneficiary address
+                return $"Address: {(block.Header.GasBeneficiary?.ToString() ?? "0x")}";
+            }
+
+            // Ideally we'd prefer to show text; so convert invalid unicode
+            // and control chars to spaces and trim leading and trailing spaces.
+            string extraData = new ReadOnlySpan<byte>(data).ToCleanUtf8String();
+
+            // If the cleaned text is less than half length of input size,
+            // output it as hex, else output the text.
+            return extraData.Length > data.Length / 2 ?
+                $"Extra Data: {extraData}" :
+                $"Hex: {data.ToHexString(withZeroX: true)}";
+        }
     }
 }
