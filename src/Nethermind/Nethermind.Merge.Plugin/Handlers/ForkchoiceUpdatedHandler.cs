@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -13,6 +15,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -200,6 +203,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             {
                 _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
                 // Debug as already output in Received ForkChoice
@@ -351,6 +355,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _beaconPivot.ProcessDestination = blockHeader;
         _peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
         _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+        _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
 
         if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }

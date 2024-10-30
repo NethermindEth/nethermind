@@ -172,7 +172,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.ApiWithNetworkServiceContainer = container;
         _api.DisposeStack.Append(container);
 
-        _ = new PivotUpdator(
+        _ = new UnsafePivotUpdator(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool,

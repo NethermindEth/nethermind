@@ -15,19 +15,12 @@ namespace Nethermind.Evm.Test
     public class EvmStateTests
     {
         [Test]
-        public void Top_level_continuations_are_not_valid()
-        {
-            Assert.Throws<InvalidOperationException>(
-                () => _ = CreateEvmState(isContinuation: true));
-        }
-
-        [Test]
         public void Things_are_cold_to_start_with()
         {
             EvmState evmState = CreateEvmState();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            evmState.IsCold(TestItem.AddressA).Should().BeTrue();
-            evmState.IsCold(storageCell).Should().BeTrue();
+            evmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeTrue();
+            evmState.AccessTracker.IsCold(storageCell).Should().BeTrue();
         }
 
         [Test]
@@ -35,9 +28,9 @@ namespace Nethermind.Evm.Test
         {
             EvmState evmState = CreateEvmState();
             Address address = TestItem.AddressA;
-            evmState.WarmUp(address);
-            evmState.WarmUp(address);
-            evmState.IsCold(address).Should().BeFalse();
+            evmState.AccessTracker.WarmUp(address);
+            evmState.AccessTracker.WarmUp(address);
+            evmState.AccessTracker.IsCold(address).Should().BeFalse();
         }
 
         [Test]
@@ -46,14 +39,14 @@ namespace Nethermind.Evm.Test
             EvmState evmState = CreateEvmState();
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                evmState.WarmUp(TestItem.Addresses[i]);
-                evmState.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
+                evmState.AccessTracker.WarmUp(TestItem.Addresses[i]);
+                evmState.AccessTracker.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
             }
 
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                evmState.IsCold(TestItem.Addresses[i]).Should().BeFalse();
-                evmState.IsCold(new StorageCell(TestItem.Addresses[i], 1)).Should().BeFalse();
+                evmState.AccessTracker.IsCold(TestItem.Addresses[i]).Should().BeFalse();
+                evmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)).Should().BeFalse();
             }
         }
 
@@ -63,9 +56,9 @@ namespace Nethermind.Evm.Test
             EvmState evmState = CreateEvmState();
             Address address = TestItem.AddressA;
             StorageCell storageCell = new(address, 1);
-            evmState.WarmUp(storageCell);
-            evmState.WarmUp(storageCell);
-            evmState.IsCold(storageCell).Should().BeFalse();
+            evmState.AccessTracker.WarmUp(storageCell);
+            evmState.AccessTracker.WarmUp(storageCell);
+            evmState.AccessTracker.IsCold(storageCell).Should().BeFalse();
         }
 
         [Test]
@@ -91,11 +84,11 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(TestItem.AddressA);
+                evmState.AccessTracker.WarmUp(TestItem.AddressA);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.IsCold(TestItem.AddressA).Should().BeFalse();
+            parentEvmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeFalse();
         }
 
         [Test]
@@ -104,10 +97,10 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(TestItem.AddressA);
+                evmState.AccessTracker.WarmUp(TestItem.AddressA);
             }
 
-            parentEvmState.IsCold(TestItem.AddressA).Should().BeTrue();
+            parentEvmState.AccessTracker.IsCold(TestItem.AddressA).Should().BeTrue();
         }
 
         [Test]
@@ -117,11 +110,11 @@ namespace Nethermind.Evm.Test
             StorageCell storageCell = new(TestItem.AddressA, 1);
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(storageCell);
+                evmState.AccessTracker.WarmUp(storageCell);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.IsCold(storageCell).Should().BeFalse();
+            parentEvmState.AccessTracker.IsCold(storageCell).Should().BeFalse();
         }
 
         [Test]
@@ -131,10 +124,10 @@ namespace Nethermind.Evm.Test
             StorageCell storageCell = new(TestItem.AddressA, 1);
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.WarmUp(storageCell);
+                evmState.AccessTracker.WarmUp(storageCell);
             }
 
-            parentEvmState.IsCold(storageCell).Should().BeTrue();
+            parentEvmState.AccessTracker.IsCold(storageCell).Should().BeTrue();
         }
 
         [Test]
@@ -144,11 +137,11 @@ namespace Nethermind.Evm.Test
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.Logs.Add(logEntry);
+                evmState.AccessTracker.Logs.Add(logEntry);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.Logs.Contains(logEntry).Should().BeTrue();
+            parentEvmState.AccessTracker.Logs.Contains(logEntry).Should().BeTrue();
         }
 
         [Test]
@@ -158,10 +151,10 @@ namespace Nethermind.Evm.Test
             LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.Logs.Add(logEntry);
+                evmState.AccessTracker.Logs.Add(logEntry);
             }
 
-            parentEvmState.Logs.Contains(logEntry).Should().BeFalse();
+            parentEvmState.AccessTracker.Logs.Contains(logEntry).Should().BeFalse();
         }
 
         [Test]
@@ -170,11 +163,11 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.DestroyList.Add(Address.Zero);
+                evmState.AccessTracker.ToBeDestroyed(Address.Zero);
                 evmState.CommitToParent(parentEvmState);
             }
 
-            parentEvmState.DestroyList.Contains(Address.Zero).Should().BeTrue();
+            parentEvmState.AccessTracker.DestroyList.Contains(Address.Zero).Should().BeTrue();
         }
 
         [Test]
@@ -183,10 +176,10 @@ namespace Nethermind.Evm.Test
             EvmState parentEvmState = CreateEvmState();
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
-                evmState.DestroyList.Add(Address.Zero);
+                evmState.AccessTracker.ToBeDestroyed(Address.Zero);
             }
 
-            parentEvmState.DestroyList.Contains(Address.Zero).Should().BeFalse();
+            parentEvmState.AccessTracker.DestroyList.Contains(Address.Zero).Should().BeFalse();
         }
 
         [Test]
@@ -234,19 +227,15 @@ namespace Nethermind.Evm.Test
                 ? new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
-                    true,
-                    Snapshot.Empty,
-                    isContinuation)
+                    Snapshot.Empty)
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
-                    false,
                     Snapshot.Empty,
                     0,
                     0,
                     false,
-                    parentEvmState,
-                    isContinuation,
+                    parentEvmState.AccessTracker,
                     false);
 
         public class Context { }
