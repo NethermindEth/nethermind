@@ -5,10 +5,12 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -124,10 +126,29 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
         // Handles general exceptions during parsing and validation.
         // Sends an error response and stops the stopwatch.
-        JsonRpcResult GetParsingError(string error, Exception? exception = null)
+        JsonRpcResult GetParsingError(ref readonly ReadOnlySequence<byte> buffer, string error, Exception? exception = null)
         {
             Metrics.JsonRpcRequestDeserializationFailures++;
-            if (_logger.IsError) _logger.Error(error, exception);
+
+            if (_logger.IsError)
+            {
+                _logger.Error(error, exception);
+            }
+
+            if (_logger.IsDebug)
+            {
+                // Attempt to get and log the request body from the bytes buffer if Debug logging is enabled
+                const int sliceSize = 1000;
+                if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string data))
+                {
+                    error = isFullString
+                        ? $"{error} Data:\n{data}\n"
+                        : $"{error} Data (first {sliceSize} chars):\n{data[..sliceSize]}\n";
+
+                    _logger.Debug(error);
+                }
+            }
+
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
             TraceResult(response);
             return JsonRpcResult.Single(RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false)));
@@ -155,7 +176,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     // Tries to parse the JSON from the buffer.
                     if (!TryParseJson(ref buffer, out jsonDocument))
                     {
-                        deserializationFailureResult = GetParsingError("Error during parsing/validation.");
+                        deserializationFailureResult = GetParsingError(in buffer, "Error during parsing/validation.");
                     }
                     else
                     {
@@ -178,7 +199,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 }
                 catch (Exception ex)
                 {
-                    deserializationFailureResult = GetParsingError("Error during parsing/validation.", ex);
+                    deserializationFailureResult = GetParsingError(in buffer, "Error during parsing/validation.", ex);
                 }
 
                 // Checks for deserialization failure and yields the result.
@@ -251,7 +272,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             {
                 if (buffer.Length > 0 && HasNonWhitespace(buffer))
                 {
-                    yield return GetParsingError("Error during parsing/validation. Incomplete request");
+                    yield return GetParsingError(in buffer, "Error during parsing/validation: incomplete request.");
                 }
             }
         }
@@ -358,7 +379,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         return result;
     }
 
-    private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, out JsonDocument jsonDocument)
+    private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, [NotNullWhen(true)] out JsonDocument? jsonDocument)
     {
         Utf8JsonReader reader = new(buffer);
 

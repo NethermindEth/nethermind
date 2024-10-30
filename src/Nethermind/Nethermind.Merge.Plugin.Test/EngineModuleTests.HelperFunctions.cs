@@ -23,7 +23,7 @@ using Nethermind.State;
 using Microsoft.CodeAnalysis;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
-using Nethermind.Core.ExecutionRequest;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -154,7 +154,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV4.TryGetBlock(out Block? block);
 
             var beaconBlockRootHandler = new BeaconBlockRootHandler(chain.TxProcessor, chain.WorldStateManager.GlobalWorldState);
-            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header));
+            beaconBlockRootHandler.StoreBeaconRoot(block!, chain.SpecProvider.GetSpec(block!.Header), NullTxTracer.Instance);
             Snapshot before = chain.State.TakeSnapshot();
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);

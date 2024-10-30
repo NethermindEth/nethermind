@@ -347,7 +347,7 @@ public partial class BlockProcessor(
     {
         try
         {
-            _beaconBlockRootHandler.StoreBeaconRoot(block, spec);
+            _beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         }
         catch (Exception e)
         {
