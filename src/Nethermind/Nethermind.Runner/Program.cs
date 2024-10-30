@@ -381,7 +381,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     IConfigSource argsSource = new ArgsConfigSource(configArgs);
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
-    
+
     string configFile = parseResult.GetValue(BasicOptions.Configuration)
         ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
         ?? "mainnet";
