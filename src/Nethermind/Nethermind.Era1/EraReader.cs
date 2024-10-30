@@ -28,7 +28,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly E2StoreReader _fileReader;
 
-    public long StartBlock => _fileReader.StartBlock;
+    public long FirstBlock => _fileReader.First;
     public long LastBlock => _fileReader.LastBlock;
 
 
@@ -53,7 +53,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     private IEnumerable<long> EnumerateBlockNumber()
     {
-        long blockNumber = _fileReader.StartBlock;
+        long blockNumber = _fileReader.First;
         while (blockNumber <= _fileReader.LastBlock)
         {
             yield return blockNumber;
@@ -74,7 +74,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         ValueHash256 accumulator = ReadAccumulator();
 
-        long startBlock = _fileReader.StartBlock;
+        long startBlock = _fileReader.First;
         int blockCount = (int)_fileReader.BlockCount;
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
@@ -135,8 +135,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
-        if (number < _fileReader.StartBlock)
-            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.StartBlock}. Number is {number}.");
+        if (number < _fileReader.First)
+            throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.First}. Number is {number}.");
         if (number > _fileReader.LastBlock)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_fileReader.LastBlock}. Number is {number}.");
         EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
@@ -145,8 +145,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
-        if (blockNumber < _fileReader.StartBlock
-            || blockNumber > _fileReader.StartBlock + _fileReader.BlockCount)
+        if (blockNumber < _fileReader.First
+            || blockNumber > _fileReader.First + _fileReader.BlockCount)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
 
         long position = _fileReader.BlockOffset(blockNumber);

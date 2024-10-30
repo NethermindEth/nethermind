@@ -39,8 +39,8 @@ public class EraStore : IEraStore
     private bool _disposed = false;
     private readonly int _maxEraFile;
 
-    private int BiggestEpoch { get; set; }
-    private int SmallestEpoch { get; set; } = int.MaxValue;
+    private int LastEpoch { get; set; }
+    private int FirstEpoch { get; set; } = int.MaxValue;
 
     private long? _firstBlock = null;
     public long FirstBlock
@@ -49,8 +49,8 @@ public class EraStore : IEraStore
         {
             if (_firstBlock == null)
             {
-                using EraRenter _ = RentReader(SmallestEpoch, out EraReader smallestEraReader);
-                _firstBlock = smallestEraReader.StartBlock;
+                using EraRenter _ = RentReader(FirstEpoch, out EraReader smallestEraReader);
+                _firstBlock = smallestEraReader.FirstBlock;
             }
             return _firstBlock.Value;
         }
@@ -64,7 +64,7 @@ public class EraStore : IEraStore
         {
             if (_lastBlock == null)
             {
-                using EraRenter _ = RentReader(BiggestEpoch, out EraReader biggestEraReader);
+                using EraRenter _ = RentReader(LastEpoch, out EraReader biggestEraReader);
                 _lastBlock = biggestEraReader.LastBlock;
             }
             return _lastBlock.Value;
@@ -101,10 +101,10 @@ public class EraStore : IEraStore
             if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", nameof(eraFiles));
             _epochs[epoch] = file;
-            if (epoch > BiggestEpoch)
-                BiggestEpoch = epoch;
-            if (epoch < SmallestEpoch)
-                SmallestEpoch = epoch;
+            if (epoch > LastEpoch)
+                LastEpoch = epoch;
+            if (epoch < FirstEpoch)
+                FirstEpoch = epoch;
         }
     }
 
@@ -112,7 +112,7 @@ public class EraStore : IEraStore
     {
         // This seems to be the geth way of encoding blocks.
         long epochOffset = (blockNumber - FirstBlock) / _maxEraFile;
-        return SmallestEpoch + epochOffset;
+        return FirstEpoch + epochOffset;
     }
 
     private bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
@@ -142,7 +142,7 @@ public class EraStore : IEraStore
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
             ValueHash256 checksum = reader.CalculateChecksum();
-            ValueHash256 expectedChecksum = _checksums[epoch - SmallestEpoch];
+            ValueHash256 expectedChecksum = _checksums[epoch - FirstEpoch];
             if (checksum != expectedChecksum)
             {
                 throw new EraVerificationException($"Checksum verification failed. Checksum: {checksum}, Expected: {expectedChecksum}");

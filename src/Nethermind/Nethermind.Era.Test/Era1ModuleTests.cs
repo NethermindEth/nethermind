@@ -190,7 +190,7 @@ public class Era1ModuleTests
 
         for (int i = 0; i < fileReader.BlockCount; i++)
         {
-            long blockOffset = fileReader.BlockOffset(fileReader.StartBlock + i);
+            long blockOffset = fileReader.BlockOffset(fileReader.First + i);
 
             using (var accessor = mmf.CreateViewAccessor(blockOffset, 2))
             {
@@ -319,8 +319,8 @@ public class Era1ModuleTests
             })
             .AddSingleton<IEraConfig>(new EraConfig()
             {
-                Start = start,
-                End = end,
+                From = start,
+                To = end,
                 ImportDirectory = tmpDir.DirectoryPath,
                 TrustedAccumulatorFile = Path.Join(tmpDir.DirectoryPath, EraExporter.AccumulatorFileName),
                 MaxEra1Size = 16,

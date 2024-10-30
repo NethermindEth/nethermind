@@ -30,8 +30,8 @@ public class EraCliRunner(
 
     private async Task Export(CancellationToken cancellation)
     {
-        var start = eraConfig.Start;
-        var end = eraConfig.End;
+        var start = eraConfig.From;
+        var end = eraConfig.To;
 
         try
         {
@@ -56,7 +56,7 @@ public class EraCliRunner(
     {
         try
         {
-            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.Start, eraConfig.End, eraConfig.TrustedAccumulatorFile, processExitSource.Token);
+            await eraImporter.Import(eraConfig.ImportDirectory!, eraConfig.From, eraConfig.To, eraConfig.TrustedAccumulatorFile, processExitSource.Token);
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
         {

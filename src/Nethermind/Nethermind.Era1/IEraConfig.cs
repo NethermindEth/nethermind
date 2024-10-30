@@ -14,10 +14,10 @@ public interface IEraConfig : IConfig
     public string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Start block to export", DefaultValue = "0", HiddenFromDocs = false)]
-    long Start { get; set; }
+    long From { get; set; }
 
     [ConfigItem(Description = "End block to export. Set to 0 for Head.", DefaultValue = "0", HiddenFromDocs = false)]
-    long End { get; set; }
+    long To { get; set; }
 
     [ConfigItem(Description = "Trusted accumulator file.", DefaultValue = "null", HiddenFromDocs = false)]
     string? TrustedAccumulatorFile { get; set; }

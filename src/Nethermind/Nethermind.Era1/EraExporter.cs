@@ -47,26 +47,26 @@ public class EraExporter : IEraExporter
 
     public Task Export(
         string destinationPath,
-        long start,
-        long end,
+        long from,
+        long to,
         CancellationToken cancellation = default)
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException($"Cannot be a file.", nameof(destinationPath));
-        if (end == 0) end = _blockTree.Head?.Number ?? 0;
-        if (end > (_blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {_blockTree.Head?.Number ?? 0}.", nameof(end));
-        if (start > end) throw new ArgumentException("Start must be before end block", nameof(start));
+        if (to == 0) to = _blockTree.Head?.Number ?? 0;
+        if (to > (_blockTree.Head?.Number ?? 0)) throw new ArgumentException($"Cannot export to a block after head block {_blockTree.Head?.Number ?? 0}.", nameof(to));
+        if (from > to) throw new ArgumentException("Start must be before end block", nameof(from));
 
-        return DoExport(destinationPath, start, end, cancellation: cancellation);
+        return DoExport(destinationPath, from, to, cancellation: cancellation);
     }
 
     private async Task DoExport(
         string destinationPath,
-        long start,
-        long end,
+        long from,
+        long to,
         CancellationToken cancellation = default)
     {
-        if (_logger.IsInfo) _logger.Info($"Exporting block {start} to block {end} as Era files to {destinationPath}");
+        if (_logger.IsInfo) _logger.Info($"Exporting block {from} to block {to} as Era files to {destinationPath}");
         if (!_fileSystem.Directory.Exists(destinationPath))
         {
             //TODO look into permission settings - should it be set?
@@ -79,9 +79,9 @@ public class EraExporter : IEraExporter
         int processedSinceLast = 0;
         int txProcessedSinceLast = 0;
 
-        long epochCount = (long)Math.Ceiling((end - start + 1) / (decimal)_era1Size);
+        long epochCount = (long)Math.Ceiling((to - from + 1) / (decimal)_era1Size);
 
-        long startEpoch = start / _era1Size;
+        long startEpoch = from / _era1Size;
 
         using ArrayPoolList<long> epochIdxs = new((int)epochCount);
         for (long i = 0; i < epochCount; i++)
@@ -106,21 +106,21 @@ public class EraExporter : IEraExporter
         await _fileSystem.File.WriteAllLinesAsync(checksumPath, checksums.Select((v) => v.ToString()), cancellation);
 
         LogExportProgress(
-            end - start,
+            to - from,
             totalProcessed,
             processedSinceLast,
             txProcessedSinceLast,
             DateTime.Now.Subtract(lastProgress),
             DateTime.Now.Subtract(startTime));
 
-        if (_logger.IsInfo) _logger.Info($"Finished history export from {start} to {end}");
+        if (_logger.IsInfo) _logger.Info($"Finished history export from {from} to {to}");
 
         async Task WriteEpoch(long epochIdx)
         {
             // Yes, it offset a bit so a block that is at the end of an epoch would be at the start of another epoch
             // if the start is not of module _era1Size. This seems to match geth's behaviour.
             long epoch = startEpoch + epochIdx;
-            long startingIndex = start + epochIdx * _era1Size;
+            long startingIndex = from + epochIdx * _era1Size;
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -128,7 +128,7 @@ public class EraExporter : IEraExporter
 
             using EraWriter builder = new EraWriter(_fileSystem.File.Create(filePath), _specProvider);
 
-            for (var y = startingIndex; y < startingIndex + _era1Size && y <= end; y++)
+            for (var y = startingIndex; y < startingIndex + _era1Size && y <= to; y++)
             {
                 Block? block = _blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                 if (block is null)
@@ -155,7 +155,7 @@ public class EraExporter : IEraExporter
                 if (shouldLog)
                 {
                     LogExportProgress(
-                        end - start,
+                        to - from,
                         totalProcessed,
                         processedSinceLast,
                         txProcessedSinceLast,

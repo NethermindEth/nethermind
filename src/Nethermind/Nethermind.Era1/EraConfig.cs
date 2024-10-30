@@ -9,8 +9,8 @@ public class EraConfig : IEraConfig
 {
     public string? ImportDirectory { get; set; } = null;
     public string? ExportDirectory { get; set; }
-    public long Start { get; set; }
-    public long End { get; set; }
+    public long From { get; set; }
+    public long To { get; set; }
     public string? TrustedAccumulatorFile { get; set; }
     public int MaxEra1Size { get; set; } = EraWriter.MaxEra1Size;
     public string? NetworkName { get; set; }

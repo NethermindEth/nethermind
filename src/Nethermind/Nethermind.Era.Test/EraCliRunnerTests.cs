@@ -16,8 +16,8 @@ public class EraCliRunnerTests
         IEraConfig eraConfig = new EraConfig()
         {
             ImportDirectory = "import dir",
-            Start = 99,
-            End = 999
+            From = 99,
+            To = 999
         };
         EraCliRunner cliRunner = new EraCliRunner(eraConfig, eraImporter, Substitute.For<IEraExporter>(), Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
 
@@ -33,8 +33,8 @@ public class EraCliRunnerTests
         IEraConfig eraConfig = new EraConfig()
         {
             ExportDirectory = "export dir",
-            Start = 99,
-            End = 999
+            From = 99,
+            To = 999
         };
         EraCliRunner cliRunner = new EraCliRunner(eraConfig, Substitute.For<IEraImporter>(), eraExporter, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
 

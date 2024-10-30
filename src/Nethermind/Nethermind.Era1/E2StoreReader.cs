@@ -161,7 +161,7 @@ public class E2StoreReader : IDisposable
     private long? _startBlock;
     private long _blockCount;
 
-    public long StartBlock
+    public long First
     {
         get
         {
@@ -170,7 +170,7 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public long LastBlock => StartBlock + _blockCount - 1;
+    public long LastBlock => First + _blockCount - 1;
 
     public long AccumulatorOffset
     {
