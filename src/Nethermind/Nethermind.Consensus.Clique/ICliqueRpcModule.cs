@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Clique
         ResultWrapper<Address?> clique_getBlockSigner(Hash256? hash);
 
         [JsonRpcMethod(Description = "Retrieves a snapshot of all clique state at a given block.", IsImplemented = true)]
-        ResultWrapper<Snapshot> clique_getSnapshot();
+        ResultWrapper<Snapshot> clique_getSnapshot(long? number = null);
 
         [JsonRpcMethod(Description = "Retrieves the state snapshot at a given block.", IsImplemented = true)]
         ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash);
