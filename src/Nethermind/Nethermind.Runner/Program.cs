@@ -383,31 +383,18 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new EnvConfigSource());
 
     string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory) ?? "configs";
-    string configFile = parseResult.GetValue(BasicOptions.Configuration) ?? "mainnet";
-    string? configFileEnvVar = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
+    string configFile = parseResult.GetValue(BasicOptions.Configuration)
+        ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
+        ?? "mainnet";
 
-    if (!string.IsNullOrWhiteSpace(configFileEnvVar))
+    // If configFile is not a path, handle it
+    if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
     {
-        configFile = configFileEnvVar;
-    }
+        // If configsDir is rooted, AppContext.BaseDirectory is ignored
+        configFile = Path.Combine(AppContext.BaseDirectory, configsDir, configFile);
 
-    // If the configuration is a rooted path, don't handle it
-    if (!Path.IsPathRooted(configFile))
-    {
-        // If the configuration doesn't have any directory info or file extension,
-        // append a supported file extension
-        var shouldAppendExtension = string.IsNullOrEmpty(Path.GetDirectoryName(configFile)) &&
-            !Path.HasExtension(configFile);
-
-        configFile = Path.Combine(configsDir, configFile);
-
-        // If the resulting path is still not rooted, combine with the current directory
-        if (!Path.IsPathRooted(configFile))
-        {
-            configFile = Path.Combine(AppContext.BaseDirectory, configFile);
-        }
-
-        if (shouldAppendExtension)
+        // If the configFile doesn't an extension, append a supported file extension
+        if (!Path.HasExtension(configFile))
         {
             string? fallback = null;
 
