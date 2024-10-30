@@ -5,6 +5,8 @@ using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Execution;
+using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -293,7 +295,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
-        Assert.That(serialized, Is.EqualTo(expectedResult));
+        JToken.Parse(serialized).Should().BeEquivalentTo(expectedResult);
     }
 
     [TestCase(
@@ -324,10 +326,10 @@ public partial class EthRpcModuleTests
 
         var resultOverrideAfter = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
-        Assert.Multiple(() =>
+        using (new AssertionScope())
         {
-            Assert.That(resultOverrideBefore, Is.EqualTo(resultOverrideAfter), resultOverrideBefore.Replace("\"", "\\\""));
-            Assert.That(resultNoOverride, Is.Not.EqualTo(resultOverrideAfter), resultNoOverride.Replace("\"", "\\\""));
-        });
+            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
+            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+        }
     }
 }

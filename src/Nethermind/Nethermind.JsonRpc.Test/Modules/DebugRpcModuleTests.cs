@@ -6,6 +6,8 @@ using System.IO.Abstractions;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Execution;
+using FluentAssertions.Json;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -19,6 +21,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Synchronization.ParallelSync;
+using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -164,7 +167,7 @@ public class DebugRpcModuleTests
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","input":"0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"}""",
         """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}"""
     )]
-    public async Task debug_traceCall_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
+    public async Task Debug_traceCall_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
         var transaction = JsonSerializer.Deserialize<object>(transactionJson);
         var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
@@ -201,10 +204,10 @@ public class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        Assert.Multiple(() =>
+        using (new AssertionScope())
         {
-            Assert.That(resultOverrideBefore, Is.EqualTo(resultOverrideAfter), resultOverrideBefore.Replace("\"", "\\\""));
-            Assert.That(resultNoOverride, Is.Not.EqualTo(resultOverrideAfter), resultNoOverride.Replace("\"", "\\\""));
-        });
+            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
+            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+        }
     }
 }

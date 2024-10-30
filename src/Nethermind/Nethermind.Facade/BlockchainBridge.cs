@@ -153,8 +153,9 @@ namespace Nethermind.Facade
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
             CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken), scope);
+            TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, false,
+                callOutputTracer.WithCancellation(cancellationToken));
+
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
@@ -195,12 +196,8 @@ namespace Nethermind.Facade
             using IOverridableTxProcessingScope scope = _processingEnv.BuildAndOverride(header, stateOverride);
 
             EstimateGasTracer estimateGasTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(
-                header,
-                tx,
-                true,
-                estimateGasTracer.WithCancellation(cancellationToken),
-                scope);
+            TransactionResult tryCallResult = TryCallAndRestore(scope, header, tx, true,
+                estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(scope.TransactionProcessor, scope.WorldState, _specProvider, _blocksConfig);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
@@ -215,15 +212,14 @@ namespace Nethermind.Facade
 
         public CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize)
         {
-            CallOutputTracer callOutputTracer = new();
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
                     tx.GetRecipient(tx.IsContractCreation ? _stateReader.GetNonce(header.StateRoot, tx.SenderAddress) : 0), header.GasBeneficiary)
                 : new(header.GasBeneficiary);
 
-            TransactionResult tryCallResult = TryCallAndRestore(header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken),
-                _processingEnv.Build(header.StateRoot!));
+            CallOutputTracer callOutputTracer = new();
+            TransactionResult tryCallResult = TryCallAndRestore(_processingEnv.Build(header.StateRoot!), header, tx, false,
+                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
 
             return new CallOutput
             {
@@ -236,11 +232,11 @@ namespace Nethermind.Facade
         }
 
         private TransactionResult TryCallAndRestore(
+            IOverridableTxProcessingScope scope,
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer,
-            IOverridableTxProcessingScope scope)
+            ITxTracer tracer)
         {
             try
             {
@@ -260,7 +256,7 @@ namespace Nethermind.Facade
             IOverridableTxProcessingScope scope)
         {
             transaction.SenderAddress ??= Address.SystemUser;
-            Hash256? stateRoot = blockHeader.StateRoot!;
+            Hash256 stateRoot = blockHeader.StateRoot!;
 
             if (transaction.Nonce == 0)
             {

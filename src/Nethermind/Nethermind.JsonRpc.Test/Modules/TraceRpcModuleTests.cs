@@ -6,6 +6,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Execution;
+using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -26,6 +28,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -971,7 +974,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_call", transaction, new[] { traceType }, "latest", stateOverride);
 
-        Assert.That(serialized, Is.EqualTo(expectedResult), serialized.Replace("\"", "\\\""));
+        JToken.Parse(serialized).Should().BeEquivalentTo(expectedResult);
     }
 
     [TestCase(
@@ -1003,10 +1006,10 @@ public class TraceRpcModuleTests
         var resultOverrideAfter = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null, stateOverride);
 
-        Assert.Multiple(() =>
+        using (new AssertionScope())
         {
-            Assert.That(resultOverrideBefore, Is.EqualTo(resultOverrideAfter), resultOverrideBefore.Replace("\"", "\\\""));
-            Assert.That(resultNoOverride, Is.Not.EqualTo(resultOverrideAfter), resultNoOverride.Replace("\"", "\\\""));
-        });
+            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
+            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+        }
     }
 }
