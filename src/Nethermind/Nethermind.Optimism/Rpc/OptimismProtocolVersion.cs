@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -152,4 +153,23 @@ public interface IOptimismSuperchainSignalHandler
     Task OnBehindRequired(OptimismProtocolVersion required);
 }
 
+public sealed class LoggingOptimismSuperchainSignalHandler(
+    OptimismProtocolVersion currentVersion,
+    ILogManager logManager
+) : IOptimismSuperchainSignalHandler
+{
+    private readonly ILogger _logger = logManager.GetClassLogger();
+    public OptimismProtocolVersion CurrentVersion { get; init; } = currentVersion;
+
+    public Task OnBehindRecommended(OptimismProtocolVersion recommended)
+    {
+        _logger.Warn($"Current version is behind recommended version {recommended}");
+        return Task.CompletedTask;
+    }
+
+    public Task OnBehindRequired(OptimismProtocolVersion required)
+    {
+        _logger.Error($"Current version is behind required version {required}");
+        return Task.CompletedTask;
+    }
 }
