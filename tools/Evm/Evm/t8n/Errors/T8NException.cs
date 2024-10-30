@@ -7,7 +7,12 @@ namespace Evm.t8n.Errors;
 
 public class T8NException : Exception, IExceptionWithExitCode
 {
-    public T8NException(Exception e, int exitCode) : base(e.Message)
+    public T8NException(Exception e, int exitCode) : base(e.Message, e)
+    {
+        ExitCode = exitCode;
+    }
+
+    public T8NException(Exception e, string message, int exitCode) : base(message, e)
     {
         ExitCode = exitCode;
     }

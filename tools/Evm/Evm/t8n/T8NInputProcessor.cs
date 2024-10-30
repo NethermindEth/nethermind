@@ -76,9 +76,9 @@ public static class T8NInputProcessor
         {
             spec = JsonToEthereumTest.ParseSpec(arguments.StateFork);
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException e)
         {
-            throw new T8NException($"unsupported fork {arguments.StateFork}", T8NErrorCodes.ErrorConfig);
+            throw new T8NException(e, $"unsupported fork {arguments.StateFork}", T8NErrorCodes.ErrorConfig);
         }
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 

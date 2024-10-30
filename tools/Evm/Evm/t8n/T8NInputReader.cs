@@ -60,13 +60,13 @@ public static class T8NInputReader
             var fileContent = File.ReadAllText(filePath);
             return EthereumJsonSerializer.Deserialize<T>(fileContent);
         }
-        catch (FileNotFoundException)
+        catch (FileNotFoundException e)
         {
-            throw new T8NException("failed reading {filePath} file: {description}", T8NErrorCodes.ErrorIO);
+            throw new T8NException(e, "failed reading {filePath} file: {description}", T8NErrorCodes.ErrorIO);
         }
-        catch (JsonException)
+        catch (JsonException e)
         {
-            throw new T8NException($"failed unmarshalling {filePath} file: {description}", T8NErrorCodes.ErrorJson);
+            throw new T8NException(e, $"failed unmarshalling {filePath} file: {description}", T8NErrorCodes.ErrorJson);
         }
     }
 
@@ -79,7 +79,7 @@ public static class T8NInputReader
         }
         catch (Exception e)
         {
-            throw new T8NException(e.Message, T8NErrorCodes.ErrorJson);
+            throw new T8NException(e, T8NErrorCodes.ErrorJson);
         }
     }
 }
