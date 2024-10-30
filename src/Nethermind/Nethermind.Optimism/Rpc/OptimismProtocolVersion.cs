@@ -163,13 +163,13 @@ public sealed class LoggingOptimismSuperchainSignalHandler(
 
     public Task OnBehindRecommended(OptimismProtocolVersion recommended)
     {
-        _logger.Warn($"Current version is behind recommended version {recommended}");
+        _logger.Warn($"Current version {CurrentVersion} is behind recommended version {recommended}");
         return Task.CompletedTask;
     }
 
     public Task OnBehindRequired(OptimismProtocolVersion required)
     {
-        _logger.Error($"Current version is behind required version {required}");
+        _logger.Error($"Current version {CurrentVersion} is behind required version {required}");
         return Task.CompletedTask;
     }
 }
