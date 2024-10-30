@@ -61,13 +61,9 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
     ILogger criticalLogger = GetCriticalLogger();
 
     if (e.ExceptionObject is Exception ex)
-    {
         criticalLogger.Error($"{unhandledError}.", ex);
-    }
     else
-    {
         criticalLogger.Error($"{unhandledError}: {e.ExceptionObject}");
-    }
 };
 
 try
@@ -192,9 +188,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         try
         {
             if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
-            {
                 plugins.Add(plugin);
-            }
         }
         catch (Exception ex)
         {
@@ -219,6 +213,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     catch (Exception ex)
     {
         if (logger.IsError) logger.Error(unhandledError, ex);
+
         processExitSource.Exit(ex is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
     }
 
@@ -243,16 +238,12 @@ void AddConfigurationOptions(CliCommand command)
         configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
     {
         if (configType is null)
-        {
             continue;
-        }
 
         ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
         if (typeLevel is not null && (typeLevel.DisabledForCli || typeLevel.HiddenFromDocs))
-        {
             continue;
-        }
 
         foreach (PropertyInfo propertyInfo in
             configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
@@ -271,9 +262,7 @@ void AddConfigurationOptions(CliCommand command)
             }
 
             if (configItemAttribute?.IsPortOption == true)
-            {
                 ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
-            }
         }
     }
 }
@@ -302,7 +291,7 @@ CliConfiguration ConfigureCli()
                 Commit:     {ProductInfo.Commit}
                 Build date: {ProductInfo.BuildTimestamp:u}
                 Runtime:    {ProductInfo.Runtime}
-                OS:         {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
                 """);
 
             return ExitCodes.Ok;
@@ -339,9 +328,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
-    {
         NLogConfigurator.ConfigureLogLevels(logLevel);
-    }
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
@@ -389,10 +376,10 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     // If configFile is not a path, handle it
     if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
     {
-        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory) ?? "configs";
+        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
+            ?? "configs".GetApplicationResourcePath();
 
-        // If configsDir is rooted, AppContext.BaseDirectory is ignored
-        configFile = Path.Combine(AppContext.BaseDirectory, configsDir, configFile);
+        configFile = Path.Join(configsDir, configFile);
 
         // If the configFile doesn't have an extension, try with supported file extensions
         if (!Path.HasExtension(configFile))
@@ -411,6 +398,10 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
             }
         }
     }
+    else
+    {
+        configFile = configFile.GetApplicationResourcePath();
+    }
 
     // Resolve the full path for logging purposes
     configFile = Path.GetFullPath(configFile);
@@ -426,9 +417,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     var incorrectSettings = configProvider.FindIncorrectSettings();
 
     if (incorrectSettings.Errors.Any())
-    {
         logger.Warn($"Invalid configuration settings:\n{incorrectSettings.ErrorMsg}");
-    }
 
     return configProvider;
 }
@@ -442,6 +431,7 @@ ILogger GetCriticalLogger()
     catch
     {
         if (logger.IsWarn) logger.Warn("File logging failed. Using console logging.");
+
         return logger;
     }
 }
@@ -484,9 +474,7 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
             logger.Info($"{nameof(initConfig.LogDirectory)}: {newLogDirectory}");
 
             if (snapshotConfig.Enabled)
-            {
                 logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {newSnapshotPath}");
-            }
         }
 
         initConfig.BaseDbPath = newDbPath;
