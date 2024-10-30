@@ -57,6 +57,8 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<ValueHash256> CodesToRetrieve { get; set; } = new();
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
+        private ConcurrentDictionary<ValueHash256, Dictionary<ValueHash256, StorageRangePartition>> StorageRangePartitions { get; } = new();
+        private ConcurrentQueue<StorageRangePartition> StorageRangeReadyForRequest { get; } = new();
 
         private readonly Pivot _pivot;
 
@@ -122,6 +124,56 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public bool SetupStoragePartitionsForAccount(PathWithAccount account, ValueHash256 lastStoragePath)
+        {
+            if (StorageRangePartitions.Count > 1)
+                return false;
+            const int partitionCount = 4; //should it be configurable?
+            const int partitionSize = (256 / partitionCount);
+
+            //estimate if worth splitting the range - don't if we are over 50% of tree
+            Hash256 checkPath = new Hash256(Keccak.Zero.Bytes);
+            checkPath.Bytes[0] = (byte)(partitionSize * (partitionCount / 2));
+            if (lastStoragePath > checkPath)
+                return false;
+
+            _logger.Info($"Setup storage range partitions for account {account.Path} | {lastStoragePath}");
+
+            var dict = new Dictionary<ValueHash256, StorageRangePartition>();
+
+            for (var i = 0; i < partitionCount; i++)
+            {
+                Hash256 startingPath = new Hash256(Keccak.Zero.Bytes);
+                startingPath.Bytes[0] = (byte)(i * partitionSize);
+
+                StorageRangePartition partition = new StorageRangePartition();
+                partition.Account = account;
+                partition.StoragePathStart = startingPath;
+                partition.NextStoragePath = lastStoragePath > startingPath ? lastStoragePath : startingPath;
+
+                Hash256 limitPath;
+                if (i == partitionCount - 1)
+                {
+                    limitPath = Keccak.MaxValue;
+                }
+                else
+                {
+                    limitPath = new Hash256(Keccak.Zero.Bytes);
+                    limitPath.Bytes[0] = (byte)((i + 1) * partitionSize);
+
+                    if (lastStoragePath > limitPath)
+                        continue;
+                }
+                partition.StoragePathLimit = limitPath;
+
+                dict[limitPath] = partition;
+                StorageRangeReadyForRequest.Enqueue(partition);
+            }
+
+            StorageRangePartitions[account.Path] = dict;
+            return true;
+        }
+
         public bool CanSync()
         {
             BlockHeader? header = _pivot.GetPivotHeader();
@@ -157,6 +209,10 @@ namespace Nethermind.Synchronization.SnapSync
             else if (ShouldRequestAccountRequests() && AccountRangeReadyForRequest.TryDequeue(out AccountRangePartition partition))
             {
                 nextBatch = CreateAccountRangeRequest(rootHash, partition, blockNumber);
+            }
+            else if (StorageRangeReadyForRequest.TryDequeue(out StorageRangePartition storagePartition))
+            {
+                nextBatch = CreateNextSlowRangeRequest(storagePartition, rootHash, blockNumber);
             }
             else if (TryDequeNextSlotRange(out StorageRange slotRange))
             {
@@ -240,6 +296,26 @@ namespace Nethermind.Synchronization.SnapSync
         {
             slotRange.RootHash = rootHash;
             slotRange.BlockNumber = blockNumber;
+
+            LogRequest($"NextSlotRange:{slotRange.Accounts.Count}");
+
+            return new SnapSyncBatch { StorageRangeRequest = slotRange };
+        }
+
+        private SnapSyncBatch CreateNextSlowRangeRequest(StorageRangePartition slotRangePartition, Hash256 rootHash, long blockNumber)
+        {
+            Interlocked.Increment(ref _activeStorageRequests);
+
+            StorageRange slotRange = new StorageRange()
+            {
+                RootHash = rootHash,
+                BlockNumber = blockNumber,
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { slotRangePartition.Account },
+                LimitHash = slotRangePartition.StoragePathLimit,
+                StartingHash = slotRangePartition.NextStoragePath
+            };
+
+            _logger.Info($"Creating new storage range request from partition: {slotRangePartition.Account.Path} | {slotRangePartition.StoragePathLimit} | {slotRange.StartingHash}");
 
             LogRequest($"NextSlotRange:{slotRange.Accounts.Count}");
 
@@ -344,6 +420,28 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public void EnqueueStorageRange(StorageRange storageRange, ValueHash256 hashLimit)
+        {
+            if (storageRange.Accounts.Count == 1 && StoragesToRetrieve.IsEmpty && NextSlotRange.Count < 3) //only max 2 last storage tries
+            {
+                if (StorageRangePartitions.TryGetValue(storageRange.Accounts[0].Path, out var storageRangePartitions))
+                {
+                    StorageRangePartition partition = storageRangePartitions[hashLimit];
+                    partition.NextStoragePath = storageRange.StartingHash!.Value;
+                    partition.MoreStorageSlotsToRight = storageRange.StartingHash < hashLimit; //only called if last processed batch returned moreChildrenToRight = true, so not checked here
+
+                    if (partition.MoreStorageSlotsToRight)
+                        StorageRangeReadyForRequest.Enqueue(partition);
+
+                    return;
+                }
+                if (SetupStoragePartitionsForAccount(storageRange.Accounts[0], storageRange.StartingHash!.Value))
+                    return;
+            }
+            //if can't split into partitions and execute in parallel - just enqueue next range
+            NextSlotRange.Enqueue(storageRange);
+        }
+
         public void ReportStorageRangeRequestFinished(StorageRange storageRange = null)
         {
             EnqueueStorageRange(storageRange);
@@ -372,7 +470,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsSnapGetRangesFinished()
         {
+            _logger.Trace($"IsSnapGetRangesFinished - {StorageRangeReadyForRequest.IsEmpty} | {StoragesToRetrieve.IsEmpty} | {NextSlotRange.IsEmpty} | {_activeStorageRequests}");
             return AccountRangeReadyForRequest.IsEmpty
+                && StorageRangeReadyForRequest.IsEmpty
                 && StoragesToRetrieve.IsEmpty
                 && NextSlotRange.IsEmpty
                 && CodesToRetrieve.IsEmpty
@@ -468,6 +568,16 @@ namespace Nethermind.Synchronization.SnapSync
             public ValueHash256 AccountPathStart { get; set; } = ValueKeccak.Zero; // Not really needed, but useful
             public ValueHash256 AccountPathLimit { get; set; } = ValueKeccak.MaxValue;
             public bool MoreAccountsToRight { get; set; } = true;
+        }
+
+        //Storage range partition - used to split large storage trie(s) at the very end of snap ranges phase
+        private class StorageRangePartition
+        {
+            public PathWithAccount Account { get; set; }
+            public ValueHash256 NextStoragePath { get; set; } = ValueKeccak.Zero;
+            public ValueHash256 StoragePathStart { get; set; } = ValueKeccak.Zero; // Not really needed, but useful
+            public ValueHash256 StoragePathLimit { get; set; } = ValueKeccak.MaxValue;
+            public bool MoreStorageSlotsToRight { get; set; } = true;
         }
 
         public void Dispose()
