@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.ConsensusRequests;
@@ -46,7 +45,7 @@ public class Block
     )
     { }
 
-    public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
     public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
 

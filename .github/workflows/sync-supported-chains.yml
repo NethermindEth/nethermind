@@ -12,6 +12,10 @@ on:
         description: "Docker image to be used by action"
         default: ""
         required: false
+      network_filter:
+        description: "Usefull for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
+        default: ""
+        required: false    
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -29,7 +33,14 @@ jobs:
           path: nethermind
       - name: Set Matrix
         id: set-matrix
-        run: echo "matrix=$(jq -c . nethermind/scripts/workflow_config/sync_testnets_matrix.json)" >> $GITHUB_OUTPUT
+        run: |
+          matrix=$(cat nethermind/scripts/workflow_config/sync_testnets_matrix.json)
+
+          if [ -n "${{ github.event.inputs.network_filter }}" ]; then
+            matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
+          fi
+
+          echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
 
   create_a_runner:
     needs: [setup-matrix]
@@ -52,13 +63,14 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "create"
-          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
           tags: "core, self-hosted, dynamic"
           organization: "NethermindEth"
           repo_name: "nethermind"
+          blocked_ports: "8545,8546,8551,8552"
   
   sync-chain:
     needs: [setup-matrix, create_a_runner]
@@ -68,7 +80,7 @@ jobs:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
         
     name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
     timeout-minutes: ${{ matrix.config.timeout }}
     
     steps:
@@ -102,6 +114,7 @@ jobs:
         working-directory: sedge
         run: |
           docker_image=""
+          network="${{ matrix.config.network }}"
           
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME=${{ github.ref }}
@@ -117,37 +130,89 @@ jobs:
           
           echo 'Generating sedge docker...'
           ./build/sedge deps install
-          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
-          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.config.network }} \
-          -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} -e nethermind:$docker_image \
-          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
-          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
-          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
-          --el-extra-flag Sync.SnapSync=true \
-          --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+
+          if [[ "$network" == base-* || "$network" == op-* ]]; then
+            if [[ "$network" == *mainnet* ]]; then
+              CONSENSUS_URL="${{ secrets.MAINNET_CONSENSUS_URL }}"
+              EXECUTION_URL="${{ secrets.MAINNET_EXECUTION_URL }}"
+            elif [[ "$network" == *sepolia* ]]; then
+              CONSENSUS_URL="${{ secrets.SEPOLIA_CONSENSUS_URL }}"
+              EXECUTION_URL="${{ secrets.SEPOLIA_EXECUTION_URL }}"
+            else
+              echo "Unknown network"
+              exit 1
+            fi
+
+            if [[ "$network" == base-* ]]; then
+              extra_param="--base"
+            fi
+
+            stripped_network="${network#base-}"
+            stripped_network="${stripped_network#op-}"
+            
+            ./build/sedge generate \
+            --logging none \
+            -p $GITHUB_WORKSPACE/sedge \
+            op-full-node \
+            --op-execution opnethermind:$docker_image \
+            --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
+            --map-all \
+            --network $stripped_network \
+            --consensus-url $CONSENSUS_URL \
+            --execution-api-url $EXECUTION_URL \
+            $extra_param
+          else
+            ./build/sedge generate \
+            --logging none \
+            -p $GITHUB_WORKSPACE/sedge \
+            full-node \
+            -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
+            -e nethermind:$docker_image \
+            --map-all \
+            --no-mev-boost \
+            --no-validator \
+            --network ${{ matrix.config.network }} \
+            --el-extra-flag Sync.NonValidatorNode=true \
+            --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+            --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+            --el-extra-flag Sync.SnapSync=true \
+            --checkpoint-sync-url=${{ matrix.config.checkpoint-sync-url }}
+          fi          
+          
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
       - name: Wait for ${{ matrix.config.network }} to sync
         id: wait
-        timeout-minutes: 180
         run: |
           declare -A bad_logs
+          declare -A good_logs
+          declare -A required_count
+          
           bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
-      
-          declare -A good_logs
-          good_logs["Synced Chain Head"]=0
+
           good_logs["Processed"]=0
-      
-          declare -A required_count
-          required_count["Synced Chain Head"]=20
-          required_count["Processed"]=20      
+
+          required_count["Processed"]=20
+
+          network="${{ matrix.config.network }}"
+          if [[ "$network" != "joc-mainnet" && "$network" != "joc-testnet" && "$network" != "linea-mainnet" && "$network" != "linea-sepolia" ]]; then
+            good_logs["Synced Chain Head"]=0
+            required_count["Synced Chain Head"]=20
+          fi
             
           counter=0
           found_bad_log=false
-      
-          docker logs -f sedge-execution-client | while read -r line; do
+
+          if [[ "$network" == base-* || "$network" == op-* ]]; then
+            container_name="sedge-execution-op-l2-client"
+          else
+            container_name="sedge-execution-client"
+          fi
+          
+          docker logs -f "$container_name" | while read -r line; do
             echo "$line"
           
             if [[ "$line" == *"All done"* ]]; then
@@ -195,9 +260,32 @@ jobs:
           done
           
       - name: Get Consensus Logs
-        if: always()
+        if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
         run: |
-          docker logs sedge-consensus-client      
+          network="${{ matrix.config.network }}"
+          if [[ "$network" == base-* || "$network" == op-* ]]; then
+            docker logs sedge-consensus-op-l2-client
+          else
+            docker logs sedge-consensus-client      
+          fi
+          
+      - name: Check size of DB 
+        run: |
+          du -h $GITHUB_WORKSPACE/sedge
+
+      - name: Destroy VM
+        if: always()
+        id: run-linode-action
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
 
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
@@ -207,20 +295,31 @@ jobs:
       matrix:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
     runs-on: ubuntu-latest
-    steps:    
-      - name: Destroy a Runner
-        id: run-linode-action
+    steps:
+      - name: Destroy VM (if initialization failed)
         uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        if: ${{ failure() && needs.create_a_runner.result == 'failure' }}
         with:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          action: "destroy"
-          runner_label: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
-          search_phrase: ${{ matrix.config.network }}-${{ matrix.config.cl }}-${{ github.run_id }}
+          action: "destroy-machine"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
           
+      - name: Destroy Runner
+        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
+        with:
+          linode_token: ${{ secrets.LINODE_TOKEN }}
+          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+          action: "destroy-runner"
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
+          organization: "NethermindEth"
+          repo_name: "nethermind"
   trigger_tests:
     needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
     if: success()
@@ -235,7 +334,7 @@ jobs:
           repositories: "nethermind,post-merge-smoke-tests"
           
       - name: Trigger notification action on test repo
-        if: github.event.workflow_run.head_branch == 'master' || startsWith(github.event.workflow_run.head_branch, 'release/')
+        if: startsWith(github.event.workflow_run.head_branch, 'release/')
         continue-on-error: true
         uses: benc-uk/workflow-dispatch@v1
         with:

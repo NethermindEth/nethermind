@@ -6,6 +6,8 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -57,7 +59,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            IDb metadataDb,
+            [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager)
             : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
         {

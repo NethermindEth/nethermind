@@ -19,6 +19,7 @@ namespace Nethermind.Specs.Test
         {
             _spec = spec;
             IsEip3607Enabled = _spec.IsEip3607Enabled;
+            BlockReward = _spec.BlockReward;
         }
 
         public string Name => "OverridableReleaseSpec";
@@ -31,7 +32,7 @@ namespace Nethermind.Specs.Test
 
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public UInt256 BlockReward => _spec.BlockReward;
+        public UInt256 BlockReward { get; set; }
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
@@ -114,6 +115,14 @@ namespace Nethermind.Specs.Test
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsEip7742Enabled => _spec.IsEip7742Enabled;
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
+
+        private bool? _isOntakeEnabled;
+        public bool IsOntakeEnabled
+        {
+            get => _isOntakeEnabled ?? _spec.IsOntakeEnabled;
+            set => _isOntakeEnabled = value;
+        }
+
         public bool IsEip3607Enabled { get; set; }
 
         public bool IsEip158IgnoredAccount(Address address) => _spec.IsEip158IgnoredAccount(address);

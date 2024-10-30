@@ -7,7 +7,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
-    using Nethermind.Int256;
     public class AbiInt : AbiType
     {
         private const int MaxSize = 256;

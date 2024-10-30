@@ -4,11 +4,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Multiformats.Address;
 
 namespace Nethermind.Shutter;
 
 public interface IShutterP2P
 {
-    Task Start(Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null);
+    Task Start(Multiaddress[] bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null);
     ValueTask DisposeAsync();
 }

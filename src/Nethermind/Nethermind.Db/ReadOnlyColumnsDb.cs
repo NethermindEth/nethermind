@@ -44,5 +44,7 @@ namespace Nethermind.Db
                 readOnlyColumn.Value.Dispose();
             }
         }
+
+        public void Flush(bool onlyWal = false) { }
     }
 }
