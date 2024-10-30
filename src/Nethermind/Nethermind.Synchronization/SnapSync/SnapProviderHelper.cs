@@ -21,7 +21,6 @@ namespace Nethermind.Synchronization.SnapSync
     {
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
             StateTree tree,
-            long blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
@@ -81,7 +80,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
-            long blockNumber,
             in ValueHash256? startingHash,
             IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256 expectedRootHash,

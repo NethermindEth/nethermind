@@ -160,6 +160,6 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
         byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
-        _ = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+        _ = SnapProviderHelper.AddAccountRange(localStateTree, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
     }
 }

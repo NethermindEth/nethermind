@@ -25,7 +25,6 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapProvider : ISnapProvider
     {
-        private readonly ObjectPool<ITrieStore> _trieStorePool;
         private readonly IDb _codeDb;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -34,12 +33,13 @@ namespace Nethermind.Synchronization.SnapSync
 
         // This is actually close to 97% effective.
         private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
+        private readonly INodeStorage _nodeStorage;
 
         public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(nodeStorage, logManager));
+            _nodeStorage = nodeStorage;
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -91,52 +91,45 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
-            ITrieStore store = _trieStorePool.Get();
-            try
+
+            StateTree tree = new(new RawTrieStore(_nodeStorage, null), _logManager);
+
+            ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
+
+            (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
+                SnapProviderHelper.AddAccountRange(tree, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+
+            if (result == AddRangeResult.OK)
             {
-                StateTree tree = new(store.GetTrieStore(null), _logManager);
-
-                ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
-
-                (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
-
-                if (result == AddRangeResult.OK)
+                foreach (PathWithAccount item in CollectionsMarshal.AsSpan(accountsWithStorage))
                 {
-                    foreach (PathWithAccount item in CollectionsMarshal.AsSpan(accountsWithStorage))
-                    {
-                        _progressTracker.EnqueueAccountStorage(item);
-                    }
-
-
-                    using ArrayPoolList<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
-                    {
-                        if (_codeExistKeyCache.Get(code)) return false;
-
-                        bool exist = _codeDb.KeyExists(code.Bytes);
-                        if (exist) _codeExistKeyCache.Set(code);
-                        return !exist;
-                    }).ToPooledList(codeHashes.Count);
-
-                    _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
-
-                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
-                }
-                else if (result == AddRangeResult.MissingRootHashInProofs)
-                {
-                    _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
-                }
-                else if (result == AddRangeResult.DifferentRootHash)
-                {
-                    _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                    _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                return result;
+
+                using ArrayPoolList<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                {
+                    if (_codeExistKeyCache.Get(code)) return false;
+
+                    bool exist = _codeDb.KeyExists(code.Bytes);
+                    if (exist) _codeExistKeyCache.Set(code);
+                    return !exist;
+                }).ToPooledList(codeHashes.Count);
+
+                _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+
+                _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
             }
-            finally
+            else if (result == AddRangeResult.MissingRootHashInProofs)
             {
-                _trieStorePool.Return(store);
+                _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
             }
+            else if (result == AddRangeResult.DifferentRootHash)
+            {
+                _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+            }
+
+            return result;
         }
 
         public AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response)
@@ -168,7 +161,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     PathWithAccount account = request.Accounts[i];
-                    result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs);
+                    result = AddStorageRange(account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs);
 
                     slotCount += responses[i].Count;
                 }
@@ -192,53 +185,44 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
+        public AddRangeResult AddStorageRange(PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
-            ITrieStore store = _trieStorePool.Get();
-            StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
-            try
-            {
-                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+            StorageTree tree = new(new RawTrieStore(_nodeStorage, pathWithAccount.Path.ToCommitment()), _logManager);
+            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, startingHash, slots, expectedRootHash, proofs);
 
-                if (result == AddRangeResult.OK)
+            if (result == AddRangeResult.OK)
+            {
+                if (moreChildrenToRight)
                 {
-                    if (moreChildrenToRight)
+                    StorageRange range = new()
                     {
-                        StorageRange range = new()
-                        {
-                            Accounts = new ArrayPoolList<PathWithAccount>(1) { pathWithAccount },
-                            StartingHash = slots[^1].Path
-                        };
+                        Accounts = new ArrayPoolList<PathWithAccount>(1) { pathWithAccount },
+                        StartingHash = slots[^1].Path
+                    };
 
-                        _progressTracker.EnqueueStorageRange(range);
-                    }
+                    _progressTracker.EnqueueStorageRange(range);
                 }
-                else if (result == AddRangeResult.MissingRootHashInProofs)
-                {
-                    _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
-
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
-                }
-                else if (result == AddRangeResult.DifferentRootHash)
-                {
-                    _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
-
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
-                }
-
-                return result;
             }
-            finally
+            else if (result == AddRangeResult.MissingRootHashInProofs)
             {
-                _trieStorePool.Return(store);
+                _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
+
+                _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
+            else if (result == AddRangeResult.DifferentRootHash)
+            {
+                _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+
+                _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+            }
+
+            return result;
         }
 
         public void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response)
         {
             int respLength = response.Count;
-            ITrieStore store = _trieStorePool.Get();
-            IScopedTrieStore stateStore = store.GetTrieStore(null);
+            IScopedTrieStore stateStore = new RawTrieStore(_nodeStorage, null);
             try
             {
                 for (int reqi = 0; reqi < request.Paths.Count; reqi++)
@@ -297,7 +281,6 @@ namespace Nethermind.Synchronization.SnapSync
             finally
             {
                 response.Dispose();
-                _trieStorePool.Return(store);
             }
         }
 
@@ -360,32 +343,6 @@ namespace Nethermind.Synchronization.SnapSync
         public void Dispose()
         {
             _codeExistKeyCache.Clear();
-        }
-
-        private class TrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
-        {
-            private readonly INodeStorage _stateDb;
-            private readonly ILogManager _logManager;
-
-            public TrieStorePoolPolicy(INodeStorage stateDb, ILogManager logManager)
-            {
-                _stateDb = stateDb;
-                _logManager = logManager;
-            }
-
-            public ITrieStore Create()
-            {
-                return new TrieStore(
-                    _stateDb,
-                    Nethermind.Trie.Pruning.No.Pruning,
-                    Persist.EveryBlock,
-                    _logManager);
-            }
-
-            public bool Return(ITrieStore obj)
-            {
-                return true;
-            }
         }
     }
 }

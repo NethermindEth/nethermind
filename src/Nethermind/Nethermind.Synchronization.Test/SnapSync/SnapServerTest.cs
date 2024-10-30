@@ -270,7 +270,7 @@ public class SnapServerTest
 
         try
         {
-            AddRangeResult result = snapProvider.AddStorageRange(1, TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, Keccak.Zero,
+            AddRangeResult result = snapProvider.AddStorageRange(TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, Keccak.Zero,
                 storageSlots[0], proofs);
 
             result.Should().Be(AddRangeResult.OK);
@@ -309,7 +309,7 @@ public class SnapServerTest
 
             try
             {
-                AddRangeResult result = snapProvider.AddStorageRange(1, TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, startRange,
+                AddRangeResult result = snapProvider.AddStorageRange(TestItem.Tree.AccountsWithPaths[0], inputStorageTree.RootHash, startRange,
                     storageSlots[0], proofs);
 
                 result.Should().Be(AddRangeResult.OK);
