@@ -131,6 +131,20 @@ public class PersistentReceiptStorageTests
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockNumPrefixed].Should().NotBeNull();
     }
 
+    [Test]
+    public void Adds_should_forward_write_flags()
+    {
+        (Block block, _) = InsertBlock(writeFlags: WriteFlags.DisableWAL);
+
+        Span<byte> blockNumPrefixed = stackalloc byte[40];
+        block.Number.ToBigEndianByteArray().CopyTo(blockNumPrefixed); // TODO: We don't need to create an array here...
+        block.Hash!.Bytes.CopyTo(blockNumPrefixed[8..]);
+
+        TestMemDb blockDb = (TestMemDb)_receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
+
+        blockDb.KeyWasWrittenWithFlags(blockNumPrefixed.ToArray(), WriteFlags.DisableWAL);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_receipts_for_block_without_recovering_sender()
     {
@@ -476,10 +490,10 @@ public class PersistentReceiptStorageTests
         return (block, receipts);
     }
 
-    private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null)
+    private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null, bool isFinalized = false, long? headNumber = null, WriteFlags writeFlags = WriteFlags.None)
     {
         (block, TxReceipt[] receipts) = PrepareBlock(block, isFinalized, headNumber);
-        _storage.Insert(block, receipts);
+        _storage.Insert(block, receipts, writeFlags: writeFlags);
         _receiptsRecovery.TryRecover(new ReceiptRecoveryBlock(block), receipts);
 
         return (block, receipts);
