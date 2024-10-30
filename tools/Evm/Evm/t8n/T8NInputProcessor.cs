@@ -18,7 +18,7 @@ public static class T8NInputProcessor
 {
     private static readonly TxDecoder TxDecoder = TxDecoder.Instance;
 
-    public static T8NTest Process(T8NCommandArguments arguments)
+    public static T8NTest ProcessInputAndConvertToT8NTest(T8NCommandArguments arguments)
     {
         InputData inputData = T8NInputReader.ReadInputData(arguments);
 
