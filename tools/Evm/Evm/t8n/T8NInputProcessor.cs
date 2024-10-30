@@ -22,7 +22,7 @@ public static class T8NInputProcessor
     {
         InputData inputData = T8NInputReader.ReadInputData(arguments);
 
-        if (inputData.Env == null)
+        if (inputData.Env is null)
         {
             throw new T8NException("Env is not provided", T8NErrorCodes.ErrorIO);
         }
@@ -76,9 +76,9 @@ public static class T8NInputProcessor
         {
             spec = JsonToEthereumTest.ParseSpec(arguments.StateFork);
         }
-        catch (NotSupportedException e)
+        catch (NotSupportedException)
         {
-            throw new T8NException(e, T8NErrorCodes.ErrorConfig);
+            throw new T8NException($"unsupported fork {arguments.StateFork}", T8NErrorCodes.ErrorConfig);
         }
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 

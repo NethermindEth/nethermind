@@ -36,7 +36,7 @@ public class TransactionJson
         TransactionBuilder<Transaction> transactionBuilder = new();
 
         transactionBuilder.WithValue(Value);
-        if (Input != null)
+        if (Input is not null)
         {
             transactionBuilder.WithData(Input);
         }
@@ -45,7 +45,7 @@ public class TransactionJson
         transactionBuilder.WithGasLimit(Gas);
         transactionBuilder.WithType(Type);
         transactionBuilder.WithGasPrice(GasPrice);
-        if (AccessList != null)
+        if (AccessList is not null)
         {
             AccessList.Builder builder = new();
             JsonToEthereumTest.ProcessAccessList(AccessList, builder);
@@ -65,7 +65,7 @@ public class TransactionJson
         {
             transactionBuilder.WithChainId(ChainId.Value);
         }
-        if (SecretKey != null)
+        if (SecretKey is not null)
         {
             var privateKey = new PrivateKey(SecretKey);
             transactionBuilder.WithSenderAddress(privateKey.Address);

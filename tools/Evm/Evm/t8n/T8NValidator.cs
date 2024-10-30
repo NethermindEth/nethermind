@@ -24,7 +24,7 @@ public static class T8NValidator
     private static void ApplyLondonChecks(EnvJson env, IReleaseSpec spec)
     {
         if (spec is not London) return;
-        if (env.CurrentBaseFee != null) return;
+        if (env.CurrentBaseFee is not null) return;
 
         if (!env.ParentBaseFee.HasValue || env.CurrentNumber == 0)
         {
@@ -40,7 +40,7 @@ public static class T8NValidator
     private static void ApplyShanghaiChecks(EnvJson env, IReleaseSpec spec)
     {
         if (spec is not Shanghai) return;
-        if (env.Withdrawals == null)
+        if (env.Withdrawals is null)
         {
             throw new T8NException("Shanghai config but missing 'withdrawals' in env section",
                 T8NErrorCodes.ErrorConfig);
@@ -55,7 +55,7 @@ public static class T8NValidator
             return;
         }
 
-        if (env.ParentBeaconBlockRoot == null)
+        if (env.ParentBeaconBlockRoot is null)
         {
             throw new T8NException("post-cancun env requires parentBeaconBlockRoot to be set",
                 T8NErrorCodes.ErrorConfig);
@@ -66,7 +66,7 @@ public static class T8NValidator
     {
         if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
         {
-            if (env.CurrentRandom == null)
+            if (env.CurrentRandom is null)
                 throw new T8NException("post-merge requires currentRandom to be defined in env",
                     T8NErrorCodes.ErrorConfig);
             if (env.CurrentDifficulty?.IsZero ?? false)
@@ -75,7 +75,7 @@ public static class T8NValidator
             return;
         }
 
-        if (env.CurrentDifficulty != null) return;
+        if (env.CurrentDifficulty is not null) return;
         if (!env.ParentDifficulty.HasValue)
         {
             throw new T8NException(

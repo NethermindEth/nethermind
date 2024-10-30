@@ -39,43 +39,43 @@ public class T8NCommandArguments
         };
 
         var inputAlloc = parseResult.GetValueForOption(T8NCommandOptions.InputAllocOpt);
-        if (inputAlloc != null)
+        if (inputAlloc is not null)
         {
             arguments.InputAlloc = inputAlloc;
         }
 
         var inputEnv = parseResult.GetValueForOption(T8NCommandOptions.InputEnvOpt);
-        if (inputEnv != null)
+        if (inputEnv is not null)
         {
             arguments.InputEnv = inputEnv;
         }
 
         var inputTxs = parseResult.GetValueForOption(T8NCommandOptions.InputTxsOpt);
-        if (inputTxs != null)
+        if (inputTxs is not null)
         {
             arguments.InputTxs = inputTxs;
         }
 
         var outputAlloc = parseResult.GetValueForOption(T8NCommandOptions.OutputAllocOpt);
-        if (outputAlloc != null)
+        if (outputAlloc is not null)
         {
             arguments.OutputAlloc = outputAlloc;
         }
 
         var outputResult = parseResult.GetValueForOption(T8NCommandOptions.OutputResultOpt);
-        if (outputResult != null)
+        if (outputResult is not null)
         {
             arguments.OutputResult = outputResult;
         }
 
         var stateFork = parseResult.GetValueForOption(T8NCommandOptions.StateForkOpt);
-        if (stateFork != null)
+        if (stateFork is not null)
         {
             arguments.StateFork = stateFork;
         }
 
         var stateReward = parseResult.GetValueForOption(T8NCommandOptions.StateRewardOpt);
-        if (stateReward != null)
+        if (stateReward is not null)
         {
             arguments.StateReward = stateReward;
         }

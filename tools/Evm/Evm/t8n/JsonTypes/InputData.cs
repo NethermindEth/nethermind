@@ -18,12 +18,12 @@ public class InputData
     public Transaction[] GetTransactions(TxDecoder decoder)
     {
         Transaction[] transactions = [];
-        if (TxRlp != null)
+        if (TxRlp is not null)
         {
             RlpStream rlp = new(Bytes.FromHexString(TxRlp));
             transactions = decoder.DecodeArray(rlp);
         }
-        else if (Txs != null)
+        else if (Txs is not null)
         {
             transactions = Txs.Select(txInfo => txInfo.ConvertToTx()).ToArray();
         }

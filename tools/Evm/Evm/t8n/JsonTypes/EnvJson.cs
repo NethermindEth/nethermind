@@ -34,7 +34,7 @@ public class EnvJson
 
     public Hash256? GetCurrentRandomHash256()
     {
-        if (CurrentRandom == null) return null;
+        if (CurrentRandom is null) return null;
 
         Span<byte> bytes = stackalloc byte[32];
         CurrentRandom?.ToBigEndian(bytes);
