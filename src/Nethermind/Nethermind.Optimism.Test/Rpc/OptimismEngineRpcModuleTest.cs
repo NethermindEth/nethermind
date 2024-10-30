@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FluentAssertions;
+using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Optimism.Rpc;
 using NSubstitute;
@@ -75,5 +77,22 @@ public class OptimismEngineRpcModuleTest
         await handler.Received(testCase.behindRecommended ? 1 : 0).OnBehindRecommended();
 
         await handler.Received(testCase.behindRequired ? 1 : 0).OnBehindRequired();
+    }
+
+    [Test]
+    public async Task SignalSuperchainV1_ReturnsCurrentVersion()
+    {
+        var current = new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0);
+        var signal = new OptimismSuperchainSignal(
+            recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
+            required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0));
+
+        var handler = Substitute.For<IOptimismSuperchainSignalHandler>();
+        handler.CurrentVersion.Returns(current);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
+
+        ResultWrapper<OptimismProtocolVersion> result = await rpcModule.engine_signalSuperchainV1(signal);
+
+        result.Data.Should().Be(current);
     }
 }
