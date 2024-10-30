@@ -58,7 +58,7 @@ public class DebugRpcModuleTests
                 configProvider,
                 blockchain.SpecProvider,
                 syncModeSelector,
-                new BlockStore(blockchain.BlocksDb),
+                new BadBlockStore(blockchain.BlocksDb, 100),
                 new FileSystem(),
                 blockchain.LogManager
             );
