@@ -94,7 +94,7 @@ public class TrieNodeTests
     public void When_resolving_an_unknown_node_without_rlp_trie_exception_should_be_thrown()
     {
         TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-        Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
+        Assert.Throws<TrieNodeException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
     }
 
     [Test]

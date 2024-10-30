@@ -62,7 +62,7 @@ public class CopyTreeVisitorTests
         clonedDb.Values.Should().BeEquivalentTo(values);
 
         clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
-        trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);
+        trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead | ReadFlags.MustRead);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
