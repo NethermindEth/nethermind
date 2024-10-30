@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
-
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.Shutter.Config;
@@ -19,6 +18,8 @@ public class ShutterValidatorsInfo
 
     private Dictionary<ulong, byte[]>? _indexToPubKeyBytes;
     private readonly Dictionary<ulong, long[]> _indexToPubKey = [];
+    private ulong _minIndex = ulong.MaxValue;
+    private ulong _maxIndex = ulong.MinValue;
 
     public void Load(string fp)
     {
@@ -37,12 +38,19 @@ public class ShutterValidatorsInfo
                 throw new ShutterValidatorsInfoException($"Validator info file contains invalid public key with index {index}.");
             }
 
+            _minIndex = Math.Min(_minIndex, index);
+            _maxIndex = Math.Max(_maxIndex, index + 1);
+
             _indexToPubKey.Add(index, pk.Point.ToArray());
         }
     }
 
     public bool ContainsIndex(ulong index)
         => _indexToPubKeyBytes!.ContainsKey(index);
+
+    // non inclusive of end index
+    public bool MayContainIndexInRange(ulong startIndex, ulong endIndex)
+        => (endIndex <= _maxIndex && endIndex > _minIndex) || (startIndex < _maxIndex && startIndex >= _minIndex);
 
     public G1Affine GetPubKey(ulong index)
         => new(_indexToPubKey[index]);

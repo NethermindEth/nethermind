@@ -11,11 +11,12 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using System.Collections.Generic;
 using Nethermind.Core.Extensions;
-using Update = (byte[] Message, byte[] Signature);
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using System.Linq;
 using System.Runtime.CompilerServices;
+
+using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
 
@@ -109,6 +110,13 @@ public class ValidatorRegistryContract(
         ulong startValidatorIndex = msg.StartValidatorIndex;
         ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count;
 
+        // skip validator indices that are definitely not in validators info file
+        if (!validatorsInfo.MayContainIndexInRange(startValidatorIndex, endValidatorIndex))
+        {
+            err = "";
+            return false;
+        }
+
         if (msg.Count == 0)
         {
             err = "Registration message has zero registration keys.";
@@ -130,23 +138,6 @@ public class ValidatorRegistryContract(
         if (!msg.ContractAddress.SequenceEqual(ContractAddress!.Bytes))
         {
             err = $"Registration message contains an invalid contract address ({msg.ContractAddress.ToHexString()}) should be {ContractAddress}.";
-            return false;
-        }
-
-        // only check validators in info file
-        bool skip = true;
-        for (ulong v = msg.StartValidatorIndex; v < endValidatorIndex; v++)
-        {
-            if (validatorsInfo.ContainsIndex(v))
-            {
-                skip = false;
-                break;
-            }
-        }
-
-        if (skip)
-        {
-            err = "";
             return false;
         }
 
