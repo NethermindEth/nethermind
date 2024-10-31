@@ -16,13 +16,12 @@ public class TaikoExecutionPayload : ExecutionPayload
     public Hash256? TxHash { get; set; } = null;
 
 
-    private byte[][]? _encodedTransactions;
-    public new byte[][]? Transactions
+    public byte[][]? TxList
     {
-        get { return _encodedTransactions; }
+        get { return _encodedTransactions is { Length : 0 } ? null : _encodedTransactions; }
         set
         {
-            _encodedTransactions = value;
+            _encodedTransactions = value ?? [];
             _transactions = null;
         }
     }
