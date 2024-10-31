@@ -22,7 +22,8 @@ namespace Nethermind.Synchronization.Test;
 
 public class SynchronizerModuleTests
 {
-    public IContainer CreateTestContainer() {
+    public IContainer CreateTestContainer()
+    {
         ITreeSync treeSync = Substitute.For<ITreeSync>();
         IStateReader stateReader = Substitute.For<IStateReader>();
         IBlockProcessingQueue blockQueue = Substitute.For<IBlockProcessingQueue>();
