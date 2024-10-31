@@ -22,13 +22,14 @@ namespace Nethermind.Consensus.Ethash
 {
     public class NethDevPlugin : IConsensusPlugin
     {
+        public const string NethDev = "NethDev";
         private INethermindApi? _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
-        public string Name => "NethDev";
+        public string Name => NethDev;
 
-        public string Description => "NethDev (Spaceneth)";
+        public string Description => $"{NethDev} (Spaceneth)";
 
         public string Author => "Nethermind";
 
@@ -106,7 +107,7 @@ namespace Nethermind.Consensus.Ethash
             return blockProducer;
         }
 
-        public string SealEngineType => "NethDev";
+        public string SealEngineType => NethDev;
 
         public IBlockProducerRunner CreateBlockProducerRunner()
         {

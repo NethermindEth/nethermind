@@ -9,17 +9,6 @@ namespace Nethermind.Taiko;
 
 public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => "Taiko";
-    public string? SealEngineType => "Taiko";
-    public void ApplyToChainSpec(ChainSpec chainSpec)
-    {
-    }
-
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-    }
-
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
-    {
-    }
+    public string? EngineName => TaikoPlugin.Taiko;
+    public string? SealEngineType => TaikoPlugin.Taiko;
 }

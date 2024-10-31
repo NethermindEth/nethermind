@@ -10,24 +10,9 @@ namespace Nethermind.Consensus.Clique;
 
 public class CliqueChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => "Clique";
-    public string? SealEngineType => "Clique";
-
+    public string? EngineName => SealEngineType;
+    public string? SealEngineType => Core.SealEngineType.Clique;
     public ulong Epoch { get; set; }
-
     public ulong Period { get; set; }
-
     public UInt256? Reward { get; set; } = UInt256.Zero;
-
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-    }
-
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
-    {
-    }
-
-    public void ApplyToChainSpec(ChainSpec chainSpec)
-    {
-    }
 }

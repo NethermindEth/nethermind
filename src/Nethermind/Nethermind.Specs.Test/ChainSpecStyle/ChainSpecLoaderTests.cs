@@ -88,7 +88,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo("Ethash"), "engine");
+        Assert.That(chainSpec.SealEngineType, Is.EqualTo(EthashPlugin.Ethash), "engine");
 
         chainSpec.LondonBlockNumber.Should().Be(0L);
         chainSpec.ShanghaiTimestamp.Should().Be(1677557088);

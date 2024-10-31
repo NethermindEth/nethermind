@@ -5,6 +5,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
@@ -16,11 +17,8 @@ using Nethermind.Core;
 
 public class ChainSpecParametersProvider : IChainSpecParametersProvider
 {
-    private readonly Dictionary<string, JsonElement> _chainSpecParameters =
-        new(StringComparer.InvariantCultureIgnoreCase);
-
+    private readonly Dictionary<string, JsonElement> _chainSpecParameters;
     private readonly Dictionary<Type, IChainSpecEngineParameters> _instances = new();
-
     private readonly IJsonSerializer _jsonSerializer;
 
     public string SealEngineType { get; }
@@ -34,7 +32,7 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
         SealEngineType = CalculateSealEngineType();
     }
 
-    string CalculateSealEngineType()
+    private string CalculateSealEngineType()
     {
         string? result = null;
         foreach (IChainSpecEngineParameters item in _instances.Values)
@@ -50,33 +48,23 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
             }
         }
 
-        if (result is null)
-        {
-            throw new InvalidOperationException("No seal engine in chain spec");
-        }
-
-        return result;
+        return result ?? throw new InvalidOperationException("No seal engine in chain spec");
     }
 
     private void InitializeInstances()
     {
-        Type type = typeof(IChainSpecEngineParameters);
-        IEnumerable<Type> types = TypeDiscovery.FindNethermindBasedTypes(type).Where(x => x.IsClass);
-        foreach (Type @class in types)
+        IEnumerable<Type> types = TypeDiscovery.FindNethermindBasedTypes(typeof(IChainSpecEngineParameters)).Where(x => x.IsClass);
+        foreach (Type type in types)
         {
-            IChainSpecEngineParameters instance = (IChainSpecEngineParameters)Activator.CreateInstance(@class);
-            if (!_chainSpecParameters.ContainsKey(instance.EngineName)) continue;
-
-            var deserialized = _jsonSerializer.Deserialize(_chainSpecParameters[instance.EngineName].ToString(), @class);
-
-            _instances[@class] = (IChainSpecEngineParameters)deserialized;
+            IChainSpecEngineParameters instance = (IChainSpecEngineParameters)Activator.CreateInstance(type)!;
+            if (_chainSpecParameters.TryGetValue(instance.EngineName!, out JsonElement json))
+            {
+                _instances[type] = (IChainSpecEngineParameters)_jsonSerializer.Deserialize(json.ToString(), type);
+            }
         }
     }
 
     public IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters => _instances.Values;
 
-    public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters
-    {
-        return (T)_instances[typeof(T)];
-    }
+    public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters => (T)_instances[typeof(T)];
 }

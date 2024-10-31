@@ -16,13 +16,13 @@ namespace Nethermind.Consensus.Ethash;
 
 public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => "Ethash";
-    public string? SealEngineType => "Ethash";
+    public string? EngineName => SealEngineType;
+    public string? SealEngineType => Core.SealEngineType.Ethash;
 
     public long HomesteadTransition { get; set; } = 0;
     public long? DaoHardforkTransition { get; set; }
     public Address DaoHardforkBeneficiary { get; set; }
-    public Address[] DaoHardforkAccounts { get; set; } = Array.Empty<Address>();
+    public Address[] DaoHardforkAccounts { get; set; } = [];
     public long? Eip100bTransition { get; set; }
     public long? FixedDifficulty { get; set; }
     public long DifficultyBoundDivisor { get; set; } = 0x0800;
@@ -37,10 +37,12 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {
-        foreach (KeyValuePair<long, long> bombDelay in DifficultyBombDelays ??
-                                                       Enumerable.Empty<KeyValuePair<long, long>>())
+        if (DifficultyBombDelays is not null)
         {
-            blockNumbers.Add(bombDelay.Key);
+            foreach ((long blockNumber, _) in DifficultyBombDelays)
+            {
+                blockNumbers.Add(blockNumber);
+            }
         }
 
         if (BlockReward is not null)
@@ -69,26 +71,28 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
 
     private void SetDifficultyBombDelays(ReleaseSpec spec, long startBlock)
     {
-        foreach (KeyValuePair<long, UInt256> blockReward in BlockReward ??
-                                                            Enumerable.Empty<KeyValuePair<long, UInt256>>())
+        if (BlockReward is not null)
         {
-            if (blockReward.Key <= startBlock)
+            foreach (KeyValuePair<long, UInt256> blockReward in BlockReward)
             {
-                spec.BlockReward = blockReward.Value;
+                if (blockReward.Key <= startBlock)
+                {
+                    spec.BlockReward = blockReward.Value;
+                }
             }
         }
 
-        foreach (KeyValuePair<long, long> bombDelay in DifficultyBombDelays ??
-                                                       Enumerable.Empty<KeyValuePair<long, long>>())
+        if (DifficultyBombDelays is not null)
         {
-            if (bombDelay.Key <= startBlock)
+            foreach (KeyValuePair<long, long> bombDelay in DifficultyBombDelays)
             {
-                spec.DifficultyBombDelay += bombDelay.Value;
+                if (bombDelay.Key <= startBlock)
+                {
+                    spec.DifficultyBombDelay += bombDelay.Value;
+                }
             }
         }
     }
-
-
 
     public void ApplyToChainSpec(ChainSpec chainSpec)
     {

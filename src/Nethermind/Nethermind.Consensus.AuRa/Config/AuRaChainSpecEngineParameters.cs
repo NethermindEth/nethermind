@@ -19,7 +19,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string? EngineName => "AuthorityRound";
-    public string? SealEngineType => "AuRa";
+    public string? SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
     public SortedDictionary<long, long> StepDuration { get; set; }
@@ -60,14 +60,6 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public AuRaParameters.Validator Validators
     {
         get => _validators ??= LoadValidator(_validatorsJson);
-    }
-
-    public void ApplyToChainSpec(ChainSpec chainSpec)
-    {
-    }
-
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)

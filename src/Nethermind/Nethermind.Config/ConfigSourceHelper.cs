@@ -50,12 +50,12 @@ namespace Nethermind.Config
                     {
                         valueString = valueString.Trim().RemoveStart('[').RemoveEnd(']');
                         var valueItems = valueString.Split(',').Select(s => s.Trim()).ToArray();
-                        var collection = valueType.IsGenericType
+                        IList collection = (valueType.IsGenericType
                             ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
-                            : (IList)Activator.CreateInstance(valueType, valueItems.Length);
+                            : (IList)Activator.CreateInstance(valueType, valueItems.Length))!;
 
                         var i = 0;
-                        foreach (var valueItem in valueItems)
+                        foreach (string valueItem in valueItems)
                         {
                             string item = valueItem;
                             if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
@@ -98,16 +98,10 @@ namespace Nethermind.Config
             }
         }
 
-        private static bool IsNullString(string valueString)
-        {
-            return string.IsNullOrEmpty(valueString) ||
-                   valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase);
-        }
+        private static bool IsNullString(string valueString) =>
+            string.IsNullOrEmpty(valueString) || valueString.Equals("null", StringComparison.InvariantCultureIgnoreCase);
 
-        public static object GetDefault(Type type)
-        {
-            return type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
-        }
+        public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
 
         private static bool TryFromHex(Type type, string itemValue, out object value)
         {
@@ -116,36 +110,19 @@ namespace Nethermind.Config
                 value = null;
                 return false;
             }
-            switch (Type.GetTypeCode(type))
+
+            if (typeof(IConvertible).IsAssignableFrom(type))
             {
-                case TypeCode.Byte:
-                    value = Convert.ToByte(itemValue, 16);
-                    return true;
-                case TypeCode.SByte:
-                    value = Convert.ToSByte(itemValue, 16);
-                    return true;
-                case TypeCode.UInt16:
-                    value = Convert.ToUInt16(itemValue, 16);
-                    return true;
-                case TypeCode.UInt32:
-                    value = Convert.ToUInt32(itemValue, 16);
-                    return true;
-                case TypeCode.UInt64:
-                    value = Convert.ToUInt64(itemValue, 16);
-                    return true;
-                case TypeCode.Int16:
-                    value = Convert.ToInt16(itemValue, 16);
-                    return true;
-                case TypeCode.Int32:
-                    value = Convert.ToInt32(itemValue, 16);
-                    return true;
-                case TypeCode.Int64:
-                    value = Convert.ToInt64(itemValue, 16);
-                    return true;
-                default:
-                    value = null;
-                    return false;
+                object baseValue = type == typeof(ulong)
+                        ? Convert.ToUInt64(itemValue, 16) // Use UInt64 parsing for unsigned types to avoid overflow
+                        : Convert.ToInt64(itemValue, 16); // Default to Int64 parsing for other integer types
+
+                value = Convert.ChangeType(baseValue, type);
+                return true;
             }
+
+            value = null;
+            return false;
         }
 
         private static object GetValue(Type valueType, string itemValue)
@@ -167,11 +144,9 @@ namespace Nethermind.Config
 
             if (valueType == typeof(Address))
             {
-                if (Address.TryParse(itemValue, out var address))
-                {
-                    return address;
-                }
-                throw new FormatException($"Could not parse {itemValue} to {typeof(Address)}");
+                return Address.TryParse(itemValue, out Address address)
+                    ? address
+                    : throw new FormatException($"Could not parse {itemValue} to {typeof(Address)}");
             }
 
             if (valueType == typeof(Hash256))
@@ -181,20 +156,12 @@ namespace Nethermind.Config
 
             if (valueType.IsEnum)
             {
-                if (Enum.TryParse(valueType, itemValue, true, out var enumValue))
-                {
-                    return enumValue;
-                }
-
-                throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
+                return Enum.TryParse(valueType, itemValue, true, out object enumValue)
+                    ? enumValue
+                    : throw new FormatException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
 
-            if (TryFromHex(valueType, itemValue, out object value))
-            {
-                return value;
-            }
-
-            return Convert.ChangeType(itemValue, valueType);
+            return TryFromHex(valueType, itemValue, out object value) ? value : Convert.ChangeType(itemValue, valueType);
         }
     }
 }

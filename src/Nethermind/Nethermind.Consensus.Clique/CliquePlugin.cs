@@ -24,9 +24,9 @@ namespace Nethermind.Consensus.Clique
 {
     public class CliquePlugin : IConsensusPlugin
     {
-        public string Name => "Clique";
+        public string Name => SealEngineType;
 
-        public string Description => "Clique Consensus Engine";
+        public string Description => $"{SealEngineType} Consensus Engine";
 
         public string Author => "Nethermind";
 

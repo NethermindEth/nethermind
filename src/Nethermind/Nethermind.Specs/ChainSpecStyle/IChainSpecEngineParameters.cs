@@ -9,10 +9,7 @@ public interface IChainSpecEngineParameters
 {
     string? EngineName { get; }
     string? SealEngineType { get; }
-
-    void ApplyToChainSpec(ChainSpec chainSpec);
-
-    void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps);
-
-    void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp);
+    void ApplyToChainSpec(ChainSpec chainSpec) { }
+    void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps) { }
+    void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp) { }
 }

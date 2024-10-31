@@ -12,7 +12,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => "Optimism";
+    public string? EngineName => SealEngineType;
     public string? SealEngineType => OptimismConstants.SealEngineType;
 
     public ulong? RegolithTimestamp { get; set; }
@@ -60,9 +60,5 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         {
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
-    }
-
-    public void ApplyToChainSpec(ChainSpec chainSpec)
-    {
     }
 }
