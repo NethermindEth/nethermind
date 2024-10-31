@@ -31,33 +31,33 @@ public class InputData
         {
             for (int i = 0; i < Txs.Length; i++)
             {
-                var tx = Txs[i].ToTransaction();
-                tx.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
+                var transaction = Txs[i].ToTransaction();
+                transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
-                var txLegacy = (LegacyTransactionForRpc) Txs[i];
+                SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
 
-                var secretKey = TransactionMetaDataList[i].SecretKey;
-
-                if (secretKey is not null)
-                {
-                    var privateKey = new PrivateKey(secretKey);
-                    tx.SenderAddress = privateKey.Address;
-
-                    EthereumEcdsa ecdsa = new(tx.ChainId ?? TestBlockchainIds.ChainId);
-
-                    ecdsa.Sign(privateKey, tx, TransactionMetaDataList[i].Protected ?? true);
-                }
-                else if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue)
-                {
-                    tx.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
-                }
-
-                tx.Hash = tx.CalculateHash();
-
-                transactions.Add(tx);
+                transaction.Hash = transaction.CalculateHash();
+                transactions.Add(transaction);
             }
         }
 
         return transactions.ToArray();
+    }
+
+    private static void SignTransaction(Transaction transaction, TransactionMetaData transactionMetaData, LegacyTransactionForRpc txLegacy)
+    {
+        if (transactionMetaData.SecretKey is not null)
+        {
+            var privateKey = new PrivateKey(transactionMetaData.SecretKey);
+            transaction.SenderAddress = privateKey.Address;
+
+            EthereumEcdsa ecdsa = new(transaction.ChainId ?? TestBlockchainIds.ChainId);
+
+            ecdsa.Sign(privateKey, transaction, transactionMetaData.Protected ?? true);
+        }
+        else if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue)
+        {
+            transaction.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
+        }
     }
 }
