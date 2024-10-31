@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -11,15 +12,18 @@ namespace Nethermind.Trie
 {
     public class TrieStatsCollector : ITreeVisitor
     {
+        private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
-        private int _lastAccountNodeCount = 0;
+        private long _lastAccountNodeCount = 0;
 
         private readonly ILogger _logger;
+        private readonly CancellationToken _cancellationToken;
 
-        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
+        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
+            _cancellationToken = cancellationToken;
         }
 
         public TrieStats Stats { get; } = new();
@@ -49,6 +53,8 @@ namespace Nethermind.Trie
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             if (trieVisitContext.IsStorage)
             {
                 Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
@@ -81,9 +87,10 @@ namespace Nethermind.Trie
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
-            if (Stats.NodesCount - _lastAccountNodeCount > 1_000_000)
+            long lastAccountNodeCount = _lastAccountNodeCount;
+            long currentNodeCount = Stats.NodesCount;
+            if (currentNodeCount - lastAccountNodeCount > 1_000_000 && Interlocked.CompareExchange(ref _lastAccountNodeCount, currentNodeCount, lastAccountNodeCount) == lastAccountNodeCount)
             {
-                _lastAccountNodeCount = Stats.NodesCount;
                 _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
             }
 
@@ -101,12 +108,36 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
+        private long codeLookup = 0;
+        private long codeHit = 0;
+
         public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
-            byte[] code = _codeKeyValueStore[codeHash.Bytes];
-            if (code is not null)
+            Interlocked.Increment(ref codeLookup);
+
+            ValueHash256 key = new ValueHash256(codeHash.Bytes);
+            bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
+            if (!codeExist)
             {
-                Interlocked.Add(ref Stats._codeSize, code.Length);
+                byte[] code = _codeKeyValueStore[codeHash.Bytes];
+                codeExist = code is not null;
+                if (codeExist)
+                {
+                    codeLength = code.Length;
+                    _existingCodeHash.Set(key, codeLength);
+                }
+            }
+            else
+            {
+                if (Interlocked.Increment(ref codeHit) == 1000000)
+                {
+                    Console.Error.WriteLine($"Hit rate {codeHit / (double)codeLookup}");
+                }
+            }
+
+            if (codeExist)
+            {
+                Interlocked.Add(ref Stats._codeSize, codeLength);
                 Interlocked.Increment(ref Stats._codeCount);
             }
             else
@@ -119,11 +150,11 @@ namespace Nethermind.Trie
 
         private void IncrementLevel(TrieVisitContext trieVisitContext)
         {
-            int[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;
+            long[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(trieVisitContext, levels);
         }
 
-        private static void IncrementLevel(TrieVisitContext trieVisitContext, int[] levels)
+        private static void IncrementLevel(TrieVisitContext trieVisitContext, long[] levels)
         {
             Interlocked.Increment(ref levels[trieVisitContext.Level]);
         }

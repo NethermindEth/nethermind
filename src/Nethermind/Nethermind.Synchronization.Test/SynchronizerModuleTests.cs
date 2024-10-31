@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -38,6 +39,7 @@ public class SynchronizerModuleTests
             .AddSingleton(stateReader)
             .AddSingleton(treeSync)
             .AddSingleton(blockQueue)
+            .AddSingleton(Substitute.For<IProcessExitSource>())
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
     }

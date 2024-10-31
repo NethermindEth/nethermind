@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -18,6 +20,7 @@ public class VerifyStateOnStateSyncFinished(
     ITreeSync treeSync,
     IStateReader stateReader,
     [KeyFilter(DbNames.Code)] IDb codeDb,
+    IProcessExitSource exitSource,
     ILogManager logManager) : IStartable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<VerifyStateOnStateSyncFinished>();
@@ -27,7 +30,7 @@ public class VerifyStateOnStateSyncFinished(
         treeSync.OnVerifyPostSyncCleanup += TreeSyncOnOnVerifyPostSyncCleanup;
     }
 
-    private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.VerifyPostSyncCleanupEventArgs e)
+    private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.VerifyPostSyncCleanupEventArgs evt)
     {
         ManualResetEvent processingBlocker = new ManualResetEvent(false);
 
@@ -35,10 +38,14 @@ public class VerifyStateOnStateSyncFinished(
 
         try
         {
-            Hash256 rootNode = e.Root;
+            Hash256 rootNode = evt.Root;
             _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-            TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager);
+            TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, exitSource.Token);
             _logger.Info($"Stats after finishing state" + stats);
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"Error in verify trie", e);
         }
         finally
         {

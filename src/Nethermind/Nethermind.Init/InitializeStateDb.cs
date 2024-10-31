@@ -200,7 +200,7 @@ public class InitializeStateDb : IStep
         {
             _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
             Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-            TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
+            TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager, _api.ProcessExit!.Token);
             _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
         }
 
