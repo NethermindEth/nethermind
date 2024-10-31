@@ -24,8 +24,8 @@ public class OptimismEngineRpcModuleTest
         yield return (
             new OptimismProtocolVersion.V0(new byte[8], 3, 0, 0, 0),
             new OptimismSuperchainSignal(
-                recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
-                required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
+                Recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
+                Required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
             behindRecommended: false,
             behindRequired: false
         );
@@ -33,8 +33,8 @@ public class OptimismEngineRpcModuleTest
         yield return (
             new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
             new OptimismSuperchainSignal(
-                recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
-                required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
+                Recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
+                Required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
             behindRecommended: false,
             behindRequired: false
         );
@@ -42,8 +42,8 @@ public class OptimismEngineRpcModuleTest
         yield return (
             new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
             new OptimismSuperchainSignal(
-                recommended: new OptimismProtocolVersion.V0(new byte[8], 3, 0, 0, 0),
-                required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
+                Recommended: new OptimismProtocolVersion.V0(new byte[8], 3, 0, 0, 0),
+                Required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
             behindRecommended: true,
             behindRequired: false
         );
@@ -51,8 +51,8 @@ public class OptimismEngineRpcModuleTest
         yield return (
             new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0),
             new OptimismSuperchainSignal(
-                recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
-                required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
+                Recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
+                Required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0)),
             behindRecommended: true,
             behindRequired: false
         );
@@ -60,8 +60,8 @@ public class OptimismEngineRpcModuleTest
         yield return (
             new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0),
             new OptimismSuperchainSignal(
-                recommended: new OptimismProtocolVersion.V0(new byte[8], 3, 0, 0, 0),
-                required: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0)),
+                Recommended: new OptimismProtocolVersion.V0(new byte[8], 3, 0, 0, 0),
+                Required: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0)),
             behindRecommended: true,
             behindRequired: true
         );
@@ -89,8 +89,8 @@ public class OptimismEngineRpcModuleTest
     {
         var current = new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0);
         var signal = new OptimismSuperchainSignal(
-            recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
-            required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0));
+            Recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
+            Required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0));
 
         var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(current);

@@ -6,18 +6,18 @@ using Nethermind.Logging;
 
 namespace Nethermind.Optimism.ProtocolVersion;
 
-public sealed class OptimismSuperchainSignal(
-    OptimismProtocolVersion recommended,
-    OptimismProtocolVersion required)
+public sealed record OptimismSuperchainSignal(
+    OptimismProtocolVersion Recommended,
+    OptimismProtocolVersion Required)
 {
-    public OptimismProtocolVersion Recommended { get; } = recommended;
-    public OptimismProtocolVersion Required { get; } = required;
+    public OptimismProtocolVersion Recommended { get; } = Recommended;
+    public OptimismProtocolVersion Required { get; } = Required;
 }
 
-public sealed class OptimismSignalSuperchainV1Result(
-    OptimismProtocolVersion protocolVersion)
+public sealed record OptimismSignalSuperchainV1Result(
+    OptimismProtocolVersion ProtocolVersion)
 {
-    public OptimismProtocolVersion ProtocolVersion { get; } = protocolVersion;
+    public OptimismProtocolVersion ProtocolVersion { get; } = ProtocolVersion;
 }
 
 public interface IOptimismSignalSuperchainV1Handler
