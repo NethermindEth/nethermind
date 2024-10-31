@@ -124,7 +124,7 @@ internal struct Word
             byte[] buffer = new byte[20];
             for (int i = 0; i < 20; i++)
             {
-                buffer[i] = _buffer[i];
+                buffer[i] = _buffer[12 + i];
             }
 
             return new Address(buffer);
@@ -132,7 +132,7 @@ internal struct Word
         set
         {
             byte[] buffer = value.Bytes;
-            for (int i = 0; i < 20; i++)
+            for (int i = 12; i < 32; i++)
             {
                 _buffer[i] = buffer[i];
             }
@@ -199,6 +199,32 @@ internal struct Word
             else
             {
                 _uInt0 = value;
+            }
+        }
+    }
+
+    public byte Byte0
+    {
+        get
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                return BinaryPrimitives.ReverseEndianness(_uByte0);
+            }
+            else
+            {
+                return _uByte0;
+            }
+        }
+        set
+        {
+            if (BitConverter.IsLittleEndian)
+            {
+                _uByte0 = BinaryPrimitives.ReverseEndianness(value);
+            }
+            else
+            {
+                _uByte0 = value;
             }
         }
     }
@@ -275,7 +301,9 @@ internal struct Word
     }
 
     public static readonly MethodInfo LeadingZeroProp = typeof(Word).GetProperty(nameof(LeadingZeros))!.GetMethod;
-    public static readonly FieldInfo Byte0Field = typeof(Word).GetField(nameof(_uByte0));
+
+    public static readonly MethodInfo GetByte0 = typeof(Word).GetProperty(nameof(Byte0))!.GetMethod;
+    public static readonly MethodInfo SetByte0 = typeof(Word).GetProperty(nameof(Byte0))!.SetMethod;
 
     public static readonly MethodInfo GetInt0 = typeof(Word).GetProperty(nameof(Int0))!.GetMethod;
     public static readonly MethodInfo SetInt0 = typeof(Word).GetProperty(nameof(Int0))!.SetMethod;

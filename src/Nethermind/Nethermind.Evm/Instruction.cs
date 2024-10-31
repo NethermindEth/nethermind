@@ -320,7 +320,6 @@ namespace Nethermind.Evm
                 [Instruction.RETURNDATASIZE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.RETURNDATACOPY] = new(GasCostOf.VeryLow, 0, 3, 0),
                 [Instruction.EXTCODEHASH] = new(0, 0, 1, 1),
-                [Instruction.EXTCODECOPY] = new(GasCostOf.ExtCode, 0, 4, 0),
 
                 [Instruction.BLOCKHASH] = new(GasCostOf.BlockHash, 0, 1, 1),
                 [Instruction.COINBASE] = new(GasCostOf.Base, 0, 0, 1),
@@ -339,7 +338,7 @@ namespace Nethermind.Evm
                 [Instruction.MSTORE] = new(GasCostOf.VeryLow, 0, 2, 0),
                 [Instruction.MSTORE8] = new(GasCostOf.VeryLow, 0, 2, 0),
                 [Instruction.SLOAD] = new(GasCostOf.SLoad, 0, 1, 1),
-                [Instruction.SSTORE] = new(GasCostOf.SSet, 0, 2, 0),
+                [Instruction.SSTORE] = new(0, 0, 2, 0),
                 [Instruction.JUMP] = new(GasCostOf.Mid, 0, 1, 0),
                 [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.MSIZE] = new(GasCostOf.Base, 0, 0, 1),

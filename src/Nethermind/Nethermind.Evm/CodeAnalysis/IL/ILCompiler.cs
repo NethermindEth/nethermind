@@ -530,7 +530,7 @@ internal class ILCompiler
                         method.MarkLabel(powerIsZero);
                         method.CleanAndLoadWord(stack, head);
                         method.LoadConstant(1);
-                        method.StoreField(Word.Byte0Field);
+                        method.Call(Word.SetUInt0);
                         method.Branch(endOfExpImpl);
 
                         method.MarkLabel(baseIsOneOrZero);
@@ -585,7 +585,7 @@ internal class ILCompiler
                         method.StackLoadPrevious(stack, head, 1);
                         method.Duplicate();
                         method.Call(Word.GetIsZero);
-                        method.StoreField(Word.Byte0Field);
+                        method.Call(Word.SetByte0);
                     }
                     break;
                 case Instruction.POP:
@@ -903,7 +903,7 @@ internal class ILCompiler
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256A);
                         method.StackLoadPrevious(stack, head, 2);
-                        method.LoadField(Word.Byte0Field);
+                        method.Call(Word.GetByte0);
                         method.StoreLocal(byte8A);
                         method.StackPop(head, 2);
 
@@ -1060,12 +1060,16 @@ internal class ILCompiler
                 case Instruction.BYTE:
                     {// load a
                         method.StackLoadPrevious(stack, head, 1);
+                        method.Duplicate();
+                        method.Call(Word.GetUInt0);
+                        method.StoreLocal(uint32A);
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256A);
                         method.StackLoadPrevious(stack, head, 2);
                         method.Call(Word.GetSpan);
                         method.StoreLocal(localReadonOnlySpan);
                         method.StackPop(head, 2);
+
 
                         Label pushZeroLabel = method.DefineLabel();
                         Label endOfInstructionImpl = method.DefineLabel();
@@ -1078,14 +1082,19 @@ internal class ILCompiler
                         method.Or();
                         method.BranchIfTrue(pushZeroLabel);
 
+                        using Local tempValue = method.DeclareLocal<byte>();
+
                         method.CleanAndLoadWord(stack, head);
                         method.LoadLocalAddress(localReadonOnlySpan);
-                        method.LoadLocal(uint256A);
-                        method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
-                        method.Convert<int>();
+                        method.LoadLocal(uint32A);
                         method.Call(typeof(ReadOnlySpan<byte>).GetMethod("get_Item"));
                         method.LoadIndirect<byte>();
-                        method.StoreField(Word.Byte0Field);
+                        method.Duplicate();
+                        method.StoreLocal(tempValue);
+
+                        method.Print(tempValue);
+
+                        method.Call(Word.SetByte0);
                         method.StackPush(head);
                         method.Branch(endOfInstructionImpl);
 
@@ -1288,6 +1297,7 @@ internal class ILCompiler
                                 method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldReturn)));
                                 break;
                         }
+                        method.FakeBranch(ret);
                     }
                     break;
                 case Instruction.BASEFEE:
@@ -1689,9 +1699,19 @@ internal class ILCompiler
                     {
                         Label endOfOpcode = method.DefineLabel();
 
+                        method.StackLoadPrevious(stack, head, 4);
+                        method.Call(Word.GetUInt256);
+                        method.StoreLocal(uint256C);
+
                         method.LoadLocal(gasAvailable);
                         method.LoadArgument(SPEC_INDEX);
                         method.Call(typeof(ReleaseSpecExtensions).GetMethod(nameof(ReleaseSpecExtensions.GetExtCodeCost)));
+                        method.LoadLocalAddress(uint256C);
+                        method.LoadLocalAddress(lbool);
+                        method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
+                        method.LoadConstant(GasCostOf.Memory);
+                        method.Multiply();
+                        method.Add();
                         method.Subtract();
                         method.Duplicate();
                         method.StoreLocal(gasAvailable);
@@ -1707,22 +1727,7 @@ internal class ILCompiler
                         method.StackLoadPrevious(stack, head, 3);
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256B);
-                        method.StackLoadPrevious(stack, head, 4);
-                        method.Call(Word.GetUInt256);
-                        method.StoreLocal(uint256C);
                         method.StackPop(head, 4);
-
-                        method.LoadLocal(gasAvailable);
-                        method.LoadLocalAddress(uint256C);
-                        method.LoadLocalAddress(lbool);
-                        method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
-                        method.LoadConstant(GasCostOf.Memory);
-                        method.Multiply();
-                        method.Subtract();
-                        method.Duplicate();
-                        method.StoreLocal(gasAvailable);
-                        method.LoadConstant((long)0);
-                        method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1751,6 +1756,7 @@ internal class ILCompiler
                         method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadLocal(address);
+                        method.Print(address);
                         method.LoadArgument(SPEC_INDEX);
                         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                         method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
@@ -2546,6 +2552,9 @@ internal class ILCompiler
                     costStart = op.ProgramCounter;
                     coststack = op.Metadata.GasCost;
                     break;
+                case Instruction.RETURN:
+                case Instruction.REVERT:
+                case Instruction.STOP:
                 case Instruction.GAS:
                 case Instruction.JUMPI:
                 case Instruction.JUMP:
