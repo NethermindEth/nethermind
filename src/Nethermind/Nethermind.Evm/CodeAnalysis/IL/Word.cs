@@ -134,7 +134,7 @@ internal struct Word
             byte[] buffer = value.Bytes;
             for (int i = 12; i < 32; i++)
             {
-                _buffer[i] = buffer[i];
+                _buffer[i] = buffer[i - 12];
             }
         }
     }
