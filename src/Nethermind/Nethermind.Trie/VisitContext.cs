@@ -28,6 +28,7 @@ namespace Nethermind.Trie
             internal init
             {
                 _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
+                _threadLimiter = null;
             }
         }
 
