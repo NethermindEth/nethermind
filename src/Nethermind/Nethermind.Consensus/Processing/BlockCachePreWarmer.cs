@@ -151,12 +151,18 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                         scope.WorldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
                     }
 
+                    UInt256 nonceDelta = UInt256.Zero;
                     for (int prev = 0; prev < i; prev++)
                     {
                         if (senderAddress == block.Transactions[prev].SenderAddress)
                         {
-                            scope.WorldState.IncrementNonce(senderAddress);
+                            nonceDelta++;
                         }
+                    }
+
+                    if (!nonceDelta.IsZero)
+                    {
+                        scope.WorldState.IncrementNonce(senderAddress, nonceDelta);
                     }
 
                     if (spec.UseTxAccessLists)

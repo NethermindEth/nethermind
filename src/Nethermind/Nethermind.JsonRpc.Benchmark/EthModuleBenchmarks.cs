@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb),
                 dbProvider.BlockInfosDb,
                 dbProvider.MetadataDb,
-                new BlockStore(dbProvider.BadBlocksDb),
+                new BadBlockStore(dbProvider.BadBlocksDb, 100),
                 chainLevelInfoRepository,
                 specProvider,
                 NullBloomStorage.Instance,

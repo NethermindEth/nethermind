@@ -19,6 +19,7 @@ namespace Nethermind.Specs.Test
         {
             _spec = spec;
             IsEip3607Enabled = _spec.IsEip3607Enabled;
+            BlockReward = _spec.BlockReward;
         }
 
         public string Name => "OverridableReleaseSpec";
@@ -31,7 +32,7 @@ namespace Nethermind.Specs.Test
 
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public UInt256 BlockReward => _spec.BlockReward;
+        public UInt256 BlockReward { get; set; }
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 

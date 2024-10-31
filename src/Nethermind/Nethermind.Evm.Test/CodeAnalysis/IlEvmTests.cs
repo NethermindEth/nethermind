@@ -1599,9 +1599,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 100_000_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
-                isTopLevel: false,
-                Snapshot.Empty,
-                isContinuation: false);
+                Snapshot.Empty);
 
             IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
 
@@ -1638,9 +1636,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 1_000_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
-                isTopLevel: false,
-                Snapshot.Empty,
-                isContinuation: false);
+                Snapshot.Empty);
 
             IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
 
@@ -1685,9 +1681,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 1_000_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
-                isTopLevel: false,
-                Snapshot.Empty,
-                isContinuation: false);
+                Snapshot.Empty);
 
             IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
 
@@ -1731,9 +1725,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 1_000_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
-                isTopLevel: false,
-                Snapshot.Empty,
-                isContinuation: false);
+                Snapshot.Empty);
 
             IVirtualMachine evm = typeof(VirtualMachine).GetField("_evm", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(Machine) as IVirtualMachine;
 

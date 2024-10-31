@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.Receipts
     public interface IReceiptStorage : IReceiptFinder
     {
         void Insert(Block block, params TxReceipt[]? txReceipts) => Insert(block, txReceipts, true);
-        void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical);
+        void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical, WriteFlags writeFlags = WriteFlags.None);
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
         bool HasBlock(long blockNumber, Hash256 hash);

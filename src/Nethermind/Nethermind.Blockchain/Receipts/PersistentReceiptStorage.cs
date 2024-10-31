@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Receipts
             return null;
         }
 
-        public TxReceipt[] Get(Block block, bool recover = true)
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
             if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain.Receipts
 
                     if (recover)
                     {
-                        _receiptsRecovery.TryRecover(block, receipts);
+                        _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: recoverSender);
                         _receiptsCache.Set(blockHash, receipts);
                     }
 
@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             Block? block = _blockTree.FindBlock(blockHash);
             if (block is null) return Array.Empty<TxReceipt>();
-            return Get(block, recover);
+            return Get(block, recover, false);
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         [SkipLocalsInit]
-        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Receipts
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan());
+                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan(), writeFlags);
             }
 
             if (blockNumber < MigratedBlockNumber)
