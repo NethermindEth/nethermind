@@ -54,7 +54,6 @@ namespace Nethermind.Network
         {
             IEnumerable<IIPSource> GetIPSources()
             {
-                yield return new EnvironmentVariableIPSource();
                 yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
                 yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
                 yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);

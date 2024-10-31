@@ -15,9 +15,6 @@ public interface INoCategoryConfig : IConfig
     [ConfigItem(Description = "Sets the default group name for metrics monitoring.", EnvironmentVariable = "NETHERMIND_MONITORING_GROUP")]
     public string MonitoringGroup { get; set; }
 
-    [ConfigItem(Description = "Sets the external IP for the node.", EnvironmentVariable = "NETHERMIND_ENODE_IPADDRESS")]
-    public string EnodeIpAddress { get; set; }
-
     [ConfigItem(Description = "Defines CORS origins for JSON RPC.", DefaultValue = "*", EnvironmentVariable = "NETHERMIND_CORS_ORIGINS")]
     public string CorsOrigins { get; set; }
 
