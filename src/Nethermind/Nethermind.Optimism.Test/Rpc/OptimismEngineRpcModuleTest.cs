@@ -91,7 +91,10 @@ public class OptimismEngineRpcModuleTest
         handler.CurrentVersion.Returns(current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
-        ResultWrapper<OptimismProtocolVersion> result = await rpcModule.engine_signalSuperchainV1(signal);
+        ResultWrapper<OptimismSignalSuperchainV1Result> result = await rpcModule.engine_signalSuperchainV1(signal);
+
+        result.Data.Should().Be(new OptimismSignalSuperchainV1Result(current));
+    }
 
         result.Data.Should().Be(current);
     }

@@ -162,6 +162,12 @@ public sealed class OptimismSuperchainSignal(
     public OptimismProtocolVersion Required { get; } = required;
 }
 
+public sealed class OptimismSignalSuperchainV1Result(
+    OptimismProtocolVersion protocolVersion)
+{
+    public OptimismProtocolVersion ProtocolVersion { get; } = protocolVersion;
+}
+
 public interface IOptimismSuperchainSignalHandler
 {
     OptimismProtocolVersion CurrentVersion { get; }

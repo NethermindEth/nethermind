@@ -64,7 +64,7 @@ public class OptimismEngineRpcModule(
         return _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
     }
 
-    public async Task<ResultWrapper<OptimismProtocolVersion>> engine_signalSuperchainV1(OptimismSuperchainSignal signal)
+    public async Task<ResultWrapper<OptimismSignalSuperchainV1Result>> engine_signalSuperchainV1(OptimismSuperchainSignal signal)
     {
         var currentVersion = _signalSuperchainHandler.CurrentVersion;
 
@@ -77,6 +77,6 @@ public class OptimismEngineRpcModule(
             await _signalSuperchainHandler.OnBehindRequired(signal.Required);
         }
 
-        return ResultWrapper<OptimismProtocolVersion>.Success(currentVersion);
+        return ResultWrapper<OptimismSignalSuperchainV1Result>.Success(new OptimismSignalSuperchainV1Result(currentVersion));
     }
 }
