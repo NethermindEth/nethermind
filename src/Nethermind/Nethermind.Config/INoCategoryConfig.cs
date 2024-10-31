@@ -15,9 +15,6 @@ public interface INoCategoryConfig : IConfig
     [ConfigItem(Description = "Sets the default group name for metrics monitoring.", EnvironmentVariable = "NETHERMIND_MONITORING_GROUP")]
     public string MonitoringGroup { get; set; }
 
-    [ConfigItem(Description = "Defines CORS origins for JSON RPC.", DefaultValue = "*", EnvironmentVariable = "NETHERMIND_CORS_ORIGINS")]
-    public string CorsOrigins { get; set; }
-
     [ConfigItem(Description = "Defines host value for CLI function \"switchLocal\".", DefaultValue = "http://localhost", EnvironmentVariable = "NETHERMIND_CLI_SWITCH_LOCAL")]
     public string CliSwitchLocal { get; set; }
 }

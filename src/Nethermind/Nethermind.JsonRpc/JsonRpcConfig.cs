@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
@@ -57,6 +58,7 @@ namespace Nethermind.JsonRpc
         public long? MaxBatchResponseBodySize { get; set; } = 32.MiB();
         public long? MaxSimulateBlocksCap { get; set; } = 256;
         public int EstimateErrorMargin { get; set; } = 150;
+        public string[] CorsOrigins { get; set; } = ["*"];
     };
 };
 
