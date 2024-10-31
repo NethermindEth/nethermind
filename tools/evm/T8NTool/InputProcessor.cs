@@ -1,9 +1,13 @@
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -34,18 +38,42 @@ public class InputProcessor
             EthereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = EthereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
 
-        Transaction[] transactions;
+        List<Transaction> transactions = [];
         var txFileContent = File.ReadAllText(inputTxs);
         if (inputTxs.EndsWith(".json"))
         {
-            var txInfoList = EthereumJsonSerializer.Deserialize<TransactionInfo[]>(txFileContent);
-            transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToArray();
+            var txInfoList = EthereumJsonSerializer.Deserialize<TransactionForRpc[]>(txFileContent);
+            var txMeta = EthereumJsonSerializer.Deserialize<TxMetaData[]>(txFileContent);
+
+            for (int i = 0; i < txInfoList.Length; i++)
+            {
+                var tx = txInfoList[i].ToTransaction();
+                var txLegacy = (LegacyTransactionForRpc) txInfoList[i];
+
+                tx.SenderAddress = null;
+                var secretKey = txMeta[i].SecretKey;
+                if (secretKey is not null)
+                {
+                    var privateKey = new PrivateKey(secretKey);
+                    tx.SenderAddress = privateKey.Address;
+                    EthereumEcdsa ecdsa = new(tx.ChainId ?? TestBlockchainIds.ChainId);
+
+                    ecdsa.Sign(privateKey, tx, txMeta[i].Protected ?? true);
+                }
+                else if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue)
+                {
+                    tx.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
+                }
+                tx.Hash = tx.CalculateHash();
+                transactions.Add(tx);
+            }
+
         }
         else if (inputTxs.EndsWith(".rlp"))
         {
             string rlpRaw = txFileContent.Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
-            transactions = TxDecoder.DecodeArray(rlp);
+            transactions = TxDecoder.DecodeArray(rlp).ToList();
         }
         else
         {
@@ -77,7 +105,7 @@ public class InputProcessor
             Fork = spec,
             SpecProvider = specProvider,
             Pre = allocJson,
-            Transactions = transactions,
+            Transactions = transactions.ToArray(),
             CurrentCoinbase = envInfo.CurrentCoinbase,
             CurrentGasLimit = envInfo.CurrentGasLimit,
             CurrentTimestamp = envInfo.CurrentTimestamp,
