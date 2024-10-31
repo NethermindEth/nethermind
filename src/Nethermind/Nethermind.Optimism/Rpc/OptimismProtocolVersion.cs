@@ -65,6 +65,18 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
             PreRelease = preRelease;
         }
 
+        public V0(string version)
+        {
+            var parts = version.Split('.').Select(UInt32.Parse).ToList();
+            if (parts.Count != 4) throw new ParseException($"Invalid version format: {version}");
+
+            Build = new byte[8];
+            Major = parts[0];
+            Minor = parts[1];
+            Patch = parts[2];
+            PreRelease = parts[3];
+        }
+
         public new static V0 Read(ReadOnlySpan<byte> span)
         {
             var version = span[0];

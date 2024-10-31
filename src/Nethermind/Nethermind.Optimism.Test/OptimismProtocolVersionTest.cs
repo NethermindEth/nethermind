@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Optimism.Rpc;
 using NUnit.Framework;
@@ -123,5 +124,12 @@ public class OptimismProtocolVersionTest
 
         Action read = () => OptimismProtocolVersion.Read(bytes);
         read.Should().Throw<OptimismProtocolVersion.ParseException>();
+    }
+
+    [Test]
+    public void OptimismProtocolVersionV0_FromProductInfoVersion()
+    {
+        Func<OptimismProtocolVersion> fromString = () => new OptimismProtocolVersion.V0(ProductInfo.Version);
+        fromString.Should().NotThrow();
     }
 }
