@@ -36,7 +36,7 @@ public class SynchronizerModuleTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
-        treeSync.OnVerifyPostSyncCleanup += Raise.EventWith(null, new ITreeSync.PostSyncCleanupEventArgs(TestItem.KeccakA));
+        treeSync.OnVerifyPostSyncCleanup += Raise.EventWith(null, new ITreeSync.VerifyPostSyncCleanupEventArgs(TestItem.KeccakA));
 
         stateReader.Received().RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>());
     }

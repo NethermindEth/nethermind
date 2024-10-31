@@ -21,7 +21,7 @@ public class VerifyStateOnStateSyncFinished(ITreeSync treeSync, IStateReader sta
         treeSync.OnVerifyPostSyncCleanup += TreeSyncOnOnVerifyPostSyncCleanup;
     }
 
-    private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.PostSyncCleanupEventArgs e)
+    private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.VerifyPostSyncCleanupEventArgs e)
     {
         Hash256 rootNode = e.Root;
         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");

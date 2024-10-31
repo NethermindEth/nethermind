@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private readonly SyncMode _syncMode;
 
-        public event EventHandler<ITreeSync.PostSyncCleanupEventArgs>? OnVerifyPostSyncCleanup;
+        public event EventHandler<ITreeSync.VerifyPostSyncCleanupEventArgs>? OnVerifyPostSyncCleanup;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
             : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
@@ -718,7 +718,7 @@ namespace Nethermind.Synchronization.FastSync
 
             CleanupMemory();
 
-            OnVerifyPostSyncCleanup?.Invoke(this, new ITreeSync.PostSyncCleanupEventArgs(_rootNode));
+            OnVerifyPostSyncCleanup?.Invoke(this, new ITreeSync.VerifyPostSyncCleanupEventArgs(_rootNode));
         }
 
         private void CleanupMemory()
