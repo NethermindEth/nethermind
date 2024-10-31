@@ -198,7 +198,7 @@ namespace Nethermind.Trie
                             ArrayPoolList<Task>? tasks = null;
                             for (int i = 0; i < BranchesCount; i++)
                             {
-                                if (i < BranchesCount - 1 && visitContext.ThreadLimiter.TryTakeSlot(out ThreadLimiter.SlotReturner returner))
+                                if (i < BranchesCount - 1 && visitContext.ConcurrencyController.TryTakeSlot(out ConcurrencyController.Slot returner))
                                 {
                                     tasks ??= new ArrayPoolList<Task>(BranchesCount);
                                     tasks.Add(SpawnChildVisit(parentPath, i, GetChild(nodeResolver, ref parentPath, i), returner));
@@ -212,10 +212,10 @@ namespace Nethermind.Trie
                             if (tasks != null && tasks.Count > 0) Task.WaitAll(tasks.ToArray());
                             return;
 
-                            Task SpawnChildVisit(TreePath closureParentPath, int i, TrieNode? childNode, ThreadLimiter.SlotReturner slotReturner) =>
+                            Task SpawnChildVisit(TreePath closureParentPath, int i, TrieNode? childNode, ConcurrencyController.Slot slotReturner) =>
                                 Task.Run(() =>
                                 {
-                                    using ThreadLimiter.SlotReturner _ = slotReturner;
+                                    using ConcurrencyController.Slot _ = slotReturner;
 
                                     // we need to have separate context for each thread as context tracks level and branch child index
                                     TrieVisitContext childContext = visitContext.Clone();

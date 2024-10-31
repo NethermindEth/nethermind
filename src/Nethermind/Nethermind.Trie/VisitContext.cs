@@ -13,8 +13,8 @@ namespace Nethermind.Trie
         private readonly int _maxDegreeOfParallelism = 1;
         private int _visitedNodes;
 
-        private ThreadLimiter? _threadLimiter = null;
-        public ThreadLimiter ThreadLimiter => _threadLimiter ??= new ThreadLimiter(MaxDegreeOfParallelism);
+        private ConcurrencyController? _threadLimiter = null;
+        public ConcurrencyController ConcurrencyController => _threadLimiter ??= new ConcurrencyController(MaxDegreeOfParallelism);
 
         public int Level { get; internal set; }
         public bool IsStorage { get; set; }
