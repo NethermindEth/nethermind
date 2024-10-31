@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using FluentAssertions;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -134,6 +138,46 @@ namespace Nethermind.Core.Test
             }
 
             stream.GetHash().Bytes.ToHexString().Should().Be(expected);
+        }
+
+        [Test]
+        public void Sanity_batch_checks()
+        {
+            var count = KeccakCache.Count;
+            List<CappedArray<byte>> input = new(count);
+            List<string> expected = new(count);
+            foreach (var inputs in KeccakCases)
+            {
+                input.Add(Bytes.FromHexString(inputs[0]));
+                expected.Add(inputs[1]);
+            }
+
+            var keccaks = new ValueHash256[input.Count];
+            KeccakHash.ComputeHashBatchGpu(input, keccaks);
+
+            var start = Stopwatch.GetTimestamp();
+            KeccakHash.ComputeHashBatchGpu(input, keccaks);
+            var time = Stopwatch.GetElapsedTime(start);
+
+            TestContext.Out.WriteLine($"Time taken for {input.Count} Keccaks on GPU {time.TotalMilliseconds:N4} ms");
+
+            for (int i = 0; i < keccaks.Length; i++)
+            {
+                keccaks[i].Bytes.ToHexString().Should().Be(expected[i]);
+            }
+
+            foreach (var data in CollectionsMarshal.AsSpan(input))
+            {
+                ValueHash256 h = ValueKeccak.Compute(data.AsSpan());
+            }
+            start = Stopwatch.GetTimestamp();
+            foreach (var data in CollectionsMarshal.AsSpan(input))
+            {
+                ValueHash256 h = ValueKeccak.Compute(data.AsSpan());
+            }
+            time = Stopwatch.GetElapsedTime(start);
+            TestContext.Out.WriteLine($"Time taken for {input.Count} Keccaks on CPU {time.TotalMilliseconds:N4} ms");
+
         }
 
         public static string[][] KeccakCases =

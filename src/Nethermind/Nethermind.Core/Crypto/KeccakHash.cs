@@ -15,7 +15,7 @@ using static System.Numerics.BitOperations;
 // ReSharper disable InconsistentNaming
 namespace Nethermind.Core.Crypto
 {
-    public sealed class KeccakHash
+    public sealed partial class KeccakHash
     {
         public const int HASH_SIZE = 32;
         private const int STATE_SIZE = 200;
