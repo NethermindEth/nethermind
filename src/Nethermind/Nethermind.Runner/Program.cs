@@ -490,7 +490,7 @@ static class BasicOptions
     public static CliOption<string> Configuration { get; } =
         new("--config", "-c")
         {
-            Description = "The path to the configuration file or the name (without extension) of any of the configuration files in the configuration directory.",
+            Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
             HelpName = "network or file name"
         };
 
@@ -516,7 +516,7 @@ static class BasicOptions
     public static CliOption<string> LoggerConfigurationSource { get; } =
         new("--logger-config", "--loggerConfigSource", "-lcs")
         {
-            Description = "The path to the NLog configuration file.",
+            Description = "The path to the logging configuration file.",
             HelpName = "path"
         };
 
