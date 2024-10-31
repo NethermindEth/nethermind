@@ -36,7 +36,7 @@ public class ThreadLimiter(int concurrency)
         Interlocked.Increment(ref _slots);
     }
 
-    public struct SlotReturner(ThreadLimiter limiter) : IDisposable
+    public readonly struct SlotReturner(ThreadLimiter limiter) : IDisposable
     {
         public void Dispose()
         {
