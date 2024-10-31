@@ -51,7 +51,7 @@ public class SynchronizerModuleTests
         ITreeSync treeSync = ctx.Resolve<ITreeSync>();
         IStateReader stateReader = ctx.Resolve<IStateReader>();
 
-        treeSync.OnVerifyPostSyncCleanup += Raise.EventWith(null, new ITreeSync.VerifyPostSyncCleanupEventArgs(TestItem.KeccakA));
+        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
 
         stateReader
             .Received()
@@ -77,7 +77,7 @@ public class SynchronizerModuleTests
 
         Task triggerTask = Task.Run(() =>
         {
-            treeSync.OnVerifyPostSyncCleanup += Raise.EventWith(null, new ITreeSync.VerifyPostSyncCleanupEventArgs(TestItem.KeccakA));
+            treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
         });
 
         await Task.Delay(100);

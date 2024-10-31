@@ -27,10 +27,10 @@ public class VerifyStateOnStateSyncFinished(
 
     public void Start()
     {
-        treeSync.OnVerifyPostSyncCleanup += TreeSyncOnOnVerifyPostSyncCleanup;
+        treeSync.SyncCompleted += TreeSyncOnOnVerifyPostSyncCleanup;
     }
 
-    private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.VerifyPostSyncCleanupEventArgs evt)
+    private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.SyncCompletedEventArgs evt)
     {
         ManualResetEvent processingBlocker = new ManualResetEvent(false);
 
