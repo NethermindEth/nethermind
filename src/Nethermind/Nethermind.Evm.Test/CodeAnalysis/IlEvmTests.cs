@@ -34,6 +34,7 @@ using Nethermind.Core.Test.Blockchain;
 using Polly;
 using Nethermind.Core.Collections;
 using Nethermind.Specs.Test;
+using System.Threading;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -168,8 +169,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void ForceRunAnalysis(Address address)
         {
             var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance);
+            var initialILMODE = codeinfo.IlInfo.Mode;
             codeinfo.NoticeExecution(config, NullLogger.Instance);
-            while (codeinfo.IlInfo.IsEmpty) ; // wait for analysis to finish
+            while (codeinfo.IlInfo.Mode == initialILMODE) ; // wait for analysis to finish
         }
 
         public Hash256 StateRoot
@@ -1410,17 +1412,28 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
 
             enhancedChain.ForceRunAnalysis(main);
+            enhancedChain.ForceRunAnalysis(aux);
+
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
             var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
 
+
+            // in the last stint gas is almost below 1000
+            // it executes segment 0 (0..47)
+            // then calls address 23 (segment 0..5 since it is precompiled as well)
+            // then it executes segment 49..60 which ends in jump back to pc = 0
+            // then it executes segment 0..46 again but this time gas is below 1000
+            // it ends jumping to pc = 59 (which occurs in segment 49..60)
+            // so the last segment executed is (49..60)
+
             string[] desiredTracePattern = new[]
             {
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
-                "ILEVM_PRECOMPILED_(0x4df55fd3a4afecd4a0b4550f05b7cca2aa1db9a1)[0..5]",
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
+                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"ILEVM_PRECOMPILED_({aux})[0..5]",
+                $"ILEVM_PRECOMPILED_({main})[49..60]",
+                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"ILEVM_PRECOMPILED_({main})[49..60]",
             };
 
             string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
@@ -1438,7 +1451,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPatternMatchingEnabled = true,
                 JittingThreshold = 1,
                 IsJitEnabled = true,
-                AggressiveJitMode = false
+                AggressiveJitMode = false,
+                BakeInTracingInJitMode = true
             });
 
             var aux = enhancedChain.InsertCode(Prepare.EvmCode
@@ -1474,26 +1488,28 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Call(main, 1_000_000)
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main);
+            enhancedChain.ForceRunAnalysis(main); // once for JIT
+            enhancedChain.ForceRunAnalysis(main); // once for PAT
+
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
             var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
 
             // in the last stint gas is almost below 1000
-            // it executes segment 0 (0..46)
+            // it executes segment 0 (0..47)
             // then calls address 23 (segment 0..5 since it is precompiled as well)
-            // then it executes segment 48..59 which ends in jump back to pc = 0
-            // then it executes segment 0..46 again but this time gas is below 1000
+            // then it executes segment 49..60 which ends in jump back to pc = 0
+            // then it executes segment 0..47 again but this time gas is below 1000
             // it ends jumping to pc = 59 (which is index of AbortDestinationPattern)
             // so the last segment executed is AbortDestinationPattern
 
             string[] desiredTracePattern = new[]
             {
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
-                "ILEVM_PRECOMPILED_(0x4df55fd3a4afecd4a0b4550f05b7cca2aa1db9a1)[0..5]",
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
-                "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[0..47]",
-                "AbortDestinationPattern",
+                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"SomeAfterTwoPush",
+                $"ILEVM_PRECOMPILED_({main})[49..60]",
+                $"ILEVM_PRECOMPILED_({main})[0..47]",
+                $"AbortDestinationPattern",
             };
 
             string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();

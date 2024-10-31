@@ -85,7 +85,7 @@ internal class IlInfo
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         result = null;
-        if (programCounter > ushort.MaxValue || Mode == ILMode.NO_ILVM)
+        if (programCounter > ushort.MaxValue || this.IsEmpty)
             return false;
 
         if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
