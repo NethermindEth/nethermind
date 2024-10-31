@@ -39,6 +39,9 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? BlockNumber { get; set; }
 
+    public bool? Protected { get; set; }
+    public byte[]? SecretKey { get; set; }
+
     [JsonConstructor]
     protected TransactionForRpc() { }
 
