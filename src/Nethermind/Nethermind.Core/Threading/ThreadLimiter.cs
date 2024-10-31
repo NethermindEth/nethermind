@@ -16,13 +16,13 @@ namespace Nethermind.Core.Threading;
 /// <param name="concurrency">Desired concurrency which include the calling thread. So slot is slot-1.</param>
 public class ThreadLimiter(int concurrency)
 {
-    private int _slots = concurrency - 1;
+    private int _slots = concurrency;
 
     public bool TryTakeSlot(out SlotReturner returner)
     {
         returner = new SlotReturner(this);
         int newSlot = Interlocked.Decrement(ref _slots);
-        if (newSlot < 0)
+        if (newSlot < 1)
         {
             Interlocked.Increment(ref _slots);
             return false;
