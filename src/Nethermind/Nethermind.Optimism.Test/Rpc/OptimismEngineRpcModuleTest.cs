@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.Rpc;
 
+[Parallelizable(ParallelScope.All)]
 public class OptimismEngineRpcModuleTest
 {
     private static IEnumerable<(OptimismProtocolVersion, OptimismSuperchainSignal, bool behindRecommended, bool behindRequired)> SignalSuperchainV1Cases()
