@@ -2525,7 +2525,7 @@ internal class ILCompiler
 
         il.LoadArgument(0);
         il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
-        il.CallVirtual(GetPropertyInfo(typeof(EvmState), nameof(EvmState.AccessTracker), getSetter: false, out _));
+        il.LoadFieldAddress(typeof(EvmState).GetField("_accessTracker", BindingFlags.Instance | BindingFlags.NonPublic));
         il.CallVirtual(GetPropertyInfo(typeof(StackAccessTracker), nameof(StackAccessTracker.Logs), getSetter: false, out _));
         il.LoadLocal(logEntry);
         il.CallVirtual(
