@@ -249,7 +249,9 @@ namespace Nethermind.Trie
                         trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
-                        if (trieVisitContext.MaxDegreeOfParallelism != 1 && path.Length <= 4)
+                        // Limiting the multithread path to top state tree and first level storage double the throughput on mainnet.
+                        // Top level state split to 16^3 while storage is 16, which should be ok for large contract in most case.
+                        if (trieVisitContext.MaxDegreeOfParallelism != 1 && (trieVisitContext.IsStorage ? path.Length == 0 : path.Length <= 2))
                         {
                             VisitMultiThread(path, visitor, nodeContext, nodeResolver, trieVisitContext);
                         }
