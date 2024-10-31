@@ -273,7 +273,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager);
 
-        OptimismProtocolVersion currentVersion = new OptimismProtocolVersion.V0(ProductInfo.Version);
+        OptimismProtocolVersion currentVersion = new OptimismProtocolVersion.V0(ProductInfo.ShortName, ProductInfo.Version);
         IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(currentVersion, _api.LogManager);
 
         IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule, signalHandler);
