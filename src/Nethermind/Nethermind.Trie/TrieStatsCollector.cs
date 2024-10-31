@@ -108,13 +108,8 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        private long codeLookup = 0;
-        private long codeHit = 0;
-
         public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
-            Interlocked.Increment(ref codeLookup);
-
             ValueHash256 key = new ValueHash256(codeHash.Bytes);
             bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
             if (!codeExist)
@@ -125,13 +120,6 @@ namespace Nethermind.Trie
                 {
                     codeLength = code.Length;
                     _existingCodeHash.Set(key, codeLength);
-                }
-            }
-            else
-            {
-                if (Interlocked.Increment(ref codeHit) == 1000000)
-                {
-                    Console.Error.WriteLine($"Hit rate {codeHit / (double)codeLookup}");
                 }
             }
 
