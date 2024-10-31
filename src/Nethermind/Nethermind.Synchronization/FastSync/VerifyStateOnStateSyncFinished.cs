@@ -41,6 +41,10 @@ public class VerifyStateOnStateSyncFinished(
             Hash256 rootNode = evt.Root;
             _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
             TrieStats stats = stateReader.CollectStats(rootNode, codeDb, logManager, exitSource.Token);
+            if (stats.MissingNodes > 0)
+            {
+                _logger.Error($"Missing node found!");
+            }
             _logger.Info($"Stats after finishing state" + stats);
         }
         catch (Exception e)
