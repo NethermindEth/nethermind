@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

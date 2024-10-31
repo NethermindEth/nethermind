@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -11,27 +10,29 @@ using System.Text.Json.Serialization;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
-namespace Nethermind.Specs.ChainSpecStyle;
+namespace Nethermind.Consensus.AuRa.Config;
 
 public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 {
+    public const long TransitionDisabled = long.MaxValue;
     public string? EngineName => "AuthorityRound";
     public string? SealEngineType => Core.SealEngineType.AuRa;
 
     [JsonConverter(typeof(StepDurationJsonConverter))]
-    public SortedDictionary<long, long> StepDuration { get; set; }
+    public SortedDictionary<long, long> StepDuration { get; set; } = new();
 
     [JsonConverter(typeof(LongUInt256DictionaryConverter))]
-    public SortedDictionary<long, UInt256> BlockReward { get; set; }
+    public SortedDictionary<long, UInt256>? BlockReward { get; set; }
 
     public long? MaximumUncleCountTransition { get; set; }
 
     public long? MaximumUncleCount { get; set; }
 
-    public Address BlockRewardContractAddress { get; set; }
+    public Address? BlockRewardContractAddress { get; set; }
 
     public long? BlockRewardContractTransition { get; set; }
 
@@ -42,15 +43,15 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public long ValidateStepTransition { get; set; }
 
     [JsonPropertyName("Validators")]
-    private AuRaValidatorJson _validatorsJson { get; set; }
+    private AuRaValidatorJson ValidatorsJson { get; set; }
 
     public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
 
     public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
 
-    public long? TwoThirdsMajorityTransition { get; set; }
+    public long TwoThirdsMajorityTransition { get; set; } = TransitionDisabled;
 
-    public long? PosdaoTransition { get; set; }
+    public long PosdaoTransition { get; set; } = TransitionDisabled;
 
     public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
 
@@ -59,7 +60,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     private AuRaParameters.Validator? _validators;
     public AuRaParameters.Validator Validators
     {
-        get => _validators ??= LoadValidator(_validatorsJson);
+        get => _validators ??= LoadValidator(ValidatorsJson);
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
@@ -77,10 +78,10 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                 validator.Addresses = validatorJson.List;
                 break;
             case AuRaParameters.ValidatorType.Contract:
-                validator.Addresses = new[] { validatorJson.SafeContract };
+                validator.Addresses = [validatorJson.SafeContract];
                 break;
             case AuRaParameters.ValidatorType.ReportingContract:
-                validator.Addresses = new[] { validatorJson.Contract };
+                validator.Addresses = [validatorJson.Contract];
                 break;
             case AuRaParameters.ValidatorType.Multi:
                 if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
@@ -151,10 +152,10 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 
     private class AuRaValidatorJson
     {
-        public Address[] List { get; set; }
-        public Address Contract { get; set; }
-        public Address SafeContract { get; set; }
-        public Dictionary<long, AuRaValidatorJson> Multi { get; set; }
+        public Address[]? List { get; set; }
+        public Address? Contract { get; set; }
+        public Address? SafeContract { get; set; }
+        public Dictionary<long, AuRaValidatorJson> Multi { get; set; } = new();
 
         public AuRaParameters.ValidatorType GetValidatorType()
         {
@@ -162,22 +163,23 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
             {
                 return AuRaParameters.ValidatorType.List;
             }
-            else if (Contract is not null)
+
+            if (Contract is not null)
             {
                 return AuRaParameters.ValidatorType.ReportingContract;
             }
-            else if (SafeContract is not null)
+
+            if (SafeContract is not null)
             {
                 return AuRaParameters.ValidatorType.Contract;
             }
-            else if (Multi is not null)
+
+            if (Multi is not null)
             {
                 return AuRaParameters.ValidatorType.Multi;
             }
-            else
-            {
-                throw new NotSupportedException("AuRa validator type not supported.");
-            }
+
+            throw new NotSupportedException("AuRa validator type not supported.");
         }
     }
 }

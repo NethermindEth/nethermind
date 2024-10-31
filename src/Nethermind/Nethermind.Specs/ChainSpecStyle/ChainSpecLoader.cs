@@ -244,18 +244,9 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        Dictionary<string, JsonElement> engineParameters = new();
-        foreach (KeyValuePair<string, JsonElement> engine in chainSpecJson.Engine.CustomEngineData)
-        {
-            if (engine.Value.TryGetProperty("params", out JsonElement value))
-            {
-                engineParameters.Add(engine.Key, value);
-            }
-            else
-            {
-                engineParameters.Add(engine.Key, engine.Value);
-            }
-        }
+        var engineParameters = chainSpecJson.Engine.CustomEngineData.ToDictionary(
+            engine => engine.Key,
+            engine => engine.Value.TryGetProperty("params", out JsonElement value) ? value : engine.Value);
 
         chainSpec.EngineChainSpecParametersProvider = new ChainSpecParametersProvider(engineParameters, serializer);
         if (string.IsNullOrEmpty(chainSpec.SealEngineType))

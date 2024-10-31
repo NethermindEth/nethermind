@@ -136,7 +136,7 @@ public class StartBlockProducerAuRa
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
-                _parameters.PosdaoTransition!.Value,
+                _parameters.PosdaoTransition,
                 true)
             .CreateValidatorProcessor(_parameters.Validators, _api.BlockTree.Head?.Header);
 
@@ -277,8 +277,7 @@ public class StartBlockProducerAuRa
     {
         bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
         {
-            const long transitionDisabled = long.MaxValue;
-            if (auRaPosdaoTransition != transitionDisabled && _validator is ITxSource validatorSource)
+            if (auRaPosdaoTransition != AuRaChainSpecEngineParameters.TransitionDisabled && _validator is ITxSource validatorSource)
             {
                 list.Insert(0, validatorSource);
                 return true;
@@ -333,7 +332,7 @@ public class StartBlockProducerAuRa
         {
             txSources.Insert(0, additionalTxSource);
         }
-        needSigner |= CheckAddPosdaoTransactions(txSources, _parameters.PosdaoTransition!.Value);
+        needSigner |= CheckAddPosdaoTransactions(txSources, _parameters.PosdaoTransition);
         needSigner |= CheckAddRandomnessTransactions(txSources, _parameters.RandomnessContractAddress, _api.EngineSigner);
 
         ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
@@ -360,9 +359,8 @@ public class StartBlockProducerAuRa
         var blockGasLimitContractTransitions = api.ChainSpec.EngineChainSpecParametersProvider
             .GetChainSpecParameters<AuRaChainSpecEngineParameters>().BlockGasLimitContractTransitions;
 
-        IGasLimitCalculator gasLimitCalculator =
-            new TargetAdjustedGasLimitCalculator(api.SpecProvider, api.Config<IBlocksConfig>());
-        if (blockGasLimitContractTransitions?.Any() == true)
+        IGasLimitCalculator gasLimitCalculator = new TargetAdjustedGasLimitCalculator(api.SpecProvider, api.Config<IBlocksConfig>());
+        if (blockGasLimitContractTransitions?.Count > 0)
         {
             AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>

@@ -30,7 +30,7 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     public UInt256 MinimumDifficulty { get; set; } = 0;
 
     [JsonConverter(typeof(LongUInt256DictionaryConverter))]
-    public SortedDictionary<long, UInt256> BlockReward { get; set; }
+    public SortedDictionary<long, UInt256>? BlockReward { get; set; }
 
     [JsonConverter(typeof(DifficultyBombDelaysJsonConverter))]
     public IDictionary<long, long>? DifficultyBombDelays { get; set; }

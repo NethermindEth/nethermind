@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;

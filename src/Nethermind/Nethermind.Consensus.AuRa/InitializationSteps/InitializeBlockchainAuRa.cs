@@ -62,7 +62,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.ValidatorStore!,
             new ValidSealerStrategy(),
             _api.LogManager,
-            chainSpecAuRa.TwoThirdsMajorityTransition!.Value);
+            chainSpecAuRa.TwoThirdsMajorityTransition);
 
         await base.InitBlockchain();
 
@@ -158,7 +158,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
                 _api.SpecProvider,
                 _api.GasPriceOracle,
                 _api.ReportingContractValidatorCache,
-                chainSpecAuRa.PosdaoTransition!.Value)
+                chainSpecAuRa.PosdaoTransition)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
         if (validator is IDisposable disposableValidator)
@@ -216,7 +216,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     protected override IHeaderValidator CreateHeaderValidator()
     {
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        var blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
+        IDictionary<long, Address> blockGasLimitContractTransitions = _parameters.BlockGasLimitContractTransitions;
         return blockGasLimitContractTransitions?.Any() == true
             ? new AuRaHeaderValidator(
                 _api.BlockTree,

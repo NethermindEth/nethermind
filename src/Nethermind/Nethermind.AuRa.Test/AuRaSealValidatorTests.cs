@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Net;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

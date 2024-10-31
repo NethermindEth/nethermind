@@ -30,7 +30,7 @@ public class AuRaParameters
         ///
         /// This has to sorted in order of starting blocks.
         /// </remarks>
-        public IDictionary<long, Validator> Validators { get; set; }
+        public IDictionary<long, Validator>? Validators { get; set; }
 
         /// <summary>
         /// Addresses for validator.
@@ -40,20 +40,17 @@ public class AuRaParameters
         /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.AuRaParameters.ValidatorType.Contract"/> and <see cref="AuRaParameters.AuRaParameters.ValidatorType.ReportingContract"/> should contain exactly one address.
         /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.AuRaParameters.ValidatorType.Multi"/> will be empty.
         /// </remarks>
-        public Address[] Addresses { get; set; }
+        public Address[]? Addresses { get; set; }
 
         public Address GetContractAddress()
         {
             switch (ValidatorType)
             {
-                case AuRaParameters.ValidatorType.Contract:
-                case AuRaParameters.ValidatorType.ReportingContract:
-                    return Addresses?.FirstOrDefault() ??
-                           throw new ArgumentException("Missing contract address for AuRa validator.",
-                               nameof(Addresses));
+                case ValidatorType.Contract:
+                case ValidatorType.ReportingContract:
+                    return Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses));
                 default:
-                    throw new InvalidOperationException(
-                        $"AuRa validator {ValidatorType} doesn't have contract address.");
+                    throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address.");
             }
         }
     }

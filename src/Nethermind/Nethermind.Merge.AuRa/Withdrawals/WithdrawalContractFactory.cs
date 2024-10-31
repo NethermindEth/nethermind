@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Contracts;
