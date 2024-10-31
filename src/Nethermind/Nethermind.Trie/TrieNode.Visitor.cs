@@ -198,7 +198,7 @@ namespace Nethermind.Trie
                             ArrayPoolList<Task>? tasks = null;
                             for (int i = 0; i < BranchesCount; i++)
                             {
-                                if (visitContext.ThreadLimiter.TryTakeSlot(out ThreadLimiter.SlotReturner returner))
+                                if (i < BranchesCount - 1 && visitContext.ThreadLimiter.TryTakeSlot(out ThreadLimiter.SlotReturner returner))
                                 {
                                     tasks ??= new ArrayPoolList<Task>(BranchesCount );
                                     tasks.Add(SpawnChildVisit(parentPath, i, GetChild(nodeResolver, ref parentPath, i), returner));
@@ -249,7 +249,7 @@ namespace Nethermind.Trie
                         trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
 
-                        if (trieVisitContext.MaxDegreeOfParallelism != 1)
+                        if (trieVisitContext.MaxDegreeOfParallelism != 1 && path.Length <= 4)
                         {
                             VisitMultiThread(path, visitor, nodeContext, nodeResolver, trieVisitContext);
                         }
