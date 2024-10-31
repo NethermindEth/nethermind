@@ -1,22 +1,22 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism.Rpc;
 
 public class OptimismEngineRpcModule(
     IEngineRpcModule engineRpcModule,
-    IOptimismSuperchainSignalHandler signalSuperchainHandler
+    IOptimismSignalSuperchainV1Handler signalSuperchainHandler
 ) : IOptimismEngineRpcModule
 {
     private readonly IEngineRpcModule _engineRpcModule = engineRpcModule;
-    private readonly IOptimismSuperchainSignalHandler _signalSuperchainHandler = signalSuperchainHandler;
+    private readonly IOptimismSignalSuperchainV1Handler _signalSuperchainHandler = signalSuperchainHandler;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
     {

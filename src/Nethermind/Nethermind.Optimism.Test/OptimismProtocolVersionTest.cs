@@ -1,9 +1,12 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Optimism.Rpc;
+using Nethermind.Optimism.ProtocolVersion;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;

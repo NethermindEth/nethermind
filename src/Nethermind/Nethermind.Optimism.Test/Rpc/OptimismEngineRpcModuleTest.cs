@@ -8,6 +8,7 @@ using FluentAssertions.Json;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
+using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
@@ -72,7 +73,7 @@ public class OptimismEngineRpcModuleTest
         var current = testCase.current;
         var signal = testCase.signal;
 
-        var handler = Substitute.For<IOptimismSuperchainSignalHandler>();
+        var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
@@ -91,7 +92,7 @@ public class OptimismEngineRpcModuleTest
             recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
             required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0));
 
-        var handler = Substitute.For<IOptimismSuperchainSignalHandler>();
+        var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
@@ -115,7 +116,7 @@ public class OptimismEngineRpcModuleTest
     [TestCaseSource(nameof(SignalSuperchainV1JsonCases))]
     public async Task SignalSuperchainV1_JsonRpc((string Signal, string Expected, OptimismProtocolVersion Current) testCase)
     {
-        var handler = Substitute.For<IOptimismSuperchainSignalHandler>();
+        var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(testCase.Current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 

@@ -6,11 +6,9 @@ using System.Buffers.Binary;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 
-namespace Nethermind.Optimism.Rpc;
+namespace Nethermind.Optimism.ProtocolVersion;
 
 [JsonConverter(typeof(JsonConverter))]
 public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersion>, IComparable<OptimismProtocolVersion>
@@ -54,12 +52,12 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
     public sealed class V0 : OptimismProtocolVersion
     {
         public byte[] Build { get; }
-        public UInt32 Major { get; }
-        public UInt32 Minor { get; }
-        public UInt32 Patch { get; }
-        public UInt32 PreRelease { get; }
+        public uint Major { get; }
+        public uint Minor { get; }
+        public uint Patch { get; }
+        public uint PreRelease { get; }
 
-        public V0(ReadOnlySpan<byte> build, UInt32 major, UInt32 minor, UInt32 patch, UInt32 preRelease)
+        public V0(ReadOnlySpan<byte> build, uint major, uint minor, uint patch, uint preRelease)
         {
             Build = build.ToArray();
             Major = major;
@@ -70,7 +68,7 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public V0(string version)
         {
-            var parts = version.Split('.').Select(UInt32.Parse).ToList();
+            var parts = version.Split('.').Select(uint.Parse).ToList();
             if (parts.Count != 4) throw new ParseException($"Invalid version format: {version}");
 
             Build = new byte[8];
@@ -174,47 +172,5 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
             JsonSerializer.Serialize(writer, bytes, options);
         }
-    }
-}
-
-public sealed class OptimismSuperchainSignal(
-    OptimismProtocolVersion recommended,
-    OptimismProtocolVersion required)
-{
-    public OptimismProtocolVersion Recommended { get; } = recommended;
-    public OptimismProtocolVersion Required { get; } = required;
-}
-
-public sealed class OptimismSignalSuperchainV1Result(
-    OptimismProtocolVersion protocolVersion)
-{
-    public OptimismProtocolVersion ProtocolVersion { get; } = protocolVersion;
-}
-
-public interface IOptimismSuperchainSignalHandler
-{
-    OptimismProtocolVersion CurrentVersion { get; }
-    Task OnBehindRecommended(OptimismProtocolVersion recommended);
-    Task OnBehindRequired(OptimismProtocolVersion required);
-}
-
-public sealed class LoggingOptimismSuperchainSignalHandler(
-    OptimismProtocolVersion currentVersion,
-    ILogManager logManager
-) : IOptimismSuperchainSignalHandler
-{
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    public OptimismProtocolVersion CurrentVersion { get; init; } = currentVersion;
-
-    public Task OnBehindRecommended(OptimismProtocolVersion recommended)
-    {
-        _logger.Warn($"Current version {CurrentVersion} is behind recommended version {recommended}");
-        return Task.CompletedTask;
-    }
-
-    public Task OnBehindRequired(OptimismProtocolVersion required)
-    {
-        _logger.Error($"Current version {CurrentVersion} is behind required version {required}");
-        return Task.CompletedTask;
     }
 }
