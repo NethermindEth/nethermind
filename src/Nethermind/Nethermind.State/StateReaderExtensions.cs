@@ -48,7 +48,7 @@ namespace Nethermind.State
             return stateReader.HasStateForRoot(header.StateRoot!);
         }
 
-        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken)
+        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
         {
             TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
             stateProvider.RunTreeVisitor(collector, root, new VisitingOptions
