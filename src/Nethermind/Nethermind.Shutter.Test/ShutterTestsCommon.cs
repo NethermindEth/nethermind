@@ -59,7 +59,7 @@ class ShutterTestsCommon
             AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
             worldStateManager, Substitute.For<IFileSystem>(),
-            Substitute.For<IKeyStoreConfig>(), Cfg, [], rnd
+            Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
         );
     }
 
@@ -68,7 +68,7 @@ class ShutterTestsCommon
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, [], rnd
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)
