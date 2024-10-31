@@ -209,7 +209,11 @@ namespace Nethermind.Trie
                                 }
                             }
 
-                            if (tasks != null && tasks.Count > 0) Task.WaitAll(tasks.ToArray());
+                            if (tasks is { Count: > 0 })
+                            {
+                                Task.WaitAll(tasks.ToArray());
+                                tasks.Dispose();
+                            }
                             return;
 
                             Task SpawnChildVisit(TreePath closureParentPath, int i, TrieNode? childNode, ConcurrencyController.Slot slotReturner) =>
