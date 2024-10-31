@@ -30,7 +30,7 @@ public class SynchronizerModuleTests
                 FastSync = true,
                 VerifyTrieOnStateSyncFinished = true
             }))
-            .AddKeyedSingleton(DbNames.Code, Substitute.For<IKeyValueStore>())
+            .AddKeyedSingleton(DbNames.Code, Substitute.For<IDb>())
             .AddSingleton(stateReader)
             .AddSingleton(treeSync)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
