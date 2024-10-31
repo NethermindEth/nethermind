@@ -12,7 +12,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class VerifyStateOnStateSyncFinished(ITreeSync treeSync, IStateReader stateReader, [KeyFilter(DbNames.Code)] IKeyValueStore codeDb, ILogManager logManager): IStartable
+public class VerifyStateOnStateSyncFinished(ITreeSync treeSync, IStateReader stateReader, [KeyFilter(DbNames.Code)] IKeyValueStore codeDb, ILogManager logManager) : IStartable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<VerifyStateOnStateSyncFinished>();
 

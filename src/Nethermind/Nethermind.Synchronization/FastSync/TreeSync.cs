@@ -26,7 +26,7 @@ using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class TreeSync: ITreeSync
+    public class TreeSync : ITreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
         public const int MaxRequestSize = 384;
