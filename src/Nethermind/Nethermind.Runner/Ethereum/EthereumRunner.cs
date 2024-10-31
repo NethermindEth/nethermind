@@ -29,7 +29,7 @@ namespace Nethermind.Runner.Ethereum
 
         public async Task Start(CancellationToken cancellationToken)
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
+            if (_logger.IsDebug) _logger.Debug("Starting Ethereum runner");
 
             EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetStepsAssemblies(_api));
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
@@ -63,7 +63,7 @@ namespace Nethermind.Runner.Ethereum
             Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
             Task synchronizerTask = Stop(() => _api.Synchronizer?.StopAsync(), "Stopping synchronizer");
             Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
-            Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping rlpx peer");
+            Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping RLPx peer");
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, syncPeerPoolTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
             foreach (INethermindPlugin plugin in _api.Plugins)
@@ -79,16 +79,16 @@ namespace Nethermind.Runner.Ethereum
 
             Stop(() => _api.DbProvider?.Dispose(), "Closing DBs");
 
-            if (_logger.IsInfo) _logger.Info("All DBs closed.");
+            if (_logger.IsInfo) _logger.Info("All DBs closed");
 
-            if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Ethereum runner stopped");
         }
 
         private void Stop(Action stopAction, string description)
         {
             try
             {
-                if (_logger.IsInfo) _logger.Info($"{description}...");
+                if (_logger.IsInfo) _logger.Info(description);
                 stopAction();
             }
             catch (Exception e)
@@ -101,7 +101,7 @@ namespace Nethermind.Runner.Ethereum
         {
             try
             {
-                if (_logger.IsInfo) _logger.Info($"{description}...");
+                if (_logger.IsInfo) _logger.Info(description);
                 return stopAction() ?? Task.CompletedTask;
             }
             catch (Exception e)

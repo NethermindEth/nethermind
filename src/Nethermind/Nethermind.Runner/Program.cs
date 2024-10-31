@@ -307,8 +307,9 @@ CliConfiguration ConfigureCli()
 
 void ConfigureLogger(ParseResult parseResult)
 {
-    string nLogConfig = parseResult.GetValue(BasicOptions.LoggerConfigurationSource)
-        ?? "NLog.config".GetApplicationResourcePath();
+    string nLogConfig = Path.GetFullPath(
+        parseResult.GetValue(BasicOptions.LoggerConfigurationSource)
+            ?? "NLog.config".GetApplicationResourcePath());
 
     try
     {
@@ -316,7 +317,7 @@ void ConfigureLogger(ParseResult parseResult)
     }
     catch (Exception ex)
     {
-        logger.Error($"Failed to load {nLogConfig}.", ex);
+        logger.Error($"Failed to load logging configuration file.", ex);
         return;
     }
 
@@ -446,7 +447,7 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
     {
         string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
 
-        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {dbPath}");
+        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath)}");
 
         initConfig.BaseDbPath = dbPath;
     }
@@ -469,12 +470,12 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
         if (logger.IsInfo)
         {
-            logger.Info($"{nameof(initConfig.BaseDbPath)}: {newDbPath}");
-            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {newKeyStorePath}");
-            logger.Info($"{nameof(initConfig.LogDirectory)}: {newLogDirectory}");
+            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
+            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
 
             if (snapshotConfig.Enabled)
-                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {newSnapshotPath}");
+                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
         }
 
         initConfig.BaseDbPath = newDbPath;
