@@ -43,7 +43,7 @@ namespace Nethermind.Config
                     return (null, null);
                 }
 
-                // variables like "NETHERMIND_URL", "NETHERMIND_CONFIG" ...
+                // variables like "NETHERMIND_CONFIG"
                 if (a.Length == 2)
                 {
                     return (null, a[1]);

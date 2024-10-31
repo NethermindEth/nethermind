@@ -18,9 +18,6 @@ public interface INoCategoryConfig : IConfig
     [ConfigItem(Description = "Sets the external IP for the node.", EnvironmentVariable = "NETHERMIND_ENODE_IPADDRESS")]
     public string EnodeIpAddress { get; set; }
 
-    [ConfigItem(Description = "Defines default URL for JSON RPC.", EnvironmentVariable = "NETHERMIND_URL")]
-    public string Url { get; set; }
-
     [ConfigItem(Description = "Defines CORS origins for JSON RPC.", DefaultValue = "*", EnvironmentVariable = "NETHERMIND_CORS_ORIGINS")]
     public string CorsOrigins { get; set; }
 

@@ -12,8 +12,6 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlCollection
     {
-        private const string NethermindUrlVariable = "NETHERMIND_URL";
-
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
@@ -34,20 +32,6 @@ namespace Nethermind.JsonRpc
         {
             bool HasEngineApi = _jsonRpcConfig.EnabledModules.Any(m => m.Equals(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase));
             JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, HasEngineApi, _jsonRpcConfig.EnabledModules, HasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize);
-            string environmentVariableUrl = Environment.GetEnvironmentVariable(NethermindUrlVariable);
-            if (!string.IsNullOrWhiteSpace(environmentVariableUrl))
-            {
-                if (Uri.TryCreate(environmentVariableUrl, UriKind.Absolute, out Uri? uri))
-                {
-                    defaultUrl.Scheme = uri.Scheme;
-                    defaultUrl.Host = uri.Host;
-                    defaultUrl.Port = !uri.IsDefaultPort ? uri.Port : defaultUrl.Port;
-                }
-                else
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Environment variable '{NethermindUrlVariable}' value '{environmentVariableUrl}' is not valid JSON RPC URL, using default url : '{defaultUrl}'");
-                }
-            }
 
             Add(defaultUrl.Port, defaultUrl);
 

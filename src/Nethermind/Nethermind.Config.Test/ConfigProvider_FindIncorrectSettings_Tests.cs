@@ -47,7 +47,6 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             { "NETHERMIND_MONITORING_JOB", "nethermindJob" },
             { "NETHERMIND_MONITORING_GROUP", "nethermindGroup" },
             { "NETHERMIND_ENODE_IPADDRESS", "1.2.3.4" },
-            { "NETHERMIND_URL", "http://test:80" },
             { "NETHERMIND_CORS_ORIGINS", "*" },
             { "NETHERMIND_CONFIG", "test2.json" },
             { "NETHERMIND_XYZ", "xyz" },    // not existing, should get error
