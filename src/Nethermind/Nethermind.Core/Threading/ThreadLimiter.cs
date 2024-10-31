@@ -21,12 +21,18 @@ public class ThreadLimiter(int concurrency)
     public bool TryTakeSlot(out SlotReturner returner)
     {
         returner = new SlotReturner(this);
-        int newSlot = Interlocked.Decrement(ref _slots);
+        int newSlot = Volatile.Read(ref _slots);
+        if (newSlot < 2)
+        {
+            return false;
+        }
+
+        newSlot = Interlocked.Decrement(ref _slots);
         if (newSlot < 1)
         {
             Interlocked.Increment(ref _slots);
             return false;
-        }
+        }      
 
         return true;
     }
