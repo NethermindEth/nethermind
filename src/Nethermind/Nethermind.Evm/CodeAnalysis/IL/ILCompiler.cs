@@ -1511,6 +1511,12 @@ internal class ILCompiler
                 case Instruction.LOG4:
                     {
                         sbyte topicsCount = (sbyte)(op.Operation - Instruction.LOG0);
+
+                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+                        method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.IsStatic), false, out _));
+                        method.BranchIfTrue(evmExceptionLabels[EvmExceptionType.StaticCallViolation]);
+
                         EmitLogMethod(method, (stack, head), topicsCount, evmExceptionLabels, uint256A, uint256B, int64A, gasAvailable, hash256, localReadOnlyMemory);
                     }
                     break;
@@ -2416,14 +2422,14 @@ internal class ILCompiler
         (Local span, Local idx) stack,
         sbyte topicsCount,
         Dictionary<EvmExceptionType, Label> exceptions,
-        Local uint256A, Local uint256B, Local int64A, Local gasAvailable, Local hash256, Local localReadOnlyMemory
+        Local uint256Position, Local uint256Length, Local int64A, Local gasAvailable, Local hash256, Local localReadOnlyMemory
     )
     {
         using Local logEntry = il.DeclareLocal<LogEntry>();
         Action loadExecutingAccount = () =>
         {
             // Executing account
-            il.LoadArgument(0);
+            il.LoadArgument(VMSTATE_INDEX);
             il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
             il.LoadField(
                 GetFieldInfo(
@@ -2436,10 +2442,10 @@ internal class ILCompiler
         Action loadMemoryIntoByteArray = () =>
         {
             // memory load
-            il.LoadArgument(0);
+            il.LoadArgument(VMSTATE_INDEX);
             il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
-            il.LoadLocalAddress(uint256A); // position
-            il.LoadLocalAddress(uint256B); // length
+            il.LoadLocalAddress(uint256Position); // position
+            il.LoadLocalAddress(uint256Length); // length
             il.Call(
                 typeof(EvmPooledMemory).GetMethod(
                     nameof(EvmPooledMemory.Load),
@@ -2466,17 +2472,17 @@ internal class ILCompiler
 
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(uint256A); // position
+        il.StoreLocal(uint256Position); // position
         il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetUInt256);
-        il.StoreLocal(uint256B); // length
+        il.StoreLocal(uint256Length); // length
         il.StackPop(stack.idx, 2);
         // UpdateMemoryCost
-        il.LoadArgument(0);
+        il.LoadArgument(VMSTATE_INDEX);
         il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
         il.LoadLocalAddress(gasAvailable);
-        il.LoadLocalAddress(uint256A); // position
-        il.LoadLocalAddress(uint256B); // length
+        il.LoadLocalAddress(uint256Position); // position
+        il.LoadLocalAddress(uint256Length); // length
         il.Call(
             typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(
                 nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)
@@ -2486,10 +2492,10 @@ internal class ILCompiler
 
         // update gasAvailable
         il.LoadLocal(gasAvailable);
-        il.LoadConstant(topicsCount * GasCostOf.LogTopic + GasCostOf.Log);
+        il.LoadConstant(topicsCount * GasCostOf.LogTopic);
         il.Convert<ulong>();
-        il.LoadLocal(uint256B); // length
-        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+        il.LoadLocalAddress(uint256Length); // length
+        il.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
         il.Convert<ulong>();
         il.LoadConstant(GasCostOf.LogData);
         il.Multiply();
