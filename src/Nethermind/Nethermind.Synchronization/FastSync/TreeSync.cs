@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
@@ -74,22 +75,19 @@ namespace Nethermind.Synchronization.FastSync
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
-        private readonly SyncMode _syncMode;
+        private readonly SyncMode _syncMode = SyncMode.StateNodes;
+        private readonly ISyncConfig _syncConfig;
+        private readonly ILogManager _logManager;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
-            : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
-
-        }
-
-        public TreeSync(SyncMode syncMode, IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
-        {
-            _syncMode = syncMode;
+            _syncConfig = syncConfig;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logManager = logManager;
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);
@@ -707,7 +705,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
-                // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
             if (_pendingItems.Count != 0)
@@ -716,6 +713,14 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             CleanupMemory();
+
+            if (_syncConfig.VerifyTrieOnStateSyncFinished)
+            {
+                _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+                StateReader stateReader = new StateReader(new TrieStore(_nodeStorage, _logManager), _codeDb, _logManager);
+                TrieStats stats = stateReader.CollectStats(_rootNode, _codeDb, _logManager);
+                _logger.Info($"Stats after finishing state" + stats);
+            }
         }
 
         private void CleanupMemory()
