@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Clique
         public Hash256 Hash { get; set; }
         public SortedList<Address, long> Signers { get; }
         public List<Vote> Votes { get; init; }
-        internal Dictionary<Address, Tally> Tally { get; }
+        public Dictionary<Address, Tally> Tally { get; }
 
         internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers, Dictionary<Address, Tally> tally)
         {

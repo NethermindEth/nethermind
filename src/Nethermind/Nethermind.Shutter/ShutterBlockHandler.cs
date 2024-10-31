@@ -27,7 +27,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private readonly IShutterEon _eon;
     private readonly IReceiptFinder _receiptFinder;
     private readonly ShutterTxLoader _txLoader;
-    private readonly Dictionary<ulong, byte[]> _validatorsInfo;
+    private readonly ShutterValidatorsInfo _validatorsInfo;
     private readonly ILogManager _logManager;
     private readonly IAbiEncoder _abiEncoder;
     private readonly IBlockTree _blockTree;
@@ -50,7 +50,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         IBlockTree blockTree,
         IAbiEncoder abiEncoder,
         IReceiptFinder receiptFinder,
-        Dictionary<ulong, byte[]> validatorsInfo,
+        ShutterValidatorsInfo validatorsInfo,
         IShutterEon eon,
         ShutterTxLoader txLoader,
         ShutterTime time,
@@ -190,9 +190,9 @@ public class ShutterBlockHandler : IShutterBlockHandler
     }
 
 
-    private void CheckAllValidatorsRegistered(BlockHeader parent, Dictionary<ulong, byte[]> validatorsInfo)
+    private void CheckAllValidatorsRegistered(in BlockHeader parent, in ShutterValidatorsInfo validatorsInfo)
     {
-        if (validatorsInfo.Count == 0)
+        if (validatorsInfo.IsEmpty)
         {
             return;
         }
