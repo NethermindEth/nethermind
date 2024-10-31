@@ -648,11 +648,11 @@ internal class ILCompiler
                         method.StoreObject(typeof(Word));
 
                         method.StackLoadPrevious(stack, head, 1);
-                        method.StackLoadPrevious(stack, head, count);
+                        method.StackLoadPrevious(stack, head, count + 1);
                         method.LoadObject(typeof(Word));
                         method.StoreObject(typeof(Word));
 
-                        method.StackLoadPrevious(stack, head, count);
+                        method.StackLoadPrevious(stack, head, count + 1);
                         method.LoadLocalAddress(uint256R);
                         method.LoadObject(typeof(Word));
                         method.StoreObject(typeof(Word));
