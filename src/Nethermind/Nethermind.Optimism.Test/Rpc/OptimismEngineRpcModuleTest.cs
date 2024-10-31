@@ -4,9 +4,13 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Json;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
+using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -96,6 +100,28 @@ public class OptimismEngineRpcModuleTest
         result.Data.Should().Be(new OptimismSignalSuperchainV1Result(current));
     }
 
-        result.Data.Should().Be(current);
+    private static IEnumerable<(string, string, OptimismProtocolVersion)> SignalSuperchainV1JsonCases()
+    {
+        yield return (
+            """{"recommended":"0x0000000000000000000000000000000000000200000000000000000000000000","required":"0x0000000000000000000000000000000000000100000000000000000000000000"}""",
+            """{"protocolVersion":"0x0000000000000000000000000000000000000300000002000000010000000000"}""",
+            new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0));
+
+        yield return (
+            """{"recommended":"0x0000000000000000000000000000000000000400000000000000000000000000","required":"0x0000000000000000000000000000000000000300000000000000000000000000"}""",
+            """{"protocolVersion":"0x00000000000000000000000000000000000002000000090000000a0000000000"}""",
+            new OptimismProtocolVersion.V0(new byte[8], 2, 9, 10, 0));
+    }
+    [TestCaseSource(nameof(SignalSuperchainV1JsonCases))]
+    public async Task SignalSuperchainV1_JsonRpc((string Signal, string Expected, OptimismProtocolVersion Current) testCase)
+    {
+        var handler = Substitute.For<IOptimismSuperchainSignalHandler>();
+        handler.CurrentVersion.Returns(testCase.Current);
+        IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
+
+        var signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
+        var response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
+
+        JToken.Parse(response).Should().BeEquivalentTo($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""");
     }
 }

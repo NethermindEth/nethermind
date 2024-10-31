@@ -4,12 +4,15 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Optimism.Rpc;
 
+[JsonConverter(typeof(JsonConverter))]
 public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersion>, IComparable<OptimismProtocolVersion>
 {
     public const int ByteLength = 32;
@@ -151,6 +154,26 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
         public override int GetHashCode() => HashCode.Combine(Build, Major, Minor, Patch, PreRelease);
 
         public override string ToString() => $"v{Major}.{Minor}.{Patch}{(PreRelease == 0 ? "" : $"-{PreRelease}")}";
+    }
+
+    internal class JsonConverter : JsonConverter<OptimismProtocolVersion>
+    {
+        public override OptimismProtocolVersion? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var bytes = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+            if (bytes is null) return null;
+
+            return OptimismProtocolVersion.Read(bytes);
+        }
+
+        public override void Write(Utf8JsonWriter writer, OptimismProtocolVersion value, JsonSerializerOptions options)
+        {
+            // TODO: Can we use `stackalloc` here?
+            var bytes = new byte[ByteLength];
+            value.Write(bytes);
+
+            JsonSerializer.Serialize(writer, bytes, options);
+        }
     }
 }
 
