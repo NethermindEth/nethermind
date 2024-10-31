@@ -14,15 +14,21 @@ namespace Nethermind.Core.Threading;
 /// Yes, I don't like the name. Give me a good one.
 /// </summary>
 /// <param name="concurrency">Desired concurrency which include the calling thread. So slot is slot-1.</param>
-public class ThreadLimiter(int concurrency)
+public class ConcurrencyController(int concurrency)
 {
-    private int _slots = concurrency - 1;
+    private int _slots = concurrency;
 
-    public bool TryTakeSlot(out SlotReturner returner)
+    public bool TryTakeSlot(out Slot returner)
     {
-        returner = new SlotReturner(this);
-        int newSlot = Interlocked.Decrement(ref _slots);
-        if (newSlot < 0)
+        returner = new Slot(this);
+        int newSlot = Volatile.Read(ref _slots);
+        if (newSlot < 2)
+        {
+            return false;
+        }
+
+        newSlot = Interlocked.Decrement(ref _slots);
+        if (newSlot < 1)
         {
             Interlocked.Increment(ref _slots);
             return false;
@@ -36,7 +42,7 @@ public class ThreadLimiter(int concurrency)
         Interlocked.Increment(ref _slots);
     }
 
-    public struct SlotReturner(ThreadLimiter limiter) : IDisposable
+    public readonly struct Slot(ConcurrencyController limiter) : IDisposable
     {
         public void Dispose()
         {

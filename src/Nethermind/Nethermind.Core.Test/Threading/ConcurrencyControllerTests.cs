@@ -7,13 +7,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Threading;
 
-public class ThreadLimiterTests
+public class ConcurrencyControllerTests
 {
     [Test]
     public void ThreadLimiterWillLimit()
     {
-        ThreadLimiter.SlotReturner returner;
-        ThreadLimiter limiter = new ThreadLimiter(3);
+        ConcurrencyController.Slot returner;
+        ConcurrencyController limiter = new ConcurrencyController(3);
 
         limiter.TryTakeSlot(out returner).Should().Be(true);
         limiter.TryTakeSlot(out returner).Should().Be(true);
