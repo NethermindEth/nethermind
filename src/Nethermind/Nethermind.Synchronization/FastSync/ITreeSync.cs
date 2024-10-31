@@ -8,9 +8,9 @@ namespace Nethermind.Synchronization.FastSync;
 
 public interface ITreeSync
 {
-    public event EventHandler<VerifyPostSyncCleanupEventArgs> OnVerifyPostSyncCleanup;
+    public event EventHandler<SyncCompleatedEventArgs> SyncCompleated;
 
-    public class VerifyPostSyncCleanupEventArgs(Hash256 root) : EventArgs
+    public class SyncCompleatedEventArgs(Hash256 root) : EventArgs
     {
         public Hash256 Root => root;
     }
