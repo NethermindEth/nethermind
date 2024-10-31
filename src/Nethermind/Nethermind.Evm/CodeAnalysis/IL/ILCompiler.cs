@@ -525,6 +525,11 @@ internal class ILCompiler
                         method.LoadLocalAddress(uint256B);
                         method.LoadLocalAddress(uint256R);
                         method.Call(typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint256R);
+                        method.Call(Word.SetUInt256);
+
                         method.Branch(endOfExpImpl);
 
                         method.MarkLabel(powerIsZero);
@@ -921,11 +926,7 @@ internal class ILCompiler
                         method.LoadArgument(VMSTATE_INDEX);
                         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
                         method.LoadLocalAddress(uint256A);
-                        method.LoadLocalAddress(uint256B);
-                        method.LoadConstant(Word.Size);
-                        method.Call(typeof(UInt256).GetMethod(nameof(UInt256.PaddedBytes)));
-                        method.LoadConstant(0);
-                        method.LoadElement<byte>();
+                        method.LoadLocal(byte8A);
 
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.SaveByte)));
                     }
