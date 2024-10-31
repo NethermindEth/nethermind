@@ -6,8 +6,8 @@ using Ethereum.Test.Base;
 using Evm.t8n.Errors;
 using Evm.t8n.JsonTypes;
 using Nethermind.Core;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
-using TransactionJson = Evm.t8n.JsonTypes.TransactionJson;
 
 namespace Evm.t8n;
 
@@ -40,7 +40,8 @@ public static class T8NInputReader
             switch (Path.GetExtension(arguments.InputTxs))
             {
                 case ".json":
-                    inputData.Txs = LoadDataFromFile<TransactionJson[]>(arguments.InputTxs, "txs");
+                    inputData.Txs = LoadDataFromFile<TransactionForRpc[]>(arguments.InputTxs, "txs");
+                    inputData.TransactionMetaDataList = LoadDataFromFile<TransactionMetaData[]>(arguments.InputTxs, "txs");
                     break;
                 case ".rlp":
                     inputData.TxRlp = File.ReadAllText(arguments.InputTxs).Replace("\"", "").Replace("\n", "");
