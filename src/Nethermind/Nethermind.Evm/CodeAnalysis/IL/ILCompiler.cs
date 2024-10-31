@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.IL;
@@ -660,8 +661,9 @@ internal class ILCompiler
                     break;
                 case Instruction.CODESIZE:
                     {
+                        var lastOpcode = code[^1];
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadConstant(code.Length);
+                        method.LoadConstant(lastOpcode.ProgramCounter + lastOpcode.Metadata.AdditionalBytes + 1);
                         method.Call(Word.SetInt0);
                         method.StackPush(head);
                     }
@@ -1083,19 +1085,16 @@ internal class ILCompiler
                         method.Or();
                         method.BranchIfTrue(pushZeroLabel);
 
-                        using Local tempValue = method.DeclareLocal<byte>();
-
-                        method.CleanAndLoadWord(stack, head);
                         method.LoadLocalAddress(localReadonOnlySpan);
                         method.LoadLocal(uint32A);
                         method.Call(typeof(ReadOnlySpan<byte>).GetMethod("get_Item"));
                         method.LoadIndirect<byte>();
-                        method.Duplicate();
-                        method.StoreLocal(tempValue);
+                        method.Convert<uint>();
+                        method.StoreLocal(uint32A);
 
-                        method.Print(tempValue);
-
-                        method.Call(Word.SetByte0);
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint32A);
+                        method.Call(Word.SetUInt0);
                         method.StackPush(head);
                         method.Branch(endOfInstructionImpl);
 
@@ -1337,21 +1336,17 @@ internal class ILCompiler
                         method.Call(GetPropertyInfo(typeof(BlockExecutionContext), nameof(BlockExecutionContext.Header), false, out _));
                         method.Duplicate();
                         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.IsPostMerge), false, out _));
-                        method.BranchIfTrue(isPostMergeBranch);
+                        method.BranchIfFalse(isPostMergeBranch);
                         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Random), false, out _));
-                        method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
-                        method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                        method.StoreLocal(localReadonOnlySpan);
-                        method.LoadLocalAddress(localReadonOnlySpan);
-                        method.LoadConstant(BitConverter.IsLittleEndian);
-                        method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
+                        method.LoadField(typeof(Hash256).GetField("_hash256", BindingFlags.Instance | BindingFlags.NonPublic));
+                        method.Call(Word.SetKeccak);
                         method.Branch(endOfOpcode);
 
                         method.MarkLabel(isPostMergeBranch);
                         method.Call(GetPropertyInfo(typeof(BlockHeader), nameof(BlockHeader.Difficulty), false, out _));
+                        method.Call(Word.SetUInt256);
 
                         method.MarkLabel(endOfOpcode);
-                        method.Call(Word.SetUInt256);
                         method.StackPush(head);
                     }
                     break;
@@ -1453,7 +1448,6 @@ internal class ILCompiler
                         method.StackLoadPrevious(stack, head, 1);
                         method.Call(Word.GetUInt0);
                         method.StoreLocal(uint32A);
-                        method.Print(uint32A);
 
                         method.LoadLocal(uint32A);
                         method.LoadConstant(32);
@@ -1763,7 +1757,6 @@ internal class ILCompiler
                         method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadLocal(address);
-                        method.Print(address);
                         method.LoadArgument(SPEC_INDEX);
                         method.Call(typeof(CodeInfoRepositoryExtensions).GetMethod(nameof(CodeInfoRepositoryExtensions.GetCachedCodeInfo), [typeof(ICodeInfoRepository), typeof(IWorldState), typeof(Address), typeof(IReleaseSpec)]));
                         method.Call(GetPropertyInfo<CodeInfo>(nameof(CodeInfo.MachineCode), false, out _));
@@ -1990,7 +1983,6 @@ internal class ILCompiler
 
 
         // if (jumpDest > uint.MaxValue)
-        method.Print(jmpDestination);
         method.LoadConstant(uint.MaxValue);
         method.LoadLocal(jmpDestination);
         // goto invalid address

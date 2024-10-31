@@ -165,6 +165,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             return address;
         }
 
+        public void ForceRunAnalysis(Address address)
+        {
+            var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance);
+            codeinfo.NoticeExecution(config, NullLogger.Instance);
+            while (codeinfo.IlInfo.IsEmpty) ; // wait for analysis to finish
+        }
+
         public Hash256 StateRoot
         {
             get
@@ -501,277 +508,278 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done, EvmExceptionType.None);
 
             yield return (Instruction.BLOCKHASH, Prepare.EvmCode
-                    .BLOCKHASH(0)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .BLOCKHASH(0)
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLDATACOPY, Prepare.EvmCode
-                    .CALLDATACOPY(0, 0, 32)
-                    .MLOAD(0)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CALLDATACOPY(0, 0, 32)
+                .MLOAD(0)
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLDATALOAD, Prepare.EvmCode
-                    .CALLDATALOAD(0)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CALLDATALOAD(0)
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.MSIZE, Prepare.EvmCode
-                    .MSIZE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .MSIZE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.GASPRICE, Prepare.EvmCode
-                    .GASPRICE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .GASPRICE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CODESIZE, Prepare.EvmCode
-                    .CODESIZE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CODESIZE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.PC, Prepare.EvmCode
-                    .PC()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PC()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.COINBASE, Prepare.EvmCode
-                    .COINBASE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .COINBASE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.TIMESTAMP, Prepare.EvmCode
-                    .TIMESTAMP()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .TIMESTAMP()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.NUMBER, Prepare.EvmCode
-                    .NUMBER()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .NUMBER()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.GASLIMIT, Prepare.EvmCode
-                    .GASLIMIT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .GASLIMIT()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLER, Prepare.EvmCode
-                    .CALLER()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CALLER()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.ADDRESS, Prepare.EvmCode
-                    .ADDRESS()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .ADDRESS()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.ORIGIN, Prepare.EvmCode
-                    .ORIGIN()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .ORIGIN()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLVALUE, Prepare.EvmCode
-                    .CALLVALUE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CALLVALUE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CHAINID, Prepare.EvmCode
-                    .CHAINID()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CHAINID()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.GAS, Prepare.EvmCode
-                    .PushData(23)
-                    .PushData(46)
-                    .ADD()
-                    .POP()
-                    .GAS()
-                    .PushData(1)
-                    .SSTORE()
-                    .PushData(23)
-                    .PushData(46)
-                    .ADD()
-                    .POP()
-                    .GAS()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushData(23)
+                .PushData(46)
+                .ADD()
+                .POP()
+                .GAS()
+                .PushData(1)
+                .SSTORE()
+                .PushData(23)
+                .PushData(46)
+                .ADD()
+                .POP()
+                .GAS()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.RETURNDATASIZE, Prepare.EvmCode
-                    .RETURNDATASIZE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .RETURNDATASIZE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.BASEFEE, Prepare.EvmCode
-                    .BASEFEE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .BASEFEE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.RETURN, Prepare.EvmCode
-                    .StoreDataInMemory(0, [2, 3, 5, 7])
-                    .RETURN(0, 32)
-                    .MLOAD(0)
-                    .PushData(1)
-                    .SSTORE().Done, EvmExceptionType.None);
+                .StoreDataInMemory(0, [2, 3, 5, 7])
+                .RETURN(0, 32)
+                .MLOAD(0)
+                .PushData(1)
+                .SSTORE().Done, EvmExceptionType.None);
 
             yield return (Instruction.REVERT, Prepare.EvmCode
-                    .StoreDataInMemory(0, [2, 3, 5, 7])
-                    .REVERT(0, 32)
-                    .MLOAD(0)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .StoreDataInMemory(0, [2, 3, 5, 7])
+                .REVERT(0, 32)
+                .MLOAD(0)
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.CALLDATASIZE, Prepare.EvmCode
-                    .CALLDATASIZE()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .CALLDATASIZE()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.JUMPI | Instruction.JUMPDEST, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .JUMPI(9)
-                    .PushSingle(3)
-                    .JUMPDEST()
-                    .PushSingle(0)
-                    .MUL()
-                    .GAS()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .JUMPI(9)
+                .PushSingle(3)
+                .JUMPDEST()
+                .PushSingle(0)
+                .MUL()
+                .GAS()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
 
             yield return (Instruction.JUMPI | Instruction.JUMPDEST, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(0)
-                    .JUMPI(9)
-                    .PushSingle(3)
-                    .JUMPDEST()
-                    .PushSingle(0)
-                    .MUL()
-                    .GAS()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(0)
+                .JUMPI(9)
+                .PushSingle(3)
+                .JUMPDEST()
+                .PushSingle(0)
+                .MUL()
+                .GAS()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.JUMP | Instruction.JUMPDEST, Prepare.EvmCode
-                    .PushSingle(23)
-                    .JUMP(14)
-                    .JUMPDEST()
-                    .PushSingle(3)
-                    .MUL()
-                    .GAS()
-                    .PUSHx([1])
-                    .SSTORE()
-                    .STOP()
-                    .JUMPDEST()
-                    .JUMP(5)
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .JUMP(14)
+                .JUMPDEST()
+                .PushSingle(3)
+                .MUL()
+                .GAS()
+                .PUSHx([1])
+                .SSTORE()
+                .STOP()
+                .JUMPDEST()
+                .JUMP(5)
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.SHL, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .SHL()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .SHL()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.SHR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .SHR()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .SHR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.SAR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .SAR()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .SAR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.AND, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .AND()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .AND()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.OR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .OR()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .OR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.XOR, Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .XOR()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushSingle(23)
+                .PushSingle(1)
+                .XOR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.SLT, Prepare.EvmCode
-                    .PushData(23)
-                    .PushSingle(4)
-                    .SLT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushData(23)
+                .PushSingle(4)
+                .SLT()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.SGT, Prepare.EvmCode
-                    .PushData(23)
-                    .PushData(1)
-                    .SGT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .PushData(23)
+                .PushData(1)
+                .SGT()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.BYTE, Prepare.EvmCode
-                    .BYTE(0, ((UInt256)(23)).PaddedBytes(32))
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .BYTE(0, ((UInt256)(23)).PaddedBytes(32))
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.BYTE, Prepare.EvmCode
-                    .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.BYTE, Prepare.EvmCode
-                    .BYTE(16, ((UInt256)(23)).PaddedBytes(32))
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None);
+                .BYTE(16, ((UInt256)(23)).PaddedBytes(32))
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
 
             yield return (Instruction.JUMP | Instruction.JUMPDEST, Prepare.EvmCode
                 .JUMP(31)
+                .INVALID()
                 // this assumes that the code segment is jumping to another segment beyond it's boundaries
                 .Done, EvmExceptionType.None);
 
@@ -895,6 +903,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.POP | Instruction.INVALID, Prepare.EvmCode
+                .POP()
+                .POP()
+                .POP()
                 .POP()
                 .Done, EvmExceptionType.StackUnderflow);
 
@@ -1185,6 +1196,53 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
+        public void Execution_Swap_Happens_When_Segments_are_compiled()
+        {
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+                AnalysisQueueMaxSize = 1,
+                JittingThreshold = 1,
+                IsJitEnabled = true,
+                AggressiveJitMode = false
+            });
+
+            byte[] bytecode =
+                Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(1000)
+                    .GAS()
+                    .LT()
+                    .PUSHx([0, 26])
+                    .JUMPI()
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .POP()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .POP()
+                    .PUSHx([0, 0])
+                    .JUMP()
+                    .JUMPDEST()
+                    .STOP()
+                    .Done;
+
+            var accumulatedTraces = new List<GethTxTraceEntry>();
+            for (int i = 0; i < RepeatCount; i++)
+            {
+                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
+                var traces = tracer.BuildResult().Entries.Where(tr => tr.IsPrecompiled is not null && tr.IsPrecompiled.Value).ToList();
+                accumulatedTraces.AddRange(traces);
+            }
+
+            Assert.That(accumulatedTraces.Count, Is.GreaterThan(0));
+        }
+
+        [Test]
         public void All_Opcodes_Have_Metadata()
         {
             Instruction[] instructions = System.Enum.GetValues<Instruction>();
@@ -1229,15 +1287,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .STOP()
                 .Done;
 
-            for (var i = 0; i < RepeatCount ; i++)
-            {
-                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
-            }
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
 
-            for (var i = 0; i < RepeatCount ; i++)
-            {
-                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
-            }
+            enhancedChain.ForceRunAnalysis(address);
+
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
 
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
@@ -1245,11 +1299,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
 
-            var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
             if (testcase.opcode is not null)
             {
-                Assert.That(HasIlvmTraces, Is.True);
+                Assert.That(enhancedHasIlvmTraces, Is.True);
+                Assert.That(normalHasIlvmTraces, Is.False);
             }
             Assert.That(actual, Is.EqualTo(expected));
         }
@@ -1284,15 +1340,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            for (var i = 0; i < RepeatCount; i++)
-            {
-                standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
-            }
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
 
-            for (var i = 0; i < RepeatCount ; i++)
-            {
-                enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
-            }
+            enhancedChain.ForceRunAnalysis(address);
+
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
 
             var normal_traces = tracer1.BuildResult();
             var ilvm_traces = tracer2.BuildResult();
@@ -1300,11 +1352,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var actual = standardChain.StateRoot;
             var expected = enhancedChain.StateRoot;
 
-            var HasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
 
             if (testcase.opcode is not null)
             {
-                Assert.That(HasIlvmTraces, Is.True);
+                Assert.That(enhancedHasIlvmTraces, Is.True);
+                Assert.That(normalHasIlvmTraces, Is.False);
             }
             Assert.That(actual, Is.EqualTo(expected));
         }
@@ -1322,13 +1376,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 AggressiveJitMode = true,
             });
 
-            var address = enhancedChain.InsertCode(Prepare.EvmCode
+            var aux = enhancedChain.InsertCode(Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
                 .ADD()
                 .STOP().Done);
 
-            byte[] bytecode =
+            Address main = enhancedChain.InsertCode(
                 Prepare.EvmCode
                     .JUMPDEST()
                     .PushSingle(1000)
@@ -1339,7 +1393,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(7)
                     .ADD()
                     .POP()
-                    .Call(address, 100)
+                    .Call(aux, 100)
                     .POP()
                     .PushSingle(42)
                     .PushSingle(5)
@@ -1348,25 +1402,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .JUMP(0)
                     .JUMPDEST()
                     .STOP()
+                    .Done);
+
+            byte[] driver =
+                Prepare.EvmCode
+                    .Call(main, 1_000_000)
                     .Done;
 
-            var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= RepeatCount; i++)
-            {
-                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-                enhancedChain.Execute(bytecode, tracer);
-                var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
-                accumulatedTraces.AddRange(traces);
-
-            }
-
-            // in the last stint gas is almost below 1000
-            // it executes segment 0 (0..46)
-            // then calls address 23 (segment 0..5 since it is precompiled as well)
-            // then it executes segment 48..59 which ends in jump back to pc = 0
-            // then it executes segment 0..46 again but this time gas is below 1000
-            // it ends jumping to pc = 59 (which is index of AbortDestinationPattern)
-            // so the last segment executed is AbortDestinationPattern
+            enhancedChain.ForceRunAnalysis(main);
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            enhancedChain.Execute(driver, tracer);
+            var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
 
             string[] desiredTracePattern = new[]
             {
@@ -1377,7 +1423,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 "ILEVM_PRECOMPILED_(0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358)[49..60]",
             };
 
-            string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
+            string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
             Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
         }
 
@@ -1395,13 +1441,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 AggressiveJitMode = false
             });
 
-            var address = enhancedChain.InsertCode(Prepare.EvmCode
+            var aux = enhancedChain.InsertCode(Prepare.EvmCode
                 .PushData(23)
                 .PushData(7)
                 .ADD()
                 .STOP().Done);
 
-            byte[] bytecode =
+            Address main = enhancedChain.InsertCode(
                 Prepare.EvmCode
                     .JUMPDEST()
                     .PushSingle(1000)
@@ -1412,7 +1458,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(7)
                     .ADD()
                     .POP()
-                    .Call(address, 100)
+                    .Call(aux, 100)
                     .POP()
                     .PushSingle(42)
                     .PushSingle(5)
@@ -1421,17 +1467,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .JUMP(0)
                     .JUMPDEST()
                     .STOP()
+                    .Done);
+
+            byte[] driver =
+                Prepare.EvmCode
+                    .Call(main, 1_000_000)
                     .Done;
 
-            var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= RepeatCount; i++)
-            {
-                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-                enhancedChain.Execute(bytecode, tracer);
-                var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
-                accumulatedTraces.AddRange(traces);
-
-            }
+            enhancedChain.ForceRunAnalysis(main);
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            enhancedChain.Execute(driver, tracer);
+            var traces = tracer.BuildResult().Entries.Where(tr => tr.SegmentID is not null).ToList();
 
             // in the last stint gas is almost below 1000
             // it executes segment 0 (0..46)
@@ -1450,7 +1496,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 "AbortDestinationPattern",
             };
 
-            string[] actualTracePattern = accumulatedTraces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
+            string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
             Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
         }
 
@@ -1461,81 +1507,40 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
             {
                 PatternMatchingThreshold = 1,
-                IsPatternMatchingEnabled = true,
+                IsPatternMatchingEnabled = false,
                 JittingThreshold = 1,
                 IsJitEnabled = true,
                 AnalysisQueueMaxSize = 1,
                 AggressiveJitMode = false
             });
 
-            byte[] bytecode =
+            Address main = enhancedChain.InsertCode(
                 Prepare.EvmCode
                     .PUSHx() // PUSH0
                     .POP()
                     .STOP()
-                    .Done;
+                    .Done);
 
-            var accumulatedTraces = new List<GethLikeTxTrace>();
-            for (int i = 0; i < RepeatCount; i++)
-            {
-                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-                enhancedChain.Execute(bytecode, tracer);
-                var traces = tracer.BuildResult();
-                accumulatedTraces.AddRange(traces);
-            }
-
-            var HasIlvmTraces = accumulatedTraces.SelectMany(tr => tr.Entries).Where(tr => tr.SegmentID is not null).Any();
-            var allFailed = accumulatedTraces.All(tr => tr.Failed);
-            Assert.That(HasIlvmTraces, Is.True);
-            Assert.That(allFailed, Is.True);
-        }
-
-        [Test]
-        public void Execution_Swap_Happens_When_Segments_are_compiled()
-        {
-            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
-            {
-                PatternMatchingThreshold = int.MaxValue,
-                IsPatternMatchingEnabled = false,
-                AnalysisQueueMaxSize = 1,
-                JittingThreshold = 1,
-                IsJitEnabled = true,
-                AggressiveJitMode = false
-            });
-
-            byte[] bytecode =
+            byte[] driver =
                 Prepare.EvmCode
-                    .JUMPDEST()
-                    .PushSingle(1000)
-                    .GAS()
-                    .LT()
-                    .PUSHx([0, 26])
-                    .JUMPI()
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .POP()
-                    .PushSingle(42)
-                    .PushSingle(5)
-                    .ADD()
-                    .POP()
-                    .PUSHx([0, 0])
-                    .JUMP()
+                    .Call(main, 1000)
+                    .JUMPI(17)
+                    .INVALID()
                     .JUMPDEST()
                     .STOP()
                     .Done;
 
-            var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i <= RepeatCount; i++)
-            {
-                var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-                enhancedChain.Execute(bytecode, tracer);
-                var traces = tracer.BuildResult().Entries.Where(tr => tr.IsPrecompiled is not null && tr.IsPrecompiled.Value).ToList();
-                accumulatedTraces.AddRange(traces);
-            }
+            enhancedChain.ForceRunAnalysis(main);
+            var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            enhancedChain.Execute(driver, tracer);
+            var traces = tracer.BuildResult();
 
-            Assert.That(accumulatedTraces.Count, Is.GreaterThan(0));
+            var HasIlvmTraces = traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var hasFailed = traces.Failed;
+            Assert.That(HasIlvmTraces, Is.True);
+            Assert.That(hasFailed, Is.True);
         }
+
 
         [Test]
         public void Pure_Opcode_Emition_Coveraga()

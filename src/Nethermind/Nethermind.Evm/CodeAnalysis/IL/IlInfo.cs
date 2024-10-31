@@ -61,7 +61,7 @@ internal class IlInfo
     /// Represents what mode of IL-EVM is used. 0 is the default. [0 = No ILVM optimizations, 1 = Pattern matching, 2 = subsegments compiling]
     /// </summary>
     public int Mode = ILMode.NO_ILVM;
-    public bool IsEmpty => Chunks.Count == 0 && Segments.Count == 0;
+    public bool IsEmpty => Chunks.Count == 0 && Segments.Count == 0 && Mode == ILMode.NO_ILVM;
     /// <summary>
     /// No overrides.
     /// </summary>
