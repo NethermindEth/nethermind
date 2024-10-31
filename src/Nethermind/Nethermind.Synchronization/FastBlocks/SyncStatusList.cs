@@ -116,7 +116,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            infos = null;
+            infos = [];
             return false;
 
             (bool, bool) ClearExistingBlock()
