@@ -71,13 +71,13 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
             if (build.Length != 8) throw new ArgumentException($"Expected build identifier to be 8 bytes long, got {build.Length}", nameof(build));
 
             var parts = version.Split('.').Select(uint.Parse).ToList();
-            if (parts.Count != 4) throw new ArgumentException($"Invalid version format '{version}'", nameof(version));
+            if (parts.Count is < 3 or > 4) throw new ArgumentException($"Invalid version format '{version}'", nameof(version));
 
             Build = build.ToArray();
             Major = parts[0];
             Minor = parts[1];
             Patch = parts[2];
-            PreRelease = parts[3];
+            PreRelease = parts.Count == 4 ? parts[3] : 0;
         }
 
         public V0(string version) : this(new byte[8], version) { }
