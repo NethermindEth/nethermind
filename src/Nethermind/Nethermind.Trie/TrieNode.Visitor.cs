@@ -200,7 +200,7 @@ namespace Nethermind.Trie
                             {
                                 if (i < BranchesCount - 1 && visitContext.ThreadLimiter.TryTakeSlot(out ThreadLimiter.SlotReturner returner))
                                 {
-                                    tasks ??= new ArrayPoolList<Task>(BranchesCount );
+                                    tasks ??= new ArrayPoolList<Task>(BranchesCount);
                                     tasks.Add(SpawnChildVisit(parentPath, i, GetChild(nodeResolver, ref parentPath, i), returner));
                                 }
                                 else
