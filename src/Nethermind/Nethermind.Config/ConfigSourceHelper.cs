@@ -111,11 +111,11 @@ namespace Nethermind.Config
                 return false;
             }
 
-            if (typeof(IConvertible).IsAssignableFrom(type))
+            if (typeof(IConvertible).IsAssignableFrom(type) && type != typeof(string))
             {
                 object baseValue = type == typeof(ulong)
-                        ? Convert.ToUInt64(itemValue, 16) // Use UInt64 parsing for unsigned types to avoid overflow
-                        : Convert.ToInt64(itemValue, 16); // Default to Int64 parsing for other integer types
+                    ? Convert.ToUInt64(itemValue, 16) // Use UInt64 parsing for unsigned types to avoid overflow
+                    : Convert.ToInt64(itemValue, 16); // Default to Int64 parsing for other integer types
 
                 value = Convert.ChangeType(baseValue, type);
                 return true;
