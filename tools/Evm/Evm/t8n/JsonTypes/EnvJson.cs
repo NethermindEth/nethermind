@@ -7,14 +7,14 @@ using Nethermind.Int256;
 
 namespace Evm.t8n.JsonTypes;
 
-public class EnvJson
+public class EnvJson(Address currentCoinbase, long currentGasLimit, long currentNumber, ulong currentTimestamp)
 {
-    public Address? CurrentCoinbase { get; set; }
-    public long CurrentGasLimit { get; set; }
-    public long CurrentNumber { get; set; }
-    public ulong CurrentTimestamp { get; set; }
-    public Withdrawal[]? Withdrawals { get; set; }
+    public Address CurrentCoinbase { get; set; } = currentCoinbase;
+    public long CurrentGasLimit { get; set; } = currentGasLimit;
+    public long CurrentNumber { get; set; } = currentNumber;
+    public ulong CurrentTimestamp { get; set; } = currentTimestamp;
 
+    public Withdrawal[]? Withdrawals { get; set; }
     public UInt256? CurrentRandom { get; set; }
     public ulong ParentTimestamp { get; set; }
     public UInt256? ParentDifficulty { get; set; }

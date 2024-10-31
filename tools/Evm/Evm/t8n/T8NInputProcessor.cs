@@ -37,11 +37,10 @@ public static class T8NInputProcessor
             DisableStack = arguments.TraceNoStack
         };
 
-        T8NTest test = new(spec, specProvider)
+        T8NTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
-            Transactions = inputData.GetTransactions(TxDecoder),
-            CurrentCoinbase = inputData.Env.CurrentCoinbase,
+            Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId),
             CurrentGasLimit = inputData.Env.CurrentGasLimit,
             CurrentTimestamp = inputData.Env.CurrentTimestamp,
             CurrentNumber = inputData.Env.CurrentNumber,

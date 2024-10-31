@@ -5,34 +5,33 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Evm.t8n.JsonTypes;
 
-public class T8NTest(IReleaseSpec spec, ISpecProvider specProvider)
+public class T8NTest(IReleaseSpec spec, ISpecProvider specProvider, Address currentCoinbase)
 {
     public IReleaseSpec Spec { get; set; } = spec;
     public ISpecProvider SpecProvider { get; set; } = specProvider;
-    public Address? CurrentCoinbase { get; set; }
-    public UInt256? CurrentDifficulty { get; set; }
+    public Dictionary<Address, AccountState> Alloc { get; set; } = [];
+    public Transaction[] Transactions { get; set; } = [];
 
+    public Address CurrentCoinbase { get; set; } = currentCoinbase;
+    public UInt256? CurrentDifficulty { get; set; }
     public UInt256? CurrentBaseFee { get; set; }
     public long CurrentGasLimit { get; set; }
     public long CurrentNumber { get; set; }
     public ulong CurrentTimestamp { get; set; }
-    public Hash256? PreviousHash { get; set; }
-    public Dictionary<Address, AccountState> Alloc { get; set; } = [];
-    public Hash256? PostHash { get; set; }
-    public Transaction[] Transactions { get; set; } = [];
     public Hash256? CurrentRandom { get; set; }
-    public Hash256? CurrentBeaconRoot { get; set; }
-    public Hash256? CurrentWithdrawalsRoot { get; set; }
     public ulong? CurrentExcessBlobGas { get; set; }
     public UInt256? ParentBlobGasUsed { get; set; }
     public UInt256? ParentExcessBlobGas { get; set; }
-
     public Withdrawal[]? Withdrawals { get; set; }
     public ulong ParentTimestamp { get; set; }
     public UInt256? ParentDifficulty { get; set; }
@@ -46,4 +45,50 @@ public class T8NTest(IReleaseSpec spec, ISpecProvider specProvider)
     public ulong StateChainId { get; set; } = MainnetSpecProvider.Instance.ChainId;
     public GethTraceOptions GethTraceOptions { get; set; } = GethTraceOptions.Default;
     public bool IsTraceEnabled { get; set; } = false;
+
+    private BlockHeader ConstructBlockHeader()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(CurrentTimestamp)
+            .WithGasLimit(CurrentGasLimit)
+            .WithDifficulty(CurrentDifficulty ?? UInt256.Zero)
+            .WithBeneficiary(CurrentCoinbase)
+            .WithNumber(CurrentNumber)
+            .TestObject;
+
+        if (CurrentRandom is not null) header.MixHash = CurrentRandom;
+        if (CurrentBaseFee.HasValue) header.BaseFeePerGas = CurrentBaseFee.Value;
+        if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
+        {
+            BlockHeader parentHeader = Build.A.BlockHeader
+                .WithExcessBlobGas((ulong)ParentExcessBlobGas)
+                .WithBlobGasUsed((ulong)ParentBlobGasUsed)
+                .TestObject;
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Spec);
+        }
+        header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(Transactions);
+        header.IsPostMerge = Spec is Paris;
+        header.Hash = header.CalculateHash();
+
+        return header;
+    }
+
+    public Block ConstructBlock()
+    {
+
+        BlockHeader[] uncles = Ommers
+            .Select(ommer => Build.A.BlockHeader
+                .WithNumber(CurrentNumber - ommer.Delta)
+                .WithBeneficiary(ommer.Address)
+                .TestObject)
+            .ToArray();
+
+        BlockHeader header = ConstructBlockHeader();
+        return Build.A.Block
+            .WithHeader(header)
+            .WithTransactions(Transactions)
+            .WithWithdrawals(Withdrawals)
+            .WithUncles(uncles)
+            .TestObject;
+    }
 }
