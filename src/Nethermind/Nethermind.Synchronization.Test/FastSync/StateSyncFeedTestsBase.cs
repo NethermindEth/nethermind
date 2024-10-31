@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             return remoteStorageTree;
         }
 
-        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, ISyncConfig? syncConfig = null)
         {
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.TreeFeed = new(dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, new SyncConfig(), _logManager);
+            ctx.TreeFeed = new(dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
