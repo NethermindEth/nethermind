@@ -45,7 +45,7 @@ public class VerifyStateOnStateSyncFinished(
             {
                 _logger.Error($"Missing node found!");
             }
-            _logger.Info($"Stats after finishing state" + stats);
+            _logger.Info($"Stats after finishing state \n" + stats);
         }
         catch (Exception e)
         {
