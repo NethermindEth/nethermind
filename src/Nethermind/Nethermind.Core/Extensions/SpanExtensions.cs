@@ -154,16 +154,16 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static ReadOnlySpan<byte> TakeAndMove(this ref ReadOnlySpan<byte> span, int length)
+        public static ReadOnlySpan<T> TakeAndMove<T>(this ref ReadOnlySpan<T> span, int length)
         {
-            ReadOnlySpan<byte> s = span[..length];
+            ReadOnlySpan<T> s = span[..length];
             span = span[length..];
             return s;
         }
 
-        public static Span<byte> TakeAndMove(this ref Span<byte> span, int length)
+        public static Span<T> TakeAndMove<T>(this ref Span<T> span, int length)
         {
-            Span<byte> s = span[..length];
+            Span<T> s = span[..length];
             span = span[length..];
             return s;
         }
