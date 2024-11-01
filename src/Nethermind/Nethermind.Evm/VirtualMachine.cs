@@ -168,7 +168,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             IsJitEnabled = true,
             BakeInTracingInJitMode = true,
             AggressiveJitMode = true,
-            AnalysisQueueMaxSize = 4
+            AnalysisQueueMaxSize = 2
         };
     }
 
