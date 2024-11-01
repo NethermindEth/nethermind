@@ -11,7 +11,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class LongUInt256DictionaryConverter : JsonConverter<SortedDictionary<long, UInt256>>
+public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256>>
 {
     public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
         JsonSerializerOptions options)

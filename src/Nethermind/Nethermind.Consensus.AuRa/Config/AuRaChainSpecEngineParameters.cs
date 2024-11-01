@@ -25,7 +25,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     [JsonConverter(typeof(StepDurationJsonConverter))]
     public SortedDictionary<long, long> StepDuration { get; set; } = new();
 
-    [JsonConverter(typeof(LongUInt256DictionaryConverter))]
+    [JsonConverter(typeof(BlockRewardConverter))]
     public SortedDictionary<long, UInt256>? BlockReward { get; set; }
 
     public long? MaximumUncleCountTransition { get; set; }
