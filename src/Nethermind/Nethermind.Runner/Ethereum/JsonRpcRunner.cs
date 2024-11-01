@@ -20,7 +20,6 @@ using Nethermind.Network;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
 using Nethermind.Sockets;
-using ILogger = Nethermind.Logging.InterfaceLogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Runner.Ethereum

@@ -16,6 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
@@ -28,7 +29,7 @@ namespace Nethermind.Consensus.Tracing;
 
 public class GethStyleTracer : IGethStyleTracer
 {
-    private readonly IBlockStore _badBlockStore;
+    private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
@@ -36,15 +37,17 @@ public class GethStyleTracer : IGethStyleTracer
     private readonly IWorldState _worldState;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IFileSystem _fileSystem;
+    private readonly IOverridableTxProcessorSource _env;
 
     public GethStyleTracer(IBlockchainProcessor processor,
         IWorldState worldState,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
-        IBlockStore badBlockStore,
+        IBadBlockStore badBlockStore,
         ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
-        IFileSystem fileSystem)
+        IFileSystem fileSystem,
+        IOverridableTxProcessorSource env)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _worldState = worldState;
@@ -54,6 +57,7 @@ public class GethStyleTracer : IGethStyleTracer
         _specProvider = specProvider;
         _transactionProcessorAdapter = transactionProcessorAdapter;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _env = env ?? throw new ArgumentNullException(nameof(env));
     }
 
     public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
@@ -82,7 +86,10 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            return Trace(block, tx.Hash, cancellationToken, options);
+            Dictionary<Address, AccountOverride>? stateOverride = options.StateOverrides;
+            using IOverridableTxProcessingScope? scope = stateOverride != null ? _env.BuildAndOverride(block.Header, stateOverride) : null;
+
+            return Trace(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions);
         }
         finally
         {
@@ -189,7 +196,8 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options)
+    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
+        ProcessingOptions processingOptions = ProcessingOptions.Trace)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -197,7 +205,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         try
         {
-            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            _processor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult().SingleOrDefault();
         }
         catch

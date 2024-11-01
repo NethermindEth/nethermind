@@ -16,18 +16,20 @@ namespace Nethermind.Consensus.Tracing
         private readonly IWorldState _stateProvider;
         private readonly IBlockchainProcessor _traceProcessor;
         private readonly IBlockchainProcessor _executeProcessor;
-        private readonly ProcessingOptions _processingOptions;
+        private readonly ProcessingOptions _executeOptions;
+        private readonly ProcessingOptions _traceOptions;
 
         public Tracer(IWorldState stateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
-            ProcessingOptions processingOptions = ProcessingOptions.Trace)
+            ProcessingOptions executeOptions = ProcessingOptions.Trace, ProcessingOptions traceOptions = ProcessingOptions.Trace)
         {
             _traceProcessor = traceProcessor;
             _executeProcessor = executeProcessor;
             _stateProvider = stateProvider;
-            _processingOptions = processingOptions;
+            _executeOptions = executeOptions;
+            _traceOptions = traceOptions;
         }
 
-        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor, ProcessingOptions options)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
@@ -36,7 +38,7 @@ namespace Nethermind.Consensus.Tracing
 
             try
             {
-                processor.Process(block, _processingOptions, blockTracer);
+                processor.Process(block, options, blockTracer);
             }
             catch (Exception)
             {
@@ -47,9 +49,9 @@ namespace Nethermind.Consensus.Tracing
             blockTracer.EndBlockTrace();
         }
 
-        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor);
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor, _traceOptions);
 
-        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor, _executeOptions);
 
         public void Accept(ITreeVisitor visitor, Hash256 stateRoot)
         {

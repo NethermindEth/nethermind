@@ -290,6 +290,9 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddScoped<IPeerAllocationStrategyFactory<HeadersSyncBatch>, FastBlocksPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<HeadersSyncBatch>>()
 
+            // Default TotalDifficulty calculation strategy used when processing headers
+            .AddScoped<ITotalDifficultyStrategy, CumulativeTotalDifficultyStrategy>()
+
             // SyncProgress resolver need one header sync batch feed, which is the fast header one.
             .Register(ctx => ctx
                 .ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed))
@@ -377,12 +380,20 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
-            .AddSingleton<TreeSync>();
+            .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
 
         // Disable it by setting noop
         if (!syncConfig.FastSync) serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
+
+        if (syncConfig.FastSync && syncConfig.VerifyTrieOnStateSyncFinished)
+        {
+            serviceCollection
+                .RegisterType<VerifyStateOnStateSyncFinished>()
+                .WithAttributeFiltering()
+                .As<IStartable>();
+        }
     }
 
     private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>

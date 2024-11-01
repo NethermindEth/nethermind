@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -47,9 +48,9 @@ namespace Nethermind.State
             return stateReader.HasStateForRoot(header.StateRoot!);
         }
 
-        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager)
+        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
         {
-            TrieStatsCollector collector = new(codeStorage, logManager);
+            TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
             stateProvider.RunTreeVisitor(collector, root, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,

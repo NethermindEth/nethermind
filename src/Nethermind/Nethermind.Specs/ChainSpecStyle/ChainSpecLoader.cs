@@ -7,7 +7,6 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -176,7 +175,9 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip4844FeeCollectorTransitionTimestamp = chainSpecJson.Params.Eip4844FeeCollectorTransitionTimestamp,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
-            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
+            TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber,
+
+            OntakeTransition = chainSpecJson.Params.OntakeTransition,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);
@@ -359,6 +360,10 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
                 Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
             };
+        }
+        else if (chainSpecJson.Engine?.Taiko is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.Taiko;
         }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {

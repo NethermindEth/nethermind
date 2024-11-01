@@ -162,13 +162,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
+        builder.RegisterModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider));
 
         IContainer container = builder.Build();
 
         _api.ApiWithNetworkServiceContainer = container;
         _api.DisposeStack.Append(container);
 
-        _ = new PivotUpdator(
+        _ = new UnsafePivotUpdator(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool,
