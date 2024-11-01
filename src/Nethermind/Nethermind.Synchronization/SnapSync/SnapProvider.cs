@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -49,7 +50,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsFinished(out SnapSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
 
-        public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
+        public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response, PeerInfo? peerInfo = null)
         {
             AddRangeResult result;
 
@@ -61,17 +62,25 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                result = AddAccountRange(
-                    request.BlockNumber.Value,
-                    request.RootHash,
-                    request.StartingHash,
-                    response.PathAndAccounts,
-                    response.Proofs,
-                    hashLimit: request.LimitHash);
-
-                if (result == AddRangeResult.OK)
+                try
                 {
-                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
+                    result = AddAccountRange(
+                        request.BlockNumber.Value,
+                        request.RootHash,
+                        request.StartingHash,
+                        response.PathAndAccounts,
+                        response.Proofs,
+                        hashLimit: request.LimitHash);
+
+                    if (result == AddRangeResult.OK)
+                    {
+                        Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
+                    }
+                }
+                catch (MissingTrieNodeException)
+                {
+                    _logger.Warn($"could just be incomplete proof from {peerInfo}. {request.StartingHash} {request.LimitHash} {response.PathAndAccounts[^1].Path}");
+                    result = AddRangeResult.DifferentRootHash;
                 }
             }
 

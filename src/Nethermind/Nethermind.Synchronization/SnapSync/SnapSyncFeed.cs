@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (batch.AccountRangeResponse is not null)
                 {
-                    result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
+                    result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse, peer);
                 }
                 else if (batch.StorageRangeResponse is not null)
                 {

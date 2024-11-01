@@ -36,11 +36,6 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
             ValueHash256 lastHash = accounts[^1].Path;
 
-            if (accounts[^1].Path >= limitHash)
-            {
-                logger?.Warn($"Last path after limit hash {accounts[^1].Path} {limitHash}");
-            }
-
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
 

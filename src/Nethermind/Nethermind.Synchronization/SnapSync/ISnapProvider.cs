@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         bool CanSync();
 
-        AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response);
+        AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response, PeerInfo? peerInfo = null);
 
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
 
