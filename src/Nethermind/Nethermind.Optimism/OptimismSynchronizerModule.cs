@@ -24,10 +24,11 @@ public sealed class OptimismSynchronizerModule(OptimismChainSpecEngineParameters
     {
         if (provider.ChainId == OptimismMainnetChainId)
         {
+            ArgumentNullException.ThrowIfNull(parameters.BedrockBlockNumber);
             builder.AddSingleton<ITotalDifficultyStrategy>(
                 new FixedTotalDifficultyStrategy(
                     new CumulativeTotalDifficultyStrategy(),
-                    fixesBlockNumber: parameters.BedrockBlockNumber!.Value - 1,
+                    fixesBlockNumber: parameters.BedrockBlockNumber.Value - 1,
                     toTotalDifficulty: provider.TerminalTotalDifficulty ?? throw new ArgumentNullException(nameof(provider.TerminalTotalDifficulty))
                 )
             );
