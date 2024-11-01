@@ -3,19 +3,19 @@
 
 using System.CommandLine;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
-public static class T8NCommand
+public static class T8nCommand
 {
     public static void Configure(ref CliRootCommand rootCmd)
     {
-        CliCommand cmd = T8NCommandOptions.CreateCommand();
+        CliCommand cmd = T8nCommandOptions.CreateCommand();
 
         cmd.SetAction(parseResult =>
         {
-            var arguments = T8NCommandArguments.FromParseResult(parseResult);
+            var arguments = T8nCommandArguments.FromParseResult(parseResult);
 
-            T8NExecutor.Execute(arguments);
+            T8nExecutor.Execute(arguments);
         });
 
         rootCmd.Add(cmd);

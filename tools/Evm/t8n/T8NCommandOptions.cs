@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
 using System.CommandLine;
 
-public static class T8NCommandOptions
+public static class T8nCommandOptions
 {
     public static CliOption<string> InputAllocOpt { get; } = new("--input.alloc")
     {

@@ -3,21 +3,21 @@
 
 using Nethermind.Core.Exceptions;
 
-namespace Evm.t8n.Errors;
+namespace Evm.T8n.Errors;
 
-public class T8NException : Exception, IExceptionWithExitCode
+public class T8nException : Exception, IExceptionWithExitCode
 {
-    public T8NException(Exception e, int exitCode) : base(e.Message, e)
+    public T8nException(Exception e, int exitCode) : base(e.Message, e)
     {
         ExitCode = exitCode;
     }
 
-    public T8NException(Exception e, string message, int exitCode) : base(message, e)
+    public T8nException(Exception e, string message, int exitCode) : base(message, e)
     {
         ExitCode = exitCode;
     }
 
-    public T8NException(string message, int exitCode) : base(message)
+    public T8nException(string message, int exitCode) : base(message)
     {
         ExitCode = exitCode;
     }

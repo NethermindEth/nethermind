@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Evm.t8n.Errors;
-using Evm.t8n.JsonTypes;
+using Evm.T8n.Errors;
+using Evm.T8n.JsonTypes;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs.Forks;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
-public static class T8NValidator
+public static class T8nValidator
 {
     public static void ApplyChecks(EnvJson env, ISpecProvider specProvider, IReleaseSpec spec)
     {
@@ -28,8 +28,8 @@ public static class T8NValidator
 
         if (!env.ParentBaseFee.HasValue || env.CurrentNumber == 0)
         {
-            throw new T8NException("EIP-1559 config but missing 'parentBaseFee' in env section",
-                T8NErrorCodes.ErrorConfig);
+            throw new T8nException("EIP-1559 config but missing 'parentBaseFee' in env section",
+                T8nErrorCodes.ErrorConfig);
         }
 
         var parent = Build.A.BlockHeader.WithNumber(env.CurrentNumber - 1).WithBaseFee(env.ParentBaseFee.Value)
@@ -42,8 +42,8 @@ public static class T8NValidator
         if (spec is not Shanghai) return;
         if (env.Withdrawals is null)
         {
-            throw new T8NException("Shanghai config but missing 'withdrawals' in env section",
-                T8NErrorCodes.ErrorConfig);
+            throw new T8nException("Shanghai config but missing 'withdrawals' in env section",
+                T8nErrorCodes.ErrorConfig);
         }
     }
 
@@ -57,8 +57,8 @@ public static class T8NValidator
 
         if (env.ParentBeaconBlockRoot is null)
         {
-            throw new T8NException("post-cancun env requires parentBeaconBlockRoot to be set",
-                T8NErrorCodes.ErrorConfig);
+            throw new T8nException("post-cancun env requires parentBeaconBlockRoot to be set",
+                T8nErrorCodes.ErrorConfig);
         }
     }
 
@@ -67,33 +67,33 @@ public static class T8NValidator
         if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
         {
             if (env.CurrentRandom is null)
-                throw new T8NException("post-merge requires currentRandom to be defined in env",
-                    T8NErrorCodes.ErrorConfig);
+                throw new T8nException("post-merge requires currentRandom to be defined in env",
+                    T8nErrorCodes.ErrorConfig);
             if (env.CurrentDifficulty?.IsZero ?? false)
-                throw new T8NException("post-merge difficulty must be zero (or omitted) in env",
-                    T8NErrorCodes.ErrorConfig);
+                throw new T8nException("post-merge difficulty must be zero (or omitted) in env",
+                    T8nErrorCodes.ErrorConfig);
             return;
         }
 
         if (env.CurrentDifficulty is not null) return;
         if (!env.ParentDifficulty.HasValue)
         {
-            throw new T8NException(
+            throw new T8nException(
                 "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty",
-                T8NErrorCodes.ErrorConfig);
+                T8nErrorCodes.ErrorConfig);
         }
 
         if (env.CurrentNumber == 0)
         {
-            throw new T8NException("currentDifficulty needs to be provided for block number 0",
-                T8NErrorCodes.ErrorConfig);
+            throw new T8nException("currentDifficulty needs to be provided for block number 0",
+                T8nErrorCodes.ErrorConfig);
         }
 
         if (env.CurrentTimestamp <= env.ParentTimestamp)
         {
-            throw new T8NException(
+            throw new T8nException(
                 $"currentDifficulty cannot be calculated -- currentTime ({env.CurrentTimestamp}) needs to be after parent time ({env.ParentTimestamp})",
-                T8NErrorCodes.ErrorConfig);
+                T8nErrorCodes.ErrorConfig);
         }
 
         EthashDifficultyCalculator difficultyCalculator = new(specProvider);

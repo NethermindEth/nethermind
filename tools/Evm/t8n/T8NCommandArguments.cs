@@ -4,9 +4,9 @@
 using System.CommandLine;
 using Nethermind.Specs;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
-public class T8NCommandArguments
+public class T8nCommandArguments
 {
     public string InputAlloc { get; set; } = "alloc.json";
     public string InputEnv { get; set; } = "env.json";
@@ -26,61 +26,61 @@ public class T8NCommandArguments
     public bool TraceNoStack { get; set; }
     public bool TraceReturnData { get; set; }
 
-    public static T8NCommandArguments FromParseResult(ParseResult parseResult)
+    public static T8nCommandArguments FromParseResult(ParseResult parseResult)
     {
-        var arguments = new T8NCommandArguments
+        var arguments = new T8nCommandArguments
         {
-            OutputBody = parseResult.GetValue(T8NCommandOptions.OutputBodyOpt),
-            OutputBaseDir = parseResult.GetValue(T8NCommandOptions.OutputBaseDirOpt),
-            Trace = parseResult.GetValue(T8NCommandOptions.TraceOpt),
-            TraceMemory = parseResult.GetValue(T8NCommandOptions.TraceMemoryOpt),
-            TraceNoStack = parseResult.GetValue(T8NCommandOptions.TraceNoStackOpt),
-            TraceReturnData = parseResult.GetValue(T8NCommandOptions.TraceReturnDataOpt)
+            OutputBody = parseResult.GetValue(T8nCommandOptions.OutputBodyOpt),
+            OutputBaseDir = parseResult.GetValue(T8nCommandOptions.OutputBaseDirOpt),
+            Trace = parseResult.GetValue(T8nCommandOptions.TraceOpt),
+            TraceMemory = parseResult.GetValue(T8nCommandOptions.TraceMemoryOpt),
+            TraceNoStack = parseResult.GetValue(T8nCommandOptions.TraceNoStackOpt),
+            TraceReturnData = parseResult.GetValue(T8nCommandOptions.TraceReturnDataOpt)
         };
 
-        var inputAlloc = parseResult.GetValue(T8NCommandOptions.InputAllocOpt);
+        var inputAlloc = parseResult.GetValue(T8nCommandOptions.InputAllocOpt);
         if (inputAlloc is not null)
         {
             arguments.InputAlloc = inputAlloc;
         }
 
-        var inputEnv = parseResult.GetValue(T8NCommandOptions.InputEnvOpt);
+        var inputEnv = parseResult.GetValue(T8nCommandOptions.InputEnvOpt);
         if (inputEnv is not null)
         {
             arguments.InputEnv = inputEnv;
         }
 
-        var inputTxs = parseResult.GetValue(T8NCommandOptions.InputTxsOpt);
+        var inputTxs = parseResult.GetValue(T8nCommandOptions.InputTxsOpt);
         if (inputTxs is not null)
         {
             arguments.InputTxs = inputTxs;
         }
 
-        var outputAlloc = parseResult.GetValue(T8NCommandOptions.OutputAllocOpt);
+        var outputAlloc = parseResult.GetValue(T8nCommandOptions.OutputAllocOpt);
         if (outputAlloc is not null)
         {
             arguments.OutputAlloc = outputAlloc;
         }
 
-        var outputResult = parseResult.GetValue(T8NCommandOptions.OutputResultOpt);
+        var outputResult = parseResult.GetValue(T8nCommandOptions.OutputResultOpt);
         if (outputResult is not null)
         {
             arguments.OutputResult = outputResult;
         }
 
-        var stateFork = parseResult.GetValue(T8NCommandOptions.StateForkOpt);
+        var stateFork = parseResult.GetValue(T8nCommandOptions.StateForkOpt);
         if (stateFork is not null)
         {
             arguments.StateFork = stateFork;
         }
 
-        var stateReward = parseResult.GetValue(T8NCommandOptions.StateRewardOpt);
+        var stateReward = parseResult.GetValue(T8nCommandOptions.StateRewardOpt);
         if (stateReward is not null)
         {
             arguments.StateReward = stateReward;
         }
 
-        var stateChainId = parseResult.GetValue(T8NCommandOptions.StateChainIdOpt);
+        var stateChainId = parseResult.GetValue(T8nCommandOptions.StateChainIdOpt);
         if (stateChainId.HasValue)
         {
             arguments.StateChainId = stateChainId.Value;
