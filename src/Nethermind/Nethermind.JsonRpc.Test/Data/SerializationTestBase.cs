@@ -69,7 +69,7 @@ public class SerializationTestBase
         IJsonSerializer serializer = BuildSerializer(converters);
 
         string result = serializer.Serialize(item);
-        Assert.That(result, Is.EqualTo(expectedResult.Replace("+", "\\u002B")), result.Replace("\"", "\\\""));
+        Assert.That(result, Is.EqualTo(expectedResult), result.Replace("\"", "\\\""));
     }
 
     private static IJsonSerializer BuildSerializer(params JsonConverter[] converters) => new EthereumJsonSerializer(converters);

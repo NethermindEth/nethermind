@@ -124,6 +124,7 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
     {
         builder.RegisterModule(module);
+
         return builder;
     }
 }
