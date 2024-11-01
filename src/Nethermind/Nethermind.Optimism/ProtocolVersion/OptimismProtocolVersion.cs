@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Optimism.ProtocolVersion;
 
@@ -68,16 +69,22 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public V0(ReadOnlySpan<byte> build, string version)
         {
+            static UInt32 NextPart(ref ReadOnlySpan<char> span)
+            {
+                int dotIndex = span.IndexOf('.');
+                ReadOnlySpan<char> part = dotIndex == -1 ? span : span[..dotIndex];
+                span = dotIndex == -1 ? [] : span[(dotIndex + 1)..];
+                return uint.Parse(part);
+            }
+
             if (build.Length != 8) throw new ArgumentException($"Expected build identifier to be 8 bytes long, got {build.Length}", nameof(build));
-
-            var parts = version.Split('.').Select(uint.Parse).ToList();
-            if (parts.Count is < 3 or > 4) throw new ArgumentException($"Invalid version format '{version}'", nameof(version));
-
             Build = build.ToArray();
-            Major = parts[0];
-            Minor = parts[1];
-            Patch = parts[2];
-            PreRelease = parts.Count == 4 ? parts[3] : 0;
+
+            ReadOnlySpan<char> versionSpan = version;
+            Major = NextPart(ref versionSpan);
+            Minor = NextPart(ref versionSpan);
+            Patch = NextPart(ref versionSpan);
+            PreRelease = versionSpan.IsEmpty ? 0 : NextPart(ref versionSpan);
         }
 
         public V0(string version) : this(new byte[8], version) { }
@@ -170,11 +177,9 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public override void Write(Utf8JsonWriter writer, OptimismProtocolVersion value, JsonSerializerOptions options)
         {
-            // TODO: Can we use `stackalloc` here?
-            var bytes = new byte[ByteLength];
+            Span<byte> bytes = stackalloc byte[ByteLength];
             value.Write(bytes);
-
-            JsonSerializer.Serialize(writer, bytes, options);
+            ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
         }
     }
 }
