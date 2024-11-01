@@ -242,22 +242,27 @@ void AddConfigurationOptions(CliCommand command)
 
         ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
-        if (typeLevel is not null && (typeLevel.DisabledForCli || typeLevel.HiddenFromDocs))
+        if (typeLevel is not null && typeLevel.DisabledForCli)
             continue;
 
+        bool categoryHidden = typeLevel?.HiddenFromDocs == true;
+
         foreach (PropertyInfo propertyInfo in
-            configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
+                 configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
             ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (configItemAttribute?.DisabledForCli == false || configItemAttribute?.HiddenFromDocs == false)
+            if (configItemAttribute == null || configItemAttribute?.DisabledForCli == false)
             {
+                bool hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
+
                 command.Add(new CliOption<string>(
                     $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
                     $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
                 {
                     Description = configItemAttribute?.Description,
-                    HelpName = "value"
+                    HelpName = "value",
+                    Hidden = hidden
                 });
             }
 
@@ -287,12 +292,12 @@ CliConfiguration ConfigureCli()
         versionOption.Action = new AnonymousCliAction(r =>
         {
             Console.WriteLine($"""
-                Version:    {ProductInfo.Version}
-                Commit:     {ProductInfo.Commit}
-                Build date: {ProductInfo.BuildTimestamp:u}
-                Runtime:    {ProductInfo.Runtime}
-                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
-                """);
+                               Version:    {ProductInfo.Version}
+                               Commit:     {ProductInfo.Commit}
+                               Build date: {ProductInfo.BuildTimestamp:u}
+                               Runtime:    {ProductInfo.Runtime}
+                               Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                               """);
 
             return ExitCodes.Ok;
         });
@@ -309,7 +314,7 @@ void ConfigureLogger(ParseResult parseResult)
 {
     string nLogConfig = Path.GetFullPath(
         parseResult.GetValue(BasicOptions.LoggerConfigurationSource)
-            ?? "NLog.config".GetApplicationResourcePath());
+        ?? "NLog.config".GetApplicationResourcePath());
 
     try
     {
@@ -371,14 +376,14 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new EnvConfigSource());
 
     string configFile = parseResult.GetValue(BasicOptions.Configuration)
-        ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
-        ?? "mainnet";
+                        ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
+                        ?? "mainnet";
 
     // If configFile is not a path, handle it
     if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
     {
         string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
-            ?? "configs".GetApplicationResourcePath();
+                            ?? "configs".GetApplicationResourcePath();
 
         configFile = Path.Join(configsDir, configFile);
 
