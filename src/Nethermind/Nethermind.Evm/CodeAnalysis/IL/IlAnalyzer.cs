@@ -36,7 +36,7 @@ public static class IlAnalyzer
     public static void Enqueue(CodeInfo codeInfo, ILMode mode, IVMConfig config, ILogger logger)
     {
         _queue.Enqueue(new AnalysisWork(codeInfo, mode));
-        if(config.AnalysisQueueMaxSize == _queue.Count)
+        if(config.AnalysisQueueMaxSize <= _queue.Count)
         {
             Task.Run(() => AnalyzeQueue(config, logger));
         }
@@ -44,7 +44,7 @@ public static class IlAnalyzer
 
     private static void AnalyzeQueue(IVMConfig config, ILogger logger)
     {
-        int itemsLeft = config.AnalysisQueueMaxSize;
+        int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
         {
             if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {worklet.CodeInfo.Address}");
