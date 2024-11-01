@@ -61,7 +61,7 @@ public static class NettyMemoryEstimator
     typeof(InitializeNodeStats),
     typeof(ResolveIps),
     typeof(InitializePlugins),
-    typeof(ImportEraStep),
+    typeof(EraStep),
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {

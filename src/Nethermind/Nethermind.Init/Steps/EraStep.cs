@@ -11,11 +11,11 @@ using Nethermind.Era1;
 namespace Nethermind.Init.Steps;
 
 [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(LoadGenesisBlock))]
-public class ImportEraStep : IStep
+public class EraStep : IStep
 {
     protected readonly INethermindApi _api;
 
-    public ImportEraStep(INethermindApi api)
+    public EraStep(INethermindApi api)
     {
         _api = api;
     }
@@ -24,7 +24,6 @@ public class ImportEraStep : IStep
     {
         await using IContainer container = _api.ConfigureContainerBuilderFromApiWithBlockchain(new ContainerBuilder())
             .AddModule(new EraModule())
-            .AddPropertiesFrom(_api)
             .Build();
         await container.Resolve<EraCliRunner>().Run(cancellationToken);
     }

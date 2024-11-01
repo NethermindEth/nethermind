@@ -123,20 +123,6 @@ public class EraStore : IEraStore
         return new EraReader(new E2StoreReader(_epochs[epoch]));
     }
 
-    public async Task<Block?> FindBlock(long blockNumber, bool ensureValidated = true, CancellationToken cancellation = default)
-    {
-        ThrowIfNegative(blockNumber);
-
-        long partOfEpoch = GetEpochNumber(blockNumber);
-        if (!_epochs.ContainsKey(partOfEpoch))
-            return null;
-
-        using EraRenter _r = RentReader(partOfEpoch, out EraReader reader);
-        if (ensureValidated) await EnsureEpochVerified(partOfEpoch, reader, cancellation);
-        (Block b, _) = await reader.GetBlockByNumber(blockNumber, cancellation);
-        return b;
-    }
-
     private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))

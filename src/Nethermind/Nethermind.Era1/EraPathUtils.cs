@@ -28,11 +28,8 @@ public class EraPathUtils
             {
                 continue;
             }
-            uint epoch;
-            if (!uint.TryParse(parts[1], out epoch))
+            if (!uint.TryParse(parts[1], out uint epoch))
                 throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
-            //else if (epoch != next)
-            //    throw new EraException($"Epoch {epoch} is missing.");
 
             next++;
             yield return file;
