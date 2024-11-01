@@ -37,7 +37,7 @@ public class AdminEraServiceTests
 
         adminEraService.ImportHistory("somewhere", 99, 999, null);
 
-        Assert.That(()=> adminEraService.ImportHistory("somewhere", 99, 999, null), Throws.Exception);
+        Assert.That(() => adminEraService.ImportHistory("somewhere", 99, 999, null), Throws.Exception);
 
         importTcs.TrySetResult();
 
@@ -73,7 +73,7 @@ public class AdminEraServiceTests
 
         adminEraService.ExportHistory("somewhere", 99, 999);
 
-        Assert.That(()=> adminEraService.ExportHistory("somewhere", 99, 999), Throws.Exception);
+        Assert.That(() => adminEraService.ExportHistory("somewhere", 99, 999), Throws.Exception);
 
         importTcs.TrySetResult();
 
