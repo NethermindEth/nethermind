@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -26,13 +27,19 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             IReadOnlyList<PathWithAccount> accounts,
-            IReadOnlyList<byte[]> proofs = null
+            IReadOnlyList<byte[]> proofs = null,
+            ILogger? logger = null
         )
         {
             // TODO: Check the accounts boundaries and sorting
             if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
             ValueHash256 lastHash = accounts[^1].Path;
+
+            if (accounts[^1].Path >= limitHash)
+            {
+                logger?.Warn($"Last path after limit hash {accounts[^1].Path} {limitHash}");
+            }
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
