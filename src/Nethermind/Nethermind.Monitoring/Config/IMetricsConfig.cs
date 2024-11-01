@@ -31,4 +31,10 @@ public interface IMetricsConfig : IConfig
 
     [ConfigItem(Description = "Whether to publish database size metrics.", DefaultValue = "true")]
     bool EnableDbSizeMetrics { get; }
+
+    [ConfigItem(Description = "The Prometheus metrics group name.", DefaultValue = "nethermind")]
+    string MonitoringGroup { get; }
+
+    [ConfigItem(Description = "The Prometheus metrics job name.", DefaultValue = "nethermind")]
+    string MonitoringJob { get; }
 }

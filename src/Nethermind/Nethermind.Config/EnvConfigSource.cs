@@ -49,13 +49,13 @@ namespace Nethermind.Config
                     return (null, a[1]);
                 }
 
-                // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL", "NETHERMIND_MONITORING_JOB" ...
+                // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL"
                 if (a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
                 {
                     return (null, string.Join(null, a[1..]));
                 }
 
-                // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED" ...
+                // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED"
                 return (a[1], a[2]);
             });
         }

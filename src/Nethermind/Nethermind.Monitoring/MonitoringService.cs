@@ -50,42 +50,42 @@ namespace Nethermind.Monitoring
             _logger = logManager is null
                 ? throw new ArgumentNullException(nameof(logManager))
                 : logManager.GetClassLogger();
-            _options = GetOptions();
+            _options = GetOptions(metricsConfig);
         }
 
         public async Task StartAsync()
         {
-            if (!string.IsNullOrWhiteSpace(_pushGatewayUrl))
+            if (_pushGatewayUrl is not null)
             {
-                MetricPusherOptions pusherOptions = new MetricPusherOptions
+                MetricPusherOptions pusherOptions = new()
                 {
                     Endpoint = _pushGatewayUrl,
                     Job = _options.Job,
                     Instance = _options.Instance,
                     IntervalMilliseconds = _intervalSeconds * 1000,
-                    AdditionalLabels = new[]
-                    {
-                        new Tuple<string, string>("nethermind_group", _options.Group),
-                    },
+                    AdditionalLabels = [new Tuple<string, string>("nethermind_group", _options.Group)],
                     OnError = ex =>
                     {
                         if (ex.InnerException is SocketException)
                         {
-                            if (_logger.IsError) _logger.Error("Could not reach PushGatewayUrl, Please make sure you have set the correct endpoint in the configurations.", ex);
+                            if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {_pushGatewayUrl}", ex);
                             return;
                         }
                         if (_logger.IsTrace) _logger.Error(ex.Message, ex); // keeping it as Error to log the exception details with it.
                     }
                 };
-                MetricPusher metricPusher = new MetricPusher(pusherOptions);
+                MetricPusher metricPusher = new(pusherOptions);
 
                 metricPusher.Start();
             }
+
             if (_exposePort is not null)
             {
                 new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
             }
-            await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
+
+            await Task.Factory.StartNew(_metricsController.StartUpdating, TaskCreationOptions.LongRunning);
+
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
         }
 
@@ -101,42 +101,21 @@ namespace Nethermind.Monitoring
             return Task.CompletedTask;
         }
 
-        private Options GetOptions()
-            => new Options(GetValueFromVariableOrDefault("JOB", "nethermind"), GetGroup(), GetInstance());
-
-        private string GetInstance()
-            => _nodeName.Replace("enode://", string.Empty).Split("@").FirstOrDefault();
-
-        private string GetGroup()
+        private Options GetOptions(IMetricsConfig config)
         {
-            string group = GetValueFromVariableOrDefault("GROUP", "nethermind");
-            string endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
-            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains('-'))
-            {
-                group = endpoint.Split("-")[0] ?? group;
-            }
+            string endpoint = _pushGatewayUrl?.Split("/").Last();
+            string group = endpoint?.Contains('-', StringComparison.Ordinal) == true
+                ? endpoint.Split("-")[0] : config.MonitoringGroup;
+            string instance = _nodeName.Replace("enode://", string.Empty).Split("@")[0];
 
-            return group;
+            return new(config.MonitoringJob, group, instance);
         }
 
-        private static string GetValueFromVariableOrDefault(string variable, string @default)
+        private class Options(string job, string group, string instance)
         {
-            string value = Environment.GetEnvironmentVariable($"NETHERMIND_MONITORING_{variable}")?.ToLowerInvariant();
-
-            return string.IsNullOrWhiteSpace(value) ? @default : value;
-        }
-
-        private class Options
-        {
-            public string Job { get; }
-            public string Instance { get; }
-            public string Group { get; }
-            public Options(string job, string @group, string instance)
-            {
-                Job = job;
-                Group = @group;
-                Instance = instance;
-            }
+            public string Job { get; } = job;
+            public string Instance { get; } = instance;
+            public string Group { get; } = group;
         }
     }
 }
