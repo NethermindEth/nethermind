@@ -178,9 +178,8 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
     {
         public override OptimismProtocolVersion? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            var bytes = JsonSerializer.Deserialize<byte[]>(ref reader, options);
-            if (bytes is null) return null;
-
+            Span<byte> bytes = stackalloc byte[ByteLength];
+            ByteArrayConverter.Convert(ref reader, bytes);
             return OptimismProtocolVersion.Read(bytes);
         }
 
