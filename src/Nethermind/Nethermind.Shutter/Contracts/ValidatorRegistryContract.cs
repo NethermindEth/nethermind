@@ -142,6 +142,11 @@ public class ValidatorRegistryContract(
         BlsSigner.AggregatedPublicKey pk = new(stackalloc long[Bls.P1.Sz]);
         for (ulong v = startValidatorIndex; v < endValidatorIndex; v++)
         {
+            if (!validatorsInfo.ContainsIndex(v))
+            {
+                err = $"Registration message contains a validator index that was not found in validator info file ({v}).";
+                return false;
+            }
             pk.Aggregate(validatorsInfo.GetPubKey(v));
         }
 
