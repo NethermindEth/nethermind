@@ -114,7 +114,7 @@
     },
     "Docker": {
       "commandName": "Docker",
-      "commandLineArgs": "-c holesky --data-dir .data /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
+      "commandLineArgs": "-c holesky --data-dir /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
     }
   }
 }
