@@ -71,9 +71,18 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
         {
             static UInt32 NextPart(ref ReadOnlySpan<char> span)
             {
+                ReadOnlySpan<char> part;
                 int dotIndex = span.IndexOf('.');
-                ReadOnlySpan<char> part = dotIndex == -1 ? span : span[..dotIndex];
-                span = dotIndex == -1 ? [] : span[(dotIndex + 1)..];
+                if (dotIndex == -1)
+                {
+                    part = span;
+                    span = [];
+                }
+                else
+                {
+                    part = span[..dotIndex];
+                    span = span[(dotIndex + 1)..];
+                }
                 return uint.Parse(part);
             }
 
@@ -87,7 +96,7 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
             PreRelease = versionSpan.IsEmpty ? 0 : NextPart(ref versionSpan);
         }
 
-        public V0(string version) : this(new byte[8], version) { }
+        public V0(string version) : this(stackalloc byte[8], version) { }
 
         public new static V0 Read(ReadOnlySpan<byte> span)
         {
