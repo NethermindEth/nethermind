@@ -76,5 +76,5 @@ public interface IOptimismEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = false
     )]
-    Task<ResultWrapper<OptimismSignalSuperchainV1Result>> engine_signalSuperchainV1(OptimismSuperchainSignal signal);
+    ResultWrapper<OptimismSignalSuperchainV1Result> engine_signalSuperchainV1(OptimismSuperchainSignal signal);
 }

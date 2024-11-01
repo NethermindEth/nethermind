@@ -23,8 +23,8 @@ public sealed record OptimismSignalSuperchainV1Result(
 public interface IOptimismSignalSuperchainV1Handler
 {
     OptimismProtocolVersion CurrentVersion { get; }
-    Task OnBehindRecommended(OptimismProtocolVersion recommended);
-    Task OnBehindRequired(OptimismProtocolVersion required);
+    void OnBehindRecommended(OptimismProtocolVersion recommended);
+    void OnBehindRequired(OptimismProtocolVersion required);
 }
 
 public sealed class LoggingOptimismSignalSuperchainV1Handler(
@@ -35,15 +35,13 @@ public sealed class LoggingOptimismSignalSuperchainV1Handler(
     private readonly ILogger _logger = logManager.GetClassLogger();
     public OptimismProtocolVersion CurrentVersion { get; init; } = currentVersion;
 
-    public Task OnBehindRecommended(OptimismProtocolVersion recommended)
+    public void OnBehindRecommended(OptimismProtocolVersion recommended)
     {
         _logger.Warn($"Current version {CurrentVersion} is behind recommended version {recommended}");
-        return Task.CompletedTask;
     }
 
-    public Task OnBehindRequired(OptimismProtocolVersion required)
+    public void OnBehindRequired(OptimismProtocolVersion required)
     {
         _logger.Error($"Current version {CurrentVersion} is behind required version {required}");
-        return Task.CompletedTask;
     }
 }

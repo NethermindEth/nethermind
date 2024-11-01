@@ -69,7 +69,7 @@ public class OptimismEngineRpcModuleTest
     }
 
     [TestCaseSource(nameof(SignalSuperchainV1Cases))]
-    public async Task SignalSuperchainV1_ComparesRequiredAndRecommendedVersion((OptimismProtocolVersion current, OptimismSuperchainSignal signal, bool behindRecommended, bool behindRequired) testCase)
+    public void SignalSuperchainV1_ComparesRequiredAndRecommendedVersion((OptimismProtocolVersion current, OptimismSuperchainSignal signal, bool behindRecommended, bool behindRequired) testCase)
     {
         var current = testCase.current;
         var signal = testCase.signal;
@@ -78,15 +78,14 @@ public class OptimismEngineRpcModuleTest
         handler.CurrentVersion.Returns(current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
-        _ = await rpcModule.engine_signalSuperchainV1(signal);
+        _ = rpcModule.engine_signalSuperchainV1(signal);
 
-        await handler.Received(testCase.behindRecommended ? 1 : 0).OnBehindRecommended(testCase.signal.Recommended);
-
-        await handler.Received(testCase.behindRequired ? 1 : 0).OnBehindRequired(testCase.signal.Required);
+        handler.Received(testCase.behindRecommended ? 1 : 0).OnBehindRecommended(testCase.signal.Recommended);
+        handler.Received(testCase.behindRequired ? 1 : 0).OnBehindRequired(testCase.signal.Required);
     }
 
     [Test]
-    public async Task SignalSuperchainV1_ReturnsCurrentVersion()
+    public void SignalSuperchainV1_ReturnsCurrentVersion()
     {
         var current = new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0);
         var signal = new OptimismSuperchainSignal(
@@ -97,7 +96,7 @@ public class OptimismEngineRpcModuleTest
         handler.CurrentVersion.Returns(current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
-        ResultWrapper<OptimismSignalSuperchainV1Result> result = await rpcModule.engine_signalSuperchainV1(signal);
+        ResultWrapper<OptimismSignalSuperchainV1Result> result = rpcModule.engine_signalSuperchainV1(signal);
 
         result.Data.Should().Be(new OptimismSignalSuperchainV1Result(current));
     }
