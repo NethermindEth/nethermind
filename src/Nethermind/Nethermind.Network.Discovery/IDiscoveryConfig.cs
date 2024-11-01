@@ -89,6 +89,7 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Boot nodes connection details
     /// </summary>
+    [ConfigItem(Description = "Comma separated enode addresses to specify custom bootnodes.")]
     string Bootnodes { get; set; }
 
     /// <summary>
