@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.CommandLine.Parsing;
+using System.CommandLine;
 using Nethermind.Specs;
 
 namespace Evm.t8n;
@@ -30,57 +30,57 @@ public class T8NCommandArguments
     {
         var arguments = new T8NCommandArguments
         {
-            OutputBody = parseResult.GetValueForOption(T8NCommandOptions.OutputBodyOpt),
-            OutputBaseDir = parseResult.GetValueForOption(T8NCommandOptions.OutputBaseDirOpt),
-            Trace = parseResult.GetValueForOption(T8NCommandOptions.TraceOpt),
-            TraceMemory = parseResult.GetValueForOption(T8NCommandOptions.TraceMemoryOpt),
-            TraceNoStack = parseResult.GetValueForOption(T8NCommandOptions.TraceNoStackOpt),
-            TraceReturnData = parseResult.GetValueForOption(T8NCommandOptions.TraceReturnDataOpt)
+            OutputBody = parseResult.GetValue(T8NCommandOptions.OutputBodyOpt),
+            OutputBaseDir = parseResult.GetValue(T8NCommandOptions.OutputBaseDirOpt),
+            Trace = parseResult.GetValue(T8NCommandOptions.TraceOpt),
+            TraceMemory = parseResult.GetValue(T8NCommandOptions.TraceMemoryOpt),
+            TraceNoStack = parseResult.GetValue(T8NCommandOptions.TraceNoStackOpt),
+            TraceReturnData = parseResult.GetValue(T8NCommandOptions.TraceReturnDataOpt)
         };
 
-        var inputAlloc = parseResult.GetValueForOption(T8NCommandOptions.InputAllocOpt);
+        var inputAlloc = parseResult.GetValue(T8NCommandOptions.InputAllocOpt);
         if (inputAlloc is not null)
         {
             arguments.InputAlloc = inputAlloc;
         }
 
-        var inputEnv = parseResult.GetValueForOption(T8NCommandOptions.InputEnvOpt);
+        var inputEnv = parseResult.GetValue(T8NCommandOptions.InputEnvOpt);
         if (inputEnv is not null)
         {
             arguments.InputEnv = inputEnv;
         }
 
-        var inputTxs = parseResult.GetValueForOption(T8NCommandOptions.InputTxsOpt);
+        var inputTxs = parseResult.GetValue(T8NCommandOptions.InputTxsOpt);
         if (inputTxs is not null)
         {
             arguments.InputTxs = inputTxs;
         }
 
-        var outputAlloc = parseResult.GetValueForOption(T8NCommandOptions.OutputAllocOpt);
+        var outputAlloc = parseResult.GetValue(T8NCommandOptions.OutputAllocOpt);
         if (outputAlloc is not null)
         {
             arguments.OutputAlloc = outputAlloc;
         }
 
-        var outputResult = parseResult.GetValueForOption(T8NCommandOptions.OutputResultOpt);
+        var outputResult = parseResult.GetValue(T8NCommandOptions.OutputResultOpt);
         if (outputResult is not null)
         {
             arguments.OutputResult = outputResult;
         }
 
-        var stateFork = parseResult.GetValueForOption(T8NCommandOptions.StateForkOpt);
+        var stateFork = parseResult.GetValue(T8NCommandOptions.StateForkOpt);
         if (stateFork is not null)
         {
             arguments.StateFork = stateFork;
         }
 
-        var stateReward = parseResult.GetValueForOption(T8NCommandOptions.StateRewardOpt);
+        var stateReward = parseResult.GetValue(T8NCommandOptions.StateRewardOpt);
         if (stateReward is not null)
         {
             arguments.StateReward = stateReward;
         }
 
-        var stateChainId = parseResult.GetValueForOption(T8NCommandOptions.StateChainIdOpt);
+        var stateChainId = parseResult.GetValue(T8NCommandOptions.StateChainIdOpt);
         if (stateChainId.HasValue)
         {
             arguments.StateChainId = stateChainId.Value;

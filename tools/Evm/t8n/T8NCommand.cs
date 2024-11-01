@@ -7,16 +7,17 @@ namespace Evm.t8n;
 
 public static class T8NCommand
 {
-    public static void Configure(ref RootCommand rootCmd)
+    public static void Configure(ref CliRootCommand rootCmd)
     {
-        Command cmd = T8NCommandOptions.CreateCommand();
-        rootCmd.Add(cmd);
+        CliCommand cmd = T8NCommandOptions.CreateCommand();
 
-        cmd.SetHandler(
-            context =>
-            {
-                var arguments = T8NCommandArguments.FromParseResult(context.ParseResult);
-                T8NExecutor.Execute(arguments);
-            });
+        cmd.SetAction(parseResult =>
+        {
+            var arguments = T8NCommandArguments.FromParseResult(parseResult);
+
+            T8NExecutor.Execute(arguments);
+        });
+
+        rootCmd.Add(cmd);
     }
 }

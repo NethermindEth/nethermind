@@ -1,16 +1,13 @@
-﻿using System.CommandLine;
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Evm.t8n;
+using System.CommandLine;
 
-namespace Evm;
+CliRootCommand rootCmd = [];
 
-public static class Program
-{
-    public static async Task Main(string[] args)
-    {
-        var rootCmd = new RootCommand { Name = "Evm" };
+T8NCommand.Configure(ref rootCmd);
 
-        T8NCommand.Configure(ref rootCmd);
+CliConfiguration cli = new(rootCmd);
 
-        await rootCmd.InvokeAsync(args);
-    }
-}
+return cli.Invoke(args);
