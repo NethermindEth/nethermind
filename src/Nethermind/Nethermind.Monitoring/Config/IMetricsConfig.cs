@@ -11,7 +11,7 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "The IP address to expose Prometheus metrics at. The value of `+` means listening on all available hostnames. Setting this to `localhost` prevents remote access.", DefaultValue = "+")]
     string ExposeHost { get; }
 
-    [ConfigItem(Description = "The port to expose Prometheus metrics at.", DefaultValue = "null")]
+    [ConfigItem(Description = "The port to expose Prometheus metrics at.")]
     int? ExposePort { get; }
 
     [ConfigItem(Description = "Whether to publish various metrics to Prometheus Pushgateway at a given interval.", DefaultValue = "false")]
@@ -20,7 +20,7 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "Whether to publish metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
     bool CountersEnabled { get; }
 
-    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.", DefaultValue = "")]
+    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.")]
     string PushGatewayUrl { get; }
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
