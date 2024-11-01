@@ -12,6 +12,7 @@ using Nethermind.Evm.Config;
 using Nethermind.Logging;
 using ILMode = int;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo : IThreadPoolWorkItem
@@ -38,7 +39,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     ? IlInfo.ILMode.PAT_MODE
                     : IlInfo.ILMode.NO_ILVM;
 
-            if (mode == IlInfo.ILMode.NO_ILVM)
+            if (mode == IlInfo.ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
                 return;
 
             IlAnalyzer.Enqueue(this, mode, vmConfig, logger);
