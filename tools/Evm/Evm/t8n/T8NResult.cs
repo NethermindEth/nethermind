@@ -80,25 +80,25 @@ public class T8NResult
     private static Dictionary<Address, AccountState> CollectAccounts(T8NTest test, WorldState stateProvider, StorageTxTracer storageTracer, Block block)
     {
         Dictionary<Address, AccountState?> accounts = test.Alloc.Keys.ToDictionary(address => address,
-            address => GetAccountState(address, stateProvider, storageTracer.Storages));
+            address => GetAccountState(address, stateProvider, storageTracer));
 
         accounts.AddRange(test.Ommers.ToDictionary(ommer => ommer.Address,
-            ommer => GetAccountState(ommer.Address, stateProvider, storageTracer.Storages)));
+            ommer => GetAccountState(ommer.Address, stateProvider, storageTracer)));
 
         if (block.Beneficiary != null)
         {
-            accounts[block.Beneficiary] = GetAccountState(block.Beneficiary, stateProvider, storageTracer.Storages);
+            accounts[block.Beneficiary] = GetAccountState(block.Beneficiary, stateProvider, storageTracer);
         }
 
         foreach (Transaction tx in test.Transactions)
         {
             if (tx.To is not null && !accounts.ContainsKey(tx.To))
             {
-                accounts[tx.To] = GetAccountState(tx.To, stateProvider, storageTracer.Storages);
+                accounts[tx.To] = GetAccountState(tx.To, stateProvider, storageTracer);
             }
             if (tx.SenderAddress is not null && !accounts.ContainsKey(tx.SenderAddress))
             {
-                accounts[tx.SenderAddress] = GetAccountState(tx.SenderAddress, stateProvider, storageTracer.Storages);
+                accounts[tx.SenderAddress] = GetAccountState(tx.SenderAddress, stateProvider, storageTracer);
             }
         }
 
@@ -107,7 +107,7 @@ public class T8NResult
             .ToDictionary(addressAndAccount => addressAndAccount.Key, addressAndAccount => addressAndAccount.Value!);
     }
 
-    private static AccountState? GetAccountState(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, byte[]>> storages)
+    private static AccountState? GetAccountState(Address address, WorldState stateProvider, StorageTxTracer storageTxTracer)
     {
         if (!stateProvider.AccountExists(address))  return null;
 
@@ -120,10 +120,7 @@ public class T8NResult
             Code = code
         };
 
-        if (storages.TryGetValue(address, out Dictionary<UInt256, byte[]>? storage))
-        {
-            accountState.Storage = storage;
-        }
+        accountState.Storage = storageTxTracer.GetStorage(address) ?? [];
 
         return accountState;
     }
