@@ -60,7 +60,7 @@ public interface IShutterConfig : IConfig
     string ShutterKeyFile { get; set; }
 
     [ConfigItem(Description = "The Shutter validator registry message version.",
-        DefaultValue = "0", HiddenFromDocs = true)]
+        DefaultValue = "1", HiddenFromDocs = true)]
     ulong ValidatorRegistryMessageVersion { get; set; }
 
     [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
