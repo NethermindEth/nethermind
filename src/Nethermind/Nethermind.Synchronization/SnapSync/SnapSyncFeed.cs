@@ -186,6 +186,11 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
 
+                if (result == AddRangeResult.InternalError)
+                {
+                    return SyncResponseHandlingResult.InternalError;
+                }
+
                 if (result == AddRangeResult.ExpiredRootHash)
                 {
                     return SyncResponseHandlingResult.NoProgress;

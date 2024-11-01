@@ -79,8 +79,14 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 catch (MissingTrieNodeException)
                 {
-                    _logger.Warn($"could just be incomplete proof from {peerInfo}. {request.StartingHash} {request.LimitHash} {response.PathAndAccounts[^1].Path}");
-                    result = AddRangeResult.DifferentRootHash;
+                    _logger.Warn($"could just be incomplete proof from {peerInfo} " +
+                                 $"{peerInfo?.PeerClientType}. Req " +
+                                 $"{request.StartingHash} " +
+                                 $"{request.LimitHash} Resp " +
+                                 $"{response.PathAndAccounts[^1].Path} " +
+                                 $"{response.PathAndAccounts[0].Path} " +
+                                 $"{response.PathAndAccounts.Count} ");
+                    result = AddRangeResult.InternalError;
                 }
             }
 

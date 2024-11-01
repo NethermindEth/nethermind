@@ -244,6 +244,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         break;
                     case SyncResponseHandlingResult.InternalError:
                         Logger.Error($"Feed {Feed} has reported an internal error when handling {request}");
+                        SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
                         break;
                     case SyncResponseHandlingResult.OK:
                         break;
