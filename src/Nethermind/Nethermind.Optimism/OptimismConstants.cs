@@ -6,5 +6,4 @@ namespace Nethermind.Optimism;
 public class OptimismConstants
 {
     public const long PreRegolithNonZeroCountOverhead = 68;
-    public const string SealEngineType = "Optimism";
 }

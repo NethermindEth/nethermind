@@ -40,7 +40,7 @@ public class HealthHintServiceTests
         {
             yield return new BlockProcessorIntervalHint
             {
-                ChainSpec = new ChainSpec { SealEngineType = TestSealEngineType.NethDev, }
+                ChainSpec = new ChainSpec { SealEngineType = SealEngineType.NethDev, }
             };
             yield return new BlockProcessorIntervalHint
             {

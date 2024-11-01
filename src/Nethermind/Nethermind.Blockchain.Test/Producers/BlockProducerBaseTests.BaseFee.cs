@@ -59,7 +59,7 @@ public partial class BlockProducerBaseTests
                         IsEip155Enabled = true
                     });
                 BlockBuilder blockBuilder = Build.A.Block.Genesis.WithGasLimit(gasLimit);
-                _testRpcBlockchain = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
+                _testRpcBlockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                     .WithGenesisBlockBuilder(blockBuilder)
                     .Build(spec);
                 _testRpcBlockchain.TestWallet.UnlockAccount(_address, new SecureString());

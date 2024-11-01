@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -32,7 +30,6 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
     [JsonConverter(typeof(LongUInt256DictionaryConverter))]
     public SortedDictionary<long, UInt256>? BlockReward { get; set; }
 
-    [JsonConverter(typeof(DifficultyBombDelaysJsonConverter))]
     public IDictionary<long, long>? DifficultyBombDelays { get; set; }
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
@@ -102,61 +99,4 @@ public class EthashChainSpecEngineParameters : IChainSpecEngineParameters
         chainSpec.HomesteadBlockNumber = HomesteadTransition;
         chainSpec.DaoForkBlockNumber = DaoHardforkTransition;
     }
-
-    private class DifficultyBombDelaysJsonConverter : JsonConverter<IDictionary<long, long>>
-    {
-        public override void Write(Utf8JsonWriter writer, IDictionary<long, long> value, JsonSerializerOptions options)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override IDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            var value = new Dictionary<long, long>();
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
-            }
-            else if (reader.TokenType == JsonTokenType.Number)
-            {
-                value.Add(0, reader.GetInt64());
-            }
-            else if (reader.TokenType == JsonTokenType.StartObject)
-            {
-                reader.Read();
-                while (reader.TokenType != JsonTokenType.EndObject)
-                {
-                    if (reader.TokenType != JsonTokenType.PropertyName)
-                    {
-                        throw new ArgumentException("Cannot deserialize DifficultyBombDelays.");
-                    }
-                    string keyString = reader.GetString();
-                    var key = keyString.StartsWith("0x") ? Convert.ToInt64(keyString, 16) : long.Parse(keyString);
-                    reader.Read();
-                    if (reader.TokenType == JsonTokenType.String)
-                    {
-                        string valueString = reader.GetString();
-                        value.Add(key, valueString.StartsWith("0x") ? Convert.ToInt64(valueString, 16) : long.Parse(valueString));
-                    }
-                    else if (reader.TokenType == JsonTokenType.Number)
-                    {
-                        value.Add(key, reader.GetInt64());
-                    }
-                    else
-                    {
-                        throw new ArgumentException("Cannot deserialize DifficultyBombDelays.");
-                    }
-
-                    reader.Read();
-                }
-            }
-            else
-            {
-                throw new ArgumentException("Cannot deserialize DifficultyBombDelays.");
-            }
-
-            return value;
-        }
-    }
-
 }

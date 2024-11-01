@@ -165,7 +165,7 @@ public partial class EthRpcModuleTests
         Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindBlock((BlockParameter?)null).ReturnsForAnyArgs(block);
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
         string serialized = await ctx.Test!.TestEthRpc("eth_getUncleByBlockNumberAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Number.ToString(), "1");
         Assert.That(serialized, Is.EqualTo(expectedJson), serialized?.Replace("\"", "\\\""));
     }
@@ -186,7 +186,7 @@ public partial class EthRpcModuleTests
         Block block = Build.A.Block.WithUncles(Build.A.BlockHeader.WithNumber(2).TestObject, Build.A.BlockHeader.TestObject).WithNumber(3).TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.FindBlock((BlockParameter?)null).ReturnsForAnyArgs(block);
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
         string serialized = await ctx.Test.TestEthRpc("eth_getUncleByBlockHashAndIndex", ctx.Test.BlockTree.FindHeadBlock()!.Hash!.ToString(), "1");
         Assert.That(serialized, Is.EqualTo(expectedJson), serialized.Replace("\"", "\\\""));
     }
@@ -307,7 +307,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
-        var test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(initialValues: 2.Ether());
+        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockEventArgs e)
@@ -379,7 +379,7 @@ public partial class EthRpcModuleTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns((Block?)null);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockTree).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\"},\"id\":67}"));
@@ -398,7 +398,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         for (int i = 0; i < 897; ++i)
         {
             await ctx.Test.AddBlock();
@@ -422,7 +422,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         for (int i = 0; i < 897; ++i)
         {
             await ctx.Test.AddBlock();
@@ -453,7 +453,7 @@ public partial class EthRpcModuleTests
                 return true;
             });
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x01");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"data\":\"0x010203\",\"logIndex\":\"0x1\",\"removed\":false,\"topics\":[\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2\"],\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"transactionIndex\":\"0x1\",\"transactionLogIndex\":\"0x0\"}],\"id\":67}"));
@@ -467,7 +467,7 @@ public partial class EthRpcModuleTests
         bridge.TryGetLogs(5, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
                 .Returns(x => { x[1] = null; return false; });
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x05");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Filter with id: 5 does not exist.\"},\"id\":67}"));
@@ -480,7 +480,7 @@ public partial class EthRpcModuleTests
 
         UInt256 filterId = int.MaxValue + (UInt256)10;
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", $"0x{filterId.ToString("X")}");
 
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Filter with id: {filterId} does not exist.\"}},\"id\":67}}"));
@@ -500,7 +500,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
-        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(initialValues: 2.Ether());
+        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
 
@@ -539,7 +539,7 @@ public partial class EthRpcModuleTests
             .Returns(new[] { new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakC, TestItem.KeccakD }) });
         bridge.FilterExists(1).Returns(true);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
 
         Assert.That(serialized, Is.EqualTo(expected));
@@ -566,7 +566,7 @@ public partial class EthRpcModuleTests
                 }
             });
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).WithConfig(new JsonRpcConfig() { Timeout = 50 }).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithConfig(new JsonRpcConfig() { Timeout = 50 }).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", "{}");
         serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32016,\"message\":\"eth_getLogs request was canceled due to enabled timeout.\"},\"id\":67}");
     }
@@ -580,7 +580,7 @@ public partial class EthRpcModuleTests
             .Throws(new ResourceNotFoundException("resource not found message"));
         bridge.FilterExists(1).Returns(true);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getLogs", parameter);
 
         Assert.That(serialized, Is.EqualTo(expected));
@@ -687,7 +687,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_by_number_should_not_recover_tx_senders_for_request_without_tx_details(string blockParameter)
     {
         IBlockchainBridge? blockchainBridge = Substitute.For<IBlockchainBridge>();
-        TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
+        TestRpcBlockchain ctx = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge).Build(MainnetSpecProvider.Instance);
         await ctx.TestEthRpc("eth_getBlockByNumber", blockParameter, "false");
         blockchainBridge.Received(0).RecoverTxSenders(Arg.Any<Block>());
     }
@@ -835,7 +835,7 @@ public partial class EthRpcModuleTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
         receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
 
         JToken.Parse(serialized).Should().BeEquivalentTo("""{"jsonrpc":"2.0","result":{"author":"0x0000000000000000000000000000000000000000","difficulty":"0xf4240","extraData":"0x010203","gasLimit":"0x3d0900","gasUsed":"0x0","hash":"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c","logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","miner":"0x0000000000000000000000000000000000000000","mixHash":"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2","nonce":"0x00000000000003e8","number":"0x1","parentHash":"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c","receiptsRoot":"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x221","stateRoot":"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f","totalDifficulty":"0x0","timestamp":"0xf4240","transactions":[{"nonce":"0x0","blockHash":"0xe3026a6708b90d5cb25557ac38ddc3f5ef550af10f31e1cf771524da8553fa1c","blockNumber":"0x1","transactionIndex":"0x0","from":"0x2d36e6c27c34ea22620e7b7c45de774599406cf3","to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","v":"0x0","r":"0x0","s":"0x0","hash":null}],"transactionsRoot":"0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5","uncles":[]},"id":67}""");
@@ -871,7 +871,7 @@ public partial class EthRpcModuleTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
         receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
         if (postEip4844)
@@ -942,7 +942,7 @@ public partial class EthRpcModuleTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
         receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockFinder).WithBlockchainBridge(blockchainBridge).WithReceiptFinder(receiptFinder).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithBlockchainBridge(blockchainBridge).WithReceiptFinder(receiptFinder).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x7d0\",\"gasUsed\":\"0x3e8\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x2\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x3\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"blockHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockNumber\":\"0x1\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"id\":67}"));
@@ -990,7 +990,7 @@ public partial class EthRpcModuleTests
         receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
         blockchainBridge.GetReceiptAndGasInfo(Arg.Any<Hash256>()).Returns((receipt, new(UInt256.One), 0));
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"status\":\"0x1\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
@@ -1040,7 +1040,7 @@ public partial class EthRpcModuleTests
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast).Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 
@@ -1055,7 +1055,7 @@ public partial class EthRpcModuleTests
         ITxSender txSender = Substitute.ForPartsOf<TxPoolSender>(ctx.Test.TxPool, ctx.Test.TxSealer,
             ctx.Test.NonceManager, ctx.Test.EthereumEcdsa);
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", rawTransaction);
         Transaction tx = Rlp.Decode<Transaction>(Bytes.FromHexString(rawTransaction));
         await txSender.Received().SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
@@ -1071,7 +1071,7 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast)
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
@@ -1090,7 +1090,7 @@ public partial class EthRpcModuleTests
         txSender.SendTransaction(Arg.Any<Transaction>(), TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce)
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
         Transaction tx = Build.A.Transaction.TestObject;
         LegacyTransactionForRpc rpcTx = (LegacyTransactionForRpc)TransactionForRpc.FromTransaction(tx);
@@ -1138,7 +1138,7 @@ public partial class EthRpcModuleTests
 
     public async Task Eth_create_access_list_sample(AccessListProvided accessListProvided, bool optimize, long loads, string expected)
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc _) = GetTestAccessList(loads);
 
@@ -1214,7 +1214,7 @@ public partial class EthRpcModuleTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
         receiptFinder.Get(Arg.Any<Hash256>()).Returns(receiptsTab);
 
-        ctx.Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).Build();
         string result = await ctx.Test.TestEthRpc("eth_getBlockByNumber", TestItem.KeccakA.ToString(), "true");
 
         Assert.That((new EthereumJsonSerializer().Serialize(new
@@ -1232,7 +1232,7 @@ public partial class EthRpcModuleTests
         var specProvider = new TestSpecProvider(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(specProvider);
+        TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
 
         Transaction testTx = Build.A.Transaction
           .WithType(TxType.SetCode)
@@ -1257,7 +1257,7 @@ public partial class EthRpcModuleTests
         var specProvider = new TestSpecProvider(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(specProvider);
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.State.GetNonce(TestItem.AddressB))
@@ -1294,7 +1294,7 @@ public partial class EthRpcModuleTests
         var specProvider = new TestSpecProvider(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).Build(specProvider);
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.State.GetNonce(TestItem.AddressB))
@@ -1383,7 +1383,7 @@ public partial class EthRpcModuleTests
         public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null) =>
             new()
             {
-                Test = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev).WithBlockchainBridge(blockchainBridge!).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 }).Build(specProvider),
+                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge!).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 }).Build(specProvider),
                 AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
             };
 

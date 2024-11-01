@@ -150,7 +150,7 @@ public partial class BlockProducerBaseTests
     {
         Address address = TestItem.Addresses[0];
         TestSingleReleaseSpecProvider spec = new(ConstantinopleFix.Instance);
-        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(TestSealEngineType.NethDev)
+        TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether());
