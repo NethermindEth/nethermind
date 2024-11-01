@@ -248,11 +248,11 @@ void AddConfigurationOptions(CliCommand command)
         bool categoryHidden = typeLevel?.HiddenFromDocs == true;
 
         foreach (PropertyInfo propertyInfo in
-                 configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
+            configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
             ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (configItemAttribute == null || configItemAttribute?.DisabledForCli == false)
+            if (configItemAttribute?.DisabledForCli != true)
             {
                 bool hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
 
@@ -292,12 +292,12 @@ CliConfiguration ConfigureCli()
         versionOption.Action = new AnonymousCliAction(r =>
         {
             Console.WriteLine($"""
-                               Version:    {ProductInfo.Version}
-                               Commit:     {ProductInfo.Commit}
-                               Build date: {ProductInfo.BuildTimestamp:u}
-                               Runtime:    {ProductInfo.Runtime}
-                               Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
-                               """);
+                Version:    {ProductInfo.Version}
+                Commit:     {ProductInfo.Commit}
+                Build date: {ProductInfo.BuildTimestamp:u}
+                Runtime:    {ProductInfo.Runtime}
+                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                """);
 
             return ExitCodes.Ok;
         });
@@ -314,7 +314,7 @@ void ConfigureLogger(ParseResult parseResult)
 {
     string nLogConfig = Path.GetFullPath(
         parseResult.GetValue(BasicOptions.LoggerConfigurationSource)
-        ?? "NLog.config".GetApplicationResourcePath());
+            ?? "NLog.config".GetApplicationResourcePath());
 
     try
     {
@@ -376,14 +376,14 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new EnvConfigSource());
 
     string configFile = parseResult.GetValue(BasicOptions.Configuration)
-                        ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
-                        ?? "mainnet";
+        ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
+        ?? "mainnet";
 
     // If configFile is not a path, handle it
     if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
     {
         string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
-                            ?? "configs".GetApplicationResourcePath();
+            ?? "configs".GetApplicationResourcePath();
 
         configFile = Path.Join(configsDir, configFile);
 
