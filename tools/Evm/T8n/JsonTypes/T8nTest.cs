@@ -9,9 +9,9 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.Specs;
 
-namespace Evm.t8n.JsonTypes;
+namespace Evm.T8n.JsonTypes;
 
-public class T8NTest(IReleaseSpec spec, ISpecProvider specProvider)
+public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider)
 {
     public IReleaseSpec Spec { get; set; } = spec;
     public ISpecProvider SpecProvider { get; set; } = specProvider;

@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Evm.t8n.JsonTypes;
+namespace Evm.T8n.JsonTypes;
 
 public class Ommer(int delta, Address address)
 {
