@@ -195,7 +195,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 && parent is not null
                                 && parent.IsBranch)
                             {
-                                for (int i = 0; i < 15; i++)
+                                for (int i = 0; i < 16; i++)
                                 {
                                     if (parent.GetChildHashAsValueKeccak(i, out ValueHash256 kec) && kec == node.Keccak)
                                     {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -16,11 +17,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Newtonsoft.Json;
+using Org.BouncyCastle.Asn1.Ocsp;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -95,6 +100,15 @@ namespace Nethermind.Synchronization.SnapSync
 
             return result;
         }
+
+        private record BadReq(
+            string Root,
+            string StartingHash,
+            string LimitHash,
+            List<string> Proofs,
+            List<string> Paths,
+            List<string> Accounts
+        );
 
         public AddRangeResult AddAccountRange(
             long blockNumber,
