@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -114,6 +115,29 @@ public class BodiesSyncFeedTests
         await HandleAndPrepareNextRequest();
         _blocksDb.FlushCount.Should().Be(3);
         req.Dispose();
+    }
+
+    [Test]
+    public async Task ShouldNotReDownloadExistingBlock()
+    {
+        _feed.InitializeFeed();
+
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 2)!);
+        _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(_pivotBlock.Number - 4)!);
+
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        req.Infos
+            .Where((bi) => bi is not null)
+            .Select((bi) => bi!.BlockNumber)
+            .Take(4)
+            .Should()
+            .BeEquivalentTo([
+                _pivotBlock.Number,
+                _pivotBlock.Number - 1,
+                // Skipped
+                _pivotBlock.Number - 3,
+                // Skipped
+                _pivotBlock.Number - 5]);
     }
 
     [Test]
