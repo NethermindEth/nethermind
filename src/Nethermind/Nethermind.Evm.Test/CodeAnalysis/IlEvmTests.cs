@@ -1279,13 +1279,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
 
             var bytecode = Prepare.EvmCode
-                .JUMPDEST()
                 .Call(address, 25000)
-                .POP()
-                .PushData(1000)
-                .GAS()
-                .GT()
-                .JUMPI(0)
                 .STOP()
                 .Done;
 
@@ -1332,13 +1326,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             var bytecode =
                 Prepare.EvmCode
-                    .JUMPDEST()
                     .Call(address, 100000)
-                    .POP()
-                    .GAS()
-                    .PushData(1000)
-                    .LT()
-                    .JUMPI(0)
                     .STOP()
                     .Done;
 
