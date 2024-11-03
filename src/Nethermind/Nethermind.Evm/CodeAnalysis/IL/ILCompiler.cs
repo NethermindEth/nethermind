@@ -983,8 +983,6 @@ internal class ILCompiler
                         method.LoadLocalAddress(uint256C);
                         method.LoadLocalAddress(lbool);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
-                        method.LoadConstant((long)1);
-                        method.Add();
                         method.LoadConstant(GasCostOf.VeryLow);
                         method.Multiply();
                         method.Subtract();
@@ -2163,9 +2161,9 @@ internal class ILCompiler
         il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfTrue(skipPop);
 
-        il.LoadLocalAddress(locals[0]);
-        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
+        il.LoadLocalAddress(locals[0]);
         il.Call(Word.GetInt0);
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
