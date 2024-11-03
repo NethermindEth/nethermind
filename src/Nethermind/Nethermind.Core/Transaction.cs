@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -71,7 +70,9 @@ namespace Nethermind.Core
         private Hash256? _hash;
 
         [JsonIgnore]
-        internal bool IsHashCalculated => _hash is not null;
+        public bool IsHashCalculated => _hash is not null;
+        [JsonIgnore]
+        public ReadOnlyMemory<byte> PreHash => _preHash;
         internal Hash256 CalculateHashInternal()
         {
             Hash256? hash = _hash;

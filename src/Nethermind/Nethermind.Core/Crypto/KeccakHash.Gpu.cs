@@ -73,6 +73,74 @@ public sealed partial class KeccakHash
         }
     }
 
+    public unsafe static void ComputeHashBatchGpu(List<ReadOnlyMemory<byte>> inputs, Span<ValueHash256> output)
+    {
+        if (device == null)
+        {
+            throw new InvalidOperationException("No suitable GPU accelerator found.");
+        }
+
+        lock (_lock)
+        {
+            selectedAccelerator ??= device.CreateAccelerator(context);
+            //PrintAcceleratorInfo(selectedAccelerator);
+            var dataLength = 0;
+            foreach (ReadOnlyMemory<byte> input in CollectionsMarshal.AsSpan(inputs))
+            {
+                dataLength += input.Length;
+            }
+
+            byte[] data = ArrayPool<byte>.Shared.Rent(dataLength);
+            int[] offsets = ArrayPool<int>.Shared.Rent(inputs.Count);
+
+            int index = 0;
+            dataLength = 0;
+            foreach (ReadOnlyMemory<byte> input in CollectionsMarshal.AsSpan(inputs))
+            {
+                input.Span.CopyTo(data.AsSpan(dataLength, input.Length));
+                // Skip first offset as always 0
+                if (index > 0)
+                {
+                    offsets[index - 1] = dataLength;
+                }
+                dataLength += input.Length;
+                index++;
+            }
+            // Add total length as final offset
+            offsets[index - 1] = dataLength;
+
+            using var outputBuffer = selectedAccelerator.Allocate1D<ulong>(inputs.Count * 4);
+
+            var keccakKernel = GetKeccakKernel(selectedAccelerator);
+            fixed (byte* startInput = &MemoryMarshal.GetArrayDataReference(data))
+            fixed (int* startOffsets = &MemoryMarshal.GetArrayDataReference(offsets))
+            {
+                using var offsetsBuffer = selectedAccelerator.Allocate1D<int>(inputs.Count);
+                using var inputBuffer = selectedAccelerator.Allocate1D<byte>(dataLength);
+
+                inputBuffer.View.CopyFromCPU(ref Unsafe.AsRef<byte>(startInput), dataLength);
+                offsetsBuffer.View.CopyFromCPU(ref Unsafe.AsRef<int>(startOffsets), inputs.Count);
+
+                keccakKernel(
+                    inputs.Count,
+                    offsetsBuffer.View,
+                    inputBuffer.View,
+                    outputBuffer.View);
+
+                selectedAccelerator.Synchronize();
+            }
+
+            ArrayPool<int>.Shared.Return(offsets);
+            ArrayPool<byte>.Shared.Return(data);
+
+            ref var outputRef = ref MemoryMarshal.GetReference(output);
+            fixed (ValueHash256* start = &outputRef)
+            {
+                outputBuffer.View.CopyToCPU<ulong>(ref Unsafe.AsRef<ulong>(start), output.Length * 4);
+            }
+        }
+    }
+
     public unsafe static void ComputeHashBatchGpu(List<CappedArray<byte>> inputs, Span<ValueHash256> output)
     {
         if (device == null)

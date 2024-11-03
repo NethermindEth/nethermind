@@ -146,9 +146,12 @@ namespace Nethermind.Core.Test
             var count = KeccakCache.Count;
             List<CappedArray<byte>> input = new(count);
             List<string> expected = new(count);
+            var total = 0;
             foreach (var inputs in KeccakCases)
             {
-                input.Add(Bytes.FromHexString(inputs[0]));
+                var data = Bytes.FromHexString(inputs[0]);
+                total += data.Length;
+                input.Add(data);
                 expected.Add(inputs[1]);
             }
 
@@ -159,7 +162,7 @@ namespace Nethermind.Core.Test
             KeccakHash.ComputeHashBatchGpu(input, keccaks);
             var time = Stopwatch.GetElapsedTime(start);
 
-            TestContext.Out.WriteLine($"Time taken for {input.Count} Keccaks on GPU {time.TotalMilliseconds:N4} ms");
+            TestContext.Out.WriteLine($"Time taken for {input.Count} Keccaks {total / 1024} kB on GPU {time.TotalMilliseconds:N4} ms");
 
             for (int i = 0; i < keccaks.Length; i++)
             {
@@ -176,7 +179,7 @@ namespace Nethermind.Core.Test
                 ValueHash256 h = ValueKeccak.Compute(data.AsSpan());
             }
             time = Stopwatch.GetElapsedTime(start);
-            TestContext.Out.WriteLine($"Time taken for {input.Count} Keccaks on CPU {time.TotalMilliseconds:N4} ms");
+            TestContext.Out.WriteLine($"Time taken for {input.Count} Keccaks {total / 1024} kB on CPU {time.TotalMilliseconds:N4} ms");
 
         }
 

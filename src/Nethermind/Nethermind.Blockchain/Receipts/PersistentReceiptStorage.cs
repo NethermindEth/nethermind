@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -380,19 +382,75 @@ namespace Nethermind.Blockchain.Receipts
 
         private void RemoveBlockTx(Block block, Block? exceptBlock = null)
         {
+            Transaction[] blockTxs = block.Transactions;
+            if (blockTxs.Length == 0) return;
+
             HashSet<Hash256AsKey> newTxs = null;
             if (exceptBlock is not null)
             {
-                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select((tx) => new Hash256AsKey(tx.Hash)));
+                Transaction[] exceptTxs = exceptBlock.Transactions;
+                if (exceptTxs.Length > 0)
+                {
+                    CalculateHashes(exceptTxs);
+                    newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select((tx) => new Hash256AsKey(tx.Hash)));
+                }
             }
 
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
-            foreach (Transaction tx in block.Transactions)
+
+            CalculateHashes(blockTxs);
+            if (newTxs is null)
             {
-                // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
-                // is contained in the new block
-                if (newTxs?.Contains(tx.Hash) == true) continue;
-                writeBatch[tx.Hash.Bytes] = null;
+                foreach (Transaction tx in blockTxs)
+                {
+                    writeBatch[tx.Hash.Bytes] = null;
+                }
+            }
+            else
+            {
+                foreach (Transaction tx in blockTxs)
+                {
+                    // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
+                    // is contained in the new block
+                    if (newTxs.Contains(tx.Hash)) continue;
+                    writeBatch[tx.Hash.Bytes] = null;
+                }
+            }
+        }
+
+        private static void CalculateHashes(Transaction[] txs)
+        {
+            List<ReadOnlyMemory<byte>> rawTxs;
+            if (KeccakHash.SupportsGpu &&
+                !txs[0].IsHashCalculated &&
+                txs[0].PreHash.Length > 0)
+            {
+                rawTxs = new List<ReadOnlyMemory<byte>>(txs.Length);
+                foreach (Transaction tx in txs)
+                {
+                    rawTxs.Add(tx.PreHash);
+                }
+
+                var keccakLength = Keccak.Size * txs.Length;
+                var keccaks = ArrayPool<byte>.Shared.Rent(keccakLength);
+                var keccakSpan = MemoryMarshal.Cast<byte, ValueHash256>(keccaks.AsSpan(0, keccakLength));
+                KeccakHash.ComputeHashBatchGpu(rawTxs, keccakSpan);
+
+                for (int i = 0; i < keccakSpan.Length; i++)
+                {
+                    var tx = txs[i];
+                    if (tx.PreHash.Length == 0) continue;
+
+                    var txHash = tx.Hash.ValueHash256;
+                    var calcHash = keccakSpan[i];
+
+                    if (txHash != calcHash)
+                    {
+                        Console.WriteLine($"Hashes don't agree {txHash} != {calcHash}");
+                    }
+                }
+
+                ArrayPool<byte>.Shared.Return(keccaks);
             }
         }
     }
