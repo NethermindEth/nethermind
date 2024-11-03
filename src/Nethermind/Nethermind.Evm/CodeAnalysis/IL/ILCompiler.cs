@@ -983,8 +983,6 @@ internal class ILCompiler
                         method.LoadLocalAddress(uint256C);
                         method.LoadLocalAddress(lbool);
                         method.Call(typeof(EvmPooledMemory).GetMethod(nameof(EvmPooledMemory.Div32Ceiling), [typeof(UInt256).MakeByRefType(), typeof(bool).MakeByRefType()]));
-                        method.LoadConstant((long)1);
-                        method.Add();
                         method.LoadConstant(GasCostOf.VeryLow);
                         method.Multiply();
                         method.Subtract();
