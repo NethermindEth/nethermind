@@ -13,9 +13,9 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
-namespace Evm.t8n.JsonTypes;
+namespace Evm.T8n.JsonTypes;
 
-public class T8NTest(IReleaseSpec spec, ISpecProvider specProvider, Address currentCoinbase)
+public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address currentCoinbase)
 {
     public IReleaseSpec Spec { get; set; } = spec;
     public ISpecProvider SpecProvider { get; set; } = specProvider;

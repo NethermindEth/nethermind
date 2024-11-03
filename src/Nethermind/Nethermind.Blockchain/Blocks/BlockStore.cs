@@ -30,6 +30,13 @@ public class BlockStore(IDb blockDb) : IBlockStore
         return blockDb.Get(key);
     }
 
+    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    {
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        return blockDb.KeyExists(dbKey);
+    }
+
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
         if (block.Hash is null)

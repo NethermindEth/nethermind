@@ -9,7 +9,7 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Rlp;
 
-namespace Evm.t8n.JsonTypes;
+namespace Evm.T8n.JsonTypes;
 
 public class InputData
 {

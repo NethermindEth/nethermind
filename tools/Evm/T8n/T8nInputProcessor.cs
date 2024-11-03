@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
-using Evm.t8n.Errors;
-using Evm.t8n.JsonTypes;
+using Evm.T8n.Errors;
+using Evm.T8n.JsonTypes;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
@@ -12,24 +12,24 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
-public static class T8NInputProcessor
+public static class T8nInputProcessor
 {
     private static readonly TxDecoder TxDecoder = TxDecoder.Instance;
 
-    public static T8NTest ProcessInputAndConvertToT8NTest(T8NCommandArguments arguments)
+    public static T8nTest ProcessInputAndConvertToT8nTest(T8nCommandArguments arguments)
     {
-        InputData inputData = T8NInputReader.ReadInputData(arguments);
+        InputData inputData = T8nInputReader.ReadInputData(arguments);
 
         if (inputData.Env is null)
         {
-            throw new T8NException("Env is not provided", T8NErrorCodes.ErrorIO);
+            throw new T8nException("Env is not provided", T8nErrorCodes.ErrorIO);
         }
 
         (ISpecProvider specProvider, IReleaseSpec spec) = GetSpec(arguments, inputData.Env);
 
-        T8NValidator.ApplyChecks(inputData.Env, specProvider, spec);
+        T8nValidator.ApplyChecks(inputData.Env, specProvider, spec);
 
         var gethTraceOptions = new GethTraceOptions
         {
@@ -37,7 +37,7 @@ public static class T8NInputProcessor
             DisableStack = arguments.TraceNoStack
         };
 
-        T8NTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
+        T8nTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
             Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId),
@@ -68,7 +68,7 @@ public static class T8NInputProcessor
         return test;
     }
 
-    private static (ISpecProvider, IReleaseSpec) GetSpec(T8NCommandArguments arguments, EnvJson env)
+    private static (ISpecProvider, IReleaseSpec) GetSpec(T8nCommandArguments arguments, EnvJson env)
     {
         IReleaseSpec spec;
         try
@@ -77,7 +77,7 @@ public static class T8NInputProcessor
         }
         catch (NotSupportedException e)
         {
-            throw new T8NException(e, $"unsupported fork {arguments.StateFork}", T8NErrorCodes.ErrorConfig);
+            throw new T8nException(e, $"unsupported fork {arguments.StateFork}", T8nErrorCodes.ErrorConfig);
         }
         OverridableReleaseSpec overridableReleaseSpec = new(spec);
 

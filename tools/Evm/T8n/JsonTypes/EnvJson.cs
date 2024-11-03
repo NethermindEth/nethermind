@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Evm.t8n.JsonTypes;
+namespace Evm.T8n.JsonTypes;
 
 public class EnvJson(Address currentCoinbase, long currentGasLimit, long currentNumber, ulong currentTimestamp)
 {

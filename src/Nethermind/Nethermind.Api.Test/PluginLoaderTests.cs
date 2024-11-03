@@ -23,9 +23,9 @@ public class PluginLoaderTests
     public void full_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+        loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = Array.Empty<string>() });
         var expected = new List<Type>
         {
@@ -43,11 +43,11 @@ public class PluginLoaderTests
     public void full_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+        loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig { PluginOrder = new[] { "Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura" } };
+            new PluginConfig { PluginOrder = ["Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
@@ -66,11 +66,11 @@ public class PluginLoaderTests
     public void partial_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
+        loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig() { PluginOrder = new[] { "Hive", "NethDev", "Ethash" } };
+            new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
@@ -89,10 +89,9 @@ public class PluginLoaderTests
     public void default_config()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader("", fileSystem,
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin),
-            typeof(MergePlugin));
-        loader.Load(new TestLogManager());
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin), typeof(MergePlugin));
+        loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
