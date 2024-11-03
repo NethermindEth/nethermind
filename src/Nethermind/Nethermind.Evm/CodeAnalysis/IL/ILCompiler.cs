@@ -2146,7 +2146,7 @@ internal class ILCompiler
 
     private static void EmitShiftInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
-        Label skipPop = il.DefineLabel();
+        Label aBiggerOrEqThan256 = il.DefineLabel();
         Label signIsNeg = il.DefineLabel();
         Label endOfOpcode = il.DefineLabel();
 
@@ -2156,36 +2156,41 @@ internal class ILCompiler
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[0]);
 
-        il.LoadLocalAddress(locals[0]);
-        il.LoadConstant(Word.FullSize);
-        il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
-        il.BranchIfTrue(skipPop);
+        il.StackLoadPrevious(stack.span, stack.idx, 2);
+        il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[1]);
+        il.StackPop(stack.idx, 2);
 
         il.LoadLocalAddress(locals[0]);
+        il.LoadConstant(Word.FullSize);
+        il.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
+        il.BranchIfFalse(aBiggerOrEqThan256);
+
+        using Local shiftBits = il.DeclareLocal<int>();
+
+
+        il.LoadLocalAddress(locals[1]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
-        il.StackLoadPrevious(stack.span, stack.idx, 2);
-        il.Call(Word.GetInt0);
+        il.LoadLocalAddress(locals[0]);
+        il.LoadField(GetFieldInfo<UInt256>(nameof(UInt256.u0)));
+        il.Convert<int>();
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.RightShift), [typeof(int), typeof(Int256.Int256).MakeByRefType()]));
-        il.StackPop(stack.idx, 2);
         il.CleanAndLoadWord(stack.span, stack.idx);
         il.LoadLocal(uint256R);
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx, 1);
         il.Branch(endOfOpcode);
 
-        il.MarkLabel(skipPop);
-        il.StackPop(stack.idx, 2);
+        il.MarkLabel(aBiggerOrEqThan256);
 
-        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(locals[1]);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.Call(GetPropertyInfo(typeof(Int256.Int256), nameof(Int256.Int256.Sign), false, out _));
         il.LoadConstant(0);
         il.BranchIfLess(signIsNeg);
 
         il.CleanWord(stack.span, stack.idx);
-        il.StackPush(stack.idx);
         il.Branch(endOfOpcode);
 
         // sign
@@ -2195,10 +2200,10 @@ internal class ILCompiler
         il.Call(GetAsMethodInfo<Int256.Int256, UInt256>());
         il.LoadObject<UInt256>();
         il.Call(Word.SetUInt256);
-        il.StackPush(stack.idx);
         il.Branch(endOfOpcode);
 
         il.MarkLabel(endOfOpcode);
+        il.StackPush(stack.idx);
     }
 
     private static void EmitBitwiseUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
