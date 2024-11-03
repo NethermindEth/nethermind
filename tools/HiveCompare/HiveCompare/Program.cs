@@ -1,5 +1,5 @@
 using HiveCompare.Models;
-using McMaster.Extensions.CommandLineUtils;
+using System.CommandLine;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
@@ -13,53 +13,40 @@ internal class Program
 
     private static void Main(string[] args)
     {
-        CommandLineApplication cli = CreateCommandLineInterface();
-        try
+        CliOption<string> firstFileOption = new("--first-file", "-f")
         {
-            cli.Execute(args);
-        }
-        catch (CommandParsingException)
+            Description = "The first file to be used for comparison",
+            Required = true,
+            HelpName = "path"
+        };
+        CliOption<string> secondFileOption = new("--second-file", "-s")
         {
-            cli.ShowHelp();
-        }
-    }
+            Description = "The second file to be used for comparison",
+            Required = true,
+            HelpName = "path"
+        };
+        CliRootCommand rootCommand = [firstFileOption, secondFileOption];
 
-    static CommandLineApplication CreateCommandLineInterface()
-    {
-        CommandLineApplication cli = new() { Name = "HiveCompare" };
-        cli.HelpOption("-?|-h|--help");
-        CommandOption firstFileOption = cli.Option("-f|--first-file", "first file to be used for comparison", CommandOptionType.SingleValue);
-        CommandOption secondFileOption = cli.Option("-s|--second-file", "second file to be used for comparison", CommandOptionType.SingleValue);
-
-        cli.OnExecute(() =>
+        rootCommand.SetAction(parseResult =>
         {
-            bool HasRequiredOption(CommandOption option)
+            static bool RequiredFileExists(string? filePath)
             {
-                if (option.HasValue() && !string.IsNullOrEmpty(option.Value())) return true;
+                if (File.Exists(filePath)) return true;
 
-                cli.ShowHelp();
+                Console.WriteLine($"Could not find file '{filePath}'.");
                 return false;
             }
 
-            bool RequiredFileExists(CommandOption option)
-            {
-                if (File.Exists(option.Value())) return true;
+            string? firstFileValue = parseResult.GetValue(firstFileOption);
+            string? secondFileValue = parseResult.GetValue(secondFileOption);
 
-                Console.WriteLine($"Could not find file '{option.Value()}'.");
-                return false;
-
-            }
-
-            return HasRequiredOption(firstFileOption) && HasRequiredOption(secondFileOption)
-                ? RequiredFileExists(firstFileOption) && RequiredFileExists(secondFileOption)
-                    ? ParseTests(firstFileOption.Value()!, secondFileOption.Value()!)
-                        ? 0
-                        : 4
-                    : 2
-                : 1;
+            return RequiredFileExists(firstFileValue) && RequiredFileExists(secondFileValue)
+                ? ParseTests(firstFileValue!, secondFileValue!) ? 0 : 4
+                : 2;
         });
 
-        return cli;
+        CliConfiguration cli = new(rootCommand);
+        cli.Invoke(args);
     }
 
     private static bool ParseTests(string firstFile, string secondFile)

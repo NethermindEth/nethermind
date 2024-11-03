@@ -26,7 +26,7 @@ using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class TreeSync
+    public class TreeSync : ITreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
         public const int MaxRequestSize = 384;
@@ -75,6 +75,8 @@ namespace Nethermind.Synchronization.FastSync
         private int _hintsToResetRoot;
         private long _blockNumber;
         private readonly SyncMode _syncMode;
+
+        public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
             : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
@@ -707,7 +709,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
-                // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
             if (_pendingItems.Count != 0)
@@ -716,6 +717,8 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             CleanupMemory();
+
+            SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(_rootNode));
         }
 
         private void CleanupMemory()

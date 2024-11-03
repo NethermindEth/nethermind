@@ -31,7 +31,7 @@ public class JsonConfigProviderTests
         JsonRpcConfig jsonRpcConfig = new();
         StatsParameters statsConfig = StatsParameters.Instance;
 
-        _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
+        _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.json");
     }
 
     [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
@@ -48,7 +48,7 @@ public class JsonConfigProviderTests
     [Test]
     public void Provides_helpful_error_message_when_file_does_not_exist()
     {
-        Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.cfg"));
+        Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.json"));
     }
 
     [Test]
