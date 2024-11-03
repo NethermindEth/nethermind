@@ -2161,9 +2161,9 @@ internal class ILCompiler
         il.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         il.BranchIfTrue(skipPop);
 
-        il.StackLoadPrevious(stack.span, stack.idx, 2);
-        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
         il.LoadLocalAddress(locals[0]);
+        il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
+        il.StackLoadPrevious(stack.span, stack.idx, 2);
         il.Call(Word.GetInt0);
         il.LoadLocalAddress(uint256R);
         il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
