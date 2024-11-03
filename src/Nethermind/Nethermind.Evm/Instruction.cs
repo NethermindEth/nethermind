@@ -337,7 +337,7 @@ namespace Nethermind.Evm
                 [Instruction.MLOAD] = new(GasCostOf.VeryLow, 0, 1, 1),
                 [Instruction.MSTORE] = new(GasCostOf.VeryLow, 0, 2, 0),
                 [Instruction.MSTORE8] = new(GasCostOf.VeryLow, 0, 2, 0),
-                [Instruction.SLOAD] = new(GasCostOf.SLoad, 0, 1, 1),
+                [Instruction.SLOAD] = new(0, 0, 1, 1),
                 [Instruction.SSTORE] = new(0, 0, 2, 0),
                 [Instruction.JUMP] = new(GasCostOf.Mid, 0, 1, 0),
                 [Instruction.PC] = new(GasCostOf.Base, 0, 0, 1),
