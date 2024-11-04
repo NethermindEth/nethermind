@@ -80,5 +80,4 @@ class ShutterBlockHandlerTests : EngineModuleTests
         api.TriggerNewHeadBlock(new(Build.A.Block.WithTimestamp(upToDateTimestamp).TestObject));
         Assert.That(api.EonUpdateCalled, Is.EqualTo(1));
     }
-
 }

@@ -3,20 +3,20 @@
 
 using System.Text.Json;
 using Ethereum.Test.Base;
-using Evm.t8n.Errors;
-using Evm.t8n.JsonTypes;
+using Evm.T8n.Errors;
+using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
-public static class T8NInputReader
+public static class T8nInputReader
 {
     private static readonly EthereumJsonSerializer EthereumJsonSerializer = new();
     private const string Stdin = "stdin";
 
-    public static InputData ReadInputData(T8NCommandArguments arguments)
+    public static InputData ReadInputData(T8nCommandArguments arguments)
     {
         InputData inputData = new();
 
@@ -47,7 +47,7 @@ public static class T8NInputReader
                     inputData.TxRlp = File.ReadAllText(arguments.InputTxs).Replace("\"", "").Replace("\n", "");
                     break;
                 default:
-                    throw new T8NException("Transactions file support only rlp, json formats", T8NErrorCodes.ErrorIO);
+                    throw new T8nException("Transactions file support only rlp, json formats", T8nErrorCodes.ErrorIO);
             }
         }
 
@@ -63,11 +63,11 @@ public static class T8NInputReader
         }
         catch (FileNotFoundException e)
         {
-            throw new T8NException(e, "failed reading {filePath} file: {description}", T8NErrorCodes.ErrorIO);
+            throw new T8nException(e, "failed reading {filePath} file: {description}", T8nErrorCodes.ErrorIO);
         }
         catch (JsonException e)
         {
-            throw new T8NException(e, $"failed unmarshalling {filePath} file: {description}", T8NErrorCodes.ErrorJson);
+            throw new T8nException(e, $"failed unmarshalling {filePath} file: {description}", T8nErrorCodes.ErrorJson);
         }
     }
 
@@ -80,7 +80,7 @@ public static class T8NInputReader
         }
         catch (Exception e)
         {
-            throw new T8NException(e, T8NErrorCodes.ErrorJson);
+            throw new T8nException(e, T8nErrorCodes.ErrorJson);
         }
     }
 }
