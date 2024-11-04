@@ -68,6 +68,8 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
             ContainerBuilder builder = new ContainerBuilder()
+                .AddModule(new SynchronizerModule(syncConfig))
+                .AddModule(new DbModule())
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton(_blockTree)
@@ -84,9 +86,6 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton(stateReader)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
-            dbProvider.ConfigureServiceCollection(builder);
-
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
 
             IContainer container = builder.Build();
 
