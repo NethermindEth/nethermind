@@ -21,9 +21,9 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.ConsensusRequests;
-using Microsoft.CodeAnalysis;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test

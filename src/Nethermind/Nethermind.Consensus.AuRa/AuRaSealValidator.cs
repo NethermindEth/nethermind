@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaSealValidator : ISealValidator
     {
-        private readonly AuRaParameters _parameters;
+        private readonly AuRaChainSpecEngineParameters _parameters;
         private readonly IAuRaStepCalculator _stepCalculator;
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
@@ -25,7 +26,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
 
-        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public AuRaSealValidator(AuRaChainSpecEngineParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
