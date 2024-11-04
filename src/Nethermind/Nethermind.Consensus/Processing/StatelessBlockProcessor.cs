@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
@@ -23,6 +25,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
     private readonly VerkleWorldState _statelessWorldState;
+    private readonly FrozenDictionary<Address, Account>? _systemAccounts;
 
     bool IBlockProcessor.CanProcessStatelessBlock => true;
 
@@ -36,7 +39,8 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         IWitnessCollector? witnessCollector,
         IBlockTree? blockTree,
         ILogManager? logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null)
+        IWithdrawalProcessor? withdrawalProcessor = null,
+        FrozenDictionary<Address, Account>? systemAccounts = null)
         : base(
             specProvider,
             blockValidator,
@@ -54,6 +58,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         NullVerkleTreeStore stateStore = new();
         VerkleStateTree? tree = new(stateStore, logManager);
         _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
+        _systemAccounts = systemAccounts;
     }
 
     protected override void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
