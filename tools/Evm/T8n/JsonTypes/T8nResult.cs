@@ -3,7 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Ethereum.Test.Base;
-using Evm.t8n.JsonTypes;
+using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -17,7 +17,7 @@ using Nethermind.State.Proofs;
 
 namespace Evm.t8n;
 
-public class T8NResult
+public class T8nResult
 {
     public Hash256? StateRoot { get; set; }
     public Hash256? TxRoot { get; set; }
@@ -37,15 +37,15 @@ public class T8NResult
     public byte[] TransactionsRlp { get; set; } = [];
 
 
-    public static T8NResult ConstructT8NResult(WorldState stateProvider,
+    public static T8nResult ConstructT8nResult(WorldState stateProvider,
         Block block,
-        T8NTest test,
+        T8nTest test,
         StorageTxTracer storageTracer,
         BlockReceiptsTracer blockReceiptsTracer,
         ISpecProvider specProvider,
         TransactionExecutionReport txReport)
     {
-        T8NResult t8NResult = new();
+        T8nResult t8NResult = new();
 
         IReceiptSpec receiptSpec = specProvider.GetSpec(block.Header);
         Hash256 txRoot = TxTrie.CalculateRoot(txReport.SuccessfulTransactions.ToArray());
@@ -77,7 +77,7 @@ public class T8NResult
         return t8NResult;
     }
 
-    private static Dictionary<Address, AccountState> CollectAccounts(T8NTest test, WorldState stateProvider, StorageTxTracer storageTracer, Block block)
+    private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, WorldState stateProvider, StorageTxTracer storageTracer, Block block)
     {
         Dictionary<Address, AccountState?> accounts = test.Alloc.Keys.ToDictionary(address => address,
             address => GetAccountState(address, stateProvider, storageTracer));
