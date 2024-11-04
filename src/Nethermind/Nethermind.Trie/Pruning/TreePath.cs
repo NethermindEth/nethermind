@@ -136,7 +136,7 @@ public struct TreePath : IEquatable<TreePath>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AppendMut(int nib)
+    public void AppendMut(int nib)
     {
         this[Length] = nib;
         Length++;

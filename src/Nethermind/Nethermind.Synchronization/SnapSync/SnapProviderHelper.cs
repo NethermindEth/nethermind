@@ -44,13 +44,21 @@ namespace Nethermind.Synchronization.SnapSync
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
+            bool hasExtraStorage = false;
 
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
                 if (account.Account.HasStorage)
                 {
-                    accountsWithStorage.Add(account);
+                    if (account.Path >= limitHash)
+                    {
+                        hasExtraStorage = true;
+                    }
+                    else
+                    {
+                        accountsWithStorage.Add(account);
+                    }
                 }
 
                 if (account.Account.HasCode)
@@ -72,7 +80,30 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            if (hasExtraStorage)
+            {
+                // The server will always give one node extra after limitpath if it can fit in the response.
+                // When we have extra storage, the extra storage must not be re-stored as it may have already been set
+                // by another top level partition. If the sync pivot moved and the storage was modified, it must not be saved
+                // here along with updated ancestor so that healing can detect that the storage need to be healed.
+                //
+                // Unfortunately, without introducing large change to the tree, the easiest way to
+                // exclude the extra storage is to just rebuild the whole tree and also skip stitching.
+                // Fortunately, this should only happen n-1 time where n is the number of top level
+                // partition count.
+
+                tree.RootHash = Keccak.EmptyTreeHash;
+                for (var index = 0; index < accounts.Count; index++)
+                {
+                    PathWithAccount account = accounts[index];
+                    if (account.Path >= limitHash) continue;
+                    _ = tree.Set(account.Path, account.Account);
+                }
+            }
+            else
+            {
+                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            }
 
             tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
 
@@ -188,12 +219,14 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                         else
                         {
-                            Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                            if (Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
+                            TreePath extensionChildPath = TreePath.FromNibble(CollectionsMarshal.AsSpan(path));
+                            extensionChildPath = extensionChildPath.Append(node.Key);
+                            TreePath firstKeyPath = TreePath.FromPath(effectiveStartingHAsh.Bytes).Truncate(extensionChildPath.Length);
+                            if (extensionChildPath.CompareTo(firstKeyPath) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
                             {
-                                for (int i = 0; i < 15; i++)
+                                for (int i = 0; i < 16; i++)
                                 {
                                     if (parent.GetChildHashAsValueKeccak(i, out ValueHash256 kec) && kec == node.Keccak)
                                     {
@@ -242,6 +275,26 @@ namespace Nethermind.Synchronization.SnapSync
 
                                 proofNodesToProcess.Push((node, child, pathIndex, newPath));
                                 sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(newPath))));
+                            }
+                            else
+                            {
+                                // Sometimes a leaf becomes a proof.
+                                // we add them.
+                                TreePath tPath = TreePath.FromNibble(CollectionsMarshal.AsSpan(path));
+                                tPath.AppendMut(ci);
+
+                                List<byte> newPath = new(path)
+                                {
+                                    (byte)ci
+                                };
+
+                                TreePath wholePath = tPath.Append(child.Key);
+                                if (wholePath.Path < startingHash || wholePath.Path > endHash)
+                                {
+                                    node.SetChild(ci, child);
+                                    proofNodesToProcess.Push((node, child, pathIndex, newPath));
+                                    sortedBoundaryList.Add((child, tPath));
+                                }
                             }
                         }
                     }

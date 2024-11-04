@@ -14,6 +14,14 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.IO.Compression;
+using System.Linq;
+using System.Text.Json;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
@@ -59,4 +67,43 @@ public class SnapProviderTests
         sut.AddAccountRange(accountRange, accountsAndProofs).Should().Be(AddRangeResult.ExpiredRootHash);
     }
 
+    [TestCase("badreq-roothash.zip")]
+    [TestCase("badreq-roothash-2.zip")]
+    [TestCase("badreq-roothash-3.zip")]
+    [TestCase("badreq-trieexception.zip")]
+    public void TestStrangeCase2(string testFileName)
+    {
+        using DeflateStream decompressor =
+            new DeflateStream(
+                GetType().Assembly
+                    .GetManifestResourceStream($"Nethermind.Synchronization.Test.SnapSync.TestFixtures.{testFileName}")!,
+                CompressionMode.Decompress);
+        BadReq asReq = JsonSerializer.Deserialize<BadReq>(decompressor)!;
+
+        AccountDecoder acd = new AccountDecoder();
+        Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode(new RlpStream(Bytes.FromHexString(bt)))!).ToArray();
+        ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
+
+        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
+        List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
+
+        StateTree stree = new StateTree(new TrieStore(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
+        SnapProviderHelper.AddAccountRange(
+                stree,
+                0,
+                new ValueHash256(asReq.Root),
+                new ValueHash256(asReq.StartingHash),
+                new ValueHash256(asReq.LimitHash),
+                pathWithAccounts,
+                proofs).result.Should().Be(AddRangeResult.OK);
+    }
+
+    private record BadReq(
+        string Root,
+        string StartingHash,
+        string LimitHash,
+        List<string> Proofs,
+        List<string> Paths,
+        List<string> Accounts
+    );
 }
