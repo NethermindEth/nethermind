@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -16,6 +18,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -61,7 +64,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (response.PathAndAccounts.Count == 0)
             {
-                _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
                 result = AddRangeResult.ExpiredRootHash;
             }
@@ -81,6 +83,33 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
                     }
+                    else
+                    {
+                        _logger.Warn($"Resutl is {result} from {peerInfo} " +
+                                     $"{peerInfo?.PeerClientType}. Req " +
+                                     $"{request.StartingHash} " +
+                                     $"{request.LimitHash} Resp " +
+                                     $"{response.PathAndAccounts[^1].Path} " +
+                                     $"{request.LimitHash} Resp {request.RootHash} ");
+
+                        List<string> proofs = response.Proofs.Select(p => p.ToHexString()).ToList();
+                        List<string> paths = response.PathAndAccounts.Select(p => p.Path.ToString()).ToList();
+                        AccountDecoder acd = new AccountDecoder();
+                        List<string> accounts = response.PathAndAccounts.Select(p => acd.Encode(p.Account).Bytes.ToHexString()).ToList();
+
+                        string jsonified = JsonSerializer.Serialize(new BadReq(
+                            request.RootHash.ToString(), request.StartingHash.ToString(), request.LimitHash.ToString(),
+                            proofs, paths, accounts
+                        ));
+
+                        string fileName = $"badreq-{result}-{Random.Shared.Next()}.zip";
+                        using FileStream fileOutStream = File.OpenWrite(fileName);
+                        using DeflateStream deflateStream = new DeflateStream(fileOutStream, CompressionLevel.Optimal);
+                        using StreamWriter streamWriter = new StreamWriter(deflateStream);
+                        streamWriter.Write(jsonified);
+                        streamWriter.Close();
+                        _logger.Warn($"Dumped to {fileName}");
+                    }
                 }
                 catch (MissingTrieNodeException)
                 {
@@ -89,8 +118,25 @@ namespace Nethermind.Synchronization.SnapSync
                                  $"{request.StartingHash} " +
                                  $"{request.LimitHash} Resp " +
                                  $"{response.PathAndAccounts[^1].Path} " +
-                                 $"{response.PathAndAccounts[0].Path} " +
-                                 $"{response.PathAndAccounts.Count} ");
+                                 $"{request.LimitHash} Resp {request.RootHash} ");
+
+                    List<string> proofs = response.Proofs.Select(p => p.ToHexString()).ToList();
+                    List<string> paths = response.PathAndAccounts.Select(p => p.Path.ToString()).ToList();
+                    AccountDecoder acd = new AccountDecoder();
+                    List<string> accounts = response.PathAndAccounts.Select(p => acd.Encode(p.Account).Bytes.ToHexString()).ToList();
+
+                    string jsonified = JsonSerializer.Serialize(new BadReq(
+                        request.RootHash.ToString(), request.StartingHash.ToString(), request.LimitHash.ToString(),
+                        proofs, paths, accounts
+                    ));
+
+                    string fileName = $"badreq-trieexception-{Random.Shared.Next()}.zip";
+                    using FileStream fileOutStream = File.OpenWrite(fileName);
+                    using DeflateStream deflateStream = new DeflateStream(fileOutStream, CompressionLevel.Optimal);
+                    using StreamWriter streamWriter = new StreamWriter(deflateStream);
+                    streamWriter.Write(jsonified);
+                    streamWriter.Close();
+
                     result = AddRangeResult.InternalError;
                 }
             }
@@ -149,7 +195,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
 
-                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
+                    UInt256 nextPath = new UInt256(accounts[^1].Path.Bytes, true);
+                    nextPath += UInt256.One;
+                    ValueHash256 asValueHash = new ValueHash256(nextPath.ToBigEndian());
+
+                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, asValueHash, moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
@@ -253,6 +303,10 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                }
+                else if (result == AddRangeResult.ExpiredRootHash)
+                {
+                    _logger.Warn($"Exxpired root hash does happens");
                 }
 
                 return result;

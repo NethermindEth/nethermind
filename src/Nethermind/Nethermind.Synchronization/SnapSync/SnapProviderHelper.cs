@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.SnapSync
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
-                if (account.Account.HasStorage)
+                if (account.Account.HasStorage && account.Path < limitHash)
                 {
                     accountsWithStorage.Add(account);
                 }
@@ -190,8 +190,10 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                         else
                         {
-                            Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                            if (Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
+                            TreePath extensionChildPath = TreePath.FromNibble(CollectionsMarshal.AsSpan(path));
+                            extensionChildPath = extensionChildPath.Append(node.Key);
+                            TreePath firstKeyPath = TreePath.FromPath(effectiveStartingHAsh.Bytes).Truncate(extensionChildPath.Length);
+                            if (extensionChildPath.CompareTo(firstKeyPath) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
                             {
@@ -244,6 +246,26 @@ namespace Nethermind.Synchronization.SnapSync
 
                                 proofNodesToProcess.Push((node, child, pathIndex, newPath));
                                 sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(newPath))));
+                            }
+                            else
+                            {
+                                // Sometimes a leaf becomes a proof.
+                                // we add them.
+                                TreePath tPath = TreePath.FromNibble(CollectionsMarshal.AsSpan(path));
+                                tPath.AppendMut(ci);
+
+                                List<byte> newPath = new(path)
+                                {
+                                    (byte)ci
+                                };
+
+                                TreePath wholePath = tPath.Append(child.Key);
+                                if (wholePath.Path < startingHash || wholePath.Path > endHash)
+                                {
+                                    node.SetChild(ci, child);
+                                    proofNodesToProcess.Push((node, child, pathIndex, newPath));
+                                    sortedBoundaryList.Add((child, tPath));
+                                }
                             }
                         }
                     }

@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.SnapSync
             // The mismatch happens on exactly the same partition every time, suggesting tome kind of boundary issues
             // either on proof generation or validation.
             uint curStartingPath = 0;
-            uint partitionSize = (uint.MaxValue / (uint)_accountRangePartitionCount);
+            uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (uint)_accountRangePartitionCount);
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
             {

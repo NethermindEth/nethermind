@@ -29,8 +29,25 @@
 
   <ItemGroup>
     <None Remove="SnapSync\TestFixtures\badreq.json" />
-    <EmbeddedResource Include="SnapSync\TestFixtures\badreq.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <None Remove="SnapSync\TestFixtures\badreq-roothash.zip" />
+    <EmbeddedResource Include="SnapSync\TestFixtures\badreq-roothash.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="SnapSync\TestFixtures\badreq-roothash-2.zip" />
+    <EmbeddedResource Include="SnapSync\TestFixtures\badreq-roothash-2.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="SnapSync\TestFixtures\badreq-roothash-3.zip" />
+    <EmbeddedResource Include="SnapSync\TestFixtures\badreq-roothash-3.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="SnapSync\TestFixtures\badreq-trieexception.zip" />
+    <EmbeddedResource Include="SnapSync\TestFixtures\badreq-trieexception.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Remove="SnapSync\TestFixtures\badreq-roothash-4.zip" />
+    <EmbeddedResource Include="SnapSync\TestFixtures\badreq-roothash-4.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
 
