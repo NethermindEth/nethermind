@@ -84,7 +84,7 @@ public class T8nResult
         accounts.AddRange(test.Ommers.ToDictionary(ommer => ommer.Address,
             ommer => GetAccountState(ommer.Address, stateProvider, storageTracer)));
 
-        if (block.Beneficiary != null)
+        if (block.Beneficiary is not null)
         {
             accounts[block.Beneficiary] = GetAccountState(block.Beneficiary, stateProvider, storageTracer);
         }

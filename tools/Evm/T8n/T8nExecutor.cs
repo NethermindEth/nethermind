@@ -77,7 +77,7 @@ public static class T8nExecutor
         blockReceiptsTracer.StartNewBlockTrace(block);
 
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
-        if (test.ParentBeaconBlockRoot != null)
+        if (test.ParentBeaconBlockRoot is not null)
         {
             beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
         }
@@ -115,7 +115,7 @@ public static class T8nExecutor
                 blockReceiptsTracer.LastReceipt.BlockNumber = 0;
                 transactionExecutionReport.SuccessfulTransactionReceipts.Add(blockReceiptsTracer.LastReceipt);
             }
-            else if (transactionResult.Error != null && transaction.SenderAddress != null)
+            else if (transactionResult.Error is not null && transaction.SenderAddress is not null)
             {
                 var error = GethErrorMappings.GetErrorMapping(transactionResult.Error,
                     transaction.SenderAddress.ToString(true),
