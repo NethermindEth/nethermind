@@ -58,12 +58,12 @@ namespace Nethermind.TxPool
         /// <summary>
         /// The nonce is not the next nonce after the last nonce of this sender present in TxPool.
         /// </summary>
-        public static readonly AcceptTxResult NonceGap = new(9, nameof(NonceGap));
+        public static readonly AcceptTxResult NonceGap = new(9, "nonce too high");
 
         /// <summary>
         /// The EOA (externally owned account) that signed this transaction (sender) has already signed and executed a transaction with the same nonce.
         /// </summary>
-        public static readonly AcceptTxResult OldNonce = new(10, nameof(OldNonce));
+        public static readonly AcceptTxResult OldNonce = new(10, "nonce too low");
 
         /// <summary>
         /// Transaction is not allowed to replace the one already in the pool. Fee bump is too low or some requirements are not fulfilled
@@ -108,6 +108,6 @@ namespace Nethermind.TxPool
         public override bool Equals(object? obj) => obj is AcceptTxResult result && Equals(result);
         public bool Equals(AcceptTxResult result) => Id == result.Id;
         public override int GetHashCode() => Id.GetHashCode();
-        public override string ToString() => Message is null ? $"{Code}" : $"{Code}, {Message}";
+        public override string ToString() => Message is null ? Code : $"{Code}, {Message}";
     }
 }
