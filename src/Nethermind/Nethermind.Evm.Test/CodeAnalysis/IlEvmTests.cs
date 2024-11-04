@@ -152,7 +152,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public void Execute<T>(byte[] bytecode, T tracer, ForkActivation? fork = null, long gasAvailable = 1_000_000)
             where T : ITxTracer
         {
-            Execute<T>(tracer, bytecode, fork, gasAvailable);
+            Execute<T>(tracer, bytecode, fork ?? MainnetSpecProvider.PragueActivation, gasAvailable);
         }
 
         public Address InsertCode(byte[] bytecode)
@@ -1279,7 +1279,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var tracer2 = new GethLikeTxMemoryTracer(tracerOptions);
 
             var bytecode = Prepare.EvmCode
-                .Call(address, 25000)
+                .Call(address, 750_000)
                 .STOP()
                 .Done;
 
@@ -1494,7 +1494,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             string[] desiredTracePattern = new[]
             {
                 $"ILEVM_PRECOMPILED_({main})[0..47]",
-                $"SomeAfterTwoPush",
+                $"ILEVM_PRECOMPILED_({aux})[0..5]",
                 $"ILEVM_PRECOMPILED_({main})[49..60]",
                 $"ILEVM_PRECOMPILED_({main})[0..47]",
                 $"AbortDestinationPattern",
@@ -1536,7 +1536,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             enhancedChain.ForceRunAnalysis(main);
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
-            enhancedChain.Execute(driver, tracer);
+            enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
             var traces = tracer.BuildResult();
 
             var HasIlvmTraces = traces.Entries.Where(tr => tr.SegmentID is not null).Any();
@@ -1605,7 +1605,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
 
             var state = new EvmState(
-                100_000_000,
+                750_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
                 Snapshot.Empty);
@@ -1642,7 +1642,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
 
             var state = new EvmState(
-                1_000_000,
+                750_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
                 Snapshot.Empty);
@@ -1687,7 +1687,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(Address.FromNumber(1), testcase.bytecode, Prague.Instance);
 
             var state = new EvmState(
-                1_000_000,
+                750_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
                 Snapshot.Empty);
@@ -1731,7 +1731,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(Address.FromNumber(1), bytecode, Prague.Instance);
 
             var state = new EvmState(
-                1_000_000,
+                750_000,
                 new ExecutionEnvironment(codeInfo, Address.FromNumber(1), Address.FromNumber(1), Address.FromNumber(1), ReadOnlyMemory<byte>.Empty, txExCtx, 0, 0),
                 ExecutionType.CALL,
                 Snapshot.Empty);
