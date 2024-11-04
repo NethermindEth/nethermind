@@ -81,7 +81,7 @@ public class JsonRpcSocketsClientTests
                     while (true)
                     {
                         ReceiveResult? result = await stream.ReceiveAsync(buffer).ConfigureAwait(false);
-                        if (result?.EndOfMessage == true)
+                        if (result is not null && result.EndOfMessage && (!result.Closed || result.Read != 0))
                         {
                             messages++;
                         }
@@ -162,13 +162,13 @@ public class JsonRpcSocketsClientTests
                         if (result is not null)
                         {
                             msg.AddRange(buffer.Take(result.Read));
-                        }
 
-                        if (result?.EndOfMessage == true)
-                        {
-                            messages++;
-                            receivedMessages.Add(msg.ToArray());
-                            msg = [];
+                            if (result.EndOfMessage == true && (!result.Closed || result.Read != 0))
+                            {
+                                messages++;
+                                receivedMessages.Add(msg.ToArray());
+                                msg = [];
+                            }
                         }
 
                         if (result is null || result.Closed)
@@ -216,8 +216,8 @@ public class JsonRpcSocketsClientTests
                     messageCount++;
                     var msg = Enumerable.Range(11, i).Select(x => (byte)x).ToArray();
                     sentMessages.Add(msg);
-                    await stream.WriteAsync(msg).ConfigureAwait(false);
-                    await stream.WriteEndOfMessageAsync().ConfigureAwait(false);
+                    await stream.WriteAsync(msg.Append((byte)'\n').ToArray()).ConfigureAwait(false);
+                    
                     if (i % 10 == 0)
                     {
                         await Task.Delay(1).ConfigureAwait(false);
