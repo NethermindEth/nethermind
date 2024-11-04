@@ -179,30 +179,28 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
 
-            // BytesToNibbleBytes will throw if the input is not 32 bytes long, so we can use stackalloc+SkipLocalsInit
-            Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(effectiveStartingHAsh.Bytes, leftBoundary);
-            Span<byte> rightBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
-            Span<byte> rightLimit = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(limitHash.Bytes, rightLimit);
+            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
+            TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
+            TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
 
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
             // very-very unlikely), we want `moreChildrenToRight` to return true.
             bool noLimit = limitHash == ValueKeccak.MaxValue;
 
-            Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
+            // Connect the proofs with proof head.
+            // It also remove child path which is within the start/end range. If key are missing, the resolved
+            // hash will not match.
+            Stack<(TrieNode parent, TrieNode node, TreePath path)> proofNodesToProcess = new();
 
             tree.RootRef = root;
-            proofNodesToProcess.Push((null, root, -1, new List<byte>()));
+            proofNodesToProcess.Push((null, root, TreePath.Empty));
             sortedBoundaryList.Add((root, TreePath.Empty));
 
             bool moreChildrenToRight = false;
-
             while (proofNodesToProcess.Count > 0)
             {
-                (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
+                (TrieNode parent, TrieNode node, TreePath path) = proofNodesToProcess.Pop();
 
                 if (node.IsExtension)
                 {
@@ -212,16 +210,19 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             node.SetChild(0, child);
 
-                            pathIndex += node.Key.Length;
-                            path.AddRange(node.Key);
-                            proofNodesToProcess.Push((node, child, pathIndex, path));
-                            sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(path))));
+                            TreePath childPath = path.Append(node.Key);
+
+                            proofNodesToProcess.Push((node, child, childPath));
+                            sortedBoundaryList.Add((child, childPath));
                         }
                         else
                         {
-                            TreePath extensionChildPath = TreePath.FromNibble(CollectionsMarshal.AsSpan(path));
-                            extensionChildPath = extensionChildPath.Append(node.Key);
-                            TreePath firstKeyPath = TreePath.FromPath(effectiveStartingHAsh.Bytes).Truncate(extensionChildPath.Length);
+                            // Sometimes, the proof ends with the extension, the branch of at the end of extension is
+                            // not included. So we remove the extension, but only if it is after or the left boundary
+                            // as it will be re-created by the path. If it is before the left boundary however, it is
+                            // part of a proof.
+                            TreePath extensionChildPath = path.Append(node.Key);
+                            TreePath firstKeyPath = leftBoundaryPath.Truncate(extensionChildPath.Length);
                             if (extensionChildPath.CompareTo(firstKeyPath) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
@@ -241,12 +242,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsBranch)
                 {
-                    pathIndex++;
-
-                    Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                    int left = Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
-                    int right = Bytes.BytesComparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
-                    int limit = Bytes.BytesComparer.Compare(pathSpan, rightLimit[0..path.Count]) == 0 ? rightLimit[pathIndex] : 15;
+                    int left = path == leftBoundaryPath.Truncate(path.Length) ? leftBoundaryPath[path.Length] : 0;
+                    int right = path == rightBoundaryPath.Truncate(path.Length) ? rightBoundaryPath[path.Length] : 15;
+                    int limit = path == rightLimitPath.Truncate(path.Length) ? rightLimitPath[path.Length] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
@@ -263,37 +261,24 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (hasKeccak && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
                         {
+                            TreePath childPath = path.Append(ci);
+
                             if (!child.IsLeaf)
                             {
                                 node.SetChild(ci, child);
 
-                                // TODO: we should optimize it - copy only if there are two boundary children
-                                List<byte> newPath = new(path)
-                                {
-                                    (byte)ci
-                                };
-
-                                proofNodesToProcess.Push((node, child, pathIndex, newPath));
-                                sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(newPath))));
+                                proofNodesToProcess.Push((node, child, childPath));
+                                sortedBoundaryList.Add((child, childPath));
                             }
                             else
                             {
                                 // Sometimes a leaf becomes a proof.
-                                // we add them.
-                                TreePath tPath = TreePath.FromNibble(CollectionsMarshal.AsSpan(path));
-                                tPath.AppendMut(ci);
-
-                                List<byte> newPath = new(path)
-                                {
-                                    (byte)ci
-                                };
-
-                                TreePath wholePath = tPath.Append(child.Key);
+                                TreePath wholePath = childPath.Append(child.Key);
                                 if (wholePath.Path < startingHash || wholePath.Path > endHash)
                                 {
                                     node.SetChild(ci, child);
-                                    proofNodesToProcess.Push((node, child, pathIndex, newPath));
-                                    sortedBoundaryList.Add((child, tPath));
+                                    proofNodesToProcess.Push((node, child, childPath));
+                                    sortedBoundaryList.Add((child, childPath));
                                 }
                             }
                         }
