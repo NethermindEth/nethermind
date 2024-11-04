@@ -71,7 +71,10 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             correctTransactions.Add(tx);
         }
 
-        block.TrySetTransactions([.. correctTransactions]);
+        if (block.TxRoot is null || correctTransactions.Count != block.Transactions.Length)
+        {
+            block.TrySetTransactions([.. correctTransactions]);
+        }
         return [.. receiptsTracer.TxReceipts];
     }
 }

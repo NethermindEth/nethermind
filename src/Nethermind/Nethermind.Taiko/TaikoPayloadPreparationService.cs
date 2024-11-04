@@ -140,7 +140,10 @@ public class TaikoPayloadPreparationService(
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
         Transaction[] transactions = BuildTransactions(payloadAttributes);
 
-        return new Block(header, transactions, [], payloadAttributes.Withdrawals);
+        // Taiko payload is built with predefined list of transactions,
+        // some of those transactions are excluded during block processing,
+        // which requires production-style block class
+        return new BlockToProduce(header, transactions, [], payloadAttributes.Withdrawals);
     }
 
     public ValueTask<IBlockProductionContext?> GetPayload(string payloadId)

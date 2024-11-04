@@ -32,12 +32,8 @@ namespace Nethermind.Consensus.Processing
                 blockToProduce.Transactions = transactions;
                 return true;
             }
-            else
-            {
-                block.Body.Transactions = transactions;
-                return true;
-            }
 
+            return false;
         }
 
         public static bool IsByNethermindNode(this Block block) => block.Header.IsByNethermindNode();
