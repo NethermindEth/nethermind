@@ -46,13 +46,21 @@ namespace Nethermind.Synchronization.SnapSync
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
+            bool hasExtraStorage = false;
 
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
-                if (account.Account.HasStorage && account.Path < limitHash)
+                if (account.Account.HasStorage)
                 {
-                    accountsWithStorage.Add(account);
+                    if (account.Path >= limitHash)
+                    {
+                        hasExtraStorage = true;
+                    }
+                    else
+                    {
+                        accountsWithStorage.Add(account);
+                    }
                 }
 
                 if (account.Account.HasCode)
@@ -74,7 +82,30 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            if (hasExtraStorage)
+            {
+                // The server will always give one node extra after limitpath if it can fit in the response.
+                // When we have extra storage, the extra storage must not be re-stored as it may have already been set
+                // by another top level partition. If the sync pivot moved and the storage was modified, it must not be saved
+                // here along with updated ancestor so that healing can detect that the storage need to be healed.
+                //
+                // Unfortunately, without introducing large change to the tree, the easiest way to
+                // exclude the extra storage is to just rebuild the whole tree and also skip stitching.
+                // Fortunately, this should only happen n-1 time where n is the number of top level
+                // partition count.
+
+                tree.RootHash = Keccak.EmptyTreeHash;
+                for (var index = 0; index < accounts.Count; index++)
+                {
+                    PathWithAccount account = accounts[index];
+                    if (account.Path >= limitHash) continue;
+                    _ = tree.Set(account.Path, account.Account);
+                }
+            }
+            else
+            {
+                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            }
 
             tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
 
