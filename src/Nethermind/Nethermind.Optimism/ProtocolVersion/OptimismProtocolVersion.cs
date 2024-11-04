@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
@@ -60,7 +61,7 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public V0(ReadOnlySpan<byte> build, uint major, uint minor, uint patch, uint preRelease)
         {
-            Build = build.ToArray();
+            Build = BuildIdentifier(build);
             Major = major;
             Minor = minor;
             Patch = patch;
@@ -86,10 +87,9 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
                 return uint.Parse(part);
             }
 
-            if (build.Length != 8) throw new ArgumentException($"Expected build identifier to be 8 bytes long, got {build.Length}", nameof(build));
-            Build = build.ToArray();
-
             ReadOnlySpan<char> versionSpan = version;
+
+            Build = BuildIdentifier(build);
             Major = NextPart(ref versionSpan);
             Minor = NextPart(ref versionSpan);
             Patch = NextPart(ref versionSpan);
@@ -172,6 +172,13 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
         public override int GetHashCode() => HashCode.Combine(Build, Major, Minor, Patch, PreRelease);
 
         public override string ToString() => $"v{Major}.{Minor}.{Patch}{(PreRelease == 0 ? "" : $"-{PreRelease}")}";
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte[] BuildIdentifier(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != 8) throw new ArgumentException($"Expected build identifier to be 8 bytes long, got {bytes.Length}", nameof(bytes));
+            return bytes.ToArray();
+        }
     }
 
     internal class JsonConverter : JsonConverter<OptimismProtocolVersion>
