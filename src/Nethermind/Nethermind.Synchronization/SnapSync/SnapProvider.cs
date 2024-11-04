@@ -62,17 +62,17 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                    result = AddAccountRange(
-                        request.BlockNumber.Value,
-                        request.RootHash,
-                        request.StartingHash,
-                        response.PathAndAccounts,
-                        response.Proofs,
-                        hashLimit: request.LimitHash);
+                result = AddAccountRange(
+                    request.BlockNumber.Value,
+                    request.RootHash,
+                    request.StartingHash,
+                    response.PathAndAccounts,
+                    response.Proofs,
+                    hashLimit: request.LimitHash);
 
-                    if (result == AddRangeResult.OK)
-                    {
-                        Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
+                if (result == AddRangeResult.OK)
+                {
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
                 }
             }
 

@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.SnapSync
             // very-very unlikely), we want `moreChildrenToRight` to return true.
             bool noLimit = limitHash == ValueKeccak.MaxValue;
 
-            // Connect the proofs with proof head.
+            // Connect the proof nodes starting from state root.
             // It also remove child path which is within the start/end range. If key are missing, the resolved
             // hash will not match.
             Stack<(TrieNode parent, TrieNode node, TreePath path)> proofNodesToProcess = new();
@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.SnapSync
                         else
                         {
                             // Sometimes, the proof ends with the extension, the branch of at the end of extension is
-                            // not included. So we remove the extension, but only if it is after or the left boundary
+                            // not included. So we remove the extension, but only if it is after the left boundary
                             // as it will be re-created by the path. If it is before the left boundary however, it is
                             // part of a proof.
                             TreePath extensionChildPath = path.Append(node.Key);

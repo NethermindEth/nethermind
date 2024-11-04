@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.SnapSync
             _pivot = new Pivot(blockTree, logManager);
 
             if (accountRangePartitionCount < 1 || accountRangePartitionCount > int.MaxValue)
-                throw new ArgumentException("Account range partition must be between 1 to 256.");
+                throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;
             SetupAccountRangePartition();
