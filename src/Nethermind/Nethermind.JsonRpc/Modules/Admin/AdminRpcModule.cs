@@ -11,12 +11,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 public class AdminRpcModule : IAdminRpcModule
 {
+    private readonly ChainParameters _parameters;
     private readonly IBlockTree _blockTree;
     private readonly INetworkConfig _networkConfig;
     private readonly IPeerPool _peerPool;
@@ -33,7 +35,8 @@ public class AdminRpcModule : IAdminRpcModule
         IStaticNodesManager staticNodesManager,
         IEnode enode,
         string dataDir,
-        ManualPruningTrigger pruningTrigger)
+        ManualPruningTrigger pruningTrigger,
+        ChainParameters parameters)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -42,6 +45,7 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
+        _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
 
         BuildNodeInfo();
     }
@@ -66,6 +70,7 @@ public class AdminRpcModule : IAdminRpcModule
         _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.ChainId;
         _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
         _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols["eth"].Config = _parameters;
     }
 
     public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
