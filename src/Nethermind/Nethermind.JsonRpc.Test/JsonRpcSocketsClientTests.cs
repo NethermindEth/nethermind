@@ -217,7 +217,7 @@ public class JsonRpcSocketsClientTests
                     var msg = Enumerable.Range(11, i).Select(x => (byte)x).ToArray();
                     sentMessages.Add(msg);
                     await stream.WriteAsync(msg.Append((byte)'\n').ToArray()).ConfigureAwait(false);
-                    
+
                     if (i % 10 == 0)
                     {
                         await Task.Delay(1).ConfigureAwait(false);
