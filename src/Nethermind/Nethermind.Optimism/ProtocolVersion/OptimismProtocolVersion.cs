@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
@@ -61,42 +60,14 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
 
         public V0(ReadOnlySpan<byte> build, uint major, uint minor, uint patch, uint preRelease)
         {
-            Build = BuildIdentifier(build);
+            if (build.Length != 8) throw new ArgumentException($"Expected build identifier to be 8 bytes long, got {build.Length}", nameof(build));
+
+            Build = build.ToArray();
             Major = major;
             Minor = minor;
             Patch = patch;
             PreRelease = preRelease;
         }
-
-        public V0(ReadOnlySpan<byte> build, string version)
-        {
-            static UInt32 NextPart(ref ReadOnlySpan<char> span)
-            {
-                ReadOnlySpan<char> part;
-                int dotIndex = span.IndexOf('.');
-                if (dotIndex == -1)
-                {
-                    part = span;
-                    span = [];
-                }
-                else
-                {
-                    part = span[..dotIndex];
-                    span = span[(dotIndex + 1)..];
-                }
-                return uint.Parse(part);
-            }
-
-            ReadOnlySpan<char> versionSpan = version;
-
-            Build = BuildIdentifier(build);
-            Major = NextPart(ref versionSpan);
-            Minor = NextPart(ref versionSpan);
-            Patch = NextPart(ref versionSpan);
-            PreRelease = versionSpan.IsEmpty ? 0 : NextPart(ref versionSpan);
-        }
-
-        public V0(string version) : this(stackalloc byte[8], version) { }
 
         public new static V0 Read(ReadOnlySpan<byte> span)
         {
@@ -172,13 +143,6 @@ public abstract class OptimismProtocolVersion : IEquatable<OptimismProtocolVersi
         public override int GetHashCode() => HashCode.Combine(Build, Major, Minor, Patch, PreRelease);
 
         public override string ToString() => $"v{Major}.{Minor}.{Patch}{(PreRelease == 0 ? "" : $"-{PreRelease}")}";
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte[] BuildIdentifier(ReadOnlySpan<byte> bytes)
-        {
-            if (bytes.Length != 8) throw new ArgumentException($"Expected build identifier to be 8 bytes long, got {bytes.Length}", nameof(bytes));
-            return bytes.ToArray();
-        }
     }
 
     internal class JsonConverter : JsonConverter<OptimismProtocolVersion>

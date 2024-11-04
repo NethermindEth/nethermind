@@ -84,6 +84,18 @@ public class OptimismProtocolVersionTest
         testCase.Right.CompareTo(testCase.Left).Should().Be(testCase.Expected * -1);
     }
 
+    [TestCase(4)]
+    [TestCase(6)]
+    [TestCase(9)]
+    [TestCase(10)]
+    public void OptimismProtocolVersionV0_BuildLengthIs8(int buildLength)
+    {
+        var build = new byte[buildLength];
+
+        Func<OptimismProtocolVersion> read = () => new OptimismProtocolVersion.V0(build, 0, 0, 0, 0);
+        read.Should().Throw<ArgumentException>();
+    }
+
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", false)]
     [TestCase("0x0010000000000000000000000000000000000000000000000000000000000000", true)]
     [TestCase("0x0001000000000000000000000000000000000000000000000000000000000000", true)]
@@ -127,27 +139,5 @@ public class OptimismProtocolVersionTest
 
         Action read = () => OptimismProtocolVersion.Read(bytes);
         read.Should().Throw<OptimismProtocolVersion.ParseException>();
-    }
-
-
-    private static IEnumerable<(string, OptimismProtocolVersion.V0)> V0FromStringCases()
-    {
-        yield return ("3.1.0", new(new byte[8], 3, 1, 0, 0));
-        yield return ("1.1.1", new(new byte[8], 1, 1, 1, 0));
-        yield return ("1.1.1.16", new(new byte[8], 1, 1, 1, 16));
-        yield return ("1.26.0.4", new(new byte[8], 1, 26, 0, 4));
-    }
-    [TestCaseSource(nameof(V0FromStringCases))]
-    public void OptimismProtocolVersionV0_FromStringVersion((string Version, OptimismProtocolVersion.V0 Expected) testCase)
-    {
-        var actual = new OptimismProtocolVersion.V0(testCase.Version);
-        actual.Should().Be(testCase.Expected);
-    }
-
-    [Test]
-    public void OptimismProtocolVersionV0_FromProductInfoVersion()
-    {
-        Func<OptimismProtocolVersion> fromString = () => new OptimismProtocolVersion.V0(ProductInfo.Version);
-        fromString.Should().NotThrow();
     }
 }
