@@ -191,16 +191,16 @@ namespace Nethermind.Synchronization.SnapSync
             // Connect the proof nodes starting from state root.
             // It also remove child path which is within the start/end range. If key are missing, the resolved
             // hash will not match.
-            Stack<(TrieNode parent, TrieNode node, TreePath path)> proofNodesToProcess = new();
+            Stack<(TrieNode node, TreePath path)> proofNodesToProcess = new();
 
             tree.RootRef = root;
-            proofNodesToProcess.Push((null, root, TreePath.Empty));
+            proofNodesToProcess.Push((root, TreePath.Empty));
             sortedBoundaryList.Add((root, TreePath.Empty));
 
             bool moreChildrenToRight = false;
             while (proofNodesToProcess.Count > 0)
             {
-                (TrieNode parent, TrieNode node, TreePath path) = proofNodesToProcess.Pop();
+                (TrieNode node, TreePath path) = proofNodesToProcess.Pop();
 
                 if (node.IsExtension)
                 {
@@ -212,39 +212,17 @@ namespace Nethermind.Synchronization.SnapSync
 
                             TreePath childPath = path.Append(node.Key);
 
-                            proofNodesToProcess.Push((node, child, childPath));
+                            proofNodesToProcess.Push((child, childPath));
                             sortedBoundaryList.Add((child, childPath));
-                        }
-                        else
-                        {
-                            // Sometimes, the proof ends with the extension, the branch of at the end of extension is
-                            // not included. So we remove the extension, but only if it is after the left boundary
-                            // as it will be re-created by the path. If it is before the left boundary however, it is
-                            // part of a proof.
-                            TreePath extensionChildPath = path.Append(node.Key);
-                            TreePath firstKeyPath = leftBoundaryPath.Truncate(extensionChildPath.Length);
-                            if (extensionChildPath.CompareTo(firstKeyPath) >= 0
-                                && parent is not null
-                                && parent.IsBranch)
-                            {
-                                for (int i = 0; i < 16; i++)
-                                {
-                                    if (parent.GetChildHashAsValueKeccak(i, out ValueHash256 kec) && kec == node.Keccak)
-                                    {
-                                        parent.SetChild(i, null);
-                                        break;
-                                    }
-                                }
-                            }
                         }
                     }
                 }
 
                 if (node.IsBranch)
                 {
-                    int left = path == leftBoundaryPath.Truncate(path.Length) ? leftBoundaryPath[path.Length] : 0;
-                    int right = path == rightBoundaryPath.Truncate(path.Length) ? rightBoundaryPath[path.Length] : 15;
-                    int limit = path == rightLimitPath.Truncate(path.Length) ? rightLimitPath[path.Length] : 15;
+                    int left = leftBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? leftBoundaryPath[path.Length] : 0;
+                    int right = rightBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? rightBoundaryPath[path.Length] : 15;
+                    int limit = rightLimitPath.CompareToTruncated(path, path.Length) == 0 ? rightLimitPath[path.Length] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
@@ -256,6 +234,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (ci >= left && ci <= right)
                         {
+                            // Clear child within boundary
                             node.SetChild(ci, null);
                         }
 
@@ -263,21 +242,32 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             TreePath childPath = path.Append(ci);
 
-                            if (!child.IsLeaf)
+                            if (child.IsBranch)
                             {
                                 node.SetChild(ci, child);
 
-                                proofNodesToProcess.Push((node, child, childPath));
+                                proofNodesToProcess.Push((child, childPath));
                                 sortedBoundaryList.Add((child, childPath));
+                            }
+                            else if (child.IsExtension)
+                            {
+                                // If its an extension, its path + key must be outside or equal to the boundary.
+                                TreePath wholePath = childPath.Append(child.Key);
+                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) >= 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) <= 0)
+                                {
+                                    node.SetChild(ci, child);
+                                    proofNodesToProcess.Push((child, childPath));
+                                    sortedBoundaryList.Add((child, childPath));
+                                }
                             }
                             else
                             {
-                                // Sometimes a leaf becomes a proof.
+                                // If its a leaf, its path + key must be outside the boundary.
                                 TreePath wholePath = childPath.Append(child.Key);
-                                if (wholePath.Path < startingHash || wholePath.Path > endHash)
+                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
                                 {
                                     node.SetChild(ci, child);
-                                    proofNodesToProcess.Push((node, child, childPath));
+                                    proofNodesToProcess.Push((child, childPath));
                                     sortedBoundaryList.Add((child, childPath));
                                 }
                             }
