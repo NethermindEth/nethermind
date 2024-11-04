@@ -68,6 +68,7 @@ public interface IDbConfig : IConfig
     ulong? ReceiptsDbCompactionReadAhead { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
+    bool ReceiptsDbOptimizeFiltersForHits { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -80,6 +81,7 @@ public interface IDbConfig : IConfig
     bool? BlocksDbUseDirectReads { get; set; }
     bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? BlocksDbCompactionReadAhead { get; set; }
+    bool BlocksDbOptimizeFiltersForHits { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }

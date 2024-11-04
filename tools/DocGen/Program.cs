@@ -1,66 +1,65 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.ComponentModel;
+using System.CommandLine;
 using Nethermind.DocGen;
 using Spectre.Console;
-using Spectre.Console.Cli;
 
-var app = new CommandApp<AppCommand>();
-
-app.Run(args);
-
-public sealed class AppCommand : Command<AppSettings>
+CliOption<bool> configOption = new("--config") { Description = "Generate configuration options docs" };
+CliOption<bool> dbSizeOption = new("--dbsize") { Description = "Generate DB sizes" };
+CliOption<string> dbSizeSourceOption = new("--dbsize-src")
 {
-    public override int Execute(CommandContext context, AppSettings settings)
+    Description = "The path to the directory with DB size files",
+    HelpName = "path"
+};
+CliArgument<string> docsDirArg = new("docs-dir")
+{
+    Description = "The path to the docs directory",
+    HelpName = "path"
+};
+CliOption<bool> jsonRpcOption = new("--jsonrpc") { Description = "Generate JSON-RPC API docs" };
+CliOption<bool> metricsOption = new("--metrics") { Description = "Generate metrics options docs" };
+
+dbSizeOption.Validators.Add(optionResult =>
+{
+    if (optionResult.Parent?.GetValue(dbSizeSourceOption) is null)
+        optionResult.AddError($"{dbSizeSourceOption.Name} must be specified when {dbSizeOption.Name} is set");
+});
+
+CliRootCommand rootCommand =
+[
+    configOption,
+    dbSizeOption,
+    dbSizeSourceOption,
+    docsDirArg,
+    jsonRpcOption,
+    metricsOption
+];
+rootCommand.SetAction(parseResult =>
+{
+    var docsPath = parseResult.GetValue(docsDirArg)!;
+
+    if (!Directory.Exists(docsPath))
     {
-        if (settings.DocsPath is null)
-        {
-            AnsiConsole.MarkupLine("[red]The path to the docs is not specified[/]");
-            return 1;
-        }
-
-        if (!Directory.Exists(settings.DocsPath))
-        {
-            AnsiConsole.MarkupLine("[red]No docs not found at the path specified[/]");
-            return 1;
-        }
-
-        if (settings.GenerateConfig)
-            ConfigGenerator.Generate(settings.DocsPath);
-
-        if (settings.GenerateDBSize)
-            DBSizeGenerator.Generate(settings.DocsPath, settings.DBSizeSourcePath);
-
-        if (settings.GenerateJsonRpc)
-            JsonRpcGenerator.Generate(settings.DocsPath);
-
-        if (settings.GenerateMetrics)
-            MetricsGenerator.Generate(settings.DocsPath);
-
-        return 0;
+        AnsiConsole.MarkupLine("[red]The specified docs directory not found[/]");
+        return 1;
     }
-}
 
-public sealed class AppSettings : CommandSettings
-{
-    [Description("Path to the directory with DB size files")]
-    [CommandOption("--dbsize-src")]
-    public string? DBSizeSourcePath { get; init; }
+    if (parseResult.GetValue(configOption))
+        ConfigGenerator.Generate(docsPath);
 
-    [Description("Path to the docs")]
-    [CommandArgument(0, "[docspath]")]
-    public string? DocsPath { get; init; }
+    if (parseResult.GetValue(dbSizeOption))
+        DBSizeGenerator.Generate(docsPath, parseResult.GetValue(dbSizeSourceOption));
 
-    [CommandOption("--config")]
-    public bool GenerateConfig { get; init; }
+    if (parseResult.GetValue(jsonRpcOption))
+        JsonRpcGenerator.Generate(docsPath);
 
-    [CommandOption("--dbsize")]
-    public bool GenerateDBSize { get; init; }
+    if (parseResult.GetValue(metricsOption))
+        MetricsGenerator.Generate(docsPath);
 
-    [CommandOption("--jsonrpc")]
-    public bool GenerateJsonRpc { get; init; }
+    return 0;
+});
 
-    [CommandOption("--metrics")]
-    public bool GenerateMetrics { get; init; }
-}
+CliConfiguration cli = new(rootCommand);
+
+return cli.Invoke(args);
