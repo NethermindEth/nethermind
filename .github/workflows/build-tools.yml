@@ -18,6 +18,7 @@ jobs:
         config: [release]
         project:
           - DocGen/DocGen.sln
+          - Evm/Evm.sln
           - HiveCompare/HiveCompare.sln
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.csproj
           - Nethermind.Tools.Kute/Nethermind.Tools.Kute.csproj
