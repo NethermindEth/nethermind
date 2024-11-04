@@ -207,10 +207,4 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.TargetBlobCount = targetBlobCount;
         return this;
     }
-
-    public BlockHeaderBuilder WithMaxBlobCount(ulong? maxBlobCount)
-    {
-        TestObjectInternal.MaxBlobCount = maxBlobCount;
-        return this;
-    }
 }

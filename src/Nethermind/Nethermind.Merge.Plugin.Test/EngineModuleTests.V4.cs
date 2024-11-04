@@ -109,7 +109,6 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
-                MaxBlobCount = 0,
                 TargetBlobCount = 0,
             },
             Array.Empty<Transaction>(),
@@ -288,7 +287,6 @@ public partial class EngineModuleTests
                 ParentBeaconBlockRoot = Keccak.Zero,
                 Withdrawals = [],
                 TargetBlobCount = 0,
-                MaxBlobCount = 0
             };
 
         // we're using payloadService directly, because we can't use fcU for branch
@@ -483,7 +481,6 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = Keccak.Zero,
             Withdrawals = withdrawals,
             TargetBlobCount = 0,
-            MaxBlobCount = 0,
         };
 
         ResultWrapper<ForkchoiceUpdatedV1Result> result = rpc.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes).Result;

@@ -14,7 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using System.Linq;
-
+using Nethermind.Core.Specs;
 using Update = (byte[] Message, byte[] Signature);
 
 namespace Nethermind.Shutter.Contracts;
@@ -25,8 +25,9 @@ public class ValidatorRegistryContract(
     Address contractAddress,
     ILogManager logManager,
     ulong chainId,
-    ulong messageVersion)
-    : CallableContract(transactionProcessor, abiEncoder, contractAddress), IValidatorRegistryContract
+    ulong messageVersion,
+    ISpecProvider specProvider)
+    : CallableContract(transactionProcessor, abiEncoder, contractAddress, specProvider), IValidatorRegistryContract
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
 

@@ -28,8 +28,6 @@ public class PayloadAttributes
 
     public ulong? TargetBlobCount { get; set; }
 
-    public ulong? MaxBlobCount { get; set; }
-
     public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
@@ -54,11 +52,6 @@ public class PayloadAttributes
         if (TargetBlobCount is not null)
         {
             sb.Append($", {nameof(TargetBlobCount)} : {TargetBlobCount}");
-        }
-
-        if (MaxBlobCount is not null)
-        {
-            sb.Append($", {nameof(MaxBlobCount)} : {MaxBlobCount}");
         }
 
         sb.Append('}');
@@ -86,8 +79,7 @@ public class PayloadAttributes
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
-        + (TargetBlobCount is null ? 0 : sizeof(ulong)) // target blob count
-        + (MaxBlobCount is null ? 0 : sizeof(ulong)); // max blob count
+        + (TargetBlobCount is null ? 0 : sizeof(ulong)); // target blob count
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -129,12 +121,6 @@ public class PayloadAttributes
         if (TargetBlobCount.HasValue)
         {
             BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetBlobCount.Value);
-            position += sizeof(ulong);
-        }
-
-        if (MaxBlobCount.HasValue)
-        {
-            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), MaxBlobCount.Value);
             position += sizeof(ulong);
         }
 
@@ -194,7 +180,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { MaxBlobCount: not null, TargetBlobCount: not null } => EngineApiVersions.Prague,
+            { TargetBlobCount: not null } => EngineApiVersions.Prague,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             ISpecProvider specProvider)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource)
+            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), readOnlyTxProcessorSource, specProvider)
         {
             _specProvider = specProvider;
         }

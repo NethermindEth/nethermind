@@ -162,7 +162,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             batch.Dispose();
         }
 
-        BlockExecutionContext blkCtx = new(blockHeader);
+        BlockExecutionContext blkCtx = new(blockHeader, _specProvider);
         worldState.StateRoot = blockHeader.StateRoot;
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);

@@ -317,7 +317,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 Withdrawals = Array.Empty<Withdrawal>(),
                 SuggestedFeeRecipient = Address.Zero,
                 TargetBlobCount = newHeadBlock.TargetBlobCount,
-                MaxBlobCount = newHeadBlock.MaxBlobCount,
             };
         }
 

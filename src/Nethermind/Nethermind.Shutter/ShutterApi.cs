@@ -83,7 +83,7 @@ public class ShutterApi : IShutterApi
 
         Time = InitTime(specProvider, timestamper);
         TxLoader = new(logFinder, _cfg, Time, specProvider, ecdsa, abiEncoder, logManager);
-        Eon = InitEon();
+        Eon = InitEon(specProvider);
         BlockHandler = new ShutterBlockHandler(
             specProvider.ChainId,
             _cfg,
@@ -97,7 +97,8 @@ public class ShutterApi : IShutterApi
             Time,
             logManager,
             _slotLength,
-            BlockWaitCutoff);
+            BlockWaitCutoff,
+            specProvider);
 
         TxSource = new ShutterTxSource(TxLoader, _cfg, Time, logManager);
 
@@ -154,8 +155,8 @@ public class ShutterApi : IShutterApi
         P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
     }
 
-    protected virtual IShutterEon InitEon()
-        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager);
+    protected virtual IShutterEon InitEon(ISpecProvider specProvider)
+        => new ShutterEon(_readOnlyBlockTree, _txProcessingEnvFactory, _abiEncoder, _cfg, _logManager, specProvider);
 
     protected virtual ShutterTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
         => new(specProvider.BeaconChainGenesisTimestamp!.Value * 1000, timestamper, _slotLength, _blockUpToDateCutoff);

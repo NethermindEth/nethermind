@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Int256;
@@ -28,8 +29,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public TxPriorityContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+            ISpecProvider specProvider)
+            : base(specProvider, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
             Constant = GetConstant(readOnlyTxProcessorSource);
             SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet);

@@ -6,12 +6,13 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Facade
 {
     public abstract class BlockchainBridgeContract : Contract
     {
-        public BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, AbiDefinition? abiDefinition = null) : base(abiEncoder, contractAddress, abiDefinition)
+        public BlockchainBridgeContract(IAbiEncoder abiEncoder, Address contractAddress, ISpecProvider specProvider, AbiDefinition? abiDefinition = null) : base(specProvider, abiEncoder, contractAddress, abiDefinition)
         {
         }
 

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -23,8 +24,9 @@ public class WithdrawalContract : CallableContract, IWithdrawalContract
     public WithdrawalContract(
         ITransactionProcessor transactionProcessor,
         IAbiEncoder abiEncoder,
-        Address contractAddress)
-        : base(transactionProcessor, abiEncoder, contractAddress) { }
+        Address contractAddress,
+        ISpecProvider specProvider)
+        : base(transactionProcessor, abiEncoder, contractAddress, specProvider) { }
 
     public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)
     {

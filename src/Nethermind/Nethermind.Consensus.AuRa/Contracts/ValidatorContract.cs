@@ -5,6 +5,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -60,8 +61,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress,
             IWorldState stateProvider,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISigner signer)
-            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
+            ISigner signer,
+            ISpecProvider specProvider)
+            : base(transactionProcessor, abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), specProvider)
         {
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));

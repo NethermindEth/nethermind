@@ -28,7 +28,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         (executionPayload.DepositRequests, executionPayload.WithdrawalRequests, executionPayload.ConsolidationRequests) = blockRequests?.SplitRequests() ?? ([], [], []);
 
         executionPayload.TargetBlobCount = block.TargetBlobCount;
-        executionPayload.MaxBlobCount = block.MaxBlobCount;
         return executionPayload;
     }
 
@@ -74,7 +73,6 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         block.Header.TargetBlobCount = TargetBlobCount;
-        block.Header.MaxBlobCount = MaxBlobCount;
 
         return true;
     }

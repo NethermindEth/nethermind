@@ -7,6 +7,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
@@ -36,18 +37,21 @@ namespace Nethermind.Blockchain.Contracts
         protected IAbiEncoder AbiEncoder { get; }
         public AbiDefinition AbiDefinition { get; }
         public Address? ContractAddress { get; protected set; }
+        protected ISpecProvider SpecProvider { get; set; }
 
         /// <summary>
         /// Creates contract
         /// </summary>
+        /// <param name="specProvider">Binary interface encoder/decoder.</param>
         /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
         /// <param name="contractAddress">Address where contract is deployed.</param>
         /// <param name="abiDefinition">Binary definition of contract.</param>
-        protected Contract(IAbiEncoder? abiEncoder = null, Address? contractAddress = null, AbiDefinition? abiDefinition = null)
+        protected Contract(ISpecProvider specProvider, IAbiEncoder? abiEncoder = null, Address? contractAddress = null, AbiDefinition? abiDefinition = null)
         {
             AbiEncoder = abiEncoder ?? Abi.AbiEncoder.Instance;
             ContractAddress = contractAddress;
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
+            SpecProvider = specProvider;
         }
 
         protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
@@ -178,11 +182,11 @@ namespace Nethermind.Blockchain.Contracts
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header, SpecProvider), tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
+                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header, SpecProvider), tracer);
                 }
 
                 failure = tracer.StatusCode != StatusCode.Success;

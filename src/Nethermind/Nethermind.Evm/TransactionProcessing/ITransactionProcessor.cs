@@ -34,4 +34,31 @@ public interface ITransactionProcessor
     /// Will NOT charge gas from sender account
     /// </summary>
     TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+
+    /// <summary>
+    /// Execute transaction, commit state
+    /// </summary>
+    TransactionResult Execute(Transaction transaction, in BlockHeader blockHeader, ITxTracer txTracer);
+
+    /// <summary>
+    /// Call transaction, rollback state
+    /// </summary>
+    TransactionResult CallAndRestore(Transaction transaction, in BlockHeader blockHeader, ITxTracer txTracer);
+
+    /// <summary>
+    /// Execute transaction, keep the state uncommitted
+    /// </summary>
+    TransactionResult BuildUp(Transaction transaction, in BlockHeader blockHeader, ITxTracer txTracer);
+
+    /// <summary>
+    /// Call transaction, no validations, commit state
+    /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
+    /// </summary>
+    TransactionResult Trace(Transaction transaction, in BlockHeader blockHeader, ITxTracer txTracer);
+
+    /// <summary>
+    /// Call transaction, no validations, don't commit state
+    /// Will NOT charge gas from sender account
+    /// </summary>
+    TransactionResult Warmup(Transaction transaction, in BlockHeader blockHeader, ITxTracer txTracer);
 }

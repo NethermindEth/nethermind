@@ -309,11 +309,5 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.TargetBlobCount = targetBlobCount;
             return this;
         }
-
-        public BlockBuilder WithMaxBlobCount(ulong? maxBlobCount)
-        {
-            TestObjectInternal.Header.MaxBlobCount = maxBlobCount;
-            return this;
-        }
     }
 }

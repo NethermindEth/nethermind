@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(parent.MaxBlobCount ?? Eip4844Constants.GetMaxBlobsPerBlock()));
+            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)(parent.TargetBlobCount * 2 ?? Eip4844Constants.GetMaxBlobsPerBlock()));
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
@@ -137,6 +137,7 @@ namespace Nethermind.Consensus.Producers
                 checkedBlobTransactions++;
 
                 ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
+                // no validation is needed when eip7742 is activated
                 if (!spec.IsEip7742Enabled && txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
@@ -196,7 +197,7 @@ namespace Nethermind.Consensus.Producers
                 return false;
             }
 
-            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas))
+            if (!BlobGasCalculator.TryCalculateFeePerBlobGas(excessDataGas.Value, out feePerBlobGas, parent.TargetBlobCount, spec))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {lightBlobTx.ToShortString()}, failed to calculate data gas price.");
                 feePerBlobGas = UInt256.Zero;
