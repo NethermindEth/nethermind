@@ -36,9 +36,6 @@
     ],
     "InstanceID": "1000"
   },
-  "Mining": {
-    "MinGasPrice": "1000000000"
-  },
   "EthStats": {
     "Name": "Nethermind Gnosis"
   },
