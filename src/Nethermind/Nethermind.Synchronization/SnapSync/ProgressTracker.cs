@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.SnapSync
             _pivot = new Pivot(blockTree, logManager);
 
             if (accountRangePartitionCount < 1 || accountRangePartitionCount > int.MaxValue)
-                throw new ArgumentException("Account range partition must be between 1 to 256.");
+                throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;
             SetupAccountRangePartition();
@@ -85,11 +85,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void SetupAccountRangePartition()
         {
-            // Confusingly dividing the range evenly via UInt256 for example, consistently cause root hash mismatch.
-            // The mismatch happens on exactly the same partition every time, suggesting tome kind of boundary issues
-            // either on proof generation or validation.
             uint curStartingPath = 0;
-            uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (uint)_accountRangePartitionCount);
+            uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (ulong)_accountRangePartitionCount);
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
             {

@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -20,15 +17,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Newtonsoft.Json;
-using Org.BouncyCastle.Asn1.Ocsp;
-using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -58,86 +50,29 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsFinished(out SnapSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
 
-        public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response, PeerInfo? peerInfo = null)
+        public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
         {
             AddRangeResult result;
 
             if (response.PathAndAccounts.Count == 0)
             {
+                _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
                 result = AddRangeResult.ExpiredRootHash;
             }
             else
             {
-                try
+                result = AddAccountRange(
+                    request.BlockNumber.Value,
+                    request.RootHash,
+                    request.StartingHash,
+                    response.PathAndAccounts,
+                    response.Proofs,
+                    hashLimit: request.LimitHash);
+
+                if (result == AddRangeResult.OK)
                 {
-                    result = AddAccountRange(
-                        request.BlockNumber.Value,
-                        request.RootHash,
-                        request.StartingHash,
-                        response.PathAndAccounts,
-                        response.Proofs,
-                        hashLimit: request.LimitHash);
-
-                    if (result == AddRangeResult.OK)
-                    {
-                        Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
-                    }
-                    else
-                    {
-                        _logger.Warn($"Resutl is {result} from {peerInfo} " +
-                                     $"{peerInfo?.PeerClientType}. Req " +
-                                     $"{request.StartingHash} " +
-                                     $"{request.LimitHash} Resp " +
-                                     $"{response.PathAndAccounts[^1].Path} " +
-                                     $"{request.LimitHash} Resp {request.RootHash} ");
-
-                        List<string> proofs = response.Proofs.Select(p => p.ToHexString()).ToList();
-                        List<string> paths = response.PathAndAccounts.Select(p => p.Path.ToString()).ToList();
-                        AccountDecoder acd = new AccountDecoder();
-                        List<string> accounts = response.PathAndAccounts.Select(p => acd.Encode(p.Account).Bytes.ToHexString()).ToList();
-
-                        string jsonified = JsonSerializer.Serialize(new BadReq(
-                            request.RootHash.ToString(), request.StartingHash.ToString(), request.LimitHash.ToString(),
-                            proofs, paths, accounts
-                        ));
-
-                        string fileName = $"badreq-{result}-{Random.Shared.Next()}.zip";
-                        using FileStream fileOutStream = File.OpenWrite(fileName);
-                        using DeflateStream deflateStream = new DeflateStream(fileOutStream, CompressionLevel.Optimal);
-                        using StreamWriter streamWriter = new StreamWriter(deflateStream);
-                        streamWriter.Write(jsonified);
-                        streamWriter.Close();
-                        _logger.Warn($"Dumped to {fileName}");
-                    }
-                }
-                catch (MissingTrieNodeException)
-                {
-                    _logger.Warn($"could just be incomplete proof from {peerInfo} " +
-                                 $"{peerInfo?.PeerClientType}. Req " +
-                                 $"{request.StartingHash} " +
-                                 $"{request.LimitHash} Resp " +
-                                 $"{response.PathAndAccounts[^1].Path} " +
-                                 $"{request.LimitHash} Resp {request.RootHash} ");
-
-                    List<string> proofs = response.Proofs.Select(p => p.ToHexString()).ToList();
-                    List<string> paths = response.PathAndAccounts.Select(p => p.Path.ToString()).ToList();
-                    AccountDecoder acd = new AccountDecoder();
-                    List<string> accounts = response.PathAndAccounts.Select(p => acd.Encode(p.Account).Bytes.ToHexString()).ToList();
-
-                    string jsonified = JsonSerializer.Serialize(new BadReq(
-                        request.RootHash.ToString(), request.StartingHash.ToString(), request.LimitHash.ToString(),
-                        proofs, paths, accounts
-                    ));
-
-                    string fileName = $"badreq-trieexception-{Random.Shared.Next()}.zip";
-                    using FileStream fileOutStream = File.OpenWrite(fileName);
-                    using DeflateStream deflateStream = new DeflateStream(fileOutStream, CompressionLevel.Optimal);
-                    using StreamWriter streamWriter = new StreamWriter(deflateStream);
-                    streamWriter.Write(jsonified);
-                    streamWriter.Close();
-
-                    result = AddRangeResult.InternalError;
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
                 }
             }
 
@@ -146,15 +81,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             return result;
         }
-
-        private record BadReq(
-            string Root,
-            string StartingHash,
-            string LimitHash,
-            List<string> Proofs,
-            List<string> Paths,
-            List<string> Accounts
-        );
 
         public AddRangeResult AddAccountRange(
             long blockNumber,
@@ -174,7 +100,7 @@ namespace Nethermind.Synchronization.SnapSync
                 ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
                 (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs, _logger);
+                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -195,11 +121,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
 
-                    UInt256 nextPath = new UInt256(accounts[^1].Path.Bytes, true);
+                    UInt256 nextPath = accounts[^1].Path.ToUInt256();
                     nextPath += UInt256.One;
-                    ValueHash256 asValueHash = new ValueHash256(nextPath.ToBigEndian());
-
-                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, asValueHash, moreChildrenToRight);
+                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, new ValueHash256(nextPath), moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
@@ -303,10 +227,6 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
-                }
-                else if (result == AddRangeResult.ExpiredRootHash)
-                {
-                    _logger.Warn($"Exxpired root hash does happens");
                 }
 
                 return result;

@@ -14,8 +14,6 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.IO.Abstractions;
 using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
@@ -72,37 +70,32 @@ public class SnapProviderTests
     [TestCase("badreq-roothash.zip")]
     [TestCase("badreq-roothash-2.zip")]
     [TestCase("badreq-roothash-3.zip")]
-    [TestCase("badreq-roothash-4.zip")]
     [TestCase("badreq-trieexception.zip")]
     public void TestStrangeCase2(string testFileName)
     {
-        DeflateStream decompressor =
+        using DeflateStream decompressor =
             new DeflateStream(
                 GetType().Assembly
                     .GetManifestResourceStream($"Nethermind.Synchronization.Test.SnapSync.TestFixtures.{testFileName}")!,
                 CompressionMode.Decompress);
-        string asStr = new StreamReader(decompressor).ReadToEnd();
-        BadReq asReq = JsonSerializer.Deserialize<BadReq>(asStr)!;
+        BadReq asReq = JsonSerializer.Deserialize<BadReq>(decompressor)!;
 
         AccountDecoder acd = new AccountDecoder();
         Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode(new RlpStream(Bytes.FromHexString(bt)))!).ToArray();
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
 
-        AccountRange accountRange = new(new ValueHash256(asReq.Root), new ValueHash256(asReq.StartingHash), new ValueHash256(asReq.LimitHash), 0);
-        using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToPooledList(1);
-        accountsAndProofs.Proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToPooledList(1);
+        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
+        List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
         StateTree stree = new StateTree(new TrieStore(new TestMemDb(), LimboLogs.Instance), LimboLogs.Instance);
         SnapProviderHelper.AddAccountRange(
                 stree,
                 0,
-                accountRange.RootHash,
-                accountRange.StartingHash,
-                accountRange.LimitHash!.Value,
-                accountsAndProofs.PathAndAccounts,
-                accountsAndProofs.Proofs,
-                null).result.Should().Be(AddRangeResult.OK);
+                new ValueHash256(asReq.Root),
+                new ValueHash256(asReq.StartingHash),
+                new ValueHash256(asReq.LimitHash),
+                pathWithAccounts,
+                proofs).result.Should().Be(AddRangeResult.OK);
     }
 
     private record BadReq(
