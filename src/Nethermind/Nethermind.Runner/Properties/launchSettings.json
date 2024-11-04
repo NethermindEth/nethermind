@@ -114,7 +114,7 @@
     },
     "Mekong": {
       "commandName": "Project",
-      "commandLineArgs": "-c mekong --data-dir .data --jsonrpc-enabled true",
+      "commandLineArgs": "-c mekong --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
