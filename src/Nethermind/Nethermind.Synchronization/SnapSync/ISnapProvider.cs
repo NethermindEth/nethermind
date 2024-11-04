@@ -15,7 +15,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         bool CanSync();
 
-        AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response, PeerInfo? peerInfo = null);
+        AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response);
 
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
 
