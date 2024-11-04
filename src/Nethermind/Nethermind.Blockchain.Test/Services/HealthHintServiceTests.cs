@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Services;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Services;
