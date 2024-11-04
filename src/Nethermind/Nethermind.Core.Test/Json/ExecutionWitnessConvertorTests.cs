@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Serialization.Json;
@@ -77,7 +78,7 @@ public class ExecutionWitnessConvertorTests
                 Banderwagon.FromBytes(
                     Bytes.FromHexString("0x248acc46e79ce410ecd151b7c685d3b3156ca37e89015653b55cfcc133852a1f"))!.Value,
                 item
-            ));
+            ), Keccak.EmptyTreeHash);
         var options = new JsonSerializerOptions
         {
             Converters =

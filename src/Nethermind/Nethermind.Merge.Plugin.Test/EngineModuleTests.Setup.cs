@@ -242,7 +242,7 @@ public partial class EngineModuleTests
         protected override IBlockProcessor CreateBlockProcessor()
         {
             BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            WithdrawalProcessor = new WithdrawalProcessor(LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -295,7 +295,7 @@ public partial class EngineModuleTests
         protected override IBlockProcessor CreateBlockProcessor()
         {
             BlockValidator = CreateBlockValidator();
-            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            WithdrawalProcessor = new WithdrawalProcessor(LogManager);
             IBlockProcessor processor = new StatelessBlockProcessor(
                 SpecProvider,
                 BlockValidator,

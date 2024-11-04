@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
+using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
 
@@ -17,16 +18,20 @@ public class ExecutionWitness
     public StemStateDiff[] StateDiff { get; }
     public WitnessVerkleProof? VerkleProof { get; }
 
+    public Hash256 ParentStateRoot { get; }
+
     public ExecutionWitness()
     {
-        StateDiff = Array.Empty<StemStateDiff>();
+        StateDiff = [];
         VerkleProof = null;
+        ParentStateRoot = Keccak.EmptyTreeHash;
     }
 
-    public ExecutionWitness(StemStateDiff[] stateDiff, WitnessVerkleProof proof)
+    public ExecutionWitness(StemStateDiff[] stateDiff, WitnessVerkleProof proof, Hash256 parentStateRoot)
     {
         StateDiff = stateDiff;
         VerkleProof = proof;
+        ParentStateRoot = parentStateRoot;
     }
 }
 

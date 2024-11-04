@@ -335,7 +335,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 2
                            + GasCostOf.WitnessChunkFill * 2;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, false, false, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, false, false, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -349,7 +349,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead
                            + GasCostOf.WitnessBranchRead;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, true, false, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, true, false, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -366,7 +366,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 2
                            + GasCostOf.WitnessChunkFill * 2;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, false, true, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, false, true, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -380,7 +380,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead
                            + GasCostOf.WitnessBranchRead;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, true, true, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressB, true, true, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -397,7 +397,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, false, false, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, false, false, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -411,7 +411,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, true, false, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, true, false, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -428,7 +428,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchWrite * 1
                            + GasCostOf.WitnessChunkFill * 1;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, false, true, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, false, true, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
@@ -442,7 +442,7 @@ public class VerkleWitnessAccessCostTest
         long expectedGas = GasCostOf.WitnessChunkRead * 1
                            + GasCostOf.WitnessBranchRead * 1;
 
-        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, true, true, ref expectedGas);
+        bool result = witness.AccessForSelfDestruct(TestItem.AddressA, TestItem.AddressA, true, true, false, ref expectedGas);
 
         Assert.True(result);
         Assert.That(expectedGas, Is.EqualTo(0));
