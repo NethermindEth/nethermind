@@ -112,6 +112,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Mekong": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mekong --data-dir .data --jsonrpc-enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Docker": {
       "commandName": "Docker",
       "commandLineArgs": "-c holesky --data-dir .data /data --jsonrpc-enginehost 0.0.0.0 --jsonrpc-engineport 8551 --jsonrpc-host 0.0.0.0"
