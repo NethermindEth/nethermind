@@ -114,7 +114,7 @@ public class OptimismEngineRpcModuleTest
             new OptimismProtocolVersion.V0(new byte[8], 2, 9, 10, 0));
     }
     [TestCaseSource(nameof(SignalSuperchainV1JsonCases))]
-    public async Task SignalSuperchainV1_JsonRpc((string Signal, string Expected, OptimismProtocolVersion Current) testCase)
+    public async Task SignalSuperchainV1_JsonSerialization((string Signal, string Expected, OptimismProtocolVersion Current) testCase)
     {
         var handler = Substitute.For<IOptimismSignalSuperchainV1Handler>();
         handler.CurrentVersion.Returns(testCase.Current);
