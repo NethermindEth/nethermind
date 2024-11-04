@@ -24,10 +24,6 @@ public static class ProductInfo
             : DateTimeOffset.MinValue;
         Name = productAttr?.Product ?? "Nethermind";
 
-        ShortName = new byte[8];
-        var nameBytes = Encoding.ASCII.GetBytes(Name);
-        Array.Copy(nameBytes, ShortName, Math.Min(nameBytes.Length, 8));
-
         OS = Platform.GetPlatformName();
         OSArchitecture = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
         Runtime = RuntimeInformation.FrameworkDescription;
@@ -53,8 +49,6 @@ public static class ProductInfo
     public static string Commit { get; set; } = string.Empty;
 
     public static string Name { get; }
-
-    public static byte[] ShortName { get; }
 
     public static string OS { get; }
 
