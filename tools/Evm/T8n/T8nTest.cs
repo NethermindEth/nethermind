@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -13,7 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
-namespace Evm.T8n.JsonTypes;
+namespace Evm.T8n;
 
 public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address currentCoinbase)
 {

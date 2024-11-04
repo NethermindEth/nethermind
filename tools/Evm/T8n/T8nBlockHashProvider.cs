@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
 public class T8nBlockHashProvider : IBlockhashProvider
 {

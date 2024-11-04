@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Ethereum.Test.Base;
-using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -15,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 
-namespace Evm.t8n;
+namespace Evm.T8n.JsonTypes;
 
 public class T8nResult
 {

@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Evm.t8n;
+namespace Evm.T8n.JsonTypes;
 
 
 public class TransactionExecutionReport

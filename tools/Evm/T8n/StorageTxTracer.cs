@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
 public class StorageTxTracer : TxTracer, IBlockTracer
 {

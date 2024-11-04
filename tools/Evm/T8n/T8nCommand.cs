@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
-using Evm.t8n;
 
 namespace Evm.T8n;
 

@@ -3,8 +3,7 @@
 
 using System.IO.Abstractions;
 using Ethereum.Test.Base;
-using Evm.T8n;
-using Evm.t8n.Errors;
+using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
@@ -23,7 +22,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
-namespace Evm.t8n;
+namespace Evm.T8n;
 
 public static class T8nExecutor
 {
