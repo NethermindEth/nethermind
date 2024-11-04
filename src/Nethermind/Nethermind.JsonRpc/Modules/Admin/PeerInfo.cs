@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         private string CalculateClientId(PublicKey nodeKey)
         {
             byte[] publicKeyBytes = nodeKey.Bytes;
-            return (publicKeyBytes is null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
+            return (publicKeyBytes is null ? Keccak.Zero.ValueHash256 : ValueKeccak.Compute(publicKeyBytes)).ToString(false);
         }
     }
 }
