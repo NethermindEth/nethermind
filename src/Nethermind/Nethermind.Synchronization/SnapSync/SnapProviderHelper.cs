@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.SnapSync
                 PathWithAccount account = accounts[index];
                 if (account.Account.HasStorage)
                 {
-                    if (account.Path >= limitHash)
+                    if (account.Path >= limitHash || account.Path < startingHash)
                     {
                         hasExtraStorage = true;
                     }
@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.SnapSync
                 for (var index = 0; index < accounts.Count; index++)
                 {
                     PathWithAccount account = accounts[index];
-                    if (account.Path >= limitHash) continue;
+                    if (account.Path >= limitHash || account.Path < startingHash) continue;
                     _ = tree.Set(account.Path, account.Account);
                 }
             }
