@@ -59,7 +59,7 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
-        public ValueHash256(UInt256 uint256): this(uint256.ToBigEndian())
+        public ValueHash256(UInt256 uint256) : this(uint256.ToBigEndian())
         {
         }
 
