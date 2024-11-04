@@ -165,13 +165,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(address, bytecode, spec);
             return address;
         }
-
-        public void ForceRunAnalysis(Address address)
+        public void ForceRunAnalysis(Address address, int mode)
         {
             var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance);
             var initialILMODE = codeinfo.IlInfo.Mode;
-            codeinfo.NoticeExecution(config, NullLogger.Instance);
-            while (codeinfo.IlInfo.Mode == initialILMODE) ; // wait for analysis to finish
+            if(mode.HasFlag(ILMode.JIT_MODE))
+            {
+                IlAnalyzer.StartAnalysis(codeinfo, ILMode.JIT_MODE, config, NullLogger.Instance);
+            }
+
+            if (mode.HasFlag(ILMode.PAT_MODE))
+            {
+                IlAnalyzer.StartAnalysis(codeinfo, ILMode.PAT_MODE, config, NullLogger.Instance);
+            }
         }
 
         public Hash256 StateRoot
@@ -1285,7 +1291,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
 
-            enhancedChain.ForceRunAnalysis(address);
+            enhancedChain.ForceRunAnalysis(address, ILMode.JIT_MODE);
 
             enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
 
@@ -1332,7 +1338,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
 
-            enhancedChain.ForceRunAnalysis(address);
+            enhancedChain.ForceRunAnalysis(address, ILMode.PAT_MODE);
 
             enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
 
@@ -1399,8 +1405,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Call(main, 1_000_000)
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main);
-            enhancedChain.ForceRunAnalysis(aux);
+            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(aux, ILMode.JIT_MODE);
 
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
@@ -1476,8 +1482,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Call(main, 1_000_000)
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main); // once for JIT
-            enhancedChain.ForceRunAnalysis(main); // once for PAT
+            enhancedChain.ForceRunAnalysis(main, ILMode.PAT_MODE | ILMode.JIT_MODE);
+
+            enhancedChain.ForceRunAnalysis(aux, ILMode.PAT_MODE | ILMode.JIT_MODE);
 
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
@@ -1504,6 +1511,163 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
         }
 
+
+        [Test]
+        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_On_Equiv()
+        {
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = 1,
+                IsPatternMatchingEnabled = false,
+                JittingThreshold = 1,
+                AnalysisQueueMaxSize = 1,
+                IsJitEnabled = true,
+                AggressiveJitMode = true,
+            });
+
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+
+            var auxCode = Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .ADD()
+                .STOP().Done;
+
+            var aux = enhancedChain.InsertCode(auxCode);
+            standardChain.InsertCode(auxCode);
+
+            var maincode = Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(1000)
+                    .GAS()
+                    .LT()
+                    .JUMPI(59)
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .POP()
+                    .Call(aux, 100)
+                    .POP()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .POP()
+                    .JUMP(0)
+                    .JUMPDEST()
+                    .STOP()
+                    .Done;
+
+            Address main = enhancedChain.InsertCode(maincode);
+            standardChain.InsertCode(maincode);
+
+            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            var bytecode =
+                Prepare.EvmCode
+                    .Call(main, 100000)
+                    .STOP()
+                    .Done;
+
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
+
+            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
+
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
+
+            var normal_traces = tracer1.BuildResult();
+            var ilvm_traces = tracer2.BuildResult();
+
+            var actual = standardChain.StateRoot;
+            var expected = enhancedChain.StateRoot;
+
+            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+
+            Assert.That(enhancedHasIlvmTraces, Is.True);
+            Assert.That(normalHasIlvmTraces, Is.False);
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
+
+        [Test]
+        public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_Off_Equiv()
+        {
+            TestBlockChain enhancedChain = new TestBlockChain(new VMConfig
+            {
+                PatternMatchingThreshold = 2,
+                AnalysisQueueMaxSize = 1,
+                IsPatternMatchingEnabled = true,
+                JittingThreshold = 1,
+                IsJitEnabled = true,
+                AggressiveJitMode = false,
+                BakeInTracingInJitMode = true
+            });
+
+
+            TestBlockChain standardChain = new TestBlockChain(new VMConfig());
+
+            var auxCode = Prepare.EvmCode
+                .PushData(23)
+                .PushData(7)
+                .ADD()
+                .STOP().Done;
+
+            var aux = enhancedChain.InsertCode(auxCode);
+            standardChain.InsertCode(auxCode);
+
+            var maincode = Prepare.EvmCode
+                    .JUMPDEST()
+                    .PushSingle(1000)
+                    .GAS()
+                    .LT()
+                    .JUMPI(59)
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .POP()
+                    .Call(aux, 100)
+                    .POP()
+                    .PushSingle(42)
+                    .PushSingle(5)
+                    .ADD()
+                    .POP()
+                    .JUMP(0)
+                    .JUMPDEST()
+                    .STOP()
+                    .Done;
+
+            Address main = enhancedChain.InsertCode(maincode);
+            standardChain.InsertCode(maincode);
+
+            var tracer1 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+            var tracer2 = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+
+            var bytecode =
+                Prepare.EvmCode
+                    .Call(main, 100000)
+                    .STOP()
+                    .Done;
+
+            standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
+
+            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
+
+            enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
+
+            var normal_traces = tracer1.BuildResult();
+            var ilvm_traces = tracer2.BuildResult();
+
+            var actual = standardChain.StateRoot;
+            var expected = enhancedChain.StateRoot;
+
+            var enhancedHasIlvmTraces = ilvm_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+            var normalHasIlvmTraces = normal_traces.Entries.Where(tr => tr.SegmentID is not null).Any();
+
+            Assert.That(enhancedHasIlvmTraces, Is.True);
+            Assert.That(normalHasIlvmTraces, Is.False);
+            Assert.That(actual, Is.EqualTo(expected));
+        }
 
         [Test]
         public void JIT_invalid_opcode_results_in_failure()
@@ -1534,7 +1698,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main);
+            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
             var traces = tracer.BuildResult();
