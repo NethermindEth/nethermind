@@ -70,6 +70,7 @@ namespace Nethermind.Synchronization.Test
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new SynchronizerModule(syncConfig))
                 .AddModule(new DbModule())
+                .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton(_blockTree)
