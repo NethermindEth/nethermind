@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -18,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<IRewardContract> _contracts;
 
-        public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
+        public AuRaRewardCalculator(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
             ArgumentNullException.ThrowIfNull(auRaParameters);
             ArgumentNullException.ThrowIfNull(abiEncoder);
@@ -106,10 +107,10 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         public class AuRaRewardCalculatorSource : IRewardCalculatorSource
         {
-            private readonly AuRaParameters _auRaParameters;
+            private readonly AuRaChainSpecEngineParameters _auRaParameters;
             private readonly IAbiEncoder _abiEncoder;
 
-            public AuRaRewardCalculatorSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder)
+            public AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder)
             {
                 _auRaParameters = auRaParameters;
                 _abiEncoder = abiEncoder;
