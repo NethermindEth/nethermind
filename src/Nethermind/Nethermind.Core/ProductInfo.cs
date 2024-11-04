@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace Nethermind.Core;
 
@@ -23,7 +22,6 @@ public static class ProductInfo
             ? DateTimeOffset.FromUnixTimeSeconds(t)
             : DateTimeOffset.MinValue;
         Name = productAttr?.Product ?? "Nethermind";
-
         OS = Platform.GetPlatformName();
         OSArchitecture = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
         Runtime = RuntimeInformation.FrameworkDescription;
