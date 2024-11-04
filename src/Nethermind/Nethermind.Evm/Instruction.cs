@@ -356,8 +356,8 @@ namespace Nethermind.Evm
                 [Instruction.LOG3] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 5, 0),
                 [Instruction.LOG4] = new(GasCostOf.Log + MEMORY_EXPANSION, 0, 6, 0),
 
-                [Instruction.TLOAD] = new(GasCostOf.Base + DYNAMIC, 0, 1, 1),
-                [Instruction.TSTORE] = new(GasCostOf.Base + DYNAMIC, 0, 2, 0),
+                [Instruction.TLOAD] = new(GasCostOf.TLoad, 0, 1, 1),
+                [Instruction.TSTORE] = new(GasCostOf.TStore, 0, 2, 0),
 
                 [Instruction.SLOAD] = new(DYNAMIC, 0, 1, 1),
                 [Instruction.SSTORE] = new(DYNAMIC, 0, 2, 0),
