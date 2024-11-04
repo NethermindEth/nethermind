@@ -12,6 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Test.IO;
 using Nethermind.Hive;
 using Nethermind.JsonRpc;
@@ -19,7 +22,9 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Taiko;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -29,16 +34,16 @@ public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
     {
-        AssemblyLoadContext.Default.Resolving += (context, name) =>
-        {
-            return null;
-        };
+        AssemblyLoadContext.Default.Resolving += (_, _) => null;
     }
 
     private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
 
     private static ICollection InitOnce()
     {
+        // we need this to discover ChainSpecEngineParameters
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
