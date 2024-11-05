@@ -45,6 +45,11 @@ public class AdminModuleTests
 
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         Enode enode = new(_enodeString);
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters()
+        };
+
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
             _networkConfig,
@@ -52,8 +57,8 @@ public class AdminModuleTests
             staticNodesManager,
             enode,
             _exampleDataDir,
-            new ManualPruningTrigger(), 
-            new ChainParameters());
+            new ManualPruningTrigger(),
+            chainSpec.Parameters);
 
         _serializer = new EthereumJsonSerializer();
     }
