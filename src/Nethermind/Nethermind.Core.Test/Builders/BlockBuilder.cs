@@ -252,8 +252,8 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithEmptyRequestsHash()
         {
-            TestObjectInternal.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(new byte[][] { Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>() });
-            TestObjectInternal.ExecutionRequests = new byte[][] { Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>() };
+            TestObjectInternal.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+            TestObjectInternal.ExecutionRequests = ExecutionRequestExtensions.EmptyRequests;
             return this;
         }
 

@@ -439,7 +439,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
         if (requestsEnabled)
-            genesisHeader.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(new byte[][] { Array.Empty<byte>(), Array.Empty<byte>(), Array.Empty<byte>() });
+            genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
