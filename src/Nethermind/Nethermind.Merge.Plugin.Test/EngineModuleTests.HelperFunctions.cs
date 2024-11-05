@@ -23,7 +23,6 @@ using Nethermind.State;
 using Microsoft.CodeAnalysis;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core.Specs;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test
