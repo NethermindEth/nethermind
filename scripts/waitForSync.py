@@ -57,7 +57,6 @@ except Exception as e:
     sys.exit(1)
 finally:
     process.terminate()
-    print("Process terminated - exiting script.")
 
 # Final exit if we did not reach required lines after an error
 print("Unhandled termination. Probably critical issue in client. Stopping...")
