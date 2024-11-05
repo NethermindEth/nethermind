@@ -236,6 +236,8 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
+            // var provider = _stateProvider as VerkleWorldState;
+            // provider.Tree.PrintLeaves(block.Number);
             if (_logger.IsWarn) _logger.Warn($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} - {error}");
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock, error);
