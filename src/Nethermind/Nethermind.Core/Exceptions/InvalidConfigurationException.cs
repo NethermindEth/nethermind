@@ -5,12 +5,7 @@ using System;
 
 namespace Nethermind.Core.Exceptions;
 
-public class InvalidConfigurationException : Exception, IExceptionWithExitCode
+public class InvalidConfigurationException(string message, int exitCode) : Exception(message), IExceptionWithExitCode
 {
-    public InvalidConfigurationException(string message, int exitCode) : base(message)
-    {
-        ExitCode = exitCode;
-    }
-
-    public int ExitCode { get; }
+    public int ExitCode { get; } = exitCode;
 }
