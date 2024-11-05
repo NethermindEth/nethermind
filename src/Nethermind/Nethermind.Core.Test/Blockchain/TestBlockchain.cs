@@ -75,6 +75,7 @@ public class TestBlockchain : IDisposable
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
     public IWorldState State { get; set; } = null!;
+    public bool KeepStateEmptyAtInit { get; set; } = false;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public IDb BlocksDb => DbProvider.BlocksDb;
@@ -138,32 +139,35 @@ public class TestBlockchain : IDisposable
         TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager, PreBlockCaches);
 
-        // Eip4788 precompile state account
-        if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+        if (!KeepStateEmptyAtInit)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            // Eip4788 precompile state account
+            if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+            {
+                State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
+            }
+
+            // Eip2935
+            if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
+            {
+                State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+            }
+
+            State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+
+            InitialStateMutator?.Invoke(State);
+
+            byte[] code = Bytes.FromHexString("0xabcd");
+            Hash256 codeHash = Keccak.Compute(code);
+            State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+
+            State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+
+            State.Commit(SpecProvider.GenesisSpec);
+            State.CommitTree(0);
         }
-
-        // Eip2935
-        if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
-        {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
-        }
-
-        State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
-
-        InitialStateMutator?.Invoke(State);
-
-        byte[] code = Bytes.FromHexString("0xabcd");
-        Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
-
-        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-
-        State.Commit(SpecProvider.GenesisSpec);
-        State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LogManager);
@@ -239,10 +243,12 @@ public class TestBlockchain : IDisposable
             _suggestedBlockResetEvent.Set();
         };
 
-        Block? genesis = GetGenesisBlock();
-        BlockTree.SuggestBlock(genesis);
-
-        await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        if (!KeepStateEmptyAtInit)
+        {
+            Block? genesis = GetGenesisBlock();
+            BlockTree.SuggestBlock(genesis);
+            await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        }
 
         if (addBlockOnStart)
             await AddBlocksOnStart();
