@@ -33,7 +33,7 @@ public class ShutterP2P : IShutterP2P
     private readonly ILocalPeer _peer;
     private readonly ServiceProvider _serviceProvider;
     private CancellationTokenSource? _cts;
-    private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan DisconnectionLogTimeout;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -42,12 +42,13 @@ public class ShutterP2P : IShutterP2P
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
+        DisconnectionLogTimeout = TimeSpan.FromMinutes(_cfg.DisconnectionLogTimeout);
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = shutterConfig.P2PProtocolVersion,
-                AgentVersion = shutterConfig.P2PAgentVersion
+                ProtocolVersion = _cfg.P2PProtocolVersion,
+                AgentVersion = _cfg.P2PAgentVersion
             })
             // pubsub settings
             .AddSingleton(new Settings()

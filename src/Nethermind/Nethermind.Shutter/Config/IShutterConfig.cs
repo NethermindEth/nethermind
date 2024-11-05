@@ -75,6 +75,10 @@ public interface IShutterConfig : IConfig
         DefaultValue = "true", HiddenFromDocs = true)]
     bool Validator { get; set; }
 
+    [ConfigItem(Description = "How many minutes to wait for transactions before sending a disconnection warning.",
+        DefaultValue = "20", HiddenFromDocs = true)]
+    ushort DisconnectionLogTimeout { get; set; }
+
     public void Validate(out Multiaddress[] bootnodeP2PAddresses)
     {
         if (Validator && ValidatorInfoFile is null)
@@ -105,6 +109,11 @@ public interface IShutterConfig : IConfig
         if (KeyperSetManagerContractAddress is null || !Address.TryParse(KeyperSetManagerContractAddress, out _))
         {
             throw new ArgumentException("Must set Shutter keyper set manager contract address to valid address.");
+        }
+
+        if (DisconnectionLogTimeout == 0)
+        {
+            throw new ArgumentException("Must set Shutter disconnection log timeout greater than 0.");
         }
 
         if (P2PAgentVersion is null)

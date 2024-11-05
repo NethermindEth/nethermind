@@ -21,5 +21,6 @@ namespace Nethermind.Shutter.Config
         public ulong InstanceID { get; set; } = 0;
         public int EncryptedGasLimit { get; set; } = 10000000;
         public ushort MaxKeyDelay { get; set; } = 1666;
+        public ushort DisconnectionLogTimeout { get; set; } = 20;
     }
 }
