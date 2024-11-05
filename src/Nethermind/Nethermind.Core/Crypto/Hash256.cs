@@ -59,7 +59,7 @@ namespace Nethermind.Core.Crypto
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
-        public ValueHash256(UInt256 uint256) : this(uint256.ToBigEndian())
+        public ValueHash256(UInt256 uint256, bool isBigEndian = true) : this(isBigEndian ? uint256.ToBigEndian() : uint256.ToLittleEndian())
         {
         }
 
@@ -118,9 +118,9 @@ namespace Nethermind.Core.Crypto
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static implicit operator Hash256(in ValueHash256 keccak) => new(keccak);
 
-        public UInt256 ToUInt256()
+        public UInt256 ToUInt256(bool isBigEndian = true)
         {
-            return new UInt256(Bytes, isBigEndian: true);
+            return new UInt256(Bytes, isBigEndian: isBigEndian);
         }
     }
 
