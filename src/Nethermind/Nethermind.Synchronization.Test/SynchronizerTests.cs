@@ -347,9 +347,10 @@ public class SynchronizerTests
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
             ContainerBuilder builder = new ContainerBuilder();
-            dbProvider.ConfigureServiceCollection(builder);
 
             builder
+                .AddModule(new DbModule())
+                .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -371,8 +372,6 @@ public class SynchronizerTests
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton(beaconPivot)
                 .AddSingleton(_logManager);
-
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
 
             if (IsMerge(synchronizerType))
             {

@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -120,7 +121,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
 
-                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
+                    UInt256 nextPath = accounts[^1].Path.ToUInt256();
+                    nextPath += UInt256.One;
+                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, new ValueHash256(nextPath), moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
