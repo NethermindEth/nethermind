@@ -31,17 +31,17 @@ public class ExecutionProcessorTests
     private ISpecProvider _specProvider;
     private ITransactionProcessor _transactionProcessor;
     private WorldState _stateProvider;
+    private IReleaseSpec _spec;
     private static readonly UInt256 AccountBalance = 1.Ether();
-    private readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
-    private readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
-    private readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
-    private IReleaseSpec spec;
-    private readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
+    private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
+    private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
+    private static readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
+    private static readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    private static readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    ExecutionRequest[] executionDepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
-    ExecutionRequest[] executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
-    ExecutionRequest[] executionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
+    private static readonly ExecutionRequest[] _executionDepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
+    private static readonly ExecutionRequest[] _executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
+    private static readonly ExecutionRequest[] _executionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
 
     private void FlatEncodeWithoutType(ExecutionRequest[] requests, Span<byte> buffer)
     {
@@ -74,16 +74,16 @@ public class ExecutionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        spec = Substitute.For<IReleaseSpec>();
+        _spec = Substitute.For<IReleaseSpec>();
 
-        spec.RequestsEnabled.Returns(true);
-        spec.DepositsEnabled.Returns(true);
-        spec.WithdrawalRequestsEnabled.Returns(true);
-        spec.ConsolidationRequestsEnabled.Returns(true);
+        _spec.RequestsEnabled.Returns(true);
+        _spec.DepositsEnabled.Returns(true);
+        _spec.WithdrawalRequestsEnabled.Returns(true);
+        _spec.ConsolidationRequestsEnabled.Returns(true);
 
-        spec.DepositContractAddress.Returns(DepositContractAddress);
-        spec.Eip7002ContractAddress.Returns(eip7002Account);
-        spec.Eip7251ContractAddress.Returns(eip7251Account);
+        _spec.DepositContractAddress.Returns(DepositContractAddress);
+        _spec.Eip7002ContractAddress.Returns(eip7002Account);
+        _spec.Eip7251ContractAddress.Returns(eip7251Account);
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
 
@@ -94,14 +94,14 @@ public class ExecutionProcessorTests
                 CallOutputTracer tracer = ci.Arg<CallOutputTracer>();
                 if (transaction.To == eip7002Account)
                 {
-                    Span<byte> buffer = new byte[executionWithdrawalRequests.GetRequestsByteSize()];
-                    FlatEncodeWithoutType(executionWithdrawalRequests, buffer);
+                    Span<byte> buffer = new byte[_executionWithdrawalRequests.GetRequestsByteSize()];
+                    FlatEncodeWithoutType(_executionWithdrawalRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
                 else if (transaction.To == eip7251Account)
                 {
-                    Span<byte> buffer = new byte[executionConsolidationRequests.GetRequestsByteSize()];
-                    FlatEncodeWithoutType(executionConsolidationRequests, buffer);
+                    Span<byte> buffer = new byte[_executionConsolidationRequests.GetRequestsByteSize()];
+                    FlatEncodeWithoutType(_executionConsolidationRequests, buffer);
                     tracer.ReturnValue = buffer.ToArray();
                 }
                 else
@@ -131,21 +131,21 @@ public class ExecutionProcessorTests
 
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
-                Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, TestItem.ExecutionRequestA.RequestDataParts)
-                ).WithAddress(DepositContractAddress).TestObject,
-                Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, TestItem.ExecutionRequestB.RequestDataParts)
-                ).WithAddress(DepositContractAddress).TestObject,
-                Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, TestItem.ExecutionRequestC.RequestDataParts)
-                ).WithAddress(DepositContractAddress).TestObject
+                CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts),
+                CreateLogEntry(TestItem.ExecutionRequestB.RequestDataParts),
+                CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
-           CalculateHash(executionDepositRequests, executionWithdrawalRequests, executionConsolidationRequests)
+           CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
+
+
+        static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
+            Build.A.LogEntry
+                .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+                .WithAddress(DepositContractAddress).TestObject;
     }
 }
