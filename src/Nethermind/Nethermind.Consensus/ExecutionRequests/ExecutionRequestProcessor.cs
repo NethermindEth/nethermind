@@ -54,7 +54,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
     }
 
-    public void ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolList<byte[]> requests)
+    public void ProcessDeposits(TxReceipt[] receipts, IReleaseSpec spec, ArrayPoolList<byte[]> requests)
     {
         if (!spec.DepositsEnabled)
             return;
@@ -111,7 +111,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ref ArrayPoolList<byte[]> requests)
+    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress,ArrayPoolList<byte[]> requests)
     {
         bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
 
@@ -144,18 +144,12 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.RequestsEnabled)
             return;
 
-        ArrayPoolList<byte[]> requests = new(3);
-        try
-        {
-            ProcessDeposits(receipts, spec, ref requests);
-            ReadRequests(block, state, spec, spec.Eip7002ContractAddress, ref requests);
-            ReadRequests(block, state, spec, spec.Eip7251ContractAddress, ref requests);
-            block.ExecutionRequests = requests.ToArray();
-            block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
-        }
-        finally
-        {
-            requests.Dispose();
-        }
+        using ArrayPoolList<byte[]> requests = new(3);
+       
+        ProcessDeposits(receipts, spec, requests);
+        ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
+        ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
+        block.ExecutionRequests = requests.ToArray();
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 }
