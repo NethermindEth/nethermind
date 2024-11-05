@@ -218,11 +218,6 @@ jobs:
           
           docker logs -f "$container_name" | while read -r line; do
             echo "$line"
-          
-            if [[ "$line" == *"Nethermind is shut down"* ]]; then
-              echo "Unexpected termination detected: $line"
-              exit 1
-            fi
       
             if [ "$found_bad_log" = true ]; then
               counter=$((counter + 1))
@@ -263,10 +258,8 @@ jobs:
             fi
           done
 
-          if [ "$found_bad_log" = true ]; then
-            echo "Error detected, but the logs stopped unexpectedly. Exiting."
-            exit 1
-          fi
+          echo "Unexpected termination detected - probably due to critical issue."
+          exit 1
           
       - name: Get Consensus Logs
         if: always() && matrix.config.network != 'joc-mainnet' && matrix.config.network != 'joc-testnet' && matrix.config.network != 'linea-mainnet' && matrix.config.network != 'linea-sepolia'
