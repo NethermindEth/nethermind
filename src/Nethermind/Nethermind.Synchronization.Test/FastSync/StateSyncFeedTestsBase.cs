@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 new SyncConfig()
                 {
                     SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs = 1
+                    SyncDispatcherAllocateTimeoutMs = 10 // there is a test for requested nodes which get affected if allocate timeout
                 },
                 ctx.Feed!,
                 ctx.Downloader,
