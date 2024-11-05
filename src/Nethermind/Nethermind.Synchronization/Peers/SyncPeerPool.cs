@@ -322,7 +322,6 @@ namespace Nethermind.Synchronization.Peers
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
-            if (timeoutMilliseconds == 0) timeoutMilliseconds = 1000 * 3600;
 
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
@@ -334,7 +333,8 @@ namespace Nethermind.Synchronization.Peers
                     return allocation;
                 }
 
-                bool timeoutReached = (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
+                bool timeoutReached = timeoutMilliseconds == 0
+                                      || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;

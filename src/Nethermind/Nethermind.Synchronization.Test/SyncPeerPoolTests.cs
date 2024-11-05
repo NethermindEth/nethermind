@@ -20,6 +20,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -643,7 +644,8 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation = await ctx.Pool.Allocate(FirstFree.ReplaceableInstance, timeoutMilliseconds: 1000);
+        Assert.That(allocation.Current, Is.Not.EqualTo(null));
         ctx.Pool.RemovePeer(peer);
 
         Assert.That(allocation.Current, Is.EqualTo(null));

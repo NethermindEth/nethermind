@@ -287,7 +287,7 @@ public class SyncDispatcherTests
         SyncDispatcher<TestBatch> dispatcher = new(
             new SyncConfig()
             {
-                MaxProcessingThreads  = processingThread,
+                MaxProcessingThreads = processingThread,
                 SyncDispatcherEmptyRequestDelayMs = 1,
             },
             syncFeed,
