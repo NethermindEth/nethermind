@@ -2,15 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Trie;
+using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeNodes;
 
 namespace Nethermind.Verkle.Tree;
 
 public partial class VerkleTree
 {
+    public void PrintLeaves(long block)
+    {
+        // string docPath = "/home/eurus/";
+        // using var outputFile = new StreamWriter(Path.Combine(docPath, "WriteLines.txt"), true);
+        //
+        // foreach (PathWithSubTree data in VerkleStateStore.GetLeafRangeIterator(Stem.Zero, Stem.MaxValue, root, long.MaxValue))
+        // {
+        //     byte[] stem = new byte[32];
+        //     data.Path.BytesAsSpan.CopyTo(stem);
+        //
+        //     foreach (var inner in data.SubTree)
+        //     {
+        //         stem[31] = inner.SuffixByte;
+        //         outputFile.WriteLine($"{stem.ToHexString()}: {inner.Leaf.ToHexString()}");
+        //     }
+        // }
+
+        VerkleStateStore.DumpTree(block, TreeCache);
+
+    }
     public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
     {
         if (visitor is null) throw new ArgumentNullException(nameof(visitor));

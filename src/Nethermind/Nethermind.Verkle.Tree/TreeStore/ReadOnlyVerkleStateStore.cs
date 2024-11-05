@@ -18,6 +18,8 @@ public class ReadOnlyVerkleStateStore(IVerkleTreeStore verkleStateStore, VerkleM
 {
     private static Span<byte> RootNodeKey => Array.Empty<byte>();
 
+    public void DumpTree(long block, VerkleMemoryDb cache) => verkleStateStore.DumpTree(block, cache);
+
     public Hash256 StateRoot
     {
         get

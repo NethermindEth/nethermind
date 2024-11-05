@@ -12,6 +12,7 @@ namespace Nethermind.Verkle.Tree.TreeStore;
 
 public interface IVerkleTreeStore : IStoreWithReorgBoundary, IVerkleSyncTreeStore
 {
+    public void DumpTree(long block, VerkleMemoryDb cache);
     Hash256 StateRoot { get; }
 
     bool HasStateForBlock(Hash256 stateRoot);
