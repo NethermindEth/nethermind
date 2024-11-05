@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             Transaction[] txs = block.Transactions;
-            Address beneficiary = block.Header.GasBeneficiary;
+            Address beneficiary = block.Header.GasBeneficiary ?? Address.Zero;
             Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
             bool isMev = false;
             if (lastTx is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))

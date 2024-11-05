@@ -167,7 +167,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(Dictionary<Address, AccountState> preState, WorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, WorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {
