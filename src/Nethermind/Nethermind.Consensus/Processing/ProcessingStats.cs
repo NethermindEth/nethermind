@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Processing
             if (block is null) return;
 
             Transaction[] txs = block.Transactions;
-            Address beneficiary = block.Header.GasBeneficiary ?? Address.Zero;
+            Address beneficiary = block.Header.GasBeneficiary;
             Transaction lastTx = txs.Length > 0 ? txs[^1] : null;
             bool isMev = false;
             if (lastTx is not null && (lastTx.SenderAddress == beneficiary || _alternateMevPayees.Contains(lastTx.SenderAddress)))
@@ -131,6 +131,8 @@ namespace Nethermind.Consensus.Processing
                 beneficiary = lastTx.To;
                 isMev = true;
             }
+
+            beneficiary ??= Address.Zero;
             UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
             UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
             UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
