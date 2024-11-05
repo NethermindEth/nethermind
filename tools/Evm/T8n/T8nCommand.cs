@@ -82,6 +82,11 @@ public static class T8nCommand
 
     private static void WriteToFile(string filename, string? basedir, object outputObject)
     {
+        if (basedir is not null)
+        {
+            basedir = basedir.TrimEnd('/');
+            basedir += '/';
+        }
         FileInfo fileInfo = new(basedir + filename);
         Directory.CreateDirectory(fileInfo.DirectoryName!);
         using StreamWriter writer = new(fileInfo.FullName);
