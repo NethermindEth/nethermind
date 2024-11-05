@@ -70,6 +70,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Mekong": {
+      "commandName": "Project",
+      "commandLineArgs": "-c mekong --data-dir .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "OP Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c op-mainnet --data-dir .data",
