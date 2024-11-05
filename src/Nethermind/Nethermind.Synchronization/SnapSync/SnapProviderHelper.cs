@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -13,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -46,13 +44,21 @@ namespace Nethermind.Synchronization.SnapSync
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
+            bool hasExtraStorage = false;
 
             for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
                 if (account.Account.HasStorage)
                 {
-                    accountsWithStorage.Add(account);
+                    if (account.Path >= limitHash || account.Path < startingHash)
+                    {
+                        hasExtraStorage = true;
+                    }
+                    else
+                    {
+                        accountsWithStorage.Add(account);
+                    }
                 }
 
                 if (account.Account.HasCode)
@@ -74,9 +80,32 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            if (hasExtraStorage)
+            {
+                // The server will always give one node extra after limitpath if it can fit in the response.
+                // When we have extra storage, the extra storage must not be re-stored as it may have already been set
+                // by another top level partition. If the sync pivot moved and the storage was modified, it must not be saved
+                // here along with updated ancestor so that healing can detect that the storage need to be healed.
+                //
+                // Unfortunately, without introducing large change to the tree, the easiest way to
+                // exclude the extra storage is to just rebuild the whole tree and also skip stitching.
+                // Fortunately, this should only happen n-1 time where n is the number of top level
+                // partition count.
 
-            tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
+                tree.RootHash = Keccak.EmptyTreeHash;
+                for (var index = 0; index < accounts.Count; index++)
+                {
+                    PathWithAccount account = accounts[index];
+                    if (account.Path >= limitHash || account.Path < startingHash) continue;
+                    _ = tree.Set(account.Path, account.Account);
+                }
+            }
+            else
+            {
+                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            }
+
+            tree.Commit(skipRoot: true, writeFlags: WriteFlags.DisableWAL);
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
@@ -118,7 +147,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, writeFlags: WriteFlags.DisableWAL);
+            tree.Commit(writeFlags: WriteFlags.DisableWAL);
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
@@ -150,30 +179,28 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
 
-            // BytesToNibbleBytes will throw if the input is not 32 bytes long, so we can use stackalloc+SkipLocalsInit
-            Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(effectiveStartingHAsh.Bytes, leftBoundary);
-            Span<byte> rightBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
-            Span<byte> rightLimit = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(limitHash.Bytes, rightLimit);
+            TreePath leftBoundaryPath = TreePath.FromPath(effectiveStartingHAsh.Bytes);
+            TreePath rightBoundaryPath = TreePath.FromPath(endHash.Bytes);
+            TreePath rightLimitPath = TreePath.FromPath(limitHash.Bytes);
 
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
             // very-very unlikely), we want `moreChildrenToRight` to return true.
             bool noLimit = limitHash == ValueKeccak.MaxValue;
 
-            Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
+            // Connect the proof nodes starting from state root.
+            // It also remove child path which is within the start/end range. If key are missing, the resolved
+            // hash will not match.
+            Stack<(TrieNode node, TreePath path)> proofNodesToProcess = new();
 
             tree.RootRef = root;
-            proofNodesToProcess.Push((null, root, -1, new List<byte>()));
+            proofNodesToProcess.Push((root, TreePath.Empty));
             sortedBoundaryList.Add((root, TreePath.Empty));
 
             bool moreChildrenToRight = false;
-
             while (proofNodesToProcess.Count > 0)
             {
-                (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
+                (TrieNode node, TreePath path) = proofNodesToProcess.Pop();
 
                 if (node.IsExtension)
                 {
@@ -183,39 +210,19 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             node.SetChild(0, child);
 
-                            pathIndex += node.Key.Length;
-                            path.AddRange(node.Key);
-                            proofNodesToProcess.Push((node, child, pathIndex, path));
-                            sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(path))));
-                        }
-                        else
-                        {
-                            Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                            if (Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
-                                && parent is not null
-                                && parent.IsBranch)
-                            {
-                                for (int i = 0; i < 15; i++)
-                                {
-                                    if (parent.GetChildHashAsValueKeccak(i, out ValueHash256 kec) && kec == node.Keccak)
-                                    {
-                                        parent.SetChild(i, null);
-                                        break;
-                                    }
-                                }
-                            }
+                            TreePath childPath = path.Append(node.Key);
+
+                            proofNodesToProcess.Push((child, childPath));
+                            sortedBoundaryList.Add((child, childPath));
                         }
                     }
                 }
 
                 if (node.IsBranch)
                 {
-                    pathIndex++;
-
-                    Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                    int left = Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
-                    int right = Bytes.BytesComparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
-                    int limit = Bytes.BytesComparer.Compare(pathSpan, rightLimit[0..path.Count]) == 0 ? rightLimit[pathIndex] : 15;
+                    int left = leftBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? leftBoundaryPath[path.Length] : 0;
+                    int right = rightBoundaryPath.CompareToTruncated(path, path.Length) == 0 ? rightBoundaryPath[path.Length] : 15;
+                    int limit = rightLimitPath.CompareToTruncated(path, path.Length) == 0 ? rightLimitPath[path.Length] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
@@ -227,23 +234,42 @@ namespace Nethermind.Synchronization.SnapSync
 
                         if (ci >= left && ci <= right)
                         {
+                            // Clear child within boundary
                             node.SetChild(ci, null);
                         }
 
                         if (hasKeccak && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
                         {
-                            if (!child.IsLeaf)
+                            TreePath childPath = path.Append(ci);
+
+                            if (child.IsBranch)
                             {
                                 node.SetChild(ci, child);
 
-                                // TODO: we should optimize it - copy only if there are two boundary children
-                                List<byte> newPath = new(path)
+                                proofNodesToProcess.Push((child, childPath));
+                                sortedBoundaryList.Add((child, childPath));
+                            }
+                            else if (child.IsExtension)
+                            {
+                                // If its an extension, its path + key must be outside or equal to the boundary.
+                                TreePath wholePath = childPath.Append(child.Key);
+                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) >= 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) <= 0)
                                 {
-                                    (byte)ci
-                                };
-
-                                proofNodesToProcess.Push((node, child, pathIndex, newPath));
-                                sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(newPath))));
+                                    node.SetChild(ci, child);
+                                    proofNodesToProcess.Push((child, childPath));
+                                    sortedBoundaryList.Add((child, childPath));
+                                }
+                            }
+                            else
+                            {
+                                // If its a leaf, its path + key must be outside the boundary.
+                                TreePath wholePath = childPath.Append(child.Key);
+                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
+                                {
+                                    node.SetChild(ci, child);
+                                    proofNodesToProcess.Push((child, childPath));
+                                    sortedBoundaryList.Add((child, childPath));
+                                }
                             }
                         }
                     }

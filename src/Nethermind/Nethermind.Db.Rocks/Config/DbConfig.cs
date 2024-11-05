@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -68,6 +67,7 @@ public class DbConfig : IDbConfig
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
     public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
+    public bool ReceiptsDbOptimizeFiltersForHits { get; set; } = false;
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
@@ -80,6 +80,7 @@ public class DbConfig : IDbConfig
     public bool? BlocksDbUseDirectReads { get; set; }
     public bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlocksDbCompactionReadAhead { get; set; }
+    public bool BlocksDbOptimizeFiltersForHits { get; set; } = false;
     public string? BlocksDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();

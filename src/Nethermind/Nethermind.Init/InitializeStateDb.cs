@@ -119,9 +119,9 @@ public class InitializeStateDb : IStep
             var minimumWriteBufferMb = 0.2 * pruningConfig.CacheMb;
             if (totalWriteBufferMb < minimumWriteBufferMb)
             {
-                int minimumWriteBufferNumber = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferSize);
+                long minimumWriteBufferSize = (int)Math.Ceiling((minimumWriteBufferMb * 1.MB()) / dbConfig.StateDbWriteBufferNumber);
 
-                if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.WriteBufferNumber)} {minimumWriteBufferNumber}`.");
+                if (_logger.IsWarn) _logger.Warn($"Detected {totalWriteBufferMb}MB of maximum write buffer size. Write buffer size should be at least 20% of pruning cache MB or memory pruning may slow down. Try setting `--Db.{nameof(dbConfig.StateDbWriteBufferSize)} {minimumWriteBufferSize}`.");
             }
 
             pruningStrategy = Prune
@@ -198,20 +198,10 @@ public class InitializeStateDb : IStep
 
         if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
         {
-            Task.Run(() =>
-            {
-                try
-                {
-                    _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
-                    _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
-                }
-                catch (Exception ex)
-                {
-                    _logger!.Error(ex.ToString());
-                }
-            });
+            _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+            Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+            TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager, _api.ProcessExit!.Token);
+            _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
         }
 
         // Init state if we need system calls before actual processing starts

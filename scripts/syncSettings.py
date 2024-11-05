@@ -83,6 +83,16 @@ configs = {
         "url": "https://sepolia.optimism.io",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    "linea-mainnet": {
+        "url": "https://rpc.linea.build",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "linea-sepolia": {
+        "url": "https://rpc.sepolia.linea.build",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
@@ -111,12 +121,12 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
     print(configuration + 'PivotHash: ' + str(pivotHash))
     print(configuration + 'PivotTotalDifficulty: ' + str(pivotTotalDifficulty))
     data = {}
-    with open(f'{configsPath}/{configuration}.cfg', 'r') as mainnetCfg:
+    with open(f'{configsPath}/{configuration}.json', 'r') as mainnetCfg:
         data = json.load(mainnetCfg)
         data['Sync']['PivotNumber'] = baseBlock
         data['Sync']['PivotHash'] = pivotHash
         data['Sync']['PivotTotalDifficulty'] = str(pivotTotalDifficulty)
-        with open(f'{configsPath}/{configuration}.cfg', 'w') as mainnetCfgChanged:
+        with open(f'{configsPath}/{configuration}.json', 'w') as mainnetCfgChanged:
             json.dump(data, mainnetCfgChanged, indent=2)
 
 for config, value in configs.items():

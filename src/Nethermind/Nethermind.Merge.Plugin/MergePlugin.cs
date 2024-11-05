@@ -6,6 +6,10 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
+using Autofac.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -30,6 +34,9 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
@@ -436,43 +443,24 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.Pivot = _beaconPivot;
 
-            MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-                _poSSwitcher,
-                _beaconPivot,
-                _api.SpecProvider,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _syncConfig,
-                _api.BetterPeerStrategy!,
-                new FullStateFinder(_api.BlockTree, _api.StateReader),
-                _api.LogManager);
+            ContainerBuilder builder = new ContainerBuilder();
 
-            MergeSynchronizer synchronizer = new MergeSynchronizer(
-                _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
-                _api.SpecProvider!,
-                _api.BlockTree!,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
-                _syncConfig,
-                blockDownloaderFactory,
-                _beaconPivot,
-                _poSSwitcher,
-                _mergeConfig,
-                _invalidChainTracker,
-                _api.ProcessExit!,
-                _api.BetterPeerStrategy,
-                _api.ChainSpec,
-                _beaconSync,
-                _api.StateReader,
-                _api.LogManager
-            );
-            _api.Synchronizer = synchronizer;
+            _api.ConfigureContainerBuilderFromApiWithNetwork(builder)
+                .AddSingleton<IBeaconSyncStrategy>(_beaconSync)
+                .AddSingleton<IBeaconPivot>(_beaconPivot)
+                .AddSingleton(_mergeConfig)
+                .AddSingleton<IInvalidChainTracker>(_invalidChainTracker);
+
+            builder.RegisterModule(new SynchronizerModule(_syncConfig));
+            builder.RegisterModule(new MergeSynchronizerModule());
+
+            IContainer container = builder.Build();
+            _api.ApiWithNetworkServiceContainer = container;
+            _api.DisposeStack.Append(container);
 
             PivotUpdator pivotUpdator = new(
                 _api.BlockTree,
-                synchronizer.SyncModeSelector,
+                _api.SyncModeSelector,
                 _api.SyncPeerPool,
                 _syncConfig,
                 _blockCacheService,

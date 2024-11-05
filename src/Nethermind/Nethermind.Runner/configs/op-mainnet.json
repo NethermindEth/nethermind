@@ -1,0 +1,42 @@
+{
+  "Init": {
+    "ChainSpecPath": "chainspec/op-mainnet.json",
+    "GenesisHash": "0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b",
+    "BaseDbPath": "nethermind_db/op-mainnet",
+    "LogFileName": "op-mainnet.logs.txt",
+    "MemoryHint": 2048000000,
+    "DisableGcOnNewPayload": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "PivotNumber": 126880000,
+    "PivotHash": "0xc85960ff29aa9139721019d27594cba1d7b6aa4d50cbcb0c0b3abe325733ed8a",
+    "PivotTotalDifficulty": "0"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2,
+    "TargetBlockGasLimit": 30000000
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://mainnet-sequencer.optimism.io"
+  }
+}

@@ -99,7 +99,7 @@ public class RecreateStateFromAccountRangesTests
         tree.Set(TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4].Account);
         tree.Set(TestItem.Tree.AccountsWithPaths[5].Path, TestItem.Tree.AccountsWithPaths[5].Account);
 
-        tree.Commit(0);
+        tree.Commit();
 
         Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
         Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
@@ -370,7 +370,7 @@ public class RecreateStateFromAccountRangesTests
         tree.Set(ac1.Path, ac1.Account);
         tree.Set(ac2.Path, ac2.Account);
         tree.Set(ac3.Path, ac3.Account);
-        tree.Commit(0);
+        tree.Commit();
 
         Hash256 rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 

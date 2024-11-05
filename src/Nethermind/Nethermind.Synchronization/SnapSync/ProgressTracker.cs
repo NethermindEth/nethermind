@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -58,6 +61,11 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly Pivot _pivot;
 
+        public ProgressTracker(IBlockTree blockTree, [KeyFilter(DbNames.State)] IDb db, ILogManager logManager, ISyncConfig syncConfig)
+            : this(blockTree, db, logManager, syncConfig.SnapSyncAccountRangePartitionCount)
+        {
+        }
+
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -65,8 +73,8 @@ namespace Nethermind.Synchronization.SnapSync
 
             _pivot = new Pivot(blockTree, logManager);
 
-            if (accountRangePartitionCount < 1 || accountRangePartitionCount > 256)
-                throw new ArgumentException("Account range partition must be between 1 to 256.");
+            if (accountRangePartitionCount < 1 || accountRangePartitionCount > int.MaxValue)
+                throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;
             SetupAccountRangePartition();
@@ -77,23 +85,20 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void SetupAccountRangePartition()
         {
-            // Confusingly dividing the range evenly via UInt256 for example, consistently cause root hash mismatch.
-            // The mismatch happens on exactly the same partition every time, suggesting tome kind of boundary issues
-            // either on proof generation or validation.
-            byte curStartingPath = 0;
-            int partitionSize = (256 / _accountRangePartitionCount);
+            uint curStartingPath = 0;
+            uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (ulong)_accountRangePartitionCount);
 
             for (var i = 0; i < _accountRangePartitionCount; i++)
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
                 Hash256 startingPath = new Hash256(Keccak.Zero.Bytes);
-                startingPath.Bytes[0] = curStartingPath;
+                BinaryPrimitives.WriteUInt32BigEndian(startingPath.Bytes, curStartingPath);
 
                 partition.NextAccountPath = startingPath;
                 partition.AccountPathStart = startingPath;
 
-                curStartingPath += (byte)partitionSize;
+                curStartingPath += partitionSize;
 
                 Hash256 limitPath;
 
@@ -105,7 +110,7 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     limitPath = new Hash256(Keccak.Zero.Bytes);
-                    limitPath.Bytes[0] = curStartingPath;
+                    BinaryPrimitives.WriteUInt32BigEndian(limitPath.Bytes, curStartingPath);
                 }
 
                 partition.AccountPathLimit = limitPath;

@@ -78,6 +78,7 @@ public class TestBlockchain : IDisposable
     public bool KeepStateEmptyAtInit { get; set; } = false;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
+    public IDb BlocksDb => DbProvider.BlocksDb;
     public TrieStore TrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
@@ -177,7 +178,7 @@ public class TestBlockchain : IDisposable
             new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
             DbProvider.BlockInfosDb,
             DbProvider.MetadataDb,
-            new BlockStore(new TestMemDb(), 100),
+            new BadBlockStore(new TestMemDb(), 100),
             ChainLevelInfoRepository,
             SpecProvider,
             NullBloomStorage.Instance,
@@ -204,7 +205,7 @@ public class TestBlockchain : IDisposable
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
         _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, State);
 
         BlockValidator = new BlockValidator(
             new TxValidator(SpecProvider.ChainId),
@@ -220,7 +221,6 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-        BeaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor);
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -396,7 +396,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             TxProcessor,
-            new BeaconBlockRootHandler(TxProcessor),
+            new BeaconBlockRootHandler(TxProcessor, State),
             new BlockhashStore(SpecProvider, State),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer(),

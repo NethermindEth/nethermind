@@ -8,6 +8,9 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -17,6 +20,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -333,74 +337,47 @@ public class SynchronizerTests
                 : totalDifficultyBetterPeerStrategy;
 
             StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
-            FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
             INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
 
             SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
             Pivot pivot = new(syncConfig);
 
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
+
+            ContainerBuilder builder = new ContainerBuilder();
+
+            builder
+                .AddModule(new DbModule())
+                .AddModule(new SynchronizerModule(syncConfig))
+                .AddSingleton(dbProvider)
+                .AddSingleton(nodeStorage)
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddSingleton<IBlockTree>(BlockTree)
+                .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+                .AddSingleton(SyncPeerPool)
+                .AddSingleton<INodeStatsManager>(stats)
+                .AddSingleton(syncConfig)
+                .AddSingleton<IPivot>(pivot)
+                .AddSingleton<IPoSSwitcher>(poSSwitcher)
+                .AddSingleton<IMergeConfig>(mergeConfig)
+                .AddSingleton(invalidChainTracker)
+                .AddSingleton(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddSingleton(new ChainSpec())
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<IStateReader>(reader)
+                .AddSingleton<ISealValidator>(Always.Valid)
+                .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton(beaconPivot)
+                .AddSingleton(_logManager);
+
             if (IsMerge(synchronizerType))
             {
-                IBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
-                    poSSwitcher,
-                    beaconPivot,
-                    MainnetSpecProvider.Instance,
-                    Always.Valid,
-                    Always.Valid,
-                    syncConfig,
-                    bestPeerStrategy,
-                    fullStateFinder,
-                    _logManager
-                );
-                Synchronizer = new MergeSynchronizer(
-                    dbProvider,
-                    nodeStorage,
-                    MainnetSpecProvider.Instance,
-                    BlockTree,
-                    NullReceiptStorage.Instance,
-                    SyncPeerPool,
-                    stats,
-                    syncConfig,
-                    blockDownloaderFactory,
-                    pivot,
-                    poSSwitcher,
-                    mergeConfig,
-                    invalidChainTracker,
-                    Substitute.For<IProcessExitSource>(),
-                    bestPeerStrategy,
-                    new ChainSpec(),
-                    No.BeaconSync,
-                    reader,
-                    _logManager);
-            }
-            else
-            {
-                IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
-                    MainnetSpecProvider.Instance,
-                    Always.Valid,
-                    Always.Valid,
-                    new TotalDifficultyBetterPeerStrategy(_logManager),
-                    _logManager);
-
-                Synchronizer = new Synchronizer(
-                    dbProvider,
-                    nodeStorage,
-                    MainnetSpecProvider.Instance,
-                    BlockTree,
-                    NullReceiptStorage.Instance,
-                    SyncPeerPool,
-                    stats,
-                    syncConfig,
-                    blockDownloaderFactory,
-                    pivot,
-                    Substitute.For<IProcessExitSource>(),
-                    bestPeerStrategy,
-                    new ChainSpec(),
-                    reader,
-                    _logManager);
+                builder.RegisterModule(new MergeSynchronizerModule());
             }
 
+            IContainer container = builder.Build();
+            Synchronizer = container.Resolve<Synchronizer>();
             SyncServer = new SyncServer(
                 trieStore.TrieNodeRlpStore,
                 codeDb,
@@ -409,7 +386,7 @@ public class SynchronizerTests
                 Always.Valid,
                 Always.Valid,
                 SyncPeerPool,
-                Synchronizer.SyncModeSelector,
+                container.Resolve<ISyncModeSelector>(),
                 syncConfig,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,

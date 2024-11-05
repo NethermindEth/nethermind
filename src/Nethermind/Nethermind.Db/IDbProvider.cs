@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using Autofac;
+using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {

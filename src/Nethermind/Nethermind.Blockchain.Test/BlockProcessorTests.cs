@@ -29,6 +29,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -50,7 +51,7 @@ public class BlockProcessorTests
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance);
 
@@ -81,7 +82,7 @@ public class BlockProcessorTests
             stateProvider,
             NullReceiptStorage.Instance,
             transactionProcessor,
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance);
 

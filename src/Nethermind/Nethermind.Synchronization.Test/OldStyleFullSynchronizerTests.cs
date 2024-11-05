@@ -4,7 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Extensions.DependencyInjection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -15,6 +18,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
@@ -24,9 +28,8 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -61,31 +64,34 @@ namespace Nethermind.Synchronization.Test
             TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            BlockDownloaderFactory blockDownloaderFactory = new(
-                MainnetSpecProvider.Instance,
-                Always.Valid,
-                Always.Valid,
-                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                LimboLogs.Instance);
 
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
 
-            _synchronizer = new Synchronizer(
-                dbProvider,
-                nodeStorage,
-                MainnetSpecProvider.Instance,
-                _blockTree,
-                _receiptStorage,
-                _pool,
-                stats,
-                syncConfig,
-                blockDownloaderFactory,
-                pivot,
-                Substitute.For<IProcessExitSource>(),
-                bestPeerStrategy,
-                new ChainSpec(),
-                stateReader,
-                LimboLogs.Instance);
+            ContainerBuilder builder = new ContainerBuilder()
+                .AddModule(new SynchronizerModule(syncConfig))
+                .AddModule(new DbModule())
+                .AddSingleton(dbProvider)
+                .AddSingleton(nodeStorage)
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .AddSingleton(_blockTree)
+                .AddSingleton(_receiptStorage)
+                .AddSingleton(_pool)
+                .AddSingleton<INodeStatsManager>(stats)
+                .AddSingleton<ISyncConfig>(syncConfig)
+                .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton<ISealValidator>(Always.Valid)
+                .AddSingleton<IPivot>(pivot)
+                .AddSingleton(Substitute.For<IProcessExitSource>())
+                .AddSingleton<IBetterPeerStrategy>(bestPeerStrategy)
+                .AddSingleton(new ChainSpec())
+                .AddSingleton(stateReader)
+                .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<ILogManager>(LimboLogs.Instance);
+
+            IContainer container = builder.Build();
+
+            _synchronizer = container.Resolve<Synchronizer>();
+
             _syncServer = new SyncServer(
                 trieStore.TrieNodeRlpStore,
                 _codeDb,
@@ -94,7 +100,7 @@ namespace Nethermind.Synchronization.Test
                 Always.Valid,
                 Always.Valid,
                 _pool,
-                _synchronizer.SyncModeSelector,
+                container.Resolve<ISyncModeSelector>(),
                 quickConfig,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,

@@ -4,7 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -50,8 +53,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            IDbMeta blocksDb,
-            IDb metadataDb,
+            [KeyFilter(DbNames.Blocks)] IDbMeta blocksDb,
+            [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
             : base(metadataDb, specProvider, logManager.GetClassLogger())
@@ -128,11 +131,20 @@ namespace Nethermind.Synchronization.FastBlocks
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo?[] infos = new BlockInfo[_requestSize];
-                _syncStatusList.GetInfosForBatch(infos);
+                BlockInfo?[] infos = null;
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _blockTree.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    // Otherwise, the progress does not update correctly
+                    _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    UpdateSyncReport();
+                }
+
                 if (infos[0] is not null)
                 {
                     batch = new BodiesSyncBatch(infos);
+                    // Used for peer allocation. It pick peer which have the at least this number
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }

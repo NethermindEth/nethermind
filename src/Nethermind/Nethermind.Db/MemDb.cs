@@ -77,9 +77,7 @@ namespace Nethermind.Db
 
         public IDb Innermost => this;
 
-        public virtual void Flush()
-        {
-        }
+        public virtual void Flush(bool onlyWal = false) { }
 
         public void Clear()
         {
@@ -147,6 +145,14 @@ namespace Nethermind.Db
                 return;
             }
             _db[key] = value;
+        }
+
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+        {
+            return new IDbMeta.DbMetric()
+            {
+                Size = Count
+            };
         }
     }
 }
