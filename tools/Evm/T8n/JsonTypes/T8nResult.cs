@@ -44,8 +44,6 @@ public class T8nResult
         ISpecProvider specProvider,
         TransactionExecutionReport txReport)
     {
-        T8nResult t8NResult = new();
-
         IReceiptSpec receiptSpec = specProvider.GetSpec(block.Header);
         Hash256 txRoot = TxTrie.CalculateRoot(txReport.SuccessfulTransactions.ToArray());
         Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec,
@@ -57,21 +55,26 @@ public class T8nResult
         var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
         ulong? blobGasUsed = test.Spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray()) : null;
 
-        t8NResult.StateRoot = stateProvider.StateRoot;
-        t8NResult.TxRoot = txRoot;
-        t8NResult.ReceiptsRoot = receiptsRoot;
-        t8NResult.LogsBloom = bloom;
-        t8NResult.LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes);
-        t8NResult.Receipts = txReport.SuccessfulTransactionReceipts.ToArray();
-        t8NResult.Rejected = txReport.RejectedTransactionReceipts.Count == 0 ? null : txReport.RejectedTransactionReceipts.ToArray();
-        t8NResult.CurrentDifficulty = test.CurrentDifficulty;
-        t8NResult.GasUsed = new UInt256(gasUsed);
-        t8NResult.CurrentBaseFee = test.CurrentBaseFee;
-        t8NResult.WithdrawalsRoot = block.WithdrawalsRoot;
-        t8NResult.CurrentExcessBlobGas = block.ExcessBlobGas;
-        t8NResult.BlobGasUsed = blobGasUsed;
-        t8NResult.TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes;
-        t8NResult.Accounts = CollectAccounts(test, stateProvider, storageTracer, block);
+        T8nResult t8NResult = new()
+        {
+            StateRoot = stateProvider.StateRoot,
+            TxRoot = txRoot,
+            ReceiptsRoot = receiptsRoot,
+            LogsBloom = bloom,
+            LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes),
+            Receipts = txReport.SuccessfulTransactionReceipts.ToArray(),
+            Rejected = txReport.RejectedTransactionReceipts.Count == 0
+                ? null
+                : txReport.RejectedTransactionReceipts.ToArray(),
+            CurrentDifficulty = test.CurrentDifficulty,
+            GasUsed = new UInt256(gasUsed),
+            CurrentBaseFee = test.CurrentBaseFee,
+            WithdrawalsRoot = block.WithdrawalsRoot,
+            CurrentExcessBlobGas = block.ExcessBlobGas,
+            BlobGasUsed = blobGasUsed,
+            TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes,
+            Accounts = CollectAccounts(test, stateProvider, storageTracer, block),
+        };
 
         return t8NResult;
     }

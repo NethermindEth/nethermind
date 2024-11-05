@@ -3,8 +3,4 @@
 
 namespace Evm.T8n.JsonTypes;
 
-public class RejectedTx(int index, string error)
-{
-    public int Index { get; set; } = index;
-    public string? Error { get; set; } = error;
-}
+public readonly record struct RejectedTx(int Index, string Error);
