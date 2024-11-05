@@ -1027,7 +1027,8 @@ public partial class BlockDownloaderTests
             new SyncConfig()
             {
                 MaxProcessingThreads = 0,
-                SyncDispatcherEmptyRequestDelayMs = 1
+                SyncDispatcherEmptyRequestDelayMs = 1,
+                SyncDispatcherAllocateTimeoutMs = 1
             },
             Feed!,
             BlockDownloader,

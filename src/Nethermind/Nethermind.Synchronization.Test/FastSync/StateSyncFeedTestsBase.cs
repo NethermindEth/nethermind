@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 10000;
+        private const int TimeoutLength = 20000;
 
         private static IBlockTree? _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
@@ -121,7 +121,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
                 new SyncConfig()
                 {
-                    SyncDispatcherEmptyRequestDelayMs = 1
+                    SyncDispatcherEmptyRequestDelayMs = 1,
+                    SyncDispatcherAllocateTimeoutMs = 1
                 },
                 ctx.Feed!,
                 ctx.Downloader,

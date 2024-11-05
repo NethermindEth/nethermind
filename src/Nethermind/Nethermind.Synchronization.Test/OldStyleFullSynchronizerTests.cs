@@ -61,7 +61,8 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new()
             {
                 MultiSyncModeSelectorLoopTimerMs = 1,
-                SyncDispatcherEmptyRequestDelayMs = 1
+                SyncDispatcherEmptyRequestDelayMs = 1,
+                SyncDispatcherAllocateTimeoutMs = 1
             };
 
             NodeStorage nodeStorage = new NodeStorage(_stateDb);

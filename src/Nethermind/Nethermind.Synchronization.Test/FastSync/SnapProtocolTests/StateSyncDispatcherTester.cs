@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
             ISyncDownloader<StateSyncBatch> downloader,
             ISyncPeerPool syncPeerPool,
             IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy,
-            ILogManager logManager) : base(new SyncConfig() { SyncDispatcherEmptyRequestDelayMs = 1 }, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
+            ILogManager logManager) : base(new SyncConfig() { SyncDispatcherEmptyRequestDelayMs = 1, SyncDispatcherAllocateTimeoutMs = 1 }, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
         {
             _downloader = downloader;
         }

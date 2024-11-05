@@ -27,6 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;
+        private readonly int _allocateTimeoutMs;
 
         public SyncDispatcher(
             ISyncConfig syncConfig,
@@ -53,6 +54,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             _emptyRequestDelay = TimeSpan.FromMilliseconds(syncConfig.SyncDispatcherEmptyRequestDelayMs);
+            _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -211,7 +213,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs);
             Downloader.OnAllocate(allocation);
             return allocation;
         }

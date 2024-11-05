@@ -311,6 +311,7 @@ public class SynchronizerTests
             ISyncConfig syncConfig = GetSyncConfig();
             syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
             syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
+            syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb stateDb = new MemDb();

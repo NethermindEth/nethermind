@@ -256,7 +256,8 @@ public class SyncDispatcherTests
             new SyncConfig()
             {
                 MultiSyncModeSelectorLoopTimerMs = 1,
-                SyncDispatcherEmptyRequestDelayMs = 1
+                SyncDispatcherEmptyRequestDelayMs = 1,
+                SyncDispatcherAllocateTimeoutMs = 1
             },
             syncFeed,
             downloader,
