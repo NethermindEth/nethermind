@@ -70,7 +70,7 @@ public static class T8nCommand
             finally
             {
                 Environment.ExitCode = t8nOutput.ExitCode;
-                if (t8nOutput.ErrorMessage != null)
+                if (t8nOutput.ErrorMessage is not null)
                 {
                     Console.WriteLine(t8nOutput.ErrorMessage);
                 }
