@@ -45,12 +45,6 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
         ArgumentNullException.ThrowIfNull(FjordTimestamp);
         ArgumentNullException.ThrowIfNull(GraniteTimestamp);
-        blockNumbers.Add(BedrockBlockNumber.Value);
-        timestamps.Add(RegolithTimestamp.Value);
-        timestamps.Add(CanyonTimestamp.Value);
-        timestamps.Add(EcotoneTimestamp.Value);
-        timestamps.Add(FjordTimestamp.Value);
-        timestamps.Add(GraniteTimestamp.Value);
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
