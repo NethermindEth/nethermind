@@ -115,7 +115,7 @@ public partial class EngineModuleTests
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
-         response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = expectedPayload
