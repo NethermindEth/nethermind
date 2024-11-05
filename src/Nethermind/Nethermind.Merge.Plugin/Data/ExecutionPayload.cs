@@ -123,12 +123,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// </summary>
     public virtual ulong? TargetBlobCount { get; set; }
 
-    /// <summary>
-    /// Gets or sets <see cref="Block.MaxBlobCount"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7742">EIP-7742</see>.
-    /// </summary>
-    public virtual ulong? MaxBlobCount { get; set; }
-
     public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
 
     protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()

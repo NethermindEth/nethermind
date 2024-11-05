@@ -45,11 +45,6 @@ public static class BlobGasCalculator
         return TryCalculateFeePerBlobGas(header.ExcessBlobGas, out feePerBlobGas, header.TargetBlobCount, spec);
     }
 
-    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas, ISpecProvider specProvider)
-    {
-        return TryCalculateFeePerBlobGas(header.ExcessBlobGas, out feePerBlobGas, header.TargetBlobCount, specProvider.GetSpec(header));
-    }
-
     public static bool TryCalculateFeePerBlobGas(ulong? excessBlobGas, out UInt256 feePerBlobGas, UInt256? targetBlobCount, IReleaseSpec? spec)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)

@@ -102,7 +102,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockHeader header, ITxTracer txTracer) =>
-            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider), txTracer, ExecutionOptions.CommitAndRestore);
+            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), txTracer, ExecutionOptions.CommitAndRestore);
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
@@ -112,7 +112,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             WorldState.TakeSnapshot(true);
-            return ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider), txTracer, ExecutionOptions.None);
+            return ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), txTracer, ExecutionOptions.None);
         }
 
         public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
@@ -124,19 +124,19 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult Execute(Transaction transaction, in BlockHeader header, ITxTracer txTracer) =>
-            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider), txTracer, ExecutionOptions.Commit);
+            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(Transaction transaction, in BlockHeader header, ITxTracer txTracer) =>
-            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider), txTracer, ExecutionOptions.NoValidation);
+            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), txTracer, ExecutionOptions.NoValidation);
 
         public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
 
         public TransactionResult Warmup(Transaction transaction, in BlockHeader header, ITxTracer txTracer) =>
-            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider), txTracer, ExecutionOptions.Warmup);
+            ExecuteCore(transaction, new BlockExecutionContext(header, SpecProvider.GetSpec(header)), txTracer, ExecutionOptions.Warmup);
 
         public TransactionResult Warmup(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             ExecuteCore(transaction, in blCtx, txTracer, ExecutionOptions.Warmup);
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.IsSystem())
             {
                 _systemTransactionProcessor ??= new SystemTransactionProcessor(SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
-                return _systemTransactionProcessor.Execute(tx, new BlockExecutionContext(blCtx.Header, SpecProvider), tracer, opts);
+                return _systemTransactionProcessor.Execute(tx, new BlockExecutionContext(blCtx.Header, SpecProvider.GetSpec(blCtx.Header)), tracer, opts);
             }
 
             return Execute(tx, in blCtx, tracer, opts);

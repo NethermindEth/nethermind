@@ -26,11 +26,6 @@ public readonly struct BlockExecutionContext
         }
     }
 
-    public BlockExecutionContext(BlockHeader blockHeader, ISpecProvider specProvider) : this(blockHeader,
-        specProvider.GetSpec(blockHeader))
-    {
-    }
-
     public BlockExecutionContext(BlockHeader blockHeader, UInt256 forceBlobBaseFee)
     {
         Header = blockHeader;

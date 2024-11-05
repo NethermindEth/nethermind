@@ -59,7 +59,8 @@ namespace Nethermind.Blockchain
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
             CurrentFeePerBlobGas =
-                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, out UInt256 currentFeePerBlobGas, SpecProvider)
+                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, out UInt256 currentFeePerBlobGas,
+                    SpecProvider.GetSpec(e.Block.Header))
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
