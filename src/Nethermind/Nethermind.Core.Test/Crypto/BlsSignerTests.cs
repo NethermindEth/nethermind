@@ -21,7 +21,8 @@ public class BlsTests
     public void Calculate_signature()
     {
         byte[] expected = [0xa5, 0xa0, 0x0d, 0xe9, 0x9d, 0x8f, 0xee, 0x7e, 0x28, 0x81, 0x1b, 0x2c, 0x08, 0xe0, 0xa7, 0xfc, 0x00, 0xa1, 0x10, 0x0c, 0x3d, 0x0f, 0x80, 0x51, 0x9d, 0x43, 0x24, 0x67, 0x1c, 0x29, 0x36, 0xb1, 0xe5, 0xa5, 0x87, 0x7d, 0x46, 0x7a, 0x6d, 0xc6, 0xf5, 0x92, 0xb2, 0x40, 0x7b, 0xcb, 0x12, 0x61, 0x0c, 0x18, 0x8a, 0x6c, 0xdf, 0x57, 0xd1, 0x77, 0x92, 0x00, 0x0f, 0xf7, 0x56, 0xf8, 0x0e, 0xbe, 0xd8, 0x00, 0x88, 0xab, 0x22, 0x9a, 0xa7, 0xe2, 0xc3, 0x24, 0x09, 0xec, 0xfe, 0x5a, 0x8d, 0x44, 0x73, 0xe9, 0x12, 0xfa, 0x19, 0x9e, 0xee, 0xa1, 0x8f, 0x3c, 0x79, 0x8d, 0xc5, 0x28, 0x64, 0x7d];
-        BlsSigner.Signature s = BlsSigner.Sign(new(SkBytes, Bls.ByteOrder.LittleEndian), MsgBytes);
+        Bls.SecretKey sk = new(SkBytes, Bls.ByteOrder.LittleEndian);
+        BlsSigner.Signature s = BlsSigner.Sign(sk, MsgBytes);
         s.Bytes.ToArray().Should().Equal(expected);
     }
 
@@ -38,13 +39,23 @@ public class BlsTests
     [Test]
     public void Verify_aggregate_signature()
     {
-        Span<byte> skBytes = new byte[AggregateSignerCount * 32];
-        Span<byte> publicKeys = new byte[AggregateSignerCount * BlsSigner.PkCompressedSz];
+        BlsSigner.Signature agg = new();
+        BlsSigner.Signature s = new();
+        BlsSigner.AggregatedPublicKey aggregatedPublicKey = new();
+        G1 pk = new();
 
-        GenerateKeys(skBytes, publicKeys);
+        Bls.SecretKey masterSk = new(SkBytes, Bls.ByteOrder.LittleEndian);
 
-        BlsSigner.Signature s = BlsSigner.SignAggregate(skBytes, MsgBytes);
-        Assert.That(BlsSigner.VerifyAggregate(publicKeys, s, MsgBytes));
+        for (int i = 0; i < AggregateSignerCount; i++)
+        {
+            Bls.SecretKey sk = new(masterSk, (uint)i);
+            s.Sign(sk, MsgBytes);
+            agg.Aggregate(s);
+            pk.FromSk(sk);
+            aggregatedPublicKey.Aggregate(pk.ToAffine());
+        }
+
+        Assert.That(BlsSigner.VerifyAggregate(aggregatedPublicKey, agg, MsgBytes));
     }
 
     [Test]
@@ -52,26 +63,39 @@ public class BlsTests
     {
         Bls.SecretKey sk = new(SkBytes, Bls.ByteOrder.LittleEndian);
         BlsSigner.Signature s = BlsSigner.Sign(sk, MsgBytes);
-        Span<byte> bytes = stackalloc byte[96];
-        s.Bytes.CopyTo(bytes);
-        bytes[34] += 1;
-        BlsSigner.Signature bad = new(bytes);
+        Span<byte> badSig = stackalloc byte[96];
+        s.Bytes.CopyTo(badSig);
+        badSig[34] += 1;
 
         G1 publicKey = new();
         publicKey.FromSk(sk);
-        Assert.That(BlsSigner.Verify(publicKey.ToAffine(), bad, MsgBytes), Is.False);
+        Assert.That(BlsSigner.Verify(publicKey.ToAffine(), badSig, MsgBytes), Is.False);
     }
 
     [Test]
     public void Rejects_missing_aggregate_signature()
     {
-        Span<byte> skBytes = new byte[AggregateSignerCount * 32];
-        Span<byte> publicKeys = new byte[AggregateSignerCount * BlsSigner.PkCompressedSz];
+        BlsSigner.Signature agg = new();
+        BlsSigner.Signature s = new();
+        BlsSigner.AggregatedPublicKey aggregatedPublicKey = new();
+        G1 pk = new();
 
-        GenerateKeys(skBytes, publicKeys);
+        Bls.SecretKey masterSk = new(SkBytes, Bls.ByteOrder.LittleEndian);
 
-        BlsSigner.Signature s = BlsSigner.SignAggregate(skBytes[32..], MsgBytes);
-        Assert.That(BlsSigner.VerifyAggregate(publicKeys, s, MsgBytes), Is.False);
+        for (int i = 0; i < AggregateSignerCount; i++)
+        {
+            Bls.SecretKey sk = new(masterSk, (uint)i);
+            s.Sign(sk, MsgBytes);
+            if (i != 0)
+            {
+                // exclude one signature
+                agg.Aggregate(s);
+            }
+            pk.FromSk(sk);
+            aggregatedPublicKey.Aggregate(pk.ToAffine());
+        }
+
+        Assert.That(BlsSigner.VerifyAggregate(aggregatedPublicKey, agg, MsgBytes), Is.False);
     }
 
     [Test]
@@ -83,20 +107,5 @@ public class BlsTests
         publicKey.FromSk(new(SkBytes, Bls.ByteOrder.LittleEndian));
 
         Assert.That(publicKey.Compress(), Is.EqualTo(expected));
-    }
-
-    private void GenerateKeys(Span<byte> skBytes, Span<byte> publicKeyBytes)
-    {
-        Bls.SecretKey masterSk = new(SkBytes, Bls.ByteOrder.LittleEndian);
-        for (int i = 0; i < AggregateSignerCount; i++)
-        {
-            int offset = i * 32;
-            Bls.SecretKey sk = new(masterSk, (uint)i);
-            sk.ToBendian().CopyTo(skBytes[offset..(offset + 32)]);
-
-            G1 publicKey = new();
-            publicKey.FromSk(sk);
-            publicKey.Compress().CopyTo(publicKeyBytes[(i * BlsSigner.PkCompressedSz)..]);
-        }
     }
 }

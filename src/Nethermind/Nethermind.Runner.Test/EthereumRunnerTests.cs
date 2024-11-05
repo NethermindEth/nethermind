@@ -11,20 +11,20 @@ using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Test.IO;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.EthStats;
+using Nethermind.Hive;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Db.Blooms;
+using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.TxPool;
+using Nethermind.Taiko;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -34,16 +34,16 @@ public class EthereumRunnerTests
 {
     static EthereumRunnerTests()
     {
-        AssemblyLoadContext.Default.Resolving += (context, name) =>
-        {
-            return null;
-        };
+        AssemblyLoadContext.Default.Resolving += (_, _) => null;
     }
 
     private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
 
     private static ICollection InitOnce()
     {
+        // we need this to discover ChainSpecEngineParameters
+        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters) };
+
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> result = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
@@ -98,21 +98,8 @@ public class EthereumRunnerTests
 
     private static async Task SmokeTest(ConfigProvider configProvider, int testIndex, int basePort, bool cancel = false)
     {
-        Type type1 = typeof(ITxPoolConfig);
-        Type type2 = typeof(INetworkConfig);
-        Type type3 = typeof(IKeyStoreConfig);
-        Type type4 = typeof(IDbConfig);
-        Type type7 = typeof(IEthStatsConfig);
-        Type type8 = typeof(ISyncConfig);
-        Type type9 = typeof(IBloomConfig);
-
-        Console.WriteLine(type1.Name);
-        Console.WriteLine(type2.Name);
-        Console.WriteLine(type3.Name);
-        Console.WriteLine(type4.Name);
-        Console.WriteLine(type7.Name);
-        Console.WriteLine(type8.Name);
-        Console.WriteLine(type9.Name);
+        // An ugly hack to keep unused types
+        Console.WriteLine(typeof(IHiveConfig));
 
         var tempPath = TempPath.GetTempDirectory();
         Directory.CreateDirectory(tempPath.Path);
