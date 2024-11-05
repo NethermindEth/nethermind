@@ -589,13 +589,11 @@ internal class ILCompiler
                 case Instruction.ISZERO:
                     {// we load the stack
                         method.StackLoadPrevious(stack, head, 1);
+                        method.Duplicate();
+                        method.Duplicate();
                         method.Call(Word.GetIsZero);
                         method.StoreLocal(lbool);
-
-                        method.StackLoadPrevious(stack, head, 1);
                         method.Call(Word.SetToZero);
-
-                        method.StackLoadPrevious(stack, head, 1);
                         method.LoadLocal(lbool);
                         method.Call(Word.SetByte0);
                     }
