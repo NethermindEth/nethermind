@@ -20,9 +20,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void ChangeState(SyncFeedState newState)
         {
-            if (newState == SyncFeedState.Active && _taskCompletionSource == null)
+            if (newState == SyncFeedState.Active)
             {
-                _taskCompletionSource = new TaskCompletionSource();
+                _taskCompletionSource ??= new TaskCompletionSource();
             }
 
             if (CurrentState == SyncFeedState.Finished)
