@@ -65,7 +65,7 @@ public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address curr
                 .WithExcessBlobGas((ulong)ParentExcessBlobGas)
                 .WithBlobGasUsed((ulong)ParentBlobGasUsed)
                 .TestObject;
-            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Spec);
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Spec, header);
         }
         header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(Transactions);
         header.IsPostMerge = Spec is Paris;
