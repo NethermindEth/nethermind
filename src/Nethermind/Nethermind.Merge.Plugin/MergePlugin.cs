@@ -36,6 +36,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 

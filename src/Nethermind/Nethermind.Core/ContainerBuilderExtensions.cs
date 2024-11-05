@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Autofac;
+using Autofac.Core;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Core;
@@ -112,6 +113,13 @@ public static class ContainerBuilderExtensions
     {
         builder.Register<ILifetimeScope, T>(ctx => ctx.BeginLifetimeScope(configurator).Resolve<T>())
             .Named<T>(name);
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
+    {
+        builder.RegisterModule(module);
 
         return builder;
     }
