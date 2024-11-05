@@ -112,6 +112,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     {
         bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
 
+        int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
+
         if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
             // yield break;
             return Array.Empty<byte>();
@@ -123,8 +125,13 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         _transactionProcessor.Execute(isWithdrawalRequests ? _withdrawalTransaction : _consolidationTransaction, new BlockExecutionContext(block.Header), tracer);
 
-        return tracer.ReturnValue ?? Array.Empty<byte>();
+        if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
+        {
+            return Array.Empty<byte>();
+        }
 
+        int validLength = tracer.ReturnValue.Length - (tracer.ReturnValue.Length % requestsByteSize);
+        return tracer.ReturnValue.AsSpan(0, validLength).ToArray();
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)

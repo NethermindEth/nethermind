@@ -144,7 +144,7 @@ public class ExecutionProcessorTests
         ];
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, spec);
 
-        Assert.That(block.Header.RequestsHash, Is.EqualTo(
+         Assert.That(block.Header.RequestsHash, Is.EqualTo(
             CalculateHash(executionDepositRequests, executionWithdrawalRequests, executionConsolidationRequests)
         ));
     }
