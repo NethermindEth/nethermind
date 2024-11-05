@@ -136,7 +136,7 @@ public struct TreePath : IEquatable<TreePath>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AppendMut(int nib)
+    public void AppendMut(int nib)
     {
         this[Length] = nib;
         Length++;
@@ -309,6 +309,12 @@ public struct TreePath : IEquatable<TreePath>
         return Length.CompareTo(otherTree.Length);
     }
 
+    /// <summary>
+    /// Compare with otherTree, as if this TreePath was truncated to `length`.
+    /// </summary>
+    /// <param name="otherTree"></param>
+    /// <param name="length"></param>
+    /// <returns></returns>
     public readonly int CompareToTruncated(in TreePath otherTree, int length)
     {
         int minLength = Math.Min(length, otherTree.Length);

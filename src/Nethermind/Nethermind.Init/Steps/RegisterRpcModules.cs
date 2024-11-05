@@ -132,6 +132,7 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
+        (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -139,7 +140,8 @@ public class RegisterRpcModules : IStep
             _api.StaticNodesManager,
             _api.Enode,
             initConfig.BaseDbPath,
-            pruningTrigger);
+            pruningTrigger,
+            getFromApi.ChainSpec.Parameters);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);

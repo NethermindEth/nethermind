@@ -15,9 +15,9 @@ namespace Nethermind.Consensus.Ethash
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
-        public string Name => "Ethash";
+        public string Name => SealEngineType;
 
-        public string Description => "Ethash Consensus";
+        public string Description => $"{SealEngineType} Consensus";
 
         public string Author => "Nethermind";
 
