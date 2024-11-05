@@ -48,9 +48,9 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            if (ExecutionRequests.Length != 3)
+            if (ExecutionRequests.Length < ExecutionRequestExtensions.MaxRequestsCount)
             {
-                error = "Execution requests must have exactly three items";
+                error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
                 return ValidationResult.Invalid;
             }
 
