@@ -114,12 +114,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
 
-        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled))
-            // yield break;
+        if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled) || !state.AccountExists(contractAddress))
             return Array.Empty<byte>();
-
-        if (!state.AccountExists(contractAddress))
-            throw new InvalidOperationException($"Contract address {contractAddress} does not exist in the state.");
 
         CallOutputTracer tracer = new();
 
