@@ -144,6 +144,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
 
+    [ConfigItem(Description = "_Technical._ SyncDispatcher delay on empty request. Used for testing.", DefaultValue = "10", HiddenFromDocs = true)]
+    int SyncDispatcherEmptyRequestDelayMs { get; set; }
+
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for header to completely sync first.", DefaultValue = "false", HiddenFromDocs = true)]
     bool NeedToWaitForHeader { get; set; }
 

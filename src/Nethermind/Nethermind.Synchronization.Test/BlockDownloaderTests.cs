@@ -1024,7 +1024,11 @@ public partial class BlockDownloaderTests
 
         private SyncDispatcher<BlocksRequest>? _dispatcher;
         public SyncDispatcher<BlocksRequest> Dispatcher => _dispatcher ??= new SyncDispatcher<BlocksRequest>(
-            0,
+            new SyncConfig()
+            {
+                MaxProcessingThreads = 0,
+                SyncDispatcherEmptyRequestDelayMs = 1
+            },
             Feed!,
             BlockDownloader,
             PeerPool,

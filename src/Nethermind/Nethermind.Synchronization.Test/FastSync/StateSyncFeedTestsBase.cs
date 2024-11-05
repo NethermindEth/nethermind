@@ -119,7 +119,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
             ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
-                0,
+                new SyncConfig()
+                {
+                    SyncDispatcherEmptyRequestDelayMs = 1
+                },
                 ctx.Feed!,
                 ctx.Downloader,
                 ctx.Pool,

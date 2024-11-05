@@ -26,21 +26,10 @@ namespace Nethermind.Synchronization.ParallelSync
         private ISyncPeerPool SyncPeerPool { get; }
 
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
+        private readonly TimeSpan _emptyRequestDelay;
 
         public SyncDispatcher(
             ISyncConfig syncConfig,
-            ISyncFeed<T>? syncFeed,
-            ISyncDownloader<T>? downloader,
-            ISyncPeerPool? syncPeerPool,
-            IPeerAllocationStrategyFactory<T>? peerAllocationStrategy,
-            ILogManager? logManager)
-            : this(syncConfig.MaxProcessingThreads, syncFeed, downloader, syncPeerPool, peerAllocationStrategy, logManager)
-        {
-
-        }
-
-        public SyncDispatcher(
-            int maxNumberOfProcessingThread,
             ISyncFeed<T>? syncFeed,
             ISyncDownloader<T>? downloader,
             ISyncPeerPool? syncPeerPool,
@@ -53,6 +42,7 @@ namespace Nethermind.Synchronization.ParallelSync
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
 
+            int maxNumberOfProcessingThread = syncConfig.MaxProcessingThreads;
             if (maxNumberOfProcessingThread == 0)
             {
                 _concurrentProcessingSemaphore = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
@@ -61,6 +51,8 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 _concurrentProcessingSemaphore = new SemaphoreSlim(maxNumberOfProcessingThread, maxNumberOfProcessingThread);
             }
+
+            _emptyRequestDelay = TimeSpan.FromMilliseconds(syncConfig.SyncDispatcherEmptyRequestDelayMs);
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -104,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                 if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().NameWithGenerics()} enqueued a null request.");
                             }
 
-                            await Task.Delay(10, cancellationToken);
+                            await Task.Delay(_emptyRequestDelay, cancellationToken);
                             continue;
                         }
 

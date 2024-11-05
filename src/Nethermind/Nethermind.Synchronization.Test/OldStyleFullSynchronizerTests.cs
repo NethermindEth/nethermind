@@ -58,7 +58,11 @@ namespace Nethermind.Synchronization.Test
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
-            SyncConfig syncConfig = new();
+            SyncConfig syncConfig = new()
+            {
+                MultiSyncModeSelectorLoopTimerMs = 1,
+                SyncDispatcherEmptyRequestDelayMs = 1
+            };
 
             NodeStorage nodeStorage = new NodeStorage(_stateDb);
             TrieStore trieStore = new(nodeStorage, LimboLogs.Instance);
@@ -164,7 +168,8 @@ namespace Nethermind.Synchronization.Test
         public void Syncs_when_knows_more_blocks()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max * 2).TestObject;
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
+            _remoteBlockTree.Head?.Number.Should().NotBe(0);
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
