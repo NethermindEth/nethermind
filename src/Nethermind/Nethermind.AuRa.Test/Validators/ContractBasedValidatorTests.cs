@@ -90,7 +90,7 @@ public class ContractBasedValidatorTests
             .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
             .Returns(_finalizeChangeData.TransactionData);
 
-        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+        _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance), TestSpecProvider.Instance);
     }
 
     [TearDown]

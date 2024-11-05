@@ -124,7 +124,7 @@ public class TxCertifierFilterTests
     public async Task registry_contract_returns_not_found_when_contract_doesnt_exist()
     {
         using TestTxPermissionsBlockchain chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
-        RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource);
+        RegisterContract contract = new(AbiEncoder.Instance, Address.FromNumber(1000), chain.ReadOnlyTransactionProcessorSource, _specProvider);
         contract.TryGetAddress(chain.BlockTree.Head.Header, CertifierContract.ServiceTransactionContractRegistryName, out Address _).Should().BeFalse();
     }
 
@@ -141,11 +141,12 @@ public class TxCertifierFilterTests
                 WorldStateManager,
                 BlockTree.AsReadOnly(), SpecProvider,
                 LimboLogs.Instance);
-            RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource);
+            RegisterContract = new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, ReadOnlyTransactionProcessorSource, Substitute.For<ISpecProvider>());
             CertifierContract = new CertifierContract(
                 abiEncoder,
                 RegisterContract,
-                ReadOnlyTransactionProcessorSource);
+                ReadOnlyTransactionProcessorSource,
+                Substitute.For<ISpecProvider>());
 
             return new AuRaBlockProcessor(
                 SpecProvider,

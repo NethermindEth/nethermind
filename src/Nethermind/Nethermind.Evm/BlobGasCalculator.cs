@@ -30,7 +30,7 @@ public static class BlobGasCalculator
         return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee, IReleaseSpec spec)
+    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee, IReleaseSpec? spec = null)
     {
         if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas, out UInt256 feePerBlobGas, header.TargetBlobCount, spec))
         {
@@ -40,12 +40,12 @@ public static class BlobGasCalculator
         return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), feePerBlobGas, out blobBaseFee);
     }
 
-    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas, IReleaseSpec spec)
+    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas, IReleaseSpec? spec = null)
     {
         return TryCalculateFeePerBlobGas(header.ExcessBlobGas, out feePerBlobGas, header.TargetBlobCount, spec);
     }
 
-    public static bool TryCalculateFeePerBlobGas(ulong? excessBlobGas, out UInt256 feePerBlobGas, UInt256? targetBlobCount, IReleaseSpec? spec)
+    public static bool TryCalculateFeePerBlobGas(ulong? excessBlobGas, out UInt256 feePerBlobGas, UInt256? targetBlobCount = null, IReleaseSpec? spec = null)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {

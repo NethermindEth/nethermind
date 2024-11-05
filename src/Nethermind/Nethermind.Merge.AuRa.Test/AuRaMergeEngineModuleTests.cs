@@ -141,7 +141,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             };
 
             WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.EngineChainSpecParametersProvider
-                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _api.AbiEncoder);
+                .GetChainSpecParameters<AuRaChainSpecEngineParameters>(), _api.AbiEncoder, _api.SpecProvider);
             WithdrawalProcessor = new AuraWithdrawalProcessor(
                 withdrawalContractFactory.Create(TxProcessor),
                 LogManager

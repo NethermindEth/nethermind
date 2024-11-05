@@ -16,6 +16,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,7 +53,8 @@ namespace Nethermind.AuRa.Test.Contract
                     null,
                     _stateProvider,
                     _readOnlyTxProcessorSource,
-                    new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+                    new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance),
+                    TestSpecProvider.Instance);
             action.Should().Throw<ArgumentNullException>();
         }
 
@@ -78,7 +80,8 @@ namespace Nethermind.AuRa.Test.Contract
                 _contractAddress,
                 _stateProvider,
                 _readOnlyTxProcessorSource,
-                new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
+                new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance),
+                TestSpecProvider.Instance);
 
             contract.FinalizeChange(_block.Header);
 

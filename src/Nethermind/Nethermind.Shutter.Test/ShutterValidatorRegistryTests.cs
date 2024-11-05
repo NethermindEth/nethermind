@@ -12,7 +12,7 @@ using System.Collections.Generic;
 using Nethermind.Shutter.Config;
 using Nethermind.Crypto;
 using Nethermind.Core.Crypto;
-
+using Nethermind.Core.Specs;
 using Update = (byte[] Message, byte[] Signature);
 using G1 = Nethermind.Crypto.Bls.P1;
 
@@ -32,7 +32,8 @@ class ShutterValidatorRegistryTests
             Address.Zero,
             LimboLogs.Instance,
             ShutterTestsCommon.ChainId,
-            1);
+            1,
+            Substitute.For<ISpecProvider>());
         ShutterValidatorsInfo validatorsInfo = new();
         List<(uint, Update)> updates = [];
 
