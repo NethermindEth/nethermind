@@ -160,7 +160,7 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
                     {
                         if (change.Value.IsZero() && _originalValues[change.StorageCell].IsZero())
                         {
-                           return;
+                            return;
                         }
                         toSet[change.StorageCell] = change.Value;
                     }

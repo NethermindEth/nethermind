@@ -148,7 +148,7 @@ public class VerkleTreeTests
         Console.WriteLine(worldState.StateRoot);
 
         VerkleStateTree tree = new VerkleStateTree(store, LimboLogs.Instance);
-        tree.Set(address1, new Account(1,0,Keccak.EmptyTreeHash, new Hash256("0xdf61faef43babbb1ebde8fd82ab9cb4cb74c240d0025138521477e073f72080a")));
+        tree.Set(address1, new Account(1, 0, Keccak.EmptyTreeHash, new Hash256("0xdf61faef43babbb1ebde8fd82ab9cb4cb74c240d0025138521477e073f72080a")));
         tree.Commit();
         Console.WriteLine(tree.StateRoot);
     }

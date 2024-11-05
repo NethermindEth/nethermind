@@ -87,7 +87,7 @@ public class VirtualMachine : IVirtualMachine
         {
             _evm = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
         }
-        if(isStateless) CodeCache.Clear();
+        if (isStateless) CodeCache.Clear();
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
@@ -1638,7 +1638,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.BLOCKHASH:
-                                      {
+                    {
                         Metrics.BlockhashOpcode++;
 
                         Hash256? GetBlockHashFromState(long blockNumber, long currentBlockNumber, out bool outOfGas)
@@ -1673,7 +1673,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             ? GetBlockHashFromState(number, blkCtx.Header.Number, out outForGas)
                             : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
 
-                        if(outForGas) goto OutOfGas;
+                        if (outForGas) goto OutOfGas;
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
@@ -2484,7 +2484,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.WarmUp(target);
         }
 
-        if (transferValue.IsZero || instruction!= Instruction.CALL)
+        if (transferValue.IsZero || instruction != Instruction.CALL)
         {
             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
         }

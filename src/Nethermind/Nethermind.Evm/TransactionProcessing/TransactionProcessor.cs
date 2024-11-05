@@ -593,7 +593,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += spentGas;
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,IExecutionWitness executionWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness executionWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
             if (!tx.IsSystem())
             {

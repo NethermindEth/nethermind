@@ -84,7 +84,7 @@ public struct StateDiff
     public List<StemStateDiff> SuffixDiffs { get; set; }
 }
 
-public struct StemStateDiff: IEquatable<StemStateDiff>
+public struct StemStateDiff : IEquatable<StemStateDiff>
 {
     public Stem Stem { get; set; }
     public List<SuffixStateDiff> SuffixDiffs { get; set; }
@@ -105,7 +105,7 @@ public struct StemStateDiff: IEquatable<StemStateDiff>
     }
 }
 
-public struct SuffixStateDiff: IEquatable<SuffixStateDiff>
+public struct SuffixStateDiff : IEquatable<SuffixStateDiff>
 {
     public byte Suffix { get; set; }
     // add null if the values are not there - part of the spec

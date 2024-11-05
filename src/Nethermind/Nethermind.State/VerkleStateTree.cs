@@ -37,7 +37,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
         Hash256 codeHash = codeHashBytes is null ? Keccak.EmptyTreeHash : new Hash256(codeHashBytes);
         if (basicDataLeafVal is null && codeHashBytes is null) return null;
 
-        return AccountHeader.BasicDataToAccount(basicDataLeafVal?? new byte[32], codeHash);
+        return AccountHeader.BasicDataToAccount(basicDataLeafVal ?? new byte[32], codeHash);
     }
 
     public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
