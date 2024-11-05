@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
+using Nethermind.Db;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree.Cache;
 using Nethermind.Verkle.Tree.Sync;
@@ -18,6 +20,40 @@ namespace Nethermind.Verkle.Tree.TreeStore;
 
 public partial class VerkleTreeStore<TPersistence>
 {
+
+    // TODO: this works, but why is the range dump not working?
+    public void DumpTree(long block, VerkleMemoryDb cache)
+    {
+        var db = new MemDb(sorted: true);
+
+        foreach (KeyValuePair<byte[], byte[]> d in cache.LeafTable)
+        {
+            db[d.Key] = d.Value;
+        }
+
+        IEnumerable<BlockBranchNode>? data = BlockCache.GetEnumerable(StateRoot);
+
+        foreach (BlockBranchNode? node in data)
+        {
+            foreach (var d in node.Data.StateDiff.LeafTable)
+            {
+                db[d.Key] = d.Value;
+            }
+        }
+
+        foreach (KeyValuePair<byte[], byte[]?> dx in Storage.LeafDb.GetAll())
+        {
+            db[dx.Key] = dx.Value;
+        }
+        string docPath = "/home/eurus/";
+        using var outputFile = new StreamWriter(Path.Combine(docPath, $"{block}.txt"));
+
+        foreach (KeyValuePair<byte[], byte[]?> n in db.GetAll(true))
+        {
+            outputFile.WriteLine($"{n.Key.ToHexString()}: {n.Value.ToHexString()}");
+        }
+
+    }
 
     public void InsertRootNodeAfterSyncCompletion(byte[] rootHash, long blockNumber)
     {

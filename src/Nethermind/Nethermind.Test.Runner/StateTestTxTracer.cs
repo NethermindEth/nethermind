@@ -32,6 +32,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingBlockHash { get; } = false;
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
+    public bool IsTracingAccessWitness => false;
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
 
@@ -252,6 +253,10 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
     }
 
+    public void ReportAccessWitness(IReadOnlyList<Hash256> verkleWitnessKeys)
+    {
+        throw new NotImplementedException();
+    }
     public StateTestTxTrace BuildResult()
     {
         return _trace;

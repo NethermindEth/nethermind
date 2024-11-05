@@ -61,7 +61,7 @@ public partial class VerkleTree
             { Stem = stemStateDiffData.Key, SuffixDiffs = stemStateDiffData.Value };
         }
 
-        return new ExecutionWitness(stemStateDiffList, proof);
+        return new ExecutionWitness(stemStateDiffList, proof, StateRoot);
     }
 
     public void UpdateWithPostStateValues(ExecutionWitness executionWitness)

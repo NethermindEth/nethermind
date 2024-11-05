@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Witness;
@@ -21,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Tracing;
+using Nethermind.Verkle.Tree.TreeStore;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
 using static Nethermind.Evm.VirtualMachine;
@@ -144,7 +146,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
-            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+            PayFees(tx, header, spec, tracer, executionWitness, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
             if (restore)
@@ -472,13 +474,18 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
-                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, ref unspentGas))
+                    if (!env.Witness.AccessForContractCreationCheck(env.ExecutingAccount, ref unspentGas))
                     {
                         ThrowOutOfGasException();
                     }
 
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
+
+                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, ref unspentGas))
+                    {
+                        ThrowOutOfGasException();
+                    }
                 }
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
@@ -586,7 +593,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 header.GasUsed += spentGas;
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness executionWitness, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
             if (!tx.IsSystem())
             {
@@ -596,7 +603,9 @@ namespace Nethermind.Evm.TransactionProcessing
                     UInt256 fees = (UInt256)spentGas * premiumPerGas;
                     UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : 0;
 
-                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary, fees, spec);
+                    if (!fees.IsZero) executionWitness.AccessForGasBeneficiary(header.GasBeneficiary!);
+
+                    WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
                     if (spec.IsEip1559Enabled && spec.Eip1559FeeCollector is not null && !burntFees.IsZero)
                         WorldState.AddToBalanceAndCreateIfNotExists(spec.Eip1559FeeCollector, burntFees, spec);

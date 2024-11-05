@@ -39,6 +39,8 @@ public class NullVerkleTreeStore : IVerkleTreeStore
     {
     }
 
+    public void DumpTree(long block, VerkleMemoryDb cache) { Console.WriteLine($"Empty Tree"); }
+
     public Hash256 StateRoot => Hash256.Zero;
     public bool HasStateForBlock(Hash256 stateRoot)
     {

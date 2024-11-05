@@ -23,8 +23,8 @@ public class MonomialBasis
     {
         FrE[] output = new FrE[a.Length() + b.Length() - 1];
         for (int i = 0; i < a.Length(); i++)
-        for (int j = 0; j < b.Length(); j++)
-            output[i + j] += a.Coeffs[i]! * b.Coeffs[j]!;
+            for (int j = 0; j < b.Length(); j++)
+                output[i + j] += a.Coeffs[i]! * b.Coeffs[j]!;
 
         return new MonomialBasis(output);
     }

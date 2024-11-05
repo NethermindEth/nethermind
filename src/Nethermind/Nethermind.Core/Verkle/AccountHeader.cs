@@ -58,7 +58,7 @@ public readonly struct AccountHeader
         byte version = basicData[0];
         var nonce = new UInt256(basicData.Slice(NonceOffset, NonceBytesLength), true);
         var codeSize = new UInt256(basicData.Slice(CodeSizeOffset, CodeSizeBytesLength), true);
-        var balance = new UInt256( basicData.Slice(BalanceOffset, BalanceBytesLength), true);
+        var balance = new UInt256(basicData.Slice(BalanceOffset, BalanceBytesLength), true);
 
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, codeHash);
     }

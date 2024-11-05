@@ -145,15 +145,15 @@ public readonly partial struct FrE
         a = Rsh(res.u0, 64 - n);
         z0 = Lsh(res.u0, n);
 
-        sh64:
+    sh64:
         b = Rsh(res.u1, 64 - n);
         z1 = Lsh(res.u1, n) | a;
 
-        sh128:
+    sh128:
         a = Rsh(res.u2, 64 - n);
         z2 = Lsh(res.u2, n) | b;
 
-        sh192:
+    sh192:
         z3 = Lsh(res.u3, n) | a;
 
         res = new FE(z0, z1, z2, z3);
@@ -238,15 +238,15 @@ public readonly partial struct FrE
         a = Lsh(res.u3, 64 - n);
         z3 = Rsh(res.u3, n);
 
-        sh64:
+    sh64:
         b = Lsh(res.u2, 64 - n);
         z2 = Rsh(res.u2, n) | a;
 
-        sh128:
+    sh128:
         a = Lsh(res.u1, 64 - n);
         z1 = Rsh(res.u1, n) | b;
 
-        sh192:
+    sh192:
         z0 = Rsh(res.u0, n) | a;
 
         res = new FE(z0, z1, z2, z3);

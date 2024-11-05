@@ -9,9 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis" Version="4.8.0"/>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0"/>
-    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.2.0"/>
+    <PackageReference Include="Nethermind.Numerics.Int256"/>
   </ItemGroup>
 
   <ItemGroup>

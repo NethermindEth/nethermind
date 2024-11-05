@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
+using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
 
@@ -17,16 +18,20 @@ public class ExecutionWitness
     public StemStateDiff[] StateDiff { get; }
     public WitnessVerkleProof? VerkleProof { get; }
 
+    public Hash256 ParentStateRoot { get; }
+
     public ExecutionWitness()
     {
-        StateDiff = Array.Empty<StemStateDiff>();
+        StateDiff = [];
         VerkleProof = null;
+        ParentStateRoot = Keccak.EmptyTreeHash;
     }
 
-    public ExecutionWitness(StemStateDiff[] stateDiff, WitnessVerkleProof proof)
+    public ExecutionWitness(StemStateDiff[] stateDiff, WitnessVerkleProof proof, Hash256 parentStateRoot)
     {
         StateDiff = stateDiff;
         VerkleProof = proof;
+        ParentStateRoot = parentStateRoot;
     }
 }
 
@@ -79,13 +84,28 @@ public struct StateDiff
     public List<StemStateDiff> SuffixDiffs { get; set; }
 }
 
-public struct StemStateDiff
+public struct StemStateDiff : IEquatable<StemStateDiff>
 {
     public Stem Stem { get; set; }
     public List<SuffixStateDiff> SuffixDiffs { get; set; }
+
+    public bool Equals(StemStateDiff other)
+    {
+        return Stem.Equals(other.Stem) && SuffixDiffs.SequenceEqual(other.SuffixDiffs);
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is StemStateDiff other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Stem, SuffixDiffs);
+    }
 }
 
-public struct SuffixStateDiff
+public struct SuffixStateDiff : IEquatable<SuffixStateDiff>
 {
     public byte Suffix { get; set; }
     // add null if the values are not there - part of the spec
@@ -93,4 +113,26 @@ public struct SuffixStateDiff
     public byte[]? CurrentValue { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? NewValue { get; set; }
+
+    public bool Equals(SuffixStateDiff other)
+    {
+        if (Suffix != other.Suffix)
+            return false;
+
+        if (CurrentValue is null)
+            return other.CurrentValue is null;
+
+        return other.CurrentValue is not null &&
+               Extensions.Bytes.AreEqual(CurrentValue, other.CurrentValue);
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is SuffixStateDiff other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Suffix, CurrentValue);
+    }
 }

@@ -40,6 +40,9 @@ namespace Nethermind.Test.Runner
 
             [Option('x', "stdin", Required = false, HelpText = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read.")]
             public bool Stdin { get; set; }
+
+            [Option('v', "VerkleTest", Required = false, HelpText = "")]
+            public bool VerkleTest { get; set; }
         }
 
         public static async Task Main(params string[] args)
@@ -64,8 +67,10 @@ namespace Nethermind.Test.Runner
 
             while (!string.IsNullOrWhiteSpace(input))
             {
-                if (options.BlockTest)
-                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter));
+                if (options.VerkleTest)
+                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter, new VerkleBlockChainTestBase()));
+                else if (options.BlockTest)
+                    await RunBlockTest(input, source => new BlockchainTestsRunner(source, options.Filter, new BlockchainTestBase()));
                 else
                     RunStateTest(input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack, options.Filter));
                 if (!options.Stdin)

@@ -1,4 +1,4 @@
-﻿using Nethermind.Api;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.Db;

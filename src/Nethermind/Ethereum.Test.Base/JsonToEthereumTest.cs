@@ -40,6 +40,7 @@ namespace Ethereum.Test.Base
             network = network.Replace("Shanghai+6780", "Cancun");
             network = network.Replace("GrayGlacier+1153", "Cancun");
             network = network.Replace("Merge+1153", "Cancun");
+            network = network.Replace("Verkle", "Osaka");
             return network switch
             {
                 "Frontier" => Frontier.Instance,
@@ -58,6 +59,7 @@ namespace Ethereum.Test.Base
                 "GrayGlacier" => GrayGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
+                "Osaka" => Osaka.Instance,
                 _ => throw new NotSupportedException()
             };
         }

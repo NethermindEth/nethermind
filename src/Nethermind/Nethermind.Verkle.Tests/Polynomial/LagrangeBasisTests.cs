@@ -10,13 +10,21 @@ public class LagrangeBasisTests
     {
         FrE[] domainSq =
         [
-            FrE.SetElement(), FrE.SetElement(1), FrE.SetElement(4), FrE.SetElement(9), FrE.SetElement(16),
+            FrE.SetElement(),
+            FrE.SetElement(1),
+            FrE.SetElement(4),
+            FrE.SetElement(9),
+            FrE.SetElement(16),
             FrE.SetElement(25)
         ];
 
         FrE[] domain2 =
         [
-            FrE.SetElement(2), FrE.SetElement(3), FrE.SetElement(4), FrE.SetElement(5), FrE.SetElement(6),
+            FrE.SetElement(2),
+            FrE.SetElement(3),
+            FrE.SetElement(4),
+            FrE.SetElement(5),
+            FrE.SetElement(6),
             FrE.SetElement(7)
         ];
 
@@ -25,7 +33,11 @@ public class LagrangeBasisTests
 
         FrE[] expected =
         [
-            FrE.SetElement(2), FrE.SetElement(4), FrE.SetElement(8), FrE.SetElement(14), FrE.SetElement(22),
+            FrE.SetElement(2),
+            FrE.SetElement(4),
+            FrE.SetElement(8),
+            FrE.SetElement(14),
+            FrE.SetElement(22),
             FrE.SetElement(32)
         ];
         LagrangeBasis ex = new(expected);
@@ -43,12 +55,20 @@ public class LagrangeBasisTests
     {
         FrE[] domainSq =
         [
-            FrE.SetElement(), FrE.SetElement(1), FrE.SetElement(4), FrE.SetElement(9), FrE.SetElement(16),
+            FrE.SetElement(),
+            FrE.SetElement(1),
+            FrE.SetElement(4),
+            FrE.SetElement(9),
+            FrE.SetElement(16),
             FrE.SetElement(25)
         ];
         FrE[] domainPow4 =
         [
-            FrE.SetElement(), FrE.SetElement(1), FrE.SetElement(16), FrE.SetElement(81), FrE.SetElement(256),
+            FrE.SetElement(),
+            FrE.SetElement(1),
+            FrE.SetElement(16),
+            FrE.SetElement(81),
+            FrE.SetElement(256),
             FrE.SetElement(625)
         ];
 
@@ -67,7 +87,11 @@ public class LagrangeBasisTests
     {
         FrE[] domainSq =
         [
-            FrE.SetElement(), FrE.SetElement(1), FrE.SetElement(4), FrE.SetElement(9), FrE.SetElement(16),
+            FrE.SetElement(),
+            FrE.SetElement(1),
+            FrE.SetElement(4),
+            FrE.SetElement(9),
+            FrE.SetElement(16),
             FrE.SetElement(25)
         ];
 
@@ -78,7 +102,11 @@ public class LagrangeBasisTests
 
         FrE[] expected =
         [
-            FrE.SetElement(), FrE.SetElement(10), FrE.SetElement(40), FrE.SetElement(90), FrE.SetElement(160),
+            FrE.SetElement(),
+            FrE.SetElement(10),
+            FrE.SetElement(40),
+            FrE.SetElement(90),
+            FrE.SetElement(160),
             FrE.SetElement(250)
         ];
         LagrangeBasis ex = new(expected);

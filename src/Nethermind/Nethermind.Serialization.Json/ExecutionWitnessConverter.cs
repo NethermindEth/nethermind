@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Verkle;
 
 namespace Nethermind.Serialization.Json;
@@ -19,7 +20,10 @@ public class ExecutionWitnessConverter : System.Text.Json.Serialization.JsonConv
         reader.Read();
         WitnessVerkleProof proof = JsonSerializer.Deserialize<WitnessVerkleProof>(ref reader, options);
         reader.Read();
-        return new ExecutionWitness(stateDiff, proof);
+        reader.Read();
+        Hash256 parentStateRoot = JsonSerializer.Deserialize<Hash256>(ref reader, options);
+        reader.Read();
+        return new ExecutionWitness(stateDiff, proof, parentStateRoot);
     }
 
     public override void Write(Utf8JsonWriter writer, ExecutionWitness value, JsonSerializerOptions options)

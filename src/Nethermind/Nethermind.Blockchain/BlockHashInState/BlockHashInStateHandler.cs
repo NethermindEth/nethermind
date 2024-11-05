@@ -34,8 +34,9 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        // TODO: this is just for kaustinen right now
-        if (!stateProvider.AccountExists(eip2935Account)) stateProvider.CreateAccount(eip2935Account, 0);
+        // TODO: this check is mostly removed for stateless nodes
+        // TODO: added for the issue in testnets
+        if (!stateProvider.AccountExists(eip2935Account)) stateProvider.CreateAccount(eip2935Account, 0, 0);
         // if (blockHeader.Number == 1) stateProvider.CreateAccount(eip2935Account, 0);
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
 
