@@ -131,6 +131,9 @@ namespace Nethermind.Consensus.Processing
                 beneficiary = lastTx.To;
                 isMev = true;
             }
+
+            if (!_stateReader.HasStateForRoot(_lastBranchRoot) || !_stateReader.HasStateForRoot(block.StateRoot))
+                return;
             UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
             UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
             UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
