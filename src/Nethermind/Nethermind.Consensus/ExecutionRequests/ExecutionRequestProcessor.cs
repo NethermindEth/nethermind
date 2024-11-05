@@ -134,7 +134,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         int validLength = tracer.ReturnValue.Length - (tracer.ReturnValue.Length % requestsByteSize);
 
         if (validLength == 0) return;
-        
+
         Span<byte> buffer = stackalloc byte[validLength + 1];
         buffer[0] = isWithdrawalRequests ? (byte)ExecutionRequestType.WithdrawalRequest : (byte)ExecutionRequestType.ConsolidationRequest;
         tracer.ReturnValue.AsSpan(0, validLength).CopyTo(buffer.Slice(1));
