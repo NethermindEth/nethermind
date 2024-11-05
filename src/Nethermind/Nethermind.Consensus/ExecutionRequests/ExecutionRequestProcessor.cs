@@ -118,7 +118,6 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         int requestsByteSize = isWithdrawalRequests ? ExecutionRequestExtensions.WithdrawalRequestsBytesSize : ExecutionRequestExtensions.ConsolidationRequestsBytesSize;
 
         if (!(isWithdrawalRequests ? spec.WithdrawalRequestsEnabled : spec.ConsolidationRequestsEnabled) || !state.AccountExists(contractAddress))
-            // return Array.Empty<byte>();
             return;
 
         CallOutputTracer tracer = new();
@@ -127,7 +126,6 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
 
         if (tracer.ReturnValue is null || tracer.ReturnValue.Length == 0)
         {
-            // return Array.Empty<byte>();
             return;
         }
 

@@ -48,7 +48,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 return ValidationResult.Fail;
             }
 
-            if (ExecutionRequests.Length < ExecutionRequestExtensions.MaxRequestsCount)
+            if (ExecutionRequests.Length > ExecutionRequestExtensions.MaxRequestsCount)
             {
                 error = $"Execution requests must have less than {ExecutionRequestExtensions.MaxRequestsCount} items";
                 return ValidationResult.Invalid;
