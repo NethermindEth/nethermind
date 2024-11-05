@@ -3,8 +3,4 @@
 
 namespace Evm.T8n.JsonTypes;
 
-public class TransactionMetaData
-{
-    public bool? Protected { get; set; }
-    public byte[]? SecretKey { get; set; }
-}
+public readonly record struct TransactionMetaData(bool? Protected, byte[]? SecretKey);

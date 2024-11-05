@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -25,7 +26,7 @@ namespace Nethermind.AuRa.Test.Reward
 {
     public class AuRaRewardCalculatorTests
     {
-        private AuRaParameters _auraParameters;
+        private AuRaChainSpecEngineParameters _auraParameters;
         private IAbiEncoder _abiEncoder;
         private ITransactionProcessor _transactionProcessor;
         private Block _block;
@@ -40,11 +41,11 @@ namespace Nethermind.AuRa.Test.Reward
             _address10 = TestItem.AddressA;
             _address50 = TestItem.AddressB;
             _address150 = TestItem.AddressC;
-            _auraParameters = new AuRaParameters
+            _auraParameters = new AuRaChainSpecEngineParameters()
             {
                 BlockRewardContractAddress = _address10,
                 BlockRewardContractTransition = 10,
-                BlockReward = new Dictionary<long, UInt256>() { { 0, 200 } },
+                BlockReward = new SortedDictionary<long, UInt256>() { { 0, 200 } },
             };
 
             _abiEncoder = Substitute.For<IAbiEncoder>();

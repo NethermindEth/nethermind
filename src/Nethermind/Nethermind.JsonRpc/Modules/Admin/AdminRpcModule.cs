@@ -52,15 +52,20 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void BuildNodeInfo()
     {
-        _nodeInfo = new NodeInfo();
-        _nodeInfo.Name = ProductInfo.ClientId;
-        _nodeInfo.Enode = _enode.Info;
-        byte[] publicKeyBytes = _enode.PublicKey?.Bytes;
-        _nodeInfo.Id = (publicKeyBytes is null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
-        _nodeInfo.Ip = _enode.HostIp?.ToString();
-        _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
-        _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;
-        _nodeInfo.Ports.Listener = _networkConfig.P2PPort;
+        _nodeInfo = new NodeInfo
+        {
+            Name = ProductInfo.ClientId,
+            Enode = _enode.Info,
+            Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
+            Ip = _enode.HostIp?.ToString(),
+            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
+            Ports =
+            {
+                Discovery = _networkConfig.DiscoveryPort,
+                Listener = _networkConfig.P2PPort
+            }
+        };
+
         UpdateEthProtocolInfo();
     }
 

@@ -29,6 +29,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.Blockchain.Test;
 

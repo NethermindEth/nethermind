@@ -361,6 +361,8 @@ namespace Nethermind.Synchronization.Test
 
             ContainerBuilder builder = new ContainerBuilder();
             builder
+                .AddModule(new DbModule())
+                .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
                 .AddSingleton<INodeStorage>(new NodeStorage(dbProvider.StateDb))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -379,8 +381,6 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<IReceiptStorage>(receiptStorage)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton<ILogManager>(logManager);
-            dbProvider.ConfigureServiceCollection(builder);
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
             IContainer container = builder.Build();
 
             Synchronizer synchronizer = container.Resolve<Synchronizer>();
