@@ -364,6 +364,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None);
+
             yield return (Instruction.ISZERO, Prepare.EvmCode
                     .ISZERO(7)
                     .PushData(7)
@@ -371,7 +372,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .ISZERO(0)
                     .PushData(1)
                     .SSTORE()
+                    .ISZERO(UInt256.MaxValue)
+                    .PushData(23)
+                    .SSTORE()
                     .Done, EvmExceptionType.None);
+
             yield return (Instruction.SUB, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
@@ -1434,7 +1439,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
         }
 
-
         [Test]
         public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_Off()
         {
@@ -1510,7 +1514,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             string[] actualTracePattern = traces.TakeLast(5).Select(tr => tr.SegmentID).ToArray();
             Assert.That(actualTracePattern, Is.EqualTo(desiredTracePattern));
         }
-
 
         [Test]
         public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_On_Equiv()
@@ -1588,7 +1591,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(normalHasIlvmTraces, Is.False);
             Assert.That(actual, Is.EqualTo(expected));
         }
-
 
         [Test]
         public void JIT_Mode_Segment_Has_Jump_Into_Another_Segment_Agressive_Mode_Off_Equiv()
@@ -1708,7 +1710,6 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(HasIlvmTraces, Is.True);
             Assert.That(hasFailed, Is.True);
         }
-
 
         [Test]
         public void Pure_Opcode_Emition_Coveraga()
