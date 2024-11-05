@@ -37,16 +37,6 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-        ArgumentNullException.ThrowIfNull(BedrockBlockNumber);
-        ArgumentNullException.ThrowIfNull(RegolithTimestamp);
-        ArgumentNullException.ThrowIfNull(CanyonTimestamp);
-        ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
-        ArgumentNullException.ThrowIfNull(FjordTimestamp);
-        ArgumentNullException.ThrowIfNull(GraniteTimestamp);
-    }
-
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
