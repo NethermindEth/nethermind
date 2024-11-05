@@ -111,7 +111,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         }
     }
 
-    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress,ArrayPoolList<byte[]> requests)
+    private void ReadRequests(Block block, IWorldState state, IReleaseSpec spec, Address contractAddress, ArrayPoolList<byte[]> requests)
     {
         bool isWithdrawalRequests = contractAddress == spec.Eip7002ContractAddress;
 
@@ -145,7 +145,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             return;
 
         using ArrayPoolList<byte[]> requests = new(3);
-       
+
         ProcessDeposits(receipts, spec, requests);
         ReadRequests(block, state, spec, spec.Eip7002ContractAddress, requests);
         ReadRequests(block, state, spec, spec.Eip7251ContractAddress, requests);
