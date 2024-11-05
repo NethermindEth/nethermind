@@ -43,7 +43,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public long ValidateStepTransition { get; set; }
 
     [JsonPropertyName("Validators")]
-    private AuRaValidatorJson ValidatorsJson { get; set; }
+    public AuRaValidatorJson ValidatorsJson { get; set; }
 
     public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
 
@@ -58,6 +58,8 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public Address WithdrawalContractAddress { get; set; }
 
     private AuRaParameters.Validator? _validators;
+
+    [JsonIgnore]
     public AuRaParameters.Validator Validators
     {
         get => _validators ??= LoadValidator(ValidatorsJson);
@@ -150,7 +152,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    private class AuRaValidatorJson
+    public class AuRaValidatorJson
     {
         public Address[]? List { get; set; }
         public Address? Contract { get; set; }
