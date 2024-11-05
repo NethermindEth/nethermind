@@ -77,13 +77,12 @@ namespace Nethermind.Api
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider!, WorldStateManager!.TrieStore, LogManager);
 
             // TODO: reuse the same trie cache here
-            OverridableTxProcessingEnv txProcessingEnv = new(
-                overridableWorldStateManager,
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
+                WorldStateManager!,
                 readOnlyTree,
-                SpecProvider!,
+                SpecProvider,
                 LogManager);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
@@ -98,7 +97,7 @@ namespace Nethermind.Api
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
-                txProcessingEnv,
+                readOnlyTxProcessingEnv,
                 simulateReadOnlyBlocksProcessingEnvFactory,
                 TxPool,
                 ReceiptFinder,

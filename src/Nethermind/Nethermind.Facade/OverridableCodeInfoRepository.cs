@@ -7,12 +7,13 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State;
 
-namespace Nethermind.Evm;
+namespace Nethermind.Facade;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : ICodeInfoRepository
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
@@ -50,6 +51,4 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public ValueHash256 GetExecutableCodeHash(IWorldState worldState, Address address) =>
         codeInfoRepository.GetExecutableCodeHash(worldState, address);
-
-    public void ResetOverrides() => _codeOverwrites.Clear();
 }

@@ -7,16 +7,17 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Facade.Proxy.Models;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm;
+namespace Nethermind.Facade;
 
 public static class StateOverridesExtensions
 {
     public static void ApplyStateOverrides(
         this IWorldState state,
-        IOverridableCodeInfoRepository overridableCodeInfoRepository,
+        OverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
         long blockNumber)
@@ -68,15 +69,13 @@ public static class StateOverridesExtensions
 
     private static void UpdateCode(
         this IWorldState stateProvider,
-        IOverridableCodeInfoRepository overridableCodeInfoRepository,
+        OverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
         AccountOverride accountOverride,
         Address address)
     {
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
-
             overridableCodeInfoRepository.SetCodeOverwrite(
                 stateProvider,
                 currentSpec,

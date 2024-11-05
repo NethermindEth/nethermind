@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -25,8 +23,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
     public virtual ResultWrapper<TResult> Execute(
         TRequest call,
-        BlockParameter? blockParameter,
-        Dictionary<Address, AccountOverride>? stateOverride = null)
+        BlockParameter? blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError) return ResultWrapper<TResult>.Fail(searchResult);
@@ -38,12 +35,12 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
         TProcessing? toProcess = Prepare(call);
-        return Execute(header.Clone(), toProcess, stateOverride, cancellationTokenSource.Token);
+        return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
     }
 
     protected abstract TProcessing Prepare(TRequest call);
 
-    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
+    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, CancellationToken token);
 
     protected ResultWrapper<TResult>? TryGetInputError(CallOutput result)
     {

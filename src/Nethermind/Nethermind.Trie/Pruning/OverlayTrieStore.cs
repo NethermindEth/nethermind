@@ -23,11 +23,4 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOn
 
     public override byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         base.TryLoadRlp(address, in path, hash, flags) ?? store.TryLoadRlp(address, in path, hash, flags);
-
-    protected override void VerifyNewCommitSet(long blockNumber)
-    {
-        // Skip checks, as override can be applied using the same block number or without a state root
-    }
-
-    public void ResetOverrides() => ClearCache();
 }

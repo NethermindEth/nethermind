@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm;
+namespace Nethermind.Facade.Proxy.Models;
 
 public class AccountOverride
 {

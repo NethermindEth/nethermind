@@ -31,7 +31,6 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
-// Tests with mocked IDebugBridge
 [Parallelizable(ParallelScope.Self)]
 public class DebugModuleTests
 {
