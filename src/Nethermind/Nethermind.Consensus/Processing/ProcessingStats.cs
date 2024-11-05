@@ -132,7 +132,7 @@ namespace Nethermind.Consensus.Processing
                 isMev = true;
             }
 
-            if (_lastBranchRoot == null || !_stateReader.HasStateForRoot(_lastBranchRoot) || block.StateRoot == null || !_stateReader.HasStateForRoot(block.StateRoot))
+            if (_lastBranchRoot is null || !_stateReader.HasStateForRoot(_lastBranchRoot) || block.StateRoot is null || !_stateReader.HasStateForRoot(block.StateRoot))
                 return;
             UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
             UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
