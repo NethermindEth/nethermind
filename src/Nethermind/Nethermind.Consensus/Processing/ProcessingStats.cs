@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Processing
         private long _runMicroseconds;
         private long _reportMs;
         private Block? _lastBlock;
-        private Hash256 _lastBranchRoot;
+        private Hash256? _lastBranchRoot;
         private long _sloadOpcodeProcessing;
         private long _sstoreOpcodeProcessing;
         private long _callsProcessing;
@@ -132,7 +132,7 @@ namespace Nethermind.Consensus.Processing
                 isMev = true;
             }
 
-            if (!_stateReader.HasStateForRoot(_lastBranchRoot) || !_stateReader.HasStateForRoot(block.StateRoot))
+            if (_lastBranchRoot == null || !_stateReader.HasStateForRoot(_lastBranchRoot) || block.StateRoot == null || !_stateReader.HasStateForRoot(block.StateRoot))
                 return;
             UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
             UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
