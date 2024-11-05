@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
 
             Name = peer.Node.ClientId;
-            Id = CalculateClientId(peer.Node.Id);
+            Id = peer.Node.Id.Hash.ToString(false);
             Host = peer.Node.Host is null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
@@ -53,12 +53,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
                 EthDetails = peer.Node.EthDetails;
                 LastSignal = (peer.InSession ?? peer.OutSession)?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
             }
-        }
-
-        private string CalculateClientId(PublicKey nodeKey)
-        {
-            byte[] publicKeyBytes = nodeKey.Bytes;
-            return (publicKeyBytes is null ? Keccak.Zero.ValueHash256 : ValueKeccak.Compute(publicKeyBytes)).ToString(false);
         }
     }
 }
