@@ -254,7 +254,7 @@ jobs:
       
             if $all_reached_required_count; then
               echo "All required logs found."
-              exit 0
+              kill $$ && exit 0
             fi
           done
 
