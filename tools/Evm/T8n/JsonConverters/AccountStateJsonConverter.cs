@@ -10,6 +10,7 @@ using Nethermind.Serialization.Json;
 
 namespace Evm.T8n.JsonConverters;
 
+// required to serialize in geth t8n format
 public class AccountStateJsonConverter : JsonConverter<AccountState>
 {
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
