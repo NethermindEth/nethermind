@@ -132,13 +132,13 @@ public class ExecutionProcessorTests
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyA.Bytes.Slice(0, 48), TestItem.KeccakA.Bytes.ToArray(), BitConverter.GetBytes((ulong)1_000_000_000), TestItem.SignatureBytes, BitConverter.GetBytes((ulong)1)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, TestItem.ExecutionRequestA.RequestDataParts)
                 ).WithAddress(DepositContractAddress).TestObject,
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyB.Bytes.Slice(0, 48), TestItem.KeccakB.Bytes.ToArray(), BitConverter.GetBytes((ulong)2_000_000_000), TestItem.SignatureBytes, BitConverter.GetBytes((ulong)2)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, TestItem.ExecutionRequestB.RequestDataParts)
                 ).WithAddress(DepositContractAddress).TestObject,
                 Build.A.LogEntry.WithData(
-                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, [TestItem.PublicKeyC.Bytes.Slice(0, 48), TestItem.KeccakC.Bytes.ToArray(), BitConverter.GetBytes((ulong)3_000_000_000), TestItem.SignatureBytes, BitConverter.GetBytes((ulong)3)])
+                    _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, TestItem.ExecutionRequestC.RequestDataParts)
                 ).WithAddress(DepositContractAddress).TestObject
             ).TestObject
         ];

@@ -334,6 +334,26 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        public static byte[] Concat(ReadOnlySpan<byte[]> bytes)
+        {
+            int totalLength = 0;
+            foreach (byte[] byteArray in bytes)
+            {
+                totalLength += byteArray.Length;
+            }
+
+            byte[] result = new byte[totalLength];
+            int offset = 0;
+
+            foreach (byte[] byteArray in bytes)
+            {
+                Array.Copy(byteArray, 0, result, offset, byteArray.Length);
+                offset += byteArray.Length;
+            }
+
+            return result;
+        }
+
         public static byte[] Reverse(byte[] bytes)
         {
             byte[] result = new byte[bytes.Length];
