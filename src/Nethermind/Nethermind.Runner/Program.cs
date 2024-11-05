@@ -330,7 +330,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     logger = logManager.GetClassLogger();
 
-    string logLevel = parseResult.GetValue(BasicOptions.LogLevel) ?? "info";
+    string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
