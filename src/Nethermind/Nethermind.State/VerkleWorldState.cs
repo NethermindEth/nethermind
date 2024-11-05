@@ -44,7 +44,7 @@ public class VerkleWorldState : IWorldState
     protected Change?[] Changes = new Change?[StartCapacity];
     private int _currentPosition = Resettable.EmptyPosition;
 
-    protected readonly VerkleStateTree Tree;
+    public readonly VerkleStateTree Tree;
     private readonly VerkleStorageProvider _storageProvider;
 
     // Only guarding against hot duplicates so filter doesn't need to be too big
@@ -887,7 +887,7 @@ public class VerkleWorldState : IWorldState
                 case ChangeType.New:
                     {
                         // For new accounts we do not need to save empty accounts when Eip158 enabled with Verkle
-                        if (change.Account != null && (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis || change.Address == new Address("0xfffffffffffffffffffffffffffffffffffffffe")))
+                        if (change.Account != null && (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis))
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             accountChange[change.Address] = (change.Account, true);

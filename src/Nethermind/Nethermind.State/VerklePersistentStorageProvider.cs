@@ -156,7 +156,14 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
                     }
 
                     Db.Metrics.StorageTreeWrites++;
-                    if (!_selfDestructAddress.Contains(change.StorageCell.Address)) toSet[change.StorageCell] = change.Value;
+                    if (!_selfDestructAddress.Contains(change.StorageCell.Address))
+                    {
+                        if (change.Value.IsZero() && _originalValues[change.StorageCell].IsZero())
+                        {
+                           return;
+                        }
+                        toSet[change.StorageCell] = change.Value;
+                    }
 
                     if (isTracing)
                     {
