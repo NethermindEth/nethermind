@@ -19,7 +19,7 @@ public class InputData
     public TransactionMetaData[]? TransactionMetaDataList { get; set; }
     public string? TxRlp { get; set; }
 
-    public Transaction[] GetTransactions(TxDecoder decoder)
+    public Transaction[] GetTransactions(TxDecoder decoder, ulong chainId)
     {
         List<Transaction> transactions = [];
         if (TxRlp is not null)
@@ -29,6 +29,8 @@ public class InputData
         }
         else if (Txs is not null && TransactionMetaDataList is not null)
         {
+            var ecdsa = new EthereumEcdsa(chainId);
+
             for (int i = 0; i < Txs.Length; i++)
             {
                 var transaction = Txs[i].ToTransaction();
@@ -36,7 +38,10 @@ public class InputData
 
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
 
+                transaction.ChainId ??= chainId;
+                transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
                 transaction.Hash = transaction.CalculateHash();
+
                 transactions.Add(transaction);
             }
         }

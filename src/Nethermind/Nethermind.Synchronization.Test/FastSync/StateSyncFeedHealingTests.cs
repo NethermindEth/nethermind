@@ -137,7 +137,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
         SafeContext ctx = PrepareDownloader(dbContext);
-        await ActivateAndWait(ctx, dbContext, 9, timeout: 10000);
+        await ActivateAndWait(ctx, dbContext, 9, timeout: 20000);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 

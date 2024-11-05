@@ -3,4 +3,4 @@
 
 namespace Evm.T8n.JsonTypes;
 
-public readonly record struct TransactionMetaData(bool? Protected, byte[]? SecretKey);
+public readonly record struct RejectedTx(int Index, string Error);
