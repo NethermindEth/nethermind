@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.ObjectPool;
@@ -52,6 +53,19 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
         {
             AddRangeResult result;
+
+
+            {
+                var builder = new StringBuilder();
+                builder.AppendLine("TRIESYNC: Add account range");
+                builder.AppendLine($"TRIESYNC: {request}");
+                foreach (PathWithAccount? acc in response.PathAndAccounts)
+                {
+                    builder.AppendLine($"TRIESYNC: PathWithAccount: {acc.Path}");
+                }
+                builder.AppendLine("------------------------------------------------");
+                _logger.Info($"{builder.ToString()}");
+            }
 
             if (response.PathAndAccounts.Count == 0)
             {
@@ -144,6 +158,27 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response)
         {
             AddRangeResult result = AddRangeResult.OK;
+
+            {
+                var builder = new StringBuilder();
+                builder.AppendLine("TRIESYNC: AddStorageRange");
+                builder.AppendLine($"TRIESYNC: {request}");
+
+                foreach (var acc in request.Accounts)
+                {
+                    builder.AppendLine($"TRIESYNC: PathWithAccount: {acc.Path}");
+                }
+                foreach (IOwnedReadOnlyList<PathWithStorageSlot>? acc in response.PathsAndSlots)
+                {
+                    foreach (PathWithStorageSlot item in acc)
+                    {
+                        builder.AppendLine($"TRIESYNC: PathWithStorageSlot: {item.Path}");
+                    }
+                }
+
+                builder.AppendLine("------------------------------------------------");
+                _logger.Info($"{builder.ToString()}");
+            }
 
             IReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots;
             if (responses.Count == 0 && response.Proofs.Count == 0)

@@ -16,5 +16,10 @@ namespace Nethermind.State.Snap
             PathAndAccounts?.Dispose();
             Proofs?.Dispose();
         }
+
+        public override string ToString()
+        {
+            return $"PathAndAccounts: {PathAndAccounts}";
+        }
     }
 }
