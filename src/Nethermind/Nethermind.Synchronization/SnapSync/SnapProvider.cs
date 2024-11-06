@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
 
                     PathWithAccount account = request.Accounts[i];
-                    result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs);
+                    result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs, request.LimitHash);
 
                     slotCount += responses[i].Count;
                 }
