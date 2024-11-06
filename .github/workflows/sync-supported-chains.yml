@@ -157,6 +157,7 @@ jobs:
             
             ./build/sedge generate \
             --logging none \
+            --latest \
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
             --op-execution opnethermind:$docker_image \
@@ -170,6 +171,7 @@ jobs:
           else
             ./build/sedge generate \
             --logging none \
+            --latest \
             -p $GITHUB_WORKSPACE/sedge \
             full-node \
             -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
