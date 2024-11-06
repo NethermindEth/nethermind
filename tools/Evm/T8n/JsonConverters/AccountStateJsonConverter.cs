@@ -31,7 +31,6 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
             writer.WritePropertyName("balance"u8);
             JsonSerializer.Serialize(writer, value.Balance, options);
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
             if (value.Nonce != UInt256.Zero)
             {
                 writer.WritePropertyName("nonce"u8);

@@ -33,7 +33,8 @@ public class ReceiptJsonConverter : JsonConverter<TxReceipt>
             JsonSerializer.Serialize(writer, receipt.TxType, options);
         }
         writer.WritePropertyName("root");
-        ByteArrayConverter.Convert(writer, receipt.PostTransactionState is not null ? receipt.PostTransactionState.Bytes : Bytes.ZeroByte.ToArray());
+        ByteArrayConverter.Convert(writer, (receipt.PostTransactionState ?? Keccak.Zero).Bytes);
+
         var status = receipt.StatusCode;
         writer.WritePropertyName("status");
         if (status == 0)
