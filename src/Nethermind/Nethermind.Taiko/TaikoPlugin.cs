@@ -227,8 +227,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),

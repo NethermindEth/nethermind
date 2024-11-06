@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
-using Nethermind.Core.ConsensusRequests;
+using Nethermind.Core.ExecutionRequest;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -77,23 +77,11 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
 
     /// <summary>
-    /// Gets or sets a collection of <see cref="DepositRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
+    /// Gets or sets a collection of <see cref="ExecutionRequest"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
-    public virtual Deposit[]? DepositRequests { get; set; }
-
-
-    /// <summary>
-    /// Gets or sets a collection of <see cref="WithdrawalRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
-    /// </summary>
-    public virtual WithdrawalRequest[]? WithdrawalRequests { get; set; }
-
-    /// <summary>
-    /// Gets or sets a collection of <see cref="ConsolidationRequests"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-7251">EIP-7251</see>.
-    /// </summary>
-    public virtual ConsolidationRequest[]? ConsolidationRequests { get; set; }
+    [JsonIgnore]
+    public virtual byte[][]? ExecutionRequests { get; set; }
 
 
     /// <summary>
@@ -232,12 +220,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             return ValidationResult.Fail;
         }
 
-        if (spec.RequestsEnabled)
-        {
-            error = "ExecutionPayloadV4 expected";
-            return ValidationResult.Fail;
-        }
-
         int actualVersion = GetExecutionPayloadVersion();
 
         error = actualVersion switch
@@ -252,7 +234,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected virtual int GetExecutionPayloadVersion() => this switch
     {
-        { DepositRequests: not null, WithdrawalRequests: not null, ConsolidationRequests: not null } => 4,
+        { ExecutionRequests: not null } => 4,
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { Withdrawals: not null } => 2,
         _ => 1
