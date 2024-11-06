@@ -186,7 +186,7 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             taiko-full-node \
             --l2-execution taiko-nethermind:$docker_image \
-            --taiko-image taiko:us-docker.pkg.dev/evmchain/images/taiko-client:taiko-client-v0.39.2 \
+            --taiko-image taiko:us-docker.pkg.dev/evmchain/images/taiko-client:latest \
             --map-all \
             --network $stripped_network \
             --consensus-url $CONSENSUS_URL \
