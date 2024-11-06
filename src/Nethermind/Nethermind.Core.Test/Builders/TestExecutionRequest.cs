@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -18,7 +19,7 @@ public class TestExecutionRequest : ExecutionRequest.ExecutionRequest
         set
         {
             _requestDataParts = value;
-            RequestData = value is null ? null : Bytes.Concat(value);
+            RequestData = value is null ? null : Bytes.Concat(value.AsSpan());
         }
     }
 }
