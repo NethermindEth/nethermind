@@ -23,5 +23,6 @@ namespace Nethermind.Shutter.Config
         public ushort MaxKeyDelay { get; set; } = 1666;
         public uint DisconnectionLogTimeout { get; set; } = 1200000;
         public uint DisconnectionLogInterval { get; set; } = 60000;
+        public bool P2PLogsEnabled { get; set; } = false;
     }
 }
