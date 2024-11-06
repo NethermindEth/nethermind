@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Consensus.Messages;
 public static class BlockErrorMessages

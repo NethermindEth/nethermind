@@ -8,7 +8,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System;

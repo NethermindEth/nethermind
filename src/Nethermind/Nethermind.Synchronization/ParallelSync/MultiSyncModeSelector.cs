@@ -8,10 +8,8 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
 

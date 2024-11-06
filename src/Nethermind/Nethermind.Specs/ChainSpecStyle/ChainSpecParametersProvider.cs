@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System.Reflection;
 using System.Text.Json;
-using Nethermind.Config;
-using Nethermind.Core.Exceptions;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle;
