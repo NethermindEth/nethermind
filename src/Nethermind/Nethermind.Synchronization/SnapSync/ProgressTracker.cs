@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 
@@ -340,6 +341,56 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 NextSlotRange.Enqueue(storageRange);
             }
+        }
+
+        public void EnqueueStorageRange(PathWithAccount account, ValueHash256? startingHash, ValueHash256 lastProcessedHash, ValueHash256 limitHash)
+        {
+            if (lastProcessedHash > limitHash)
+                return;
+
+            UInt256 limit = new UInt256(limitHash.Bytes, true);
+            UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
+
+            var fullRange =
+                limit - (startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : new UInt256(0));
+
+            if (lastProcessed < fullRange / 2)
+            {
+                var halfOfLeft = (limit - lastProcessed) / 2;
+                var halfOfLeftHash = new ValueHash256(halfOfLeft);
+
+                _logger.Info($"EnqueueStorageRange start hash: {startingHash} | limit: {limitHash} | last processed: {lastProcessedHash}");
+
+                var sr1 = new StorageRange()
+                {
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                    StartingHash = lastProcessedHash,
+                    LimitHash = halfOfLeftHash
+                };
+                NextSlotRange.Enqueue(sr1);
+
+                _logger.Info($"Creating new storage range request from division: {sr1.Accounts[0].Path} | {sr1.StartingHash} | {sr1.LimitHash}");
+
+                var sr2 = new StorageRange()
+                {
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                    StartingHash = halfOfLeftHash,
+                    LimitHash = limitHash
+                };
+                NextSlotRange.Enqueue(sr2);
+
+                _logger.Info($"Creating new storage range request from division: {sr2.Accounts[0].Path} | {sr2.StartingHash} | {sr2.LimitHash}");
+                return;
+            }
+
+            //default - no split
+            var storageRange = new StorageRange()
+            {
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+                StartingHash = lastProcessedHash,
+                LimitHash = limitHash
+            };
+            NextSlotRange.Enqueue(storageRange);
         }
 
         public void ReportStorageRangeRequestFinished(StorageRange storageRange = null)

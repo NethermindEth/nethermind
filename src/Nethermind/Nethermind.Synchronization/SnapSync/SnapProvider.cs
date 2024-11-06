@@ -195,7 +195,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null, Hash256? hashLimit = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
@@ -207,13 +207,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     if (moreChildrenToRight)
                     {
-                        StorageRange range = new()
-                        {
-                            Accounts = new ArrayPoolList<PathWithAccount>(1) { pathWithAccount },
-                            StartingHash = slots[^1].Path
-                        };
-
-                        _progressTracker.EnqueueStorageRange(range);
+                        _progressTracker.EnqueueStorageRange(pathWithAccount, startingHash, slots[^1].Path, hashLimit ?? Keccak.MaxValue);
                     }
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
