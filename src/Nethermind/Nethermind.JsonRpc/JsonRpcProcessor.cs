@@ -367,7 +367,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Responded to {request}");
+            if (_logger.IsDebug) _logger.Debug($"Responded to {request} with {new EthereumJsonSerializer().Serialize((response as JsonRpcSuccessResponse)?.Result)}");
             Metrics.JsonRpcSuccesses++;
         }
 
