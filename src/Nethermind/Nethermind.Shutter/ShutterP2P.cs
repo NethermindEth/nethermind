@@ -125,8 +125,7 @@ public class ShutterP2P : IShutterP2P
                     if (_logger.IsWarn)
                     {
                         long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                        if (delta >= DisconnectionLogTimeout.TotalSeconds)
-                            _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
+                        _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                     }
                 }
             }
