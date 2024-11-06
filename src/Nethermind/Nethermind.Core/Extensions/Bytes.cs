@@ -338,7 +338,7 @@ namespace Nethermind.Core.Extensions
             result[^1] = suffix;
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;
-        }      
+        }
 
         public static byte[] Reverse(byte[] bytes)
         {
