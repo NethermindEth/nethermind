@@ -6,6 +6,7 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Network.Discovery;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
@@ -19,6 +20,7 @@ using Google.Protobuf;
 using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using System.Net;
+using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Shutter;
 
@@ -45,7 +47,8 @@ public class ShutterP2P : IShutterP2P
         _cfg = shutterConfig;
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
-        _serviceProvider = new ServiceCollection()
+
+        IServiceCollection serviceCollection = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
@@ -63,17 +66,22 @@ public class ShutterP2P : IShutterP2P
             })
             .AddSingleton<PubsubRouter>()
             .AddSingleton<PeerStore>()
-            .AddSingleton(sp => sp.GetService<IPeerFactoryBuilder>()!.Build())
-            //.AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
-            // .AddLogging(builder =>
-            //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
-            //     .AddSimpleConsole(l =>
-            //     {
-            //         l.SingleLine = true;
-            //         l.TimestampFormat = "[HH:mm:ss.FFF]";
-            //     })
-            // )
-            .BuildServiceProvider();
+            .AddSingleton(sp => sp.GetService<IPeerFactoryBuilder>()!.Build());
+
+        if (_cfg.P2PLogsEnabled)
+        {
+            serviceCollection
+                .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager))
+                .AddLogging(builder =>
+                    builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
+                    .AddSimpleConsole(l =>
+                    {
+                        l.SingleLine = true;
+                        l.TimestampFormat = "[HH:mm:ss.FFF]";
+                    })
+                );
+        }
+        _serviceProvider = serviceCollection.BuildServiceProvider();
 
         IPeerFactory peerFactory = _serviceProvider!.GetService<IPeerFactory>()!;
 

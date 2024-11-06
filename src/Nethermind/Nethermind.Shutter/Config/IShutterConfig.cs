@@ -83,6 +83,10 @@ public interface IShutterConfig : IConfig
         DefaultValue = "60000", HiddenFromDocs = true)]
     uint DisconnectionLogInterval { get; set; }
 
+    [ConfigItem(Description = "Whether to output libp2p logs.",
+        DefaultValue = "false", HiddenFromDocs = true)]
+    bool P2PLogsEnabled { get; set; }
+
     public void Validate(out Multiaddress[] bootnodeP2PAddresses)
     {
         if (Validator && ValidatorInfoFile is null)
