@@ -102,7 +102,7 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
+                using var timeoutSource = new CancellationTokenSource(TimeSpan.FromMinutes(1));
                 using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
@@ -119,7 +119,8 @@ public class ShutterP2P : IShutterP2P
                 else if (_logger.IsWarn)
                 {
                     long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                    _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
+                    if (delta > DisconnectionLogTimeout.TotalSeconds)
+                        _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
             }
             catch (Exception e)
