@@ -42,7 +42,7 @@ public class ShutterP2P : IShutterP2P
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
-        DisconnectionLogTimeout = TimeSpan.FromMinutes(_cfg.DisconnectionLogTimeout);
+        DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
