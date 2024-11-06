@@ -27,7 +27,7 @@ public struct TreePath : IEquatable<TreePath>
     public const int MemorySize = 36;
     public ValueHash256 Path;
 
-    public static TreePath Empty => new();
+    public static TreePath Empty => new TreePath();
 
     public readonly Span<byte> Span => Path.BytesAsSpan;
 
@@ -38,7 +38,7 @@ public struct TreePath : IEquatable<TreePath>
         Length = length;
     }
 
-    public int Length { get; private set; }
+    public int Length { get; internal set; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
@@ -46,7 +46,7 @@ public struct TreePath : IEquatable<TreePath>
         if (pathHash.Length == 32) return new TreePath(new ValueHash256(pathHash), 64);
 
         // Some of the test passes path directly to PatriciaTrie, but its not 32 byte.
-        TreePath newTreePath = new();
+        TreePath newTreePath = new TreePath();
         pathHash.CopyTo(newTreePath.Span);
         newTreePath.Length = pathHash.Length * 2;
         return newTreePath;

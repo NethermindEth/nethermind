@@ -13,19 +13,15 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public interface IScopedTrieStore : ITrieNodeResolver
 {
-    ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+    // TODO: Commit and FinishBlockCommit is unnecessary. Geth just compile the changes and return it in a batch,
+    // which get committed in a single call.
+    void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
+
+    void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
     // Only used by snap provider, so ValueHash instead of Hash
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
 
     // Used for trie node recovery
     void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp);
-}
-
-public interface ICommitter : IDisposable
-{
-    void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo);
-
-    bool CanSpawnTask() => false;
-    void ReturnConcurrencyQuota() { }
 }

@@ -702,11 +702,8 @@ public class SyncServerTests
         Hash256 nodeKey = TestItem.KeccakA;
         TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
         IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
-        using (ICommitter committer = scopedTrieStore.BeginCommit(TrieType.State, 1, node))
-        {
-            TreePath path = TreePath.Empty;
-            committer.CommitNode(ref path, new NodeCommitInfo(node));
-        }
+        scopedTrieStore.CommitNode(1, new NodeCommitInfo(node, TreePath.Empty));
+        scopedTrieStore.FinishBlockCommit(TrieType.State, 1, node);
 
         stateDb.KeyExists(nodeKey).Should().BeFalse();
         ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
