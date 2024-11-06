@@ -23,4 +23,9 @@ public class T8nOutput
         ErrorMessage = errorMessage;
         ExitCode = exitCode;
     }
+
+    public bool IsEmpty()
+    {
+        return Result is null && Body is null && Alloc is null;
+    }
 }

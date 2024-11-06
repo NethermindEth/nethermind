@@ -34,19 +34,11 @@ public static class T8nCommand
             {
                 T8nExecutionResult t8nExecutionResult = T8nExecutor.Execute(arguments);
 
-                if (arguments.OutputAlloc == Stdout) t8nOutput.Alloc = t8nExecutionResult.Accounts;
-                else WriteToFile(arguments.OutputAlloc, arguments.OutputBaseDir, t8nExecutionResult.Accounts);
+                t8nOutput.Alloc = GetOrWriteToFile(t8nExecutionResult.Accounts, arguments.OutputAlloc, arguments.OutputBaseDir);
+                t8nOutput.Result = GetOrWriteToFile(t8nExecutionResult.PostState, arguments.OutputResult, arguments.OutputBaseDir);
+                t8nOutput.Body = GetOrWriteToFile(t8nExecutionResult.TransactionsRlp, arguments.OutputBody, arguments.OutputBaseDir);
 
-                if (arguments.OutputResult == Stdout) t8nOutput.Result = t8nExecutionResult.PostState;
-                else WriteToFile(arguments.OutputResult, arguments.OutputBaseDir, t8nExecutionResult.PostState);
-
-                if (arguments.OutputBody == Stdout) t8nOutput.Body = t8nExecutionResult.TransactionsRlp;
-                else if (arguments.OutputBody is not null)
-                {
-                    WriteToFile(arguments.OutputBody, arguments.OutputBaseDir, t8nExecutionResult.TransactionsRlp);
-                }
-
-                if (t8nOutput.Body is not null || t8nOutput.Alloc is not null || t8nOutput.Result is not null)
+                if (!t8nOutput.IsEmpty())
                 {
                     Console.WriteLine(_ethereumJsonSerializer.Serialize(t8nOutput, true));
                 }
@@ -80,14 +72,17 @@ public static class T8nCommand
         rootCmd.Add(cmd);
     }
 
-    private static void WriteToFile(string filename, string? basedir, object outputObject)
+    private static T? GetOrWriteToFile<T>(T t8nResultObject, string? outputFile, string outputBasedir)
     {
-        if (basedir is not null)
-        {
-            basedir = basedir.TrimEnd('/');
-            basedir += '/';
-        }
-        FileInfo fileInfo = new(basedir + filename);
+        if (outputFile == Stdout) return t8nResultObject;
+        if (outputFile is not null) WriteToFile(outputFile, outputBasedir, t8nResultObject);
+
+        return default;
+    }
+
+    private static void WriteToFile<T>(string filename, string basedir, T outputObject)
+    {
+        FileInfo fileInfo = new(Path.Combine(basedir, filename));
         Directory.CreateDirectory(fileInfo.DirectoryName!);
         using StreamWriter writer = new(fileInfo.FullName);
         writer.Write(_ethereumJsonSerializer.Serialize(outputObject, true));
