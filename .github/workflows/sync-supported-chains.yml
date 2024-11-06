@@ -159,7 +159,6 @@ jobs:
             --logging none \
             -p $GITHUB_WORKSPACE/sedge \
             op-full-node \
-            --latest \
             --op-execution opnethermind:$docker_image \
             --op-image op-node:us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:latest \
             --map-all \
@@ -173,7 +172,6 @@ jobs:
             --logging none \
             -p $GITHUB_WORKSPACE/sedge \
             full-node \
-            --latest \
             -c ${{ matrix.config.cl }}:${{ matrix.config.cl_image }} \
             -e nethermind:$docker_image \
             --map-all \
