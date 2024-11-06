@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -22,7 +21,7 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
 
-        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
+        public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new NullCommitter();
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
@@ -31,5 +30,12 @@ namespace Nethermind.Trie.Pruning
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot) => this;
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+        internal class NullCommitter : ICommitter
+        {
+            public void Dispose() { }
+
+            public void CommitNode(ref TreePath path, NodeCommitInfo nodeCommitInfo) { }
+        }
     }
 }

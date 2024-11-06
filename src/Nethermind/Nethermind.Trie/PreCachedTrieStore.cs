@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
@@ -33,14 +34,9 @@ public class PreCachedTrieStore : ITrieStore
         _inner.Dispose();
     }
 
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags)
+    public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags)
     {
-        return _inner.BeginCommit(address, root, writeFlags);
-    }
-
-    public IBlockCommitter BeginBlockCommit(long blockNumber)
-    {
-        return _inner.BeginBlockCommit(blockNumber);
+        return _inner.BeginCommit(trieType, blockNumber, address, root, writeFlags);
     }
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)

@@ -33,8 +33,8 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => @base.Scheme;
 
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        @base.BeginCommit(root, writeFlags);
+    public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+        @base.BeginCommit(trieType, blockNumber, root, writeFlags);
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => @base.IsPersisted(in path, in keccak);
 

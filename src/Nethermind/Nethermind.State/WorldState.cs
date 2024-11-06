@@ -174,11 +174,8 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            using (IBlockCommitter committer = _trieStore.BeginBlockCommit(blockNumber))
-            {
-                _persistentStorageProvider.CommitTrees(committer);
-                _stateProvider.CommitTree();
-            }
+            _persistentStorageProvider.CommitTrees(blockNumber);
+            _stateProvider.CommitTree(blockNumber);
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 

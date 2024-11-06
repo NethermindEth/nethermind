@@ -39,7 +39,7 @@ public class VisitingTests
             patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i))));
         }
 
-        using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
+        patriciaTree.Commit(0);
 
         var visitor = new AppendingVisitor();
 
@@ -70,8 +70,6 @@ public class VisitingTests
         byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
 
-        var blockCommit = trieStore.BeginBlockCommit(0);
-
         for (int outi = 0; outi < 64; outi++)
         {
             ValueHash256 stateKey = default;
@@ -84,7 +82,7 @@ public class VisitingTests
                 storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
                 storage.Set(storageKey, value);
             }
-            storage.Commit();
+            storage.Commit(0);
 
             stateRootHash = storage.RootHash;
         }
@@ -101,8 +99,7 @@ public class VisitingTests
                 new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
         }
 
-        stateTree.Commit();
-        blockCommit.Dispose();
+        stateTree.Commit(0);
 
         var visitor = new AppendingVisitor();
 

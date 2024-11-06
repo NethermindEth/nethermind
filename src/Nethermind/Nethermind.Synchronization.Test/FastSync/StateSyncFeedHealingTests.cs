@@ -71,7 +71,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             accounts[path] = account;
         }
 
-        dbContext.RemoteStateTree.Commit();
+        dbContext.RemoteStateTree.Commit(0);
 
         int startingHashIndex = 0;
         int endHashIndex;
@@ -115,7 +115,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
                 }
             }
 
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(blockNumber);
         }
 
         endHashIndex = startingHashIndex + 1000;

@@ -93,7 +93,7 @@ public class RecreateStateFromAccountRangesTests
         tree.Set(TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4].Account);
         tree.Set(TestItem.Tree.AccountsWithPaths[5].Path, TestItem.Tree.AccountsWithPaths[5].Account);
 
-        tree.Commit();
+        tree.Commit(0);
 
         Assert.That(tree.RootHash, Is.EqualTo(_inputTree.RootHash));
         Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)

@@ -131,7 +131,7 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
+        public void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
             {
@@ -140,15 +140,14 @@ namespace Nethermind.Trie
 
             int maxLevelForConcurrentCommit = _writeBeforeCommit switch
             {
-                > 4 * 16 * 16 => 2, // we separate at three top levels
-                > 4 * 16 => 1, // we separate at two top levels
-                > 4 => 0, // we separate at top level
+                > 64 * 16 => 1, // we separate at two top levels
+                > 64 => 0, // we separate at top level
                 _ => -1
             };
 
             _writeBeforeCommit = 0;
 
-            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
+            using (ICommitter committer = TrieStore.BeginCommit(TrieType, blockNumber, RootRef, writeFlags))
             {
                 if (RootRef is not null && RootRef.IsDirty)
                 {
@@ -159,6 +158,14 @@ namespace Nethermind.Trie
                     RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
                     SetRootHash(RootRef.Keccak!, true);
                 }
+            }
+
+            if (_logger.IsDebug) Debug(blockNumber);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Debug(long blockNumber)
+            {
+                _logger.Debug($"Finished committing {RootRef?.Keccak} in block {blockNumber}");
             }
         }
 
@@ -207,7 +214,7 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            if (i < 15 && committer.TryRequestConcurrentQuota())
+                            if (i < 15 && committer.CanSpawnTask())
                             {
                                 childTasks ??= new ArrayPoolList<Task>(15);
                                 TreePath childPath = path.Append(i);

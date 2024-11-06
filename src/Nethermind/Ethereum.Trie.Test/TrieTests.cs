@@ -307,7 +307,7 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
-            patriciaTree.Commit();
+            patriciaTree.Commit(0);
             Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
 

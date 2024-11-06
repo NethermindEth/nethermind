@@ -28,12 +28,8 @@ namespace Nethermind.Trie.Pruning
 
         public IReadOnlyTrieStore AsReadOnly(INodeStorage nodeStore) => new ReadOnlyTrieStore(_trieStore, nodeStore);
 
-        public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
-
-        public IBlockCommitter BeginBlockCommit(long blockNumber)
-        {
-            return NullCommitter.Instance;
-        }
+        public ICommitter BeginCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags) =>
+            new NullTrieStore.NullCommitter();
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -66,7 +62,8 @@ namespace Nethermind.Trie.Pruning
 
             public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
 
-            public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
+            public ICommitter BeginCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+                new NullTrieStore.NullCommitter();
 
             public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
                 fullTrieStore.IsPersisted(address, path, in keccak);
