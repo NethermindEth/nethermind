@@ -81,7 +81,7 @@ public class JsonRpcSocketsClientTests
                     while (true)
                     {
                         ReceiveResult? result = await stream.ReceiveAsync(buffer).ConfigureAwait(false);
-                        if (result is not null && result.EndOfMessage && (!result.Closed || result.Read != 0))
+                        if (result is not null && IsEndOfIpcMessage(result))
                         {
                             messages++;
                         }
@@ -163,7 +163,7 @@ public class JsonRpcSocketsClientTests
                         {
                             msg.AddRange(buffer.Take(result.Read));
 
-                            if (result.EndOfMessage == true && (!result.Closed || result.Read != 0))
+                            if (IsEndOfIpcMessage(result))
                             {
                                 messages++;
                                 receivedMessages.Add(msg.ToArray());
@@ -551,4 +551,6 @@ public class JsonRpcSocketsClientTests
         }
         return new string(stringChars);
     }
+
+    private static bool IsEndOfIpcMessage(ReceiveResult result) => result.EndOfMessage && (!result.Closed || result.Read != 0);
 }
