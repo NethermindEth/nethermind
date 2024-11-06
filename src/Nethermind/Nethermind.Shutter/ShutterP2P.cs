@@ -32,8 +32,9 @@ public class ShutterP2P : IShutterP2P
     private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
     private readonly ServiceProvider _serviceProvider;
+    private readonly TimeSpan DisconnectionLogTimeout;
+    private readonly TimeSpan DisconnectionLogInterval;
     private CancellationTokenSource? _cts;
-    private static readonly TimeSpan DisconnectionLogTimeout = TimeSpan.FromMinutes(5);
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -42,12 +43,14 @@ public class ShutterP2P : IShutterP2P
     {
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
+        DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
+        DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = shutterConfig.P2PProtocolVersion,
-                AgentVersion = shutterConfig.P2PAgentVersion
+                ProtocolVersion = _cfg.P2PProtocolVersion,
+                AgentVersion = _cfg.P2PAgentVersion
             })
             // pubsub settings
             .AddSingleton(new Settings()
@@ -97,15 +100,18 @@ public class ShutterP2P : IShutterP2P
         if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {_peer.Address}");
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+        bool hasTimedOut = false;
+
         while (true)
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(DisconnectionLogTimeout);
+                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
                 using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                hasTimedOut = false;
                 ProcessP2PMessage(msg, onKeysReceived);
             }
             catch (OperationCanceledException)
@@ -117,6 +123,7 @@ public class ShutterP2P : IShutterP2P
                 }
                 else if (_logger.IsWarn)
                 {
+                    hasTimedOut = true;
                     long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
                     _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
