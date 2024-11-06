@@ -83,7 +83,7 @@ public class JsonRpcSocketsClientTests
                         ReceiveResult? result = await stream.ReceiveAsync(buffer);
 
                         // Imitate random delays
-                        if (Stopwatch.GetTimestamp() % 1001 == 0)
+                        if (Stopwatch.GetTimestamp() % 101 == 0)
                             await Task.Delay(1);
 
                         if (result is not null && IsEndOfIpcMessage(result))
@@ -128,7 +128,7 @@ public class JsonRpcSocketsClientTests
 
                 for (int i = 0; i < messageCount; i++)
                 {
-                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1000, () => disposeCount++), default);
+                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(100, () => disposeCount++), default);
                     await client.SendJsonRpcResult(result);
                     await Task.Delay(1);
                 }
