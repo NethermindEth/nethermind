@@ -43,6 +43,12 @@ namespace Nethermind.Serialization.Json
             return long.Parse(s, NumberStyles.Integer);
         }
 
+        public override long ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            return FromString(hex);
+        }
+
         public static long FromString(ReadOnlySpan<byte> s)
         {
             if (s.Length == 0)

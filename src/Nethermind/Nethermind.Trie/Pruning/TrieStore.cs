@@ -417,10 +417,10 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
 
-        public virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
             FindCachedOrUnknown(address, path, hash, false);
 
-        internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
+        internal virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
         {
             ArgumentNullException.ThrowIfNull(hash);
 
@@ -643,9 +643,6 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {(long)Stopwatch.GetElapsedTime(start).TotalMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
-        /// <summary>
-        /// This method is here to support testing.
-        /// </summary>
         public void ClearCache()
         {
             foreach (TrieStoreDirtyNodesCache dirtyNode in _dirtyNodes)
@@ -706,10 +703,8 @@ namespace Nethermind.Trie.Pruning
             return prior ?? instance;
         }
 
-        private BlockCommitSet CreateCommitSet(long blockNumber)
+        protected virtual void VerifyNewCommitSet(long blockNumber)
         {
-            if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
-
             if (_lastCommitSet is not null)
             {
                 Debug.Assert(_lastCommitSet.IsSealed, "Not sealed when beginning new block");
@@ -719,6 +714,13 @@ namespace Nethermind.Trie.Pruning
                     if (_logger.IsInfo) _logger.Info($"Non consecutive block commit. This is likely a reorg. Last block commit: {_lastCommitSet.BlockNumber}. New block commit: {blockNumber}.");
                 }
             }
+        }
+
+        private BlockCommitSet CreateCommitSet(long blockNumber)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
+
+            VerifyNewCommitSet(blockNumber);
 
             BlockCommitSet commitSet = new(blockNumber);
             CommitSetQueue.Enqueue(commitSet);
@@ -766,7 +768,14 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            if (_pruningStrategy.PruningEnabled)
+            {
+                if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root?.Keccak} in block {commitSet.BlockNumber}");
+            }
 
             long start = Stopwatch.GetTimestamp();
 

@@ -87,6 +87,9 @@ namespace Nethermind.Synchronization
             WireMultiSyncModeSelector();
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+
+            // Make unit test faster.
+            SyncModeSelector.Update();
         }
 
         private void StartFullSyncComponents()
@@ -380,12 +383,20 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
-            .AddSingleton<TreeSync>();
+            .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
 
         // Disable it by setting noop
         if (!syncConfig.FastSync) serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
+
+        if (syncConfig.FastSync && syncConfig.VerifyTrieOnStateSyncFinished)
+        {
+            serviceCollection
+                .RegisterType<VerifyStateOnStateSyncFinished>()
+                .WithAttributeFiltering()
+                .As<IStartable>();
+        }
     }
 
     private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>

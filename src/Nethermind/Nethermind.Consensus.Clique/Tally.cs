@@ -3,7 +3,7 @@
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class Tally
+    public class Tally
     {
         public bool Authorize { get; }
         public int Votes { get; set; }
