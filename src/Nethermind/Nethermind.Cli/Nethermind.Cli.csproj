@@ -10,8 +10,8 @@
   <ItemGroup>
     <PackageReference Include="Colorful.Console" />
     <PackageReference Include="Jint" />
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" />
     <PackageReference Include="ReadLine" />
+    <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>

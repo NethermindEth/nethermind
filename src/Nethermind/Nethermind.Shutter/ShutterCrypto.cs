@@ -216,9 +216,8 @@ public static class ShutterCrypto
         return expectedPubkey is not null && keyperAddress == expectedPubkey.Address;
     }
 
-    [SkipLocalsInit]
-    public static bool CheckValidatorRegistrySignature(G1Affine pk, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
-        => BlsSigner.Verify(pk, sigBytes, ValueKeccak.Compute(msgBytes).Bytes);
+    public static bool CheckValidatorRegistrySignatures(BlsSigner.AggregatedPublicKey pk, ReadOnlySpan<byte> sigBytes, ReadOnlySpan<byte> msgBytes)
+        => BlsSigner.Verify(pk.PublicKey, sigBytes, ValueKeccak.Compute(msgBytes).Bytes);
 
     public static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, ReadOnlySpan<byte> sigma)
     {

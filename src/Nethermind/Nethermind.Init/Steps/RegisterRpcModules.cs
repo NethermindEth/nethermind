@@ -99,7 +99,7 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, _jsonRpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
+            _api.WorldStateManager.TrieStore,
             _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
@@ -132,6 +132,7 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
+        (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -139,7 +140,8 @@ public class RegisterRpcModules : IStep
             _api.StaticNodesManager,
             _api.Enode,
             initConfig.BaseDbPath,
-            pruningTrigger);
+            pruningTrigger,
+            getFromApi.ChainSpec.Parameters);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
@@ -250,13 +252,15 @@ public class RegisterRpcModules : IStep
     protected ModuleFactoryBase<ITraceRpcModule> CreateTraceModuleFactory()
     {
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
+        StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockTree);
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
 
         return new TraceModuleFactory(
-            _api.WorldStateManager,
+            _api.WorldStateManager.TrieStore,
+            _api.DbProvider,
             _api.BlockTree,
             _jsonRpcConfig,
             _api.BlockPreprocessor,

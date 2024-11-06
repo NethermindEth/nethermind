@@ -89,7 +89,6 @@ public class ShutterPlugin : IConsensusWrapperPlugin, IInitializationPlugin
                 try
                 {
                     validatorsInfo.Load(_shutterConfig!.ValidatorInfoFile);
-                    validatorsInfo.Validate();
                 }
                 catch (Exception e)
                 {
