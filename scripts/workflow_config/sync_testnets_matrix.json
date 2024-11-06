@@ -92,7 +92,7 @@
     "cl": "",
     "cl_image": "",
     "checkpoint-sync-url": "",
-    "timeout": 180,
+    "timeout": 360,
     "agent": "g6-standard-6"
   },
   {
