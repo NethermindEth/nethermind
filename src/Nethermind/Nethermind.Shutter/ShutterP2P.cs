@@ -32,8 +32,9 @@ public class ShutterP2P : IShutterP2P
     private readonly PeerStore _peerStore;
     private readonly ILocalPeer _peer;
     private readonly ServiceProvider _serviceProvider;
-    private CancellationTokenSource? _cts;
     private readonly TimeSpan DisconnectionLogTimeout;
+    private readonly TimeSpan DisconnectionLogInterval;
+    private CancellationTokenSource? _cts;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
@@ -43,6 +44,7 @@ public class ShutterP2P : IShutterP2P
         _logger = logManager.GetClassLogger();
         _cfg = shutterConfig;
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
+        DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
         _serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
@@ -104,7 +106,7 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? TimeSpan.FromMinutes(1) : DisconnectionLogTimeout);
+                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
                 using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
@@ -119,14 +121,11 @@ public class ShutterP2P : IShutterP2P
                     if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
                     break;
                 }
-                else
+                else if (_logger.IsWarn)
                 {
                     hasTimedOut = true;
-                    if (_logger.IsWarn)
-                    {
-                        long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                        _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
-                    }
+                    long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+                    _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                 }
             }
             catch (Exception e)

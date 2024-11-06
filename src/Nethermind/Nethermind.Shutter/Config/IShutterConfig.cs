@@ -79,6 +79,10 @@ public interface IShutterConfig : IConfig
         DefaultValue = "1200000", HiddenFromDocs = true)]
     uint DisconnectionLogTimeout { get; set; }
 
+    [ConfigItem(Description = "How many milliseconds in between each disconnection warning.",
+        DefaultValue = "60000", HiddenFromDocs = true)]
+    uint DisconnectionLogInterval { get; set; }
+
     public void Validate(out Multiaddress[] bootnodeP2PAddresses)
     {
         if (Validator && ValidatorInfoFile is null)
