@@ -15,21 +15,21 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
 {
-    public static ExecutionRequest[] depositRequests =
+    public static TestExecutionRequest[] depositRequests =
     [
         TestItem.ExecutionRequestA,
         TestItem.ExecutionRequestB,
         TestItem.ExecutionRequestC
     ];
 
-    public static ExecutionRequest[] withdrawalRequests =
+    public static TestExecutionRequest[] withdrawalRequests =
     [
         TestItem.ExecutionRequestD,
         TestItem.ExecutionRequestE,
         TestItem.ExecutionRequestF
     ];
 
-    public static ExecutionRequest[] consolidationsRequests =
+    public static TestExecutionRequest[] consolidationsRequests =
     [
         TestItem.ExecutionRequestG,
         TestItem.ExecutionRequestH,
@@ -40,7 +40,7 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
     {
         get
         {
-            using ArrayPoolList<byte[]> list = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationsRequests);
+            using ArrayPoolList<byte[]> list = TestExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationsRequests);
             return list.ToArray();
         }
     }

@@ -18,11 +18,11 @@ public static class ExecutionRequestExtensions
     public const int DepositRequestsBytesSize = PublicKeySize /*pubkey: Bytes48 */ + Hash256.Size /*withdrawal_credentials: Bytes32 */ + sizeof(ulong) /*amount: uint64*/ + 96 /*signature: Bytes96*/ + sizeof(ulong) /*index: uint64*/;
     public const int WithdrawalRequestsBytesSize = Address.Size + PublicKeySize /*validator_pubkey: Bytes48*/ + sizeof(ulong) /*amount: uint64*/;
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
-    private const int RequestPartsCount = 3;
+    public const int RequestPartsCount = 3;
     private const int PublicKeySize = 48;
 
-    public static byte[][] EmptyRequests = [[], [], []];
-    public static Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
+    public static readonly byte[][] EmptyRequests = [[], [], []];
+    public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
 
     public static int GetRequestsByteSize(this IEnumerable<ExecutionRequest> requests)
     {
