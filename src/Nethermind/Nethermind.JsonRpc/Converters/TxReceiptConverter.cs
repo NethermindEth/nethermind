@@ -50,7 +50,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         writer.WritePropertyName("gasUsed");
         JsonSerializer.Serialize(writer, receipt.GasUsed, options);
         writer.WritePropertyName("blockHash");
-        JsonSerializer.Serialize(writer, receipt.BlockHash, options);
+        JsonSerializer.Serialize(writer, receipt.BlockHash ?? Hash256.Zero, options);
 
         writer.WritePropertyName("transactionIndex");
         JsonSerializer.Serialize(writer, UInt256.Parse(receipt.TransactionIndex.ToString(), NumberStyles.Integer), options);

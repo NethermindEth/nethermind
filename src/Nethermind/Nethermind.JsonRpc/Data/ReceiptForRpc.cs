@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Data
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
-            BlockHash = receipt.BlockHash ?? Hash256.Zero;
+            BlockHash = receipt.BlockHash;
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Data
             BlobGasPrice = gasInfo.BlobGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
-            ContractAddress = receipt.ContractAddress ?? Address.Zero;
+            ContractAddress = receipt.ContractAddress;
             Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Data
 
         public Hash256 TransactionHash { get; set; }
         public long TransactionIndex { get; set; }
-        public Hash256 BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Data
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address To { get; set; }
 
-        public Address ContractAddress { get; set; }
+        public Address? ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
