@@ -7,6 +7,8 @@ using Evm.T8n.Errors;
 using Evm.T8n.JsonConverters;
 using Evm.T8n.JsonTypes;
 using Nethermind.JsonRpc.Converters;
+using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 using Nethermind.Serialization.Json;
 
 namespace Evm.T8n;
@@ -15,6 +17,8 @@ public static class T8nCommand
 {
     private static readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private const string Stdout = "stdout";
+    private static ILogManager _logManager = new NLogManager("t8n.log");
+    private static ILogger _logger = _logManager.GetClassLogger();
 
     static T8nCommand()
     {
@@ -47,18 +51,22 @@ public static class T8nCommand
             catch (T8nException e)
             {
                 t8nOutput = new T8nOutput(e.Message, e.ExitCode);
+                _logger.Error(e.Message, e);
             }
             catch (IOException e)
             {
                 t8nOutput = new T8nOutput(e.Message, T8nErrorCodes.ErrorIO);
+                _logger.Error(e.Message, e);
             }
             catch (JsonException e)
             {
                 t8nOutput = new T8nOutput(e.Message, T8nErrorCodes.ErrorJson);
+                _logger.Error(e.Message, e);
             }
             catch (Exception e)
             {
                 t8nOutput = new T8nOutput(e.Message, T8nErrorCodes.ErrorEvm);
+                _logger.Error(e.Message, e);
             }
             finally
             {
