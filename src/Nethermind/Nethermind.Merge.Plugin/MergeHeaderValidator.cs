@@ -22,7 +22,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
-        private readonly ISpecProvider _specProvider;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
@@ -36,7 +35,6 @@ namespace Nethermind.Merge.Plugin
             _poSSwitcher = poSSwitcher;
             _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
-            _specProvider = specProvider;
         }
 
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
