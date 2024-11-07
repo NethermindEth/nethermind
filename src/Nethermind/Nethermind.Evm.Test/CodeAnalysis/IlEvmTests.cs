@@ -498,6 +498,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SSTORE()
                     .Done, EvmExceptionType.None);
 
+            yield return (Instruction.GT, Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .GT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.GT, Prepare.EvmCode
+                    .PushSingle(17)
+                    .PushSingle(17)
+                    .GT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None);
+
             yield return (Instruction.LT, Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
@@ -506,8 +522,32 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .SSTORE()
                     .Done, EvmExceptionType.None);
 
+            yield return (Instruction.LT, Prepare.EvmCode
+                    .PushSingle(7)
+                    .PushSingle(23)
+                    .LT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None);
+
+            yield return (Instruction.LT, Prepare.EvmCode
+                    .PushSingle(17)
+                    .PushSingle(17)
+                    .LT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None);
+
             yield return (Instruction.NOT, Prepare.EvmCode
                     .PushSingle(1)
+                    .NOT()
+                    .PushData(1)
+                    .SSTORE()
+                    .PushSingle(0)
+                    .NOT()
+                    .PushData(1)
+                    .SSTORE()
+                    .PushSingle(UInt256.MaxValue)
                     .NOT()
                     .PushData(1)
                     .SSTORE()
@@ -558,6 +598,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.PC, Prepare.EvmCode
+                .PC()
+                .PushData(1)
+                .SSTORE()
                 .PC()
                 .PushData(1)
                 .SSTORE()
@@ -716,6 +759,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .SSTORE()
                 .Done, EvmExceptionType.None);
 
+            yield return (Instruction.SHL, Prepare.EvmCode
+                .PushSingle(23)
+                .PushSingle(32)
+                .SHL()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
             yield return (Instruction.SHR, Prepare.EvmCode
                 .PushSingle(23)
                 .PushSingle(1)
@@ -724,10 +775,54 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .SSTORE()
                 .Done, EvmExceptionType.None);
 
+            yield return (Instruction.SHR, Prepare.EvmCode
+                .PushSingle(23)
+                .PushSingle(32)
+                .SHR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
             yield return (Instruction.SAR, Prepare.EvmCode
                 .PushSingle(23)
-                .PushSingle(1)
+                .PushSingle(0)
                 .SAR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SAR, Prepare.EvmCode
+                .PushSingle(0)
+                .PushSingle(23)
+                .SAR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SAR, Prepare.EvmCode
+                .PushSingle(23)
+                .PushSingle(17)
+                .SAR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SAR, Prepare.EvmCode
+                .PushSingle(23)
+                .PushSingle((UInt256)((Int256.Int256)(-1)))
+                .SAR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SAR, Prepare.EvmCode
+                .PushSingle(23)
+                .PushSingle((UInt256)((Int256.Int256)(-1)))
+                .SAR()
+                .PushSingle((UInt256)((Int256.Int256)(1)))
+                .SAR()
+                .PushSingle(23)
+                .EQ()
                 .PushData(1)
                 .SSTORE()
                 .Done, EvmExceptionType.None);
@@ -740,9 +835,41 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .SSTORE()
                 .Done, EvmExceptionType.None);
 
+            yield return (Instruction.AND, Prepare.EvmCode
+                .PushSingle(0)
+                .PushSingle(UInt256.MaxValue)
+                .AND()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.AND, Prepare.EvmCode
+                .PushSingle(UInt256.MaxValue)
+                .PushSingle(0)
+                .AND()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
             yield return (Instruction.OR, Prepare.EvmCode
                 .PushSingle(23)
                 .PushSingle(1)
+                .OR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.OR, Prepare.EvmCode
+                .PushSingle(0)
+                .PushSingle(UInt256.MaxValue)
+                .OR()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.OR, Prepare.EvmCode
+                .PushSingle(UInt256.MaxValue)
+                .PushSingle(0)
                 .OR()
                 .PushData(1)
                 .SSTORE()
@@ -757,8 +884,24 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.SLT, Prepare.EvmCode
+                .PushSingle(17)
                 .PushData(23)
-                .PushSingle(4)
+                .SLT()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SLT, Prepare.EvmCode
+                .PushData(23)
+                .PushSingle(17)
+                .SLT()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SLT, Prepare.EvmCode
+                .PushData(17)
+                .PushSingle(17)
                 .SLT()
                 .PushData(1)
                 .SSTORE()
@@ -766,7 +909,23 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             yield return (Instruction.SGT, Prepare.EvmCode
                 .PushData(23)
+                .PushData(17)
+                .SGT()
                 .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SGT, Prepare.EvmCode
+                .PushData(17)
+                .PushData(17)
+                .SGT()
+                .PushData(1)
+                .SSTORE()
+                .Done, EvmExceptionType.None);
+
+            yield return (Instruction.SGT, Prepare.EvmCode
+                .PushData(17)
+                .PushData(23)
                 .SGT()
                 .PushData(1)
                 .SSTORE()
