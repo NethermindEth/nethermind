@@ -589,13 +589,11 @@ internal class ILCompiler
                 case Instruction.ISZERO:
                     {// we load the stack
                         method.StackLoadPrevious(stack, head, 1);
+                        method.Duplicate();
+                        method.Duplicate();
                         method.Call(Word.GetIsZero);
                         method.StoreLocal(lbool);
-
-                        method.StackLoadPrevious(stack, head, 1);
                         method.Call(Word.SetToZero);
-
-                        method.StackLoadPrevious(stack, head, 1);
                         method.LoadLocal(lbool);
                         method.Call(Word.SetByte0);
                     }
@@ -2271,7 +2269,7 @@ internal class ILCompiler
     private static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label endOpcodeHandling = il.DefineLabel();
-        Label pushZerohandling = il.DefineLabel();
+        Label pushOnehandling = il.DefineLabel();
         // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
@@ -2291,25 +2289,24 @@ internal class ILCompiler
         il.LoadConstant(0);
         if (isGreaterThan)
         {
-            il.BranchIfLess(pushZerohandling);
+            il.BranchIfGreater(pushOnehandling);
         }
         else
         {
-            il.BranchIfGreater(pushZerohandling);
+            il.BranchIfLess(pushOnehandling);
         }
 
-        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.One)));
-        il.StoreLocal(uint256R);
+        il.CleanAndLoadWord(stack.span, stack.idx);
+        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.Zero)));
         il.Branch(endOpcodeHandling);
 
-        il.MarkLabel(pushZerohandling);
-
-        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.Zero)));
-        il.StoreLocal(uint256R);
-        il.MarkLabel(endOpcodeHandling);
-        // push the result to the stack
+        il.MarkLabel(pushOnehandling);
         il.CleanAndLoadWord(stack.span, stack.idx);
-        il.LoadLocal(uint256R); // stack: word*, uint256
+        il.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.One)));
+        il.Branch(endOpcodeHandling);
+
+        // push the result to the stack
+        il.MarkLabel(endOpcodeHandling);
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx);
     }

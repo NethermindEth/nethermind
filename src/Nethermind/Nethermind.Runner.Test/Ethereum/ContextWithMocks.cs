@@ -56,7 +56,7 @@ namespace Nethermind.Runner.Test.Ethereum
         public static NethermindApi ContextWithMocks()
         {
             var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec())
+                new ChainSpec { Parameters = new ChainParameters(), })
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
