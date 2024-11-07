@@ -92,6 +92,7 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
+    public bool JustGenesis { get; set; }
 }
 
 public enum DiagnosticMode

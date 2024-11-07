@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace Nethermind.Init.Steps
 {
@@ -41,6 +42,19 @@ namespace Nethermind.Init.Steps
 
             IWorldState worldState = _api.WorldState!;
 
+            if (_initConfig.JustGenesis == true)
+            {
+                Block genesis = new GenesisLoader(
+                  _api.ChainSpec,
+                  _api.SpecProvider!,
+                  worldState,
+                  _api.TransactionProcessor!)
+                  .Load();
+                _logger.Warn($"Genesis hash: {genesis.Hash}");
+                _api.ProcessExit?.Exit(0);
+                return;
+            }
+
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
@@ -52,7 +66,7 @@ namespace Nethermind.Init.Steps
             if (!_initConfig.ProcessingEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (_api.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                await (_api!.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
             }
         }
 
