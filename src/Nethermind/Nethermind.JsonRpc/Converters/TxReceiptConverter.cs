@@ -46,11 +46,11 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         writer.WritePropertyName("transactionHash");
         JsonSerializer.Serialize(writer, receipt.TransactionHash, options);
         writer.WritePropertyName("contractAddress");
-        JsonSerializer.Serialize(writer, receipt.ContractAddress ?? Address.Zero, options);
+        JsonSerializer.Serialize(writer, receipt.ContractAddress, options);
         writer.WritePropertyName("gasUsed");
         JsonSerializer.Serialize(writer, receipt.GasUsed, options);
         writer.WritePropertyName("blockHash");
-        JsonSerializer.Serialize(writer, receipt.BlockHash ?? Keccak.Zero, options);
+        JsonSerializer.Serialize(writer, receipt.BlockHash, options);
 
         writer.WritePropertyName("transactionIndex");
         JsonSerializer.Serialize(writer, UInt256.Parse(receipt.TransactionIndex.ToString(), NumberStyles.Integer), options);
