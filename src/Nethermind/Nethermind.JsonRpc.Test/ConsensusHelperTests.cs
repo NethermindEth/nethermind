@@ -30,6 +30,8 @@ namespace Nethermind.JsonRpc.Test
                 .Including(r => r.TransactionIndex)
                 .Including(r => r.BlockHash)
                 .Including(r => r.BlockNumber)
+                .Including(r => r.From)
+                .Including(r => r.To)
                 .Including(r => r.CumulativeGasUsed)
                 .Including(r => r.GasUsed)
                 .Including(r => r.ContractAddress)

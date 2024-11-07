@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
