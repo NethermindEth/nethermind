@@ -45,8 +45,10 @@ namespace Nethermind.JsonRpc.Data
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public UInt256? BlobGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }
@@ -55,6 +57,7 @@ namespace Nethermind.JsonRpc.Data
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address To { get; set; }
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address? ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
