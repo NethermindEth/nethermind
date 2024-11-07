@@ -1097,52 +1097,48 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.LOG0, Prepare.EvmCode
-                .Log(0, 0)
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .LOGx(0, 0, 64)
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.LOG1, Prepare.EvmCode
                 .PushData(SampleHexData1.PadLeft(64, '0'))
                 .PushData(0)
                 .Op(Instruction.MSTORE)
-                .Log(1, 0, [TestItem.KeccakA])
+                .PushData(TestItem.KeccakA.Bytes.ToArray())
+                .LOGx(1, 0, 64)
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.LOG2, Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(SampleHexData2.PadLeft(64, '0'))
                 .PushData(0)
                 .Op(Instruction.MSTORE)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(32)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(64)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(96)
-                .Op(Instruction.MSTORE)
-                .Log(4, 0, [TestItem.KeccakA, TestItem.KeccakB])
+                .PushData(TestItem.KeccakA.Bytes.ToArray())
+                .PushData(TestItem.KeccakB.Bytes.ToArray())
+                .LOGx(2, 0, 64)
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.LOG3, Prepare.EvmCode
                 .PushData(SampleHexData1.PadLeft(64, '0'))
                 .PushData(0)
                 .Op(Instruction.MSTORE)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(32)
-                .Op(Instruction.MSTORE)
-                .Log(2, 0, [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB])
+                .PushData(TestItem.KeccakA.Bytes.ToArray())
+                .PushData(TestItem.KeccakB.Bytes.ToArray())
+                .PushData(TestItem.KeccakC.Bytes.ToArray())
+                .LOGx(3, 0, 64)
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.LOG4, Prepare.EvmCode
                 .PushData(SampleHexData1.PadLeft(64, '0'))
                 .PushData(0)
                 .Op(Instruction.MSTORE)
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(32)
-                .Op(Instruction.MSTORE)
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(64)
-                .Op(Instruction.MSTORE)
-                .Log(3, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakB])
+                .PushData(TestItem.KeccakA.Bytes.ToArray())
+                .PushData(TestItem.KeccakB.Bytes.ToArray())
+                .PushData(TestItem.KeccakC.Bytes.ToArray())
+                .PushData(TestItem.KeccakD.Bytes.ToArray())
+                .LOGx(4, 0, 64)
                 .Done, EvmExceptionType.None);
 
             yield return (Instruction.TSTORE | Instruction.TLOAD, Prepare.EvmCode

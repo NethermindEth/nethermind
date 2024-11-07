@@ -2424,49 +2424,6 @@ internal class ILCompiler
     )
     {
         using Local logEntry = il.DeclareLocal<LogEntry>();
-        Action loadExecutingAccount = () =>
-        {
-            // Executing account
-            il.LoadArgument(VMSTATE_INDEX);
-            il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
-            il.LoadField(
-                GetFieldInfo(
-                    typeof(ExecutionEnvironment),
-                    nameof(ExecutionEnvironment.ExecutingAccount)
-                )
-            );
-        };
-
-        Action loadMemoryIntoByteArray = () =>
-        {
-            // memory load
-            il.LoadArgument(VMSTATE_INDEX);
-            il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
-            il.LoadLocalAddress(uint256Position); // position
-            il.LoadLocalAddress(uint256Length); // length
-            il.Call(
-                typeof(EvmPooledMemory).GetMethod(
-                    nameof(EvmPooledMemory.Load),
-                    [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
-                )
-            );
-            il.StoreLocal(localReadOnlyMemory);
-            il.LoadLocalAddress(localReadOnlyMemory);
-            il.Call(typeof(ReadOnlyMemory<byte>).GetMethod(nameof(ReadOnlyMemory<byte>.ToArray)));
-        };
-
-        // Pop an item off the Stack, create a Hash256 object, store it in a local
-        Action<int> storeLocalHash256AtStackIndex = (int index) =>
-        {
-            using (var keccak = il.DeclareLocal(typeof(ValueHash256)))
-            {
-                il.StackLoadPrevious(stack.span, stack.idx, index);
-                il.Call(Word.GetKeccak);
-                il.StoreLocal(keccak);
-                il.LoadLocalAddress(keccak);
-                il.NewObject(typeof(Hash256), typeof(ValueHash256).MakeByRefType());
-            }
-        };
 
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
@@ -2504,8 +2461,28 @@ internal class ILCompiler
         il.LoadConstant((ulong)0);
         il.BranchIfLess(exceptions[EvmExceptionType.OutOfGas]);
 
-        loadExecutingAccount();
-        loadMemoryIntoByteArray();
+        il.LoadArgument(VMSTATE_INDEX);
+        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Env)));
+        il.LoadField(
+            GetFieldInfo(
+                typeof(ExecutionEnvironment),
+                nameof(ExecutionEnvironment.ExecutingAccount)
+            )
+        );
+
+        il.LoadArgument(VMSTATE_INDEX);
+        il.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
+        il.LoadLocalAddress(uint256Position); // position
+        il.LoadLocalAddress(uint256Length); // length
+        il.Call(
+            typeof(EvmPooledMemory).GetMethod(
+                nameof(EvmPooledMemory.Load),
+                [typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType()]
+            )
+        );
+        il.StoreLocal(localReadOnlyMemory);
+        il.LoadLocalAddress(localReadOnlyMemory);
+        il.Call(typeof(ReadOnlyMemory<byte>).GetMethod(nameof(ReadOnlyMemory<byte>.ToArray)));
 
         il.LoadConstant(topicsCount);
         il.NewArray<Hash256>();
@@ -2513,7 +2490,14 @@ internal class ILCompiler
         {
             il.Duplicate();
             il.LoadConstant(i);
-            storeLocalHash256AtStackIndex(i);
+            using (var keccak = il.DeclareLocal(typeof(ValueHash256)))
+            {
+                il.StackLoadPrevious(stack.span, stack.idx, i + 1);
+                il.Call(Word.GetKeccak);
+                il.StoreLocal(keccak);
+                il.LoadLocalAddress(keccak);
+                il.NewObject(typeof(Hash256), typeof(ValueHash256).MakeByRefType());
+            }
             il.StoreElement<Hash256>();
         }
         // Creat an LogEntry Object from Items on the Stack
@@ -2529,7 +2513,6 @@ internal class ILCompiler
         il.CallVirtual(
             typeof(ICollection<LogEntry>).GetMethod(nameof(ICollection<LogEntry>.Add))
         );
-
     }
 
     private static void EmitGasAvailabilityCheck<T>(
