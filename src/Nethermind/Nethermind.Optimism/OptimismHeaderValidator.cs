@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 
@@ -39,5 +37,25 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
+    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        if (spec.IsOpHoloceneEnabled)
+        {
+            try
+            {
+                // TODO: We might want to avoid using exceptions here
+                _ = header.DecodeEIP1559Parameters();
+            }
+            catch (ArgumentException e)
+            {
+                error = e.Message;
+                return false;
+            }
+        }
+
+        return base.Validate(header, parent, isUncle, out error);
+    }
+
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }
