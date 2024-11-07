@@ -1,4 +1,0 @@
-
-[*.cs]
-# Disable here as it seems to crash linter
-generated_code = true

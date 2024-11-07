@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
