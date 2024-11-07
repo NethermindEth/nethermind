@@ -37,7 +37,7 @@ public class OptimismHeaderValidatorTests
     }
 
     [TestCaseSource(nameof(EIP1559ParametersExtraData))]
-    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene((string HexString, bool Expected) testCase)
+    public void Validates_EIP1559Parameters_InExtraData_AfterHolocene((string HexString, bool IsValid) testCase)
     {
         var genesis = Build.A.BlockHeader
             .WithNumber(0)
@@ -66,6 +66,39 @@ public class OptimismHeaderValidatorTests
 
         var valid = validator.Validate(header, genesis);
 
-        valid.Should().Be(testCase.Expected);
+        valid.Should().Be(testCase.IsValid);
+    }
+
+    [TestCaseSource(nameof(EIP1559ParametersExtraData))]
+    public void Ignores_ExtraData_BeforeHolocene((string HexString, bool _) testCase)
+    {
+        var genesis = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithTimestamp(1_000)
+            .TestObject;
+        var header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithTimestamp(2_000)
+            .WithDifficulty(0)
+            .WithNonce(0)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithExtraData(Bytes.FromHexString(testCase.HexString)).TestObject;
+
+        var holoceneDisabledSpec = Substitute.For<ReleaseSpec>();
+        holoceneDisabledSpec.IsOpHoloceneEnabled = false;
+
+        var specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(header).Returns(holoceneDisabledSpec);
+
+        var validator = new OptimismHeaderValidator(
+            AlwaysPoS.Instance,
+            Substitute.For<IBlockTree>(),
+            Always.Valid,
+            specProvider,
+            TestLogManager.Instance);
+
+        var valid = validator.Validate(header, genesis);
+
+        valid.Should().BeTrue();
     }
 }
