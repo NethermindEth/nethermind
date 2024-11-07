@@ -9,7 +9,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;

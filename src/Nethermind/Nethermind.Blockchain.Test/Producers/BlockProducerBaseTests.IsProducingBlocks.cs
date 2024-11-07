@@ -24,7 +24,6 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;

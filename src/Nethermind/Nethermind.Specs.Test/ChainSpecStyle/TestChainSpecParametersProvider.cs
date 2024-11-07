@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FastEnumUtility;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Specs.ChainSpecStyle;
 

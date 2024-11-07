@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
