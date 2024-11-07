@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Data
             ContractAddress = receipt.ContractAddress ?? Address.Zero;
             Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
-            Root = receipt.PostTransactionState ?? Keccak.Zero;
+            Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
             Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Data
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
-        public Hash256 Root { get; set; }
+        public Hash256? Root { get; set; }
         public long Status { get; set; }
         public string? Error { get; set; }
         public TxType Type { get; set; }

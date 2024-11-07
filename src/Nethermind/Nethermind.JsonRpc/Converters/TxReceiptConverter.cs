@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -29,7 +30,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             JsonSerializer.Serialize(writer, receipt.Type, options);
         }
         writer.WritePropertyName("root");
-        ByteArrayConverter.Convert(writer, receipt.Root.Bytes);
+        ByteArrayConverter.Convert(writer, (receipt.Root ?? Keccak.Zero).Bytes);
         writer.WritePropertyName("status");
         ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         JsonSerializer.Serialize(writer, receipt.Status, options);
