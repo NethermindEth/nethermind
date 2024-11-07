@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Data
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
-            BlockHash = receipt.BlockHash;
+            BlockHash = receipt.BlockHash ?? Hash256.Zero;
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;

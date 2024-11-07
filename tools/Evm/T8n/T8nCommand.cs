@@ -6,6 +6,7 @@ using System.Text.Json;
 using Evm.T8n.Errors;
 using Evm.T8n.JsonConverters;
 using Evm.T8n.JsonTypes;
+using Nethermind.JsonRpc.Converters;
 using Nethermind.Serialization.Json;
 
 namespace Evm.T8n;
@@ -17,7 +18,7 @@ public static class T8nCommand
 
     static T8nCommand()
     {
-        EthereumJsonSerializer.AddConverter(new ReceiptJsonConverter());
+        EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
         EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
     }
 

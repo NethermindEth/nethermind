@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json.Serialization;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
