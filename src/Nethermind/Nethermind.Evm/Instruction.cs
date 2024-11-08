@@ -324,7 +324,7 @@ namespace Nethermind.Evm
                 [Instruction.EXTCODECOPY] = new(DYNAMIC + MEMORY_EXPANSION + ACCOUNT_ACCESS, 0, 4, 0),
                 [Instruction.RETURNDATASIZE] = new(GasCostOf.Base, 0, 0, 1),
                 [Instruction.RETURNDATACOPY] = new(GasCostOf.VeryLow + MEMORY_EXPANSION, 0, 3, 0),
-                [Instruction.EXTCODEHASH] = new(0, 0, 1, 1),
+                [Instruction.EXTCODEHASH] = new(DYNAMIC, 0, 1, 1),
 
                 [Instruction.BLOCKHASH] = new(GasCostOf.BlockHash, 0, 1, 1),
                 [Instruction.COINBASE] = new(GasCostOf.Base, 0, 0, 1),
