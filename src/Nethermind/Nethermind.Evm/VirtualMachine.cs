@@ -741,6 +741,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
         ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
+
+        if(env.CodeInfo.IlInfo.IsEmpty)
+        {
+            IlAnalyzer.StartAnalysis(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
+        }
+
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
 
