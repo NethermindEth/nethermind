@@ -15,6 +15,20 @@ public class Eip4844Tests : VirtualMachineTestsBase
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
+    // Define hard fork labels and their corresponding block timestamps
+    private static readonly Dictionary<string, ulong> HardForkLabels = new Dictionary<string, ulong>
+    {
+        { "cancun", 0x65687fd0 }
+    };
+
+    // Define EIP timestamps
+    private static readonly Dictionary<string, long> EipTimestamps = new Dictionary<string, long>
+    {
+        { "EIP4844", MainnetSpecProvider.CancunBlockTimestamp }
+        // Add other EIPs and their timestamps here if needed
+    };
+
+
     [TestCase(0, 0, Description = "Should return 0 when no hashes")]
     [TestCase(1, 1, Description = "Should return 0 when out of range")]
     [TestCase(2, 1, Description = "Should return 0 when way out of range")]
@@ -56,4 +70,29 @@ public class Eip4844Tests : VirtualMachineTestsBase
         tracer.IsTracingAccess = false;
         return tracer;
     }
+    public static void ValidateHardForks()
+    {
+        var activatedEips = new HashSet<string>();
+
+        foreach (var label in HardForkLabels)
+        {
+            var eipKeysWithSameTimestamp = EipTimestamps
+                .Where(eip => eip.Value == label.Value)
+                .Select(eip => eip.Key)
+                .ToList();
+
+            if (eipKeysWithSameTimestamp.Count > 1)
+            {
+                throw new InvalidOperationException($"Conflicting EIP activations found: {string.Join(", ", eipKeysWithSameTimestamp)}");
+            }
+
+            if (eipKeysWithSameTimestamp.Any())
+            {
+                activatedEips.Add(eipKeysWithSameTimestamp.First());
+            }
+        }
+
+        // Additional logic for processing activated EIPs can be added here.
+    }
+    
 }
