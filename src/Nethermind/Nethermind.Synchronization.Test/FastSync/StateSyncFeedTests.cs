@@ -367,13 +367,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit();
 
-            SafeContext ctx = new();
-
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+            SafeContext ctx = new();
+            ctx.Container = BuildTestContainerBuilder(dbContext)
+                .AddSingleton<IBlockTree>(blockTree)
+                .Build();
+
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest();
@@ -390,13 +390,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit();
 
-            SafeContext ctx = new();
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+            SafeContext ctx = new();
+            ctx.Container = BuildTestContainerBuilder(dbContext)
+                .AddSingleton(blockTree)
+                .Build();
+
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest();

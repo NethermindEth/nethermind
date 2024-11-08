@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -114,23 +115,30 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-            ctx.Downloader = new StateSyncDownloader(_logManager);
-            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
-                new SyncConfig()
+            ctx.Container = BuildTestContainerBuilder(dbContext)
+                .Build();
+
+            return ctx;
+        }
+
+        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext)
+        {
+            var containerBuilder = new ContainerBuilder()
+                .AddModule(new TestSynchronizerModule(new SyncConfig()
                 {
                     SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs = 10 // there is a test for requested nodes which get affected if allocate timeout
-                },
-                ctx.Feed!,
-                ctx.Downloader,
-                ctx.Pool,
-                new StateSyncAllocationStrategyFactory(),
-                _logManager);
-            Task _ = ctx.StateSyncDispatcher.Start(CancellationToken.None);
-            return ctx;
+                    SyncDispatcherAllocateTimeoutMs =
+                        10 // there is a test for requested nodes which get affected if allocate timeout
+                }))
+                .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage);
+
+            containerBuilder.RegisterBuildCallback((ctx) =>
+            {
+                ctx.Resolve<ISyncFeed<StateSyncBatch>>().SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
+            });
+
+            return containerBuilder;
         }
 
         protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
@@ -156,10 +164,12 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
             public ISyncPeerPool Pool { get; set; } = null!;
-            public TreeSync TreeFeed { get; set; } = null!;
-            public StateSyncFeed Feed { get; set; } = null!;
-            public StateSyncDownloader Downloader { get; set; } = null!;
-            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher { get; set; } = null!;
+            public TreeSync TreeFeed => Container.Resolve<TreeSync>();
+            public StateSyncFeed Feed => Container.Resolve<StateSyncFeed>();
+            public StateSyncDownloader Downloader => Container.Resolve<StateSyncDownloader>();
+
+            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher => Container.Resolve<SyncDispatcher<StateSyncBatch>>();
+            public IContainer Container { private get; set; } = null!;
         }
 
         protected class DbContext
