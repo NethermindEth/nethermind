@@ -1403,13 +1403,14 @@ internal class ILCompiler
                 case Instruction.BLOCKHASH:
                     {
                         Label blockHashReturnedNull = method.DefineLabel();
-                        Label pushToStackRegion = method.DefineLabel();
+                        Label endOfOpcode = method.DefineLabel();
 
                         method.StackLoadPrevious(stack, head, 1);
-                        method.Call(Word.GetUInt0);
-                        method.Convert<long>();
-                        method.LoadConstant(long.MaxValue);
-                        method.Call(typeof(Math).GetMethod(nameof(Math.Min), [typeof(long), typeof(long)]));
+                        method.Call(Word.GetUInt256);
+                        method.StoreLocal(uint256A);
+
+                        method.LoadLocalAddress(uint256A);
+                        method.Call(typeof(UInt256Extensions).GetMethod(nameof(UInt256Extensions.ToLong), BindingFlags.Static | BindingFlags.Public, [typeof(UInt256).MakeByRefType()]));
                         method.StoreLocal(int64A);
                         method.StackPop(head, 1);
 
@@ -1425,25 +1426,18 @@ internal class ILCompiler
                         method.BranchIfEqual(blockHashReturnedNull);
 
                         // not equal
+                        method.CleanAndLoadWord(stack, head);
                         method.LoadLocal(hash256);
                         method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
                         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                        method.StoreLocal(localReadonOnlySpan);
-                        method.Branch(pushToStackRegion);
+                        method.Call(Word.SetSpan);
+                        method.Branch(endOfOpcode);
                         // equal to null
 
                         method.MarkLabel(blockHashReturnedNull);
+                        method.CleanWord(stack, head);
 
-                        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32)));
-                        method.Call(ConvertionImplicit(typeof(ReadOnlySpan<byte>), typeof(byte[])));
-                        method.StoreLocal(localReadonOnlySpan);
-
-                        method.MarkLabel(pushToStackRegion);
-                        method.CleanAndLoadWord(stack, head);
-                        method.LoadLocalAddress(localReadonOnlySpan);
-                        method.LoadConstant(BitConverter.IsLittleEndian);
-                        method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
-                        method.Call(Word.SetUInt256);
+                        method.MarkLabel(endOfOpcode);
                         method.StackPush(head);
                     }
                     break;
