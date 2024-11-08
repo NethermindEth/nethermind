@@ -11,7 +11,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;

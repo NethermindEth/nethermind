@@ -29,8 +29,6 @@ using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 

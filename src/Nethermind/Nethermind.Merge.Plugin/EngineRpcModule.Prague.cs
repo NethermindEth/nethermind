@@ -4,7 +4,6 @@
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
