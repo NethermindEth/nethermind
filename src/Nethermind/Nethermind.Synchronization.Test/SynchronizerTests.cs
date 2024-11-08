@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using MathNet.Numerics.Integration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -277,6 +278,7 @@ public class SynchronizerTests
 
     public class SyncingContext
     {
+        private bool _wasStopped = false;
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
         private readonly Dictionary<string, ISyncPeer> _peers = new();
@@ -527,6 +529,8 @@ public class SynchronizerTests
 
         public async Task StopAsync()
         {
+            if (_wasStopped) return;
+            _wasStopped = true;
             await Synchronizer.StopAsync();
             await SyncPeerPool.DisposeAsync();
         }

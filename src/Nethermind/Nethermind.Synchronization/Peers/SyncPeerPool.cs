@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -694,26 +696,17 @@ namespace Nethermind.Synchronization.Peers
 
         public async ValueTask DisposeAsync()
         {
+            if (!_isStarted) return;
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
             Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
 
-            await CastAndDispose(_peerRefreshQueue);
-            await CastAndDispose(_refreshLoopCancellation);
-            if (_refreshLoopTask != null) await CastAndDispose(_refreshLoopTask);
-            await CastAndDispose(_signals);
-            if (_upgradeTimer != null) await CastAndDispose(_upgradeTimer);
-
-            return;
-
-            static async ValueTask CastAndDispose(IDisposable resource)
-            {
-                if (resource is IAsyncDisposable resourceAsyncDisposable)
-                    await resourceAsyncDisposable.DisposeAsync();
-                else
-                    resource.Dispose();
-            }
+            _peerRefreshQueue.Dispose();
+            _refreshLoopCancellation.Dispose();
+            _refreshLoopTask?.Dispose();
+            _signals.Dispose();
+            _upgradeTimer?.Dispose();
         }
     }
 }
