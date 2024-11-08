@@ -12,7 +12,7 @@ namespace Nethermind.Core;
 /// Its when you have a weird place where you know the cancellation token need to be valid somehow,
 /// but its not clear how to cancel it...
 /// </summary>
-public class CancelOnDisposeToken: IAsyncDisposable
+public class CancelOnDisposeToken : IAsyncDisposable
 {
     private CancellationTokenSource cts = new CancellationTokenSource();
     public CancellationToken Token => cts.Token;
