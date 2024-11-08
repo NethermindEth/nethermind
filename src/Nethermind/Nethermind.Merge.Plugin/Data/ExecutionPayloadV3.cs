@@ -4,7 +4,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;

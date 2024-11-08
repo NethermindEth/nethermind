@@ -20,7 +20,6 @@ using Nethermind.Core.Crypto;
 using System;
 using System.Linq;
 using Nethermind.Int256;
-using Nethermind.Consensus;
 
 namespace Nethermind.Evm.Test;
 

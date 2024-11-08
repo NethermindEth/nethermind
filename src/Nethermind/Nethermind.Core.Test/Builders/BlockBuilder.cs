@@ -3,8 +3,6 @@
 
 using System;
 using System.Linq;
-using DotNetty.Common.Utilities;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;

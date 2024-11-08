@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization
 {

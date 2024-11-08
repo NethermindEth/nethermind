@@ -3,16 +3,10 @@
 
 using FluentAssertions;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.Core.Test.Encoding;
 

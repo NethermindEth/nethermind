@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;

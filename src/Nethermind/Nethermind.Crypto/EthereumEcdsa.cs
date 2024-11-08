@@ -3,13 +3,9 @@
 
 using System;
 using System.Globalization;
-using System.IO;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
