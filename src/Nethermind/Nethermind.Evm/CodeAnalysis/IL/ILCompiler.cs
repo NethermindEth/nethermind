@@ -1595,16 +1595,30 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
 
-                        MethodInfo sstoreMethod =
-                            bakeInTracerCalls 
-                                ? typeof(VirtualMachine<VirtualMachine.IsTracing>)
-                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
-                                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing))
-                                : typeof(VirtualMachine<VirtualMachine.NotTracing>)
+                        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing>)
                                     .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
                                     .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
-                        method.Call(sstoreMethod);
+                        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
+
+                        if(!bakeInTracerCalls)
+                        {
+                            method.Call(nonTracingSStoreMethod);
+                        } else
+                        {
+                            Label callNonTracingMode = method.DefineLabel();
+                            Label skipBeyondCalls = method.DefineLabel();
+                            method.LoadArgument(TXTRACER_INDEX);
+                            method.CallVirtual(typeof(ITxTracer).GetProperty(nameof(ITxTracer.IsTracingInstructions)).GetGetMethod());
+                            method.BranchIfFalse(callNonTracingMode);
+                            method.Call(tracingSStoreMethod);
+                            method.Branch(skipBeyondCalls);
+                            method.MarkLabel(callNonTracingMode);
+                            method.Call(nonTracingSStoreMethod);
+                            method.MarkLabel(skipBeyondCalls);
+                        }
 
                         Label endOfOpcode = method.DefineLabel();
                         method.Duplicate();
