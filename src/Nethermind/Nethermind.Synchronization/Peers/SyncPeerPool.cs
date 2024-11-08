@@ -677,15 +677,6 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public void Dispose()
-        {
-            _peerRefreshQueue?.Dispose();
-            _refreshLoopCancellation?.Dispose();
-            _refreshLoopTask?.Dispose();
-            _signals?.Dispose();
-            _upgradeTimer?.Dispose();
-        }
-
         private void UpdatePeerCountMetric(NodeClientType clientType, int delta)
         {
             Metrics.SyncPeers.AddOrUpdate(clientType, Math.Max(0, delta), (_, l) => l + delta);
@@ -707,6 +698,25 @@ namespace Nethermind.Synchronization.Peers
             public Hash256? BlockHash { get; }
 
             public ISyncPeer SyncPeer { get; }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await CastAndDispose(_peerRefreshQueue);
+            await CastAndDispose(_refreshLoopCancellation);
+            if (_refreshLoopTask != null) await CastAndDispose(_refreshLoopTask);
+            await CastAndDispose(_signals);
+            if (_upgradeTimer != null) await CastAndDispose(_upgradeTimer);
+
+            return;
+
+            static async ValueTask CastAndDispose(IDisposable resource)
+            {
+                if (resource is IAsyncDisposable resourceAsyncDisposable)
+                    await resourceAsyncDisposable.DisposeAsync();
+                else
+                    resource.Dispose();
+            }
         }
     }
 }

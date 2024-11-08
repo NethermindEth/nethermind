@@ -394,7 +394,6 @@ public class SynchronizerTests
                 _logManager);
 
             SyncPeerPool.Start();
-
             Synchronizer.Start();
 
             AllInstances.Enqueue(this);

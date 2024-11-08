@@ -28,6 +28,7 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
             .Map<IDbProvider, INodeStorage>(dbProvider => new NodeStorage(dbProvider.StateDb))
             .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())
             .AddSingleton<ISyncConfig>(syncConfig)
+            .Add<CancelOnDisposeToken>()
             .AddSingleton<ILogManager>(LimboLogs.Instance);
 
         builder

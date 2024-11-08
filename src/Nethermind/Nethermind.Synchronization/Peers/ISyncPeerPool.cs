@@ -14,7 +14,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public interface ISyncPeerPool : IDisposable
+    public interface ISyncPeerPool : IAsyncDisposable
     {
         Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,

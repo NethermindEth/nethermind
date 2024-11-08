@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             return remoteStorageTree;
         }
 
-        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
         {
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
@@ -97,14 +97,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 syncPeers[i] = mock;
             }
 
-            SafeContext ctx = PrepareDownloaderWithPeer(dbContext, syncPeers);
-            ctx.SyncPeerMocks = syncPeers;
-            return ctx;
-        }
-
-        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, IEnumerable<ISyncPeer> syncPeers)
-        {
             ContainerBuilder builder = BuildTestContainerBuilder(dbContext);
+            builder
+                .AddSingleton<SyncPeerMock[]>(syncPeers)
+                .AddSingleton<SafeContext>();
             builder.RegisterBuildCallback((ctx) =>
             {
                 ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
@@ -114,9 +110,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }
             });
 
-            SafeContext ctx = new(builder.Build());
-
-            return ctx;
+            return builder.Build();
         }
 
         protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext)
@@ -140,8 +134,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             containerBuilder.RegisterBuildCallback((ctx) =>
             {
+                CancelOnDisposeToken tokenHolder = ctx.Resolve<CancelOnDisposeToken>();
                 ctx.Resolve<ISyncFeed<StateSyncBatch>>().SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(CancellationToken.None); // TODO: Need cancellation here
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(tokenHolder.Token); // TODO: Need cancellation here
                 ctx.Resolve<ISyncPeerPool>().Start();
             });
 
@@ -167,9 +162,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext(IContainer container)
+        protected class SafeContext(ILifetimeScope container)
         {
-            public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
+            public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
             public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
             public TreeSync TreeFeed => container.Resolve<TreeSync>();
             public StateSyncFeed Feed => container.Resolve<StateSyncFeed>();

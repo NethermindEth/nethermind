@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.Test
             await _pool.StopAsync();
             await _synchronizer.StopAsync();
 
-            _pool.Dispose();
+            await _pool.DisposeAsync();
             _synchronizer.Dispose();
             _syncServer.Dispose();
         }
