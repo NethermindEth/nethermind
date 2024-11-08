@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -14,6 +15,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
         private readonly ILogger _logger;
+        private readonly ISyncConfig _syncConfig;
 
         public long Diff
         {
@@ -23,18 +25,25 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public Pivot(IBlockTree blockTree, ILogManager logManager)
+        public Pivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _blockTree = blockTree;
+            _syncConfig = syncConfig;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public BlockHeader GetPivotHeader()
         {
-            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 35)
+            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
             {
                 LogPivotChanged($"distance from HEAD:{Diff}");
-                _bestHeader = _blockTree.BestSuggestedHeader;
+
+                long targetBlockNumber = Math.Max(_blockTree.BestSuggestedHeader.Number - _syncConfig.StateMaxDistanceFromHead, 0);
+                BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
+                if (bestHeader != null)
+                {
+                    _bestHeader = bestHeader;
+                }
             }
 
             if (_logger.IsDebug)

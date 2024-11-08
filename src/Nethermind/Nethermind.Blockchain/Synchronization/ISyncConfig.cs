@@ -155,4 +155,6 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifyTrieOnStateSyncFinished { get; }
+    int StateMaxDistanceFromHead { get; set; }
+    int StateMinDistanceFromHead { get; set; }
 }
