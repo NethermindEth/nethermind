@@ -155,6 +155,10 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifyTrieOnStateSyncFinished { get; }
+
+    [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     int StateMaxDistanceFromHead { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
     int StateMinDistanceFromHead { get; set; }
 }
