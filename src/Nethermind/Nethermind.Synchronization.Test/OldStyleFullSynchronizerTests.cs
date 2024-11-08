@@ -94,6 +94,7 @@ namespace Nethermind.Synchronization.Test
 
             IContainer container = builder.Build();
 
+            _container = container;
             _synchronizer = container.Resolve<Synchronizer>();
 
             _syncServer = new SyncServer(
@@ -114,10 +115,9 @@ namespace Nethermind.Synchronization.Test
         [TearDown]
         public async Task TearDown()
         {
-            await _pool.StopAsync();
-            await _synchronizer.StopAsync();
-
+            await _container.DisposeAsync();
             await _pool.DisposeAsync();
+            await _synchronizer.StopAsync();
             _synchronizer.Dispose();
             _syncServer.Dispose();
         }
@@ -131,6 +131,7 @@ namespace Nethermind.Synchronization.Test
         private ISyncPeerPool _pool = null!;
         private ISyncServer _syncServer = null!;
         private ISynchronizer _synchronizer = null!;
+        private IContainer _container;
 
         [Test, Ignore("travis")]
         public void Retrieves_missing_blocks_in_batches()

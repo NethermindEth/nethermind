@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -236,7 +235,7 @@ namespace Nethermind.Synchronization.Test
             {
                 await (BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
                 await (BlockProducerRunner?.StopAsync() ?? Task.CompletedTask);
-                await (PeerPool?.StopAsync() ?? Task.CompletedTask);
+                await (PeerPool?.DisposeAsync() ?? ValueTask.CompletedTask);
                 await (Synchronizer?.StopAsync() ?? Task.CompletedTask);
                 Logger?.Flush();
             }

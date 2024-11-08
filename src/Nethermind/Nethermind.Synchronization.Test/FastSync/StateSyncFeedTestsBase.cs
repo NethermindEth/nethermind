@@ -97,10 +97,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 syncPeers[i] = mock;
             }
 
-            ContainerBuilder builder = BuildTestContainerBuilder(dbContext);
-            builder
-                .AddSingleton<SyncPeerMock[]>(syncPeers)
-                .AddSingleton<SafeContext>();
+            ContainerBuilder builder = BuildTestContainerBuilder(dbContext)
+                .AddSingleton<SyncPeerMock[]>(syncPeers);
+
             builder.RegisterBuildCallback((ctx) =>
             {
                 ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
@@ -124,7 +123,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }))
                 .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
                 .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
-                .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage);
+                .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
+                .Add<SafeContext>();
 
             // Use factory function to make it lazy in case test need to replace IBlockTree
             containerBuilder
@@ -335,7 +335,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public void Disconnect(DisconnectReason reason, string details)
             {
-                throw new NotImplementedException();
             }
 
             public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)

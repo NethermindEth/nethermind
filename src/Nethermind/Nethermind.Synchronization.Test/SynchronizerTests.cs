@@ -528,7 +528,7 @@ public class SynchronizerTests
         public async Task StopAsync()
         {
             await Synchronizer.StopAsync();
-            await SyncPeerPool.StopAsync();
+            await SyncPeerPool.DisposeAsync();
         }
     }
 

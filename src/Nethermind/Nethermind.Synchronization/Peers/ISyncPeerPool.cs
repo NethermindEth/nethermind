@@ -91,12 +91,6 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         void Start();
 
-        /// <summary>
-        /// Stops the pool loops
-        /// </summary>
-        /// <returns></returns>
-        Task StopAsync();
-
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;

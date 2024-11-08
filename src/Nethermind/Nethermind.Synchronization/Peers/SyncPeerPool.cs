@@ -140,14 +140,6 @@ namespace Nethermind.Synchronization.Peers
             StartUpgradeTimer();
         }
 
-        public async Task StopAsync()
-        {
-            _isStarted = false;
-            _refreshLoopCancellation.Cancel();
-            await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
-        }
-
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
         public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
         public event EventHandler<PeerHeadRefreshedEventArgs>? PeerRefreshed;
@@ -702,6 +694,11 @@ namespace Nethermind.Synchronization.Peers
 
         public async ValueTask DisposeAsync()
         {
+            _isStarted = false;
+            _refreshLoopCancellation.Cancel();
+            await (_refreshLoopTask ?? Task.CompletedTask);
+            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
+
             await CastAndDispose(_peerRefreshQueue);
             await CastAndDispose(_refreshLoopCancellation);
             if (_refreshLoopTask != null) await CastAndDispose(_refreshLoopTask);
