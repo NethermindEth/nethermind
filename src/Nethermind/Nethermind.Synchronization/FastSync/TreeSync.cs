@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync(IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));

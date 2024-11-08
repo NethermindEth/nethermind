@@ -369,10 +369,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            SafeContext ctx = new();
-            ctx.Container = BuildTestContainerBuilder(dbContext)
+            SafeContext ctx = new(BuildTestContainerBuilder(dbContext)
                 .AddSingleton<IBlockTree>(blockTree)
-                .Build();
+                .Build());
 
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
@@ -393,10 +392,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            SafeContext ctx = new();
-            ctx.Container = BuildTestContainerBuilder(dbContext)
+            SafeContext ctx = new(BuildTestContainerBuilder(dbContext)
                 .AddSingleton(blockTree)
-                .Build();
+                .Build());
 
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 

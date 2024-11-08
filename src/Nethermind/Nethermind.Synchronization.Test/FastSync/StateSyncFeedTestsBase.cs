@@ -104,38 +104,45 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, IEnumerable<ISyncPeer> syncPeers)
         {
-            SafeContext ctx = new();
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
-            ctx.Pool.Start();
-
-            foreach (ISyncPeer syncPeer in syncPeers)
+            ContainerBuilder builder = BuildTestContainerBuilder(dbContext);
+            builder.RegisterBuildCallback((ctx) =>
             {
-                ctx.Pool.AddPeer(syncPeer);
-            }
+                ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
+                foreach (ISyncPeer syncPeer in syncPeers)
+                {
+                    peerPool.AddPeer(syncPeer);
+                }
+            });
 
-            ctx.Container = BuildTestContainerBuilder(dbContext)
-                .Build();
+            SafeContext ctx = new(builder.Build());
 
             return ctx;
         }
 
         protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext)
         {
-            var containerBuilder = new ContainerBuilder()
+            ContainerBuilder containerBuilder = new ContainerBuilder()
                 .AddModule(new TestSynchronizerModule(new SyncConfig()
                 {
                     SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs =
-                        10 // there is a test for requested nodes which get affected if allocate timeout
+                    SyncDispatcherAllocateTimeoutMs = 10, // there is a test for requested nodes which get affected if allocate timeout
+                    FastSync = true
                 }))
+                .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
+                .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
                 .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage);
+
+            // Use factory function to make it lazy in case test need to replace IBlockTree
+            containerBuilder
+                .Register(ctx => Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject)
+                .As<IBlockTree>()
+                .SingleInstance();
 
             containerBuilder.RegisterBuildCallback((ctx) =>
             {
                 ctx.Resolve<ISyncFeed<StateSyncBatch>>().SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(default);
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(CancellationToken.None); // TODO: Need cancellation here
+                ctx.Resolve<ISyncPeerPool>().Start();
             });
 
             return containerBuilder;
@@ -160,16 +167,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext
+        protected class SafeContext(IContainer container)
         {
             public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
-            public ISyncPeerPool Pool { get; set; } = null!;
-            public TreeSync TreeFeed => Container.Resolve<TreeSync>();
-            public StateSyncFeed Feed => Container.Resolve<StateSyncFeed>();
-            public StateSyncDownloader Downloader => Container.Resolve<StateSyncDownloader>();
-
-            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher => Container.Resolve<SyncDispatcher<StateSyncBatch>>();
-            public IContainer Container { private get; set; } = null!;
+            public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
+            public TreeSync TreeFeed => container.Resolve<TreeSync>();
+            public StateSyncFeed Feed => container.Resolve<StateSyncFeed>();
         }
 
         protected class DbContext

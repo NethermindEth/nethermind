@@ -5,8 +5,11 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Stats;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -27,5 +30,14 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISyncConfig>(syncConfig)
             .AddSingleton<ILogManager>(LimboLogs.Instance);
 
+        builder
+            .Register(ctx =>
+            {
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+                return new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
+            })
+            .SingleInstance()
+            .As<ISyncPeerPool>();
     }
 }
