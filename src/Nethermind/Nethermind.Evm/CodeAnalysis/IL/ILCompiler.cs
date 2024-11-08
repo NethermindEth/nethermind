@@ -8,7 +8,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.IL;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.Debugger;
 using Nethermind.Int256;
 using Nethermind.State;
 using Sigil;
@@ -2097,7 +2096,7 @@ internal class ILCompiler
     private static void EmitDebuggerTracerCall(Emit<ExecuteSegment> method, Local gasAvailable, Local pc, Local head, Local stack)
     {
         // just experimental code
-        Label skipCall = method.DefineLabel();
+        /* Label skipCall = method.DefineLabel();
         using Local debugTracer = method.DeclareLocal<DebugTracer>();
         using Local convertedPc = method.DeclareLocal<int>();
         using Local castedStack = method.DeclareLocal(typeof(Span<byte>));
@@ -2137,7 +2136,7 @@ internal class ILCompiler
         method.LoadLocalAddress(head);
         method.CallVirtual(typeof(DebugTracer).GetMethod(nameof(DebugTracer.TryWait), BindingFlags.Instance | BindingFlags.Public));
 
-        method.MarkLabel(skipCall);
+        method.MarkLabel(skipCall);*/
     }
 
     private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
