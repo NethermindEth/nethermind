@@ -9,7 +9,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using NSubstitute;
 
@@ -27,18 +26,11 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
             .Map<IDbProvider, INodeStorage>(dbProvider => new NodeStorage(dbProvider.StateDb))
             .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())
+            .AddSingleton<ITimerFactory>(Substitute.For<ITimerFactory>())
             .AddSingleton<ISyncConfig>(syncConfig)
+            .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
+            .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .Add<CancelOnDisposeToken>()
             .AddSingleton<ILogManager>(LimboLogs.Instance);
-
-        builder
-            .Register(ctx =>
-            {
-                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
-                ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-                return new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
-            })
-            .SingleInstance()
-            .As<ISyncPeerPool>();
     }
 }
