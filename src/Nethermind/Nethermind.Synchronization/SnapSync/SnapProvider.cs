@@ -212,15 +212,15 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
+                    _logger.Info($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash, hashLimit ?? Keccak.MaxValue);
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                    _logger.Info($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash, hashLimit ?? Keccak.MaxValue);
                 }
 
                 return result;
@@ -249,7 +249,7 @@ namespace Nethermind.Synchronization.SnapSync
                         if (nodeData.Length == 0)
                         {
                             RetryAccountRefresh(requestedPath);
-                            _logger.Trace($"SNAP - Empty Account Refresh: {requestedPath.PathAndAccount.Path}");
+                            _logger.Info($"SNAP - Empty Account Refresh: {requestedPath.PathAndAccount.Path}");
                             continue;
                         }
 
@@ -267,9 +267,11 @@ namespace Nethermind.Synchronization.SnapSync
                                 StorageRange range = new()
                                 {
                                     Accounts = new ArrayPoolList<PathWithAccount>(1) { requestedPath.PathAndAccount },
-                                    StartingHash = requestedPath.StorageStartingHash
+                                    StartingHash = requestedPath.StorageStartingHash,
+                                    LimitHash = requestedPath.StorageHashLimit
                                 };
 
+                                _logger.Info($"RefreshAccounts - enqueue storage {requestedPath.PathAndAccount.Path} | start: {range.StartingHash} | limit: {range.LimitHash}");
                                 _progressTracker.EnqueueStorageRange(range);
                             }
                             else
@@ -300,7 +302,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
         {
-            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
+            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
         }
 
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IOwnedReadOnlyList<byte[]> codes)

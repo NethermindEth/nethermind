@@ -322,6 +322,11 @@ namespace Nethermind.Synchronization.SnapSync
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
 
+        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, ValueHash256? hashLimit)
+        {
+            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit.GetValueOrDefault()});
+        }
+
         public void ReportFullStorageRequestFinished(IEnumerable<PathWithAccount> storages = default)
         {
             if (storages is not null)
@@ -356,10 +361,10 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (lastProcessed < fullRange / 2)
             {
-                var halfOfLeft = (limit - lastProcessed) / 2;
+                var halfOfLeft = (limit - lastProcessed) / 2 + lastProcessed;
                 var halfOfLeftHash = new ValueHash256(halfOfLeft);
 
-                _logger.Info($"EnqueueStorageRange start hash: {startingHash} | limit: {limitHash} | last processed: {lastProcessedHash}");
+                _logger.Info($"EnqueueStorageRange account {account.Path} start hash: {startingHash} | last processed: {lastProcessedHash} | limit: {limitHash} | split {halfOfLeftHash}");
 
                 var sr1 = new StorageRange()
                 {
@@ -369,8 +374,6 @@ namespace Nethermind.Synchronization.SnapSync
                 };
                 NextSlotRange.Enqueue(sr1);
 
-                _logger.Info($"Creating new storage range request from division: {sr1.Accounts[0].Path} | {sr1.StartingHash} | {sr1.LimitHash}");
-
                 var sr2 = new StorageRange()
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
@@ -379,7 +382,6 @@ namespace Nethermind.Synchronization.SnapSync
                 };
                 NextSlotRange.Enqueue(sr2);
 
-                _logger.Info($"Creating new storage range request from division: {sr2.Accounts[0].Path} | {sr2.StartingHash} | {sr2.LimitHash}");
                 return;
             }
 
@@ -489,7 +491,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            if (_logger.IsTrace || (_logger.IsDebug && _reqCount % 1000 == 0))
+            if (_logger.IsTrace || (_logger.IsInfo && _reqCount % 100 == 0))
             {
                 int moreAccountCount = AccountRangePartitions.Count(kv => kv.Value.MoreAccountsToRight);
 
