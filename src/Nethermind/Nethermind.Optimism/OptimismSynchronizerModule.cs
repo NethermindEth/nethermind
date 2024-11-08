@@ -3,10 +3,8 @@
 
 using System;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Optimism;

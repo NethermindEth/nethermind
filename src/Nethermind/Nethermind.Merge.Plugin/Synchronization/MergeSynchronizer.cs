@@ -26,12 +26,6 @@ public class MergeSynchronizer(
     private readonly CancellationTokenSource? _syncCancellation = new();
     private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
-    public event EventHandler<SyncEventArgs>? SyncEvent
-    {
-        add => baseSynchronizer.SyncEvent += value;
-        remove => baseSynchronizer.SyncEvent -= value;
-    }
-
     public void Start()
     {
         if (!syncConfig.SynchronizationEnabled)
@@ -73,6 +67,14 @@ public class MergeSynchronizer(
     public void Dispose()
     {
         baseSynchronizer.Dispose();
+    }
+
+    // May crash `dotnet format` if declared before any other use of `baseSynchronizer`.
+    // Seems like a bug in dotnet formatter or analyzer somewhere
+    public event EventHandler<SyncEventArgs>? SyncEvent
+    {
+        add => baseSynchronizer.SyncEvent += value;
+        remove => baseSynchronizer.SyncEvent -= value;
     }
 }
 

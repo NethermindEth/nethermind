@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json.Serialization;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,27 +15,13 @@ using Nethermind.State.Proofs;
 
 namespace Evm.T8n.JsonTypes;
 
-public class T8nResult
+public class T8nExecutionResult
 {
-    public Hash256? StateRoot { get; set; }
-    public Hash256? TxRoot { get; set; }
-    public Hash256? ReceiptsRoot { get; set; }
-    public Hash256? WithdrawalsRoot { get; set; }
-    public Hash256? LogsHash { get; set; }
-    public Bloom? LogsBloom { get; set; }
-    public TxReceipt[]? Receipts { get; set; }
-    public RejectedTx[]? Rejected { get; set; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public UInt256? CurrentDifficulty { get; set; }
-    public UInt256? GasUsed { get; set; }
-    public UInt256? CurrentBaseFee { get; set; }
-    public UInt256? CurrentExcessBlobGas { get; set; }
-    public UInt256? BlobGasUsed { get; set; }
+    public PostState PostState { get; set; } = new();
     public Dictionary<Address, AccountState> Accounts { get; set; } = [];
     public byte[] TransactionsRlp { get; set; } = [];
 
-
-    public static T8nResult ConstructT8nResult(WorldState stateProvider,
+    public static T8nExecutionResult ConstructT8nExecutionResult(WorldState stateProvider,
         Block block,
         T8nTest test,
         StorageTxTracer storageTracer,
@@ -55,13 +40,14 @@ public class T8nResult
         var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
         ulong? blobGasUsed = test.Spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray()) : null;
 
-        T8nResult t8NResult = new()
+        var postState = new PostState
         {
             StateRoot = stateProvider.StateRoot,
             TxRoot = txRoot,
             ReceiptsRoot = receiptsRoot,
-            LogsBloom = bloom,
+            WithdrawalsRoot = block.WithdrawalsRoot,
             LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes),
+            LogsBloom = bloom,
             Receipts = txReport.SuccessfulTransactionReceipts.ToArray(),
             Rejected = txReport.RejectedTransactionReceipts.Count == 0
                 ? null
@@ -69,14 +55,18 @@ public class T8nResult
             CurrentDifficulty = test.CurrentDifficulty,
             GasUsed = new UInt256(gasUsed),
             CurrentBaseFee = test.CurrentBaseFee,
-            WithdrawalsRoot = block.WithdrawalsRoot,
             CurrentExcessBlobGas = block.ExcessBlobGas,
             BlobGasUsed = blobGasUsed,
+        };
+
+        T8nExecutionResult t8NExecutionResult = new()
+        {
+            PostState = postState,
             TransactionsRlp = Rlp.Encode(txReport.SuccessfulTransactions.ToArray()).Bytes,
             Accounts = CollectAccounts(test, stateProvider, storageTracer, block),
         };
 
-        return t8NResult;
+        return t8NExecutionResult;
     }
 
     private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, WorldState stateProvider, StorageTxTracer storageTracer, Block block)

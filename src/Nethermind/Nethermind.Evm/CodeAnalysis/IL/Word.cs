@@ -60,6 +60,17 @@ internal struct Word
         _ulong2 = 0; _ulong3 = 0;
     }
 
+    public unsafe ZeroPaddedSpan ZeroPaddedSpan
+    {
+        set
+        {
+            int startIndex = value.PadDirection == PadDirection.Right ? 0 : value.PaddingLength;
+            fixed (byte* src = value.Span, dest = _buffer)
+            {
+                Buffer.MemoryCopy(src, dest + startIndex, 32, value.Span.Length);
+            }
+        }
+    }
     public unsafe byte[] Array
     {
         get
@@ -331,6 +342,7 @@ internal struct Word
 
     public static readonly MethodInfo GetSpan = typeof(Word).GetProperty(nameof(Span))!.GetMethod;
     public static readonly MethodInfo SetSpan = typeof(Word).GetProperty(nameof(Span))!.SetMethod;
+    public static readonly MethodInfo SetZeroPaddedSpan = typeof(Word).GetProperty(nameof(ZeroPaddedSpan))!.SetMethod;
 
     public static explicit operator Word(Span<byte> span)
     {

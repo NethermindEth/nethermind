@@ -46,7 +46,7 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
         ushort[] jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
@@ -856,8 +856,7 @@ internal class ILCompiler
                         method.LoadConstant(Word.Size);
                         method.LoadConstant((int)PadDirection.Right);
                         method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), [typeof(ReadOnlyMemory<byte>), typeof(UInt256).MakeByRefType(), typeof(int), typeof(PadDirection)]));
-                        method.LoadField(GetFieldInfo(typeof(ZeroPaddedSpan), nameof(ZeroPaddedSpan.Span)));
-                        method.Call(Word.SetSpan);
+                        method.Call(Word.SetZeroPaddedSpan);
                         method.StackPush(head);
                     }
                     break;
@@ -1361,29 +1360,32 @@ internal class ILCompiler
                     {
                         Label blobVersionedHashNotFound = method.DefineLabel();
                         Label endOfOpcode = method.DefineLabel();
-
-                        method.StackLoadPrevious(stack, head, 1);
-                        method.Call(Word.GetInt0);
-                        method.StoreLocal(uint32A);
-                        method.StackPop(head, 1);
+                        using Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
 
                         method.LoadArgument(VMSTATE_INDEX);
                         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
                         method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
+                        method.StoreLocal(byteMatrix);
+
+                        method.LoadLocal(byteMatrix);
                         method.LoadNull();
                         method.BranchIfEqual(blobVersionedHashNotFound);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
-                        method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
-                        method.Call(GetPropertyInfo(typeof(byte[][]), nameof(Array.Length), false, out _));
-                        method.LoadLocal(uint32A);
-                        method.BranchIfLessOrEqual(blobVersionedHashNotFound);
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.Call(Word.GetUInt256);
+                        method.StoreLocal(uint256A);
+                        method.StackPop(head, 1);
 
-                        method.LoadArgument(VMSTATE_INDEX);
-                        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.TxCtx)));
-                        method.Call(GetPropertyInfo(typeof(TxExecutionContext), nameof(TxExecutionContext.BlobVersionedHashes), false, out _));
-                        method.LoadLocal(uint32A);
+                        method.LoadLocalAddress(uint256A);
+                        method.LoadLocal(byteMatrix);
+                        method.Call(GetPropertyInfo(typeof(byte[][]), nameof(Array.Length), false, out _));
+                        method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
+                        method.BranchIfFalse(blobVersionedHashNotFound);
+
+                        method.LoadLocal(byteMatrix);
+                        method.LoadLocal(uint256A);
+                        method.LoadField(GetFieldInfo(typeof(UInt256), nameof(UInt256.u0)));
+                        method.Convert<int>();
                         method.LoadElement<Byte[]>();
                         method.StoreLocal(localArray);
 
@@ -1394,7 +1396,6 @@ internal class ILCompiler
 
                         method.MarkLabel(blobVersionedHashNotFound);
                         method.CleanWord(stack, head);
-
                         method.MarkLabel(endOfOpcode);
                         method.StackPush(head);
                     }
