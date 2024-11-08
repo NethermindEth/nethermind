@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.IL;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.Debugger;
 using Nethermind.Int256;
 using Nethermind.State;
 using Sigil;
@@ -210,7 +211,12 @@ internal class ILCompiler
                 method.LoadConstant(EvmStack.MaxStackSize);
                 method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
             }
-
+#if DEBUG
+            if(bakeInTracerCalls)
+            {
+                EmitDebuggerTracerCall(method, gasAvailable, programCounter, head, stack);
+            }
+#endif
             // else emit
             switch (op.Operation)
             {
@@ -1588,12 +1594,17 @@ internal class ILCompiler
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(localReadonOnlySpan);
                         method.LoadArgument(SPEC_INDEX);
-                        method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                        method.LoadArgument(TXTRACER_INDEX);
 
                         MethodInfo sstoreMethod =
-                            typeof(VirtualMachine<VirtualMachine.NotTracing>)
-                                .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
-                                .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+                            bakeInTracerCalls 
+                                ? typeof(VirtualMachine<VirtualMachine.IsTracing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                                    .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing))
+                                : typeof(VirtualMachine<VirtualMachine.NotTracing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                                    .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
+
                         method.Call(sstoreMethod);
 
                         Label endOfOpcode = method.DefineLabel();
@@ -1605,6 +1616,10 @@ internal class ILCompiler
                         method.LoadArgument(VMSTATE_INDEX);
                         method.LoadLocal(uint32A);
                         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
+
+                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadLocal(gasAvailable);
+                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
                         method.Branch(exit);
 
                         method.MarkLabel(endOfOpcode);
@@ -1639,7 +1654,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(storageCell);
                         method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing>.StorageAccessType.SLOAD);
                         method.LoadArgument(SPEC_INDEX);
-                        method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                        method.LoadArgument(TXTRACER_INDEX);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
@@ -1677,7 +1692,7 @@ internal class ILCompiler
                         method.LoadConstant(true);
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadArgument(SPEC_INDEX);
-                        method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                        method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
@@ -1739,7 +1754,7 @@ internal class ILCompiler
                         method.LoadConstant(true);
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadArgument(SPEC_INDEX);
-                        method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                        method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
@@ -1805,29 +1820,59 @@ internal class ILCompiler
                         method.LoadConstant(true);
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadArgument(SPEC_INDEX);
-                        method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                        method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
-                        method.LoadArgument(WORLD_STATE_INDEX);
-                        method.LoadLocal(address);
-                        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IWorldState.AccountExists)));
-                        method.LoadConstant(false);
-                        method.CompareEqual();
-                        method.LoadArgument(WORLD_STATE_INDEX);
-                        method.LoadLocal(address);
-                        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IWorldState.IsDeadAccount)));
-                        method.Or();
-                        method.BranchIfTrue(endOfOpcode);
+                        Label pushZeroLabel = method.DefineLabel();
+                        Label pushhashcodeLabel = method.DefineLabel();
 
-                        method.CleanAndLoadWord(stack, head);
+                        // account exists
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadLocal(address);
-                        method.CallVirtual(typeof(IAccountStateProvider).GetMethod(nameof(IWorldState.GetCodeHash)));
+                        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists))); 
+                        method.BranchIfFalse(pushZeroLabel);
+
+                        method.LoadArgument(WORLD_STATE_INDEX);
+                        method.LoadLocal(address);
+                        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
+                        method.BranchIfTrue(pushZeroLabel);
+
+                        using Local delegateAddress = method.DeclareLocal<Address>();
+                        method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
+                        method.LoadArgument(WORLD_STATE_INDEX);
+                        method.LoadLocal(address);
+                        method.LoadLocalAddress(delegateAddress);
+                        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.TryGetDelegation), [typeof(IWorldState), typeof(Address), typeof(Address).MakeByRefType()]));
+                        method.BranchIfFalse(pushhashcodeLabel);
+
+                        method.LoadArgument(WORLD_STATE_INDEX);
+                        method.LoadLocal(delegateAddress);
+                        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.AccountExists)));
+                        method.BranchIfFalse(pushZeroLabel);
+
+                        method.LoadArgument(WORLD_STATE_INDEX);
+                        method.LoadLocal(delegateAddress);
+                        method.CallVirtual(typeof(IReadOnlyStateProvider).GetMethod(nameof(IReadOnlyStateProvider.IsDeadAccount)));
+                        method.BranchIfTrue(pushZeroLabel);
+
+                        method.MarkLabel(pushhashcodeLabel);
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
+                        method.LoadArgument(WORLD_STATE_INDEX);
+                        method.LoadLocal(address);
+                        method.CallVirtual(typeof(ICodeInfoRepository).GetMethod(nameof(ICodeInfoRepository.GetExecutableCodeHash), [typeof(IWorldState), typeof(Address)]));
                         method.Call(Word.SetKeccak);
+                        method.Branch(endOfOpcode);
+
+                        // Push 0
+                        method.MarkLabel(pushZeroLabel);
+                        method.CleanWord(stack, head);
+
                         method.MarkLabel(endOfOpcode);
                         method.StackPush(head);
+
                     }
                     break;
                 case Instruction.SELFBALANCE:
@@ -1865,7 +1910,7 @@ internal class ILCompiler
                         method.LoadConstant(false);
                         method.LoadArgument(WORLD_STATE_INDEX);
                         method.LoadArgument(SPEC_INDEX);
-                        method.Call(GetPropertyInfo<NullTxTracer>(nameof(NullTxTracer.Instance), false, out _));
+                        method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
                         method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
@@ -2036,6 +2081,9 @@ internal class ILCompiler
             method.LoadArgument(VMSTATE_INDEX);
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
+            method.LoadArgument(VMSTATE_INDEX);
+            method.LoadLocal(gasAvailable);
+            method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
             method.Branch(exit);
         }
 
@@ -2044,6 +2092,52 @@ internal class ILCompiler
         method.Return();
 
         return jumpDestinations.Keys.ToArray();
+    }
+
+    private static void EmitDebuggerTracerCall(Emit<ExecuteSegment> method, Local gasAvailable, Local pc, Local head, Local stack)
+    {
+        // just experimental code
+        Label skipCall = method.DefineLabel();
+        using Local debugTracer = method.DeclareLocal<DebugTracer>();
+        using Local convertedPc = method.DeclareLocal<int>();
+        using Local castedStack = method.DeclareLocal(typeof(Span<byte>));
+        using Local vmState = method.DeclareLocal<EvmState>();
+
+        method.LoadArgument(TXTRACER_INDEX);
+        method.IsInstance(typeof(DebugTracer));
+        method.StoreLocal(debugTracer);
+        method.Print(convertedPc);
+
+        method.LoadLocal(debugTracer);
+        method.LoadNull();
+        method.BranchIfEqual(skipCall);
+
+
+        method.LoadLocal(pc);
+        method.Convert<int>();
+        method.StoreLocal(convertedPc);
+
+        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadLocal(stack);
+        method.Call(GetCastMethodInfo<Word, byte>());
+        method.StoreLocal(castedStack);
+        method.LoadLocalAddress(castedStack);
+        method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.ToArray)));
+        method.StoreField(GetFieldInfo(typeof(EvmState), nameof(EvmState.DataStack)));
+
+        method.LoadLocal(debugTracer);
+        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.StoreLocal(vmState);
+
+        method.LoadLocalAddress(vmState);
+        method.LoadLocalAddress(convertedPc);
+        method.LoadLocalAddress(gasAvailable);
+        method.LoadLocalAddress(head);
+        method.CallVirtual(typeof(DebugTracer).GetMethod(nameof(DebugTracer.TryWait), BindingFlags.Instance | BindingFlags.Public));
+
+        method.MarkLabel(skipCall);
     }
 
     private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
