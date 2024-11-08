@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 CancelOnDisposeToken tokenHolder = ctx.Resolve<CancelOnDisposeToken>();
                 ctx.Resolve<ISyncFeed<StateSyncBatch>>().SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(tokenHolder.Token); // TODO: Need cancellation here
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(tokenHolder.Token);
                 ctx.Resolve<ISyncPeerPool>().Start();
             });
 

@@ -30,7 +30,7 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISyncConfig>(syncConfig)
             .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
-            .Add<CancelOnDisposeToken>()
+            .AddSingleton<CancelOnDisposeToken>()
             .AddSingleton<ILogManager>(LimboLogs.Instance);
     }
 }
