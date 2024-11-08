@@ -529,7 +529,6 @@ public class SynchronizerTests
         {
             if (_wasStopped) return;
             _wasStopped = true;
-            await Synchronizer.StopAsync();
             await Container.DisposeAsync();
         }
     }

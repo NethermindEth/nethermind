@@ -222,22 +222,6 @@ namespace Nethermind.Synchronization
             SyncEvent?.Invoke(this, e);
         }
 
-        public Task StopAsync()
-        {
-            _syncCancellation?.Cancel();
-
-            return Task.WhenAny(
-                Task.Delay(FeedsTerminationTimeout),
-                Task.WhenAll(
-                    fullSyncComponent.Feed.FeedTask,
-                    fastSyncComponent.Feed.FeedTask,
-                    stateSyncComponent.Feed.FeedTask,
-                    snapSyncComponent.Feed.FeedTask,
-                    fastHeaderComponent.Feed.FeedTask,
-                    oldBodiesComponent.Feed.FeedTask,
-                    oldReceiptsComponent.Feed.FeedTask));
-        }
-
         private void WireMultiSyncModeSelector()
         {
             WireFeedWithModeSelector(fullSyncComponent.Feed);
@@ -259,8 +243,21 @@ namespace Nethermind.Synchronization
             feed?.SyncModeSelectorOnChanged(SyncModeSelector.Current);
         }
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
+            _syncCancellation?.Cancel();
+
+            await Task.WhenAny(
+                Task.Delay(FeedsTerminationTimeout),
+                Task.WhenAll(
+                    fullSyncComponent.Feed.FeedTask,
+                    fastSyncComponent.Feed.FeedTask,
+                    stateSyncComponent.Feed.FeedTask,
+                    snapSyncComponent.Feed.FeedTask,
+                    fastHeaderComponent.Feed.FeedTask,
+                    oldBodiesComponent.Feed.FeedTask,
+                    oldReceiptsComponent.Feed.FeedTask));
+
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
     }

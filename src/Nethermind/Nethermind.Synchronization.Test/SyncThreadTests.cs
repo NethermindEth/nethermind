@@ -237,7 +237,6 @@ namespace Nethermind.Synchronization.Test
                 await (BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
                 await (BlockProducerRunner?.StopAsync() ?? Task.CompletedTask);
                 await (Container?.DisposeAsync() ?? ValueTask.CompletedTask);
-                await (Synchronizer?.StopAsync() ?? Task.CompletedTask);
                 Logger?.Flush();
             }
         }

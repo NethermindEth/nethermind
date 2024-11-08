@@ -112,7 +112,6 @@ namespace Nethermind.Synchronization.Test
         [TearDown]
         public async Task TearDown()
         {
-            await Synchronizer.StopAsync();
             await _container.DisposeAsync();
             _syncServer.Dispose();
         }
