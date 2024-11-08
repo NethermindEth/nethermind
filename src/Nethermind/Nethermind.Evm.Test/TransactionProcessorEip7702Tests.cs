@@ -573,29 +573,28 @@ internal class TransactionProcessorEip7702Tests
             {
                 //Account does not exists
             },
-            true };
+            Eip7702Constants.HashOfDelegationCode };
         yield return new object[] {
             (IWorldState state, Address account) =>
             {
                 //Account is empty
                 state.CreateAccount(account, 0);
             },
-            true};
+            Eip7702Constants.HashOfDelegationCode };
         yield return new object[] {
             (IWorldState state, Address account) =>
             {
                 //Account has balance
                 state.CreateAccount(account, 1);
             },
-            false};
+            Eip7702Constants.HashOfDelegationCode};
         yield return new object[] {
             (IWorldState state, Address account) =>
             {
                 //Account has nonce
                 state.CreateAccount(account, 0, 1);
             },
-            false};
-
+            Eip7702Constants.HashOfDelegationCode};
         yield return new object[] {
             (IWorldState state, Address account) =>
             {
@@ -603,10 +602,11 @@ internal class TransactionProcessorEip7702Tests
                 state.CreateAccount(account, 0);
                 state.InsertCode(account, Prepare.EvmCode.RETURN().Done, Prague.Instance);
             },
-            false};
+            Eip7702Constants.HashOfDelegationCode };
     }
+
     [TestCaseSource(nameof(EXTCODEHASHAccountSetup))]
-    public void Execute_CodeSavesEXTCODEHASHWithDifferentAccountSetup_SavesZeroIfAccountDoesNotExistsOrIsEmpty(Action<IWorldState, Address> setupAccount, bool expectZero)
+    public void Execute_CodeSavesEXTCODEHASHWithDifferentAccountSetup_SavesZeroIfAccountDoesNotExistsOrIsEmpty(Action<IWorldState, Address> setupAccount, Hash256 expected)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
@@ -619,8 +619,8 @@ internal class TransactionProcessorEip7702Tests
 
         byte[] code = Prepare.EvmCode
             .PushData(signer.Address)
-            .Op(Instruction.EXTCODEHASH)
             .Op(Instruction.PUSH0)
+            .Op(Instruction.EXTCODEHASH)
             .Op(Instruction.SSTORE)
             .Done;
 
@@ -641,7 +641,8 @@ internal class TransactionProcessorEip7702Tests
 
         TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
-        Assert.That(new UInt256(_stateProvider.Get(new StorageCell(codeSource, 0))), expectZero ? Is.EqualTo((UInt256)0) : Is.Not.EqualTo((UInt256)0));
+        ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
+        Assert.That(actual.ToArray(), Is.EquivalentTo(expected.BytesToArray()));
     }
 
     public static IEnumerable<object[]> CountsAsAccessedCases()
