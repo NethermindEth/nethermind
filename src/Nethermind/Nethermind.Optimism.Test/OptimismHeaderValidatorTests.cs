@@ -22,6 +22,7 @@ public class OptimismHeaderValidatorTests
     private static IEnumerable<(string, bool)> EIP1559ParametersExtraData()
     {
         // Valid
+        yield return ("0x000000000000000000", true);
         yield return ("0x000000000100000000", true);
         yield return ("0x0000000001000001bc", true);
         yield return ("0x0000000001ffffffff", true);

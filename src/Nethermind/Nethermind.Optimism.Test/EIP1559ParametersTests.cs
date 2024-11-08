@@ -14,6 +14,7 @@ public class EIP1559ParametersTests
 {
     private static IEnumerable<(string hexString, EIP1559Parameters expected)> DecodeBlockHeaderParametersCases()
     {
+        yield return ("0x000000000000000000", new(0, 0, 0));
         yield return ("0x000000000100000000", new(0, 1, 0));
         yield return ("0x0000000001000001bc", new(0, 1, 444));
         yield return ("0x0000000001ffffffff", new(0, 1, UInt32.MaxValue));

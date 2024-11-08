@@ -17,9 +17,7 @@ public readonly struct EIP1559Parameters
     public EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity)
     {
         if (version != 0) throw new ArgumentException($"{nameof(version)} must be 0", nameof(version));
-        if (denominator == 0) throw new ArgumentException($"{nameof(denominator)} cannot be 0", nameof(denominator));
-        // TODO: Add check for `there is no additional data beyond these 9 bytes` (whatever that means): https://github.com/roberto-bayardo/op-geth/blob/6c32375dda12d3f0b8f3498404f00fe1ae872547/consensus/misc/eip1559/eip1559.go#L112-L114
-        // TODO: Revisit this check: https://github.com/roberto-bayardo/op-geth/blob/6c32375dda12d3f0b8f3498404f00fe1ae872547/consensus/misc/eip1559/eip1559.go#L104
+        if (denominator == 0 && elasticity != 0) throw new ArgumentException($"{nameof(denominator)} cannot be 0 unless {nameof(elasticity)} is also 0", nameof(denominator));
 
         Version = version;
         Denominator = denominator;
@@ -32,6 +30,7 @@ public static class BlockHeaderExtensions
     public static EIP1559Parameters DecodeEIP1559Parameters(this BlockHeader header)
     {
         if (header.ExtraData.Length < 9) throw new ArgumentException($"{header.ExtraData} data must be at least 9 bytes long");
+        // TODO: Add check for `there is no additional data beyond these 9 bytes` (whatever that means): https://github.com/roberto-bayardo/op-geth/blob/6c32375dda12d3f0b8f3498404f00fe1ae872547/consensus/misc/eip1559/eip1559.go#L112-L114
 
         ReadOnlySpan<byte> extraData = header.ExtraData.AsSpan();
         var version = extraData.TakeAndMove(1)[0];
