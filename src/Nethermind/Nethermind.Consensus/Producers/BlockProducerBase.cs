@@ -241,7 +241,7 @@ namespace Nethermind.Consensus.Producers
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
+            header.BaseFeePerGas = new BaseFeeCalculator().Calculate(parent, _specProvider.GetSpec(header));
 
             return header;
         }

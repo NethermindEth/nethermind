@@ -293,7 +293,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
             ? block.BlockOverrides.BaseFeePerGas.Value
             : !payloadValidation
                 ? 0
-                : BaseFeeCalculator.Calculate(parent, spec);
+                : new BaseFeeCalculator().Calculate(parent, spec);
 
         result.ExcessBlobGas = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateExcessBlobGas(parent, spec) : (ulong?)0;
 

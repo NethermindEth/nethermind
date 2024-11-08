@@ -50,7 +50,7 @@ public class BlockOverride
             newTime,
             Array.Empty<byte>())
         {
-            BaseFeePerGas = BaseFeePerGas ?? BaseFeeCalculator.Calculate(parent, spec),
+            BaseFeePerGas = BaseFeePerGas ?? new BaseFeeCalculator().Calculate(parent, spec),
             MixHash = PrevRandao,
             IsPostMerge = parent.Difficulty == 0,
             TotalDifficulty = parent.TotalDifficulty + newDifficulty,
