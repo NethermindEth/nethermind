@@ -172,12 +172,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var initialILMODE = codeinfo.IlInfo.Mode;
             if(mode.HasFlag(ILMode.JIT_MODE))
             {
-                IlAnalyzer.StartAnalysis(codeinfo, ILMode.JIT_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.JIT_MODE, config, NullLogger.Instance);
             }
 
             if (mode.HasFlag(ILMode.PAT_MODE))
             {
-                IlAnalyzer.StartAnalysis(codeinfo, ILMode.PAT_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.PAT_MODE, config, NullLogger.Instance);
             }
         }
 
@@ -1412,7 +1412,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
-            IlAnalyzer.StartAnalysis(codeInfo, ILMode.PAT_MODE, config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeInfo, ILMode.PAT_MODE, config, NullLogger.Instance);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
@@ -1441,7 +1441,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
-            IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.JIT_MODE, config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeInfo, IlInfo.ILMode.JIT_MODE, config, NullLogger.Instance);
 
             codeInfo.IlInfo.Segments.Count.Should().Be(2);
         }

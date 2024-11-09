@@ -46,7 +46,7 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
         ushort[] jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
@@ -2102,17 +2102,18 @@ internal class ILCompiler
         return jumpDestinations.Keys.ToArray();
     }
 
+#if DEBUG
     private static void EmitDebuggerTracerCall(Emit<ExecuteSegment> method, Local gasAvailable, Local pc, Local head, Local stack)
     {
         // just experimental code
-        /* Label skipCall = method.DefineLabel();
-        using Local debugTracer = method.DeclareLocal<DebugTracer>();
+        Label skipCall = method.DefineLabel();
+        using Local debugTracer = method.DeclareLocal<Tracing.Debugger.DebugTracer>();
         using Local convertedPc = method.DeclareLocal<int>();
         using Local castedStack = method.DeclareLocal(typeof(Span<byte>));
         using Local vmState = method.DeclareLocal<EvmState>();
 
         method.LoadArgument(TXTRACER_INDEX);
-        method.IsInstance(typeof(DebugTracer));
+        method.IsInstance(typeof(Tracing.Debugger.DebugTracer));
         method.StoreLocal(debugTracer);
         method.Print(convertedPc);
 
@@ -2125,15 +2126,6 @@ internal class ILCompiler
         method.Convert<int>();
         method.StoreLocal(convertedPc);
 
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
-        method.LoadLocal(stack);
-        method.Call(GetCastMethodInfo<Word, byte>());
-        method.StoreLocal(castedStack);
-        method.LoadLocalAddress(castedStack);
-        method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.ToArray)));
-        method.StoreField(GetFieldInfo(typeof(EvmState), nameof(EvmState.DataStack)));
-
         method.LoadLocal(debugTracer);
         method.LoadArgument(VMSTATE_INDEX);
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
@@ -2143,10 +2135,38 @@ internal class ILCompiler
         method.LoadLocalAddress(convertedPc);
         method.LoadLocalAddress(gasAvailable);
         method.LoadLocalAddress(head);
-        method.CallVirtual(typeof(DebugTracer).GetMethod(nameof(DebugTracer.TryWait), BindingFlags.Instance | BindingFlags.Public));
+        method.CallVirtual(typeof(Tracing.Debugger.DebugTracer).GetMethod(nameof(Tracing.Debugger.DebugTracer.TryWait), BindingFlags.Instance | BindingFlags.Public));
 
-        method.MarkLabel(skipCall);*/
+
+        using Local newStack = method.DeclareLocal(typeof(Span<Word>));
+        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadField(GetFieldInfo(typeof(EvmState), nameof(EvmState.DataStack)));
+        method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(byte[])));
+        method.Call(GetCastMethodInfo<byte, Word> ());
+        method.StoreLocal(newStack);
+        
+        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.LoadField(GetFieldInfo(typeof(EvmState), nameof(EvmState.DataStackHead)));
+        method.StoreLocal(head);
+
+        method.ForBranch(head, (il, idx) =>
+        {
+            il.Load(newStack, idx);
+            il.Load(stack, idx);
+            il.LoadObject(typeof(Word));
+            il.StoreObject(typeof(Word));
+        });
+
+        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
+        method.Call(GetPropertyInfo(typeof(EvmState), nameof(EvmState.ProgramCounter), false, out _));
+        method.StoreLocal(pc);
+
+        method.MarkLabel(skipCall);
     }
+#endif
 
     private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
     {
