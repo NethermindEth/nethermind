@@ -32,7 +32,8 @@ internal class AccumulatorCalculator : IDisposable
     {
         Merkleizer merkleizer = new Merkleizer(0);
         merkleizer.Feed(_roots, EraWriter.MaxEra1Size);
-        return new ValueHash256(merkleizer.CalculateRoot().ToLittleEndian());
+        UInt256 root = merkleizer.CalculateRoot();
+        return new ValueHash256(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1)));
     }
 
     internal void Clear() => _roots.Clear();
