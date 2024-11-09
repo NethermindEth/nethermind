@@ -137,21 +137,7 @@ public class InitializeNetwork : IStep
 
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
-        ISyncServer syncServer = _api.SyncServer = new SyncServer(
-            _api.TrieStore!.TrieNodeRlpStore,
-            _api.DbProvider.CodeDb,
-            _api.BlockTree,
-            _api.ReceiptStorage!,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _api.SyncPeerPool!,
-            _api.SyncModeSelector,
-            _api.Config<ISyncConfig>(),
-            _api.GossipPolicy,
-            _api.SpecProvider!,
-            _api.LogManager);
-
-        _api.DisposeStack.Push(syncServer);
+        _ = _api.SyncServer; // Need to be resolved at least once before the peer pool is started.
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)

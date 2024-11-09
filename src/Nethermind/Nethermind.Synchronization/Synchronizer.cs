@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -315,6 +316,10 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .As<ISyncPeerPool>()
             .As<IPeerDifficultyRefreshPool>()
             .SingleInstance();
+
+        builder
+            .Map<IReceiptStorage, IReceiptFinder>((storage) => storage)
+            .AddSingleton<ISyncServer, SyncServer>();
     }
 
     private void ConfigureFullSync(ContainerBuilder scopeConfig)

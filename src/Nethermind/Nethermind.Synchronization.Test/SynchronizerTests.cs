@@ -282,7 +282,7 @@ public class SynchronizerTests
         private readonly Dictionary<string, ISyncPeer> _peers = new();
         private BlockTree BlockTree { get; }
 
-        private ISyncServer SyncServer { get; }
+        private ISyncServer SyncServer => Container.Resolve<ISyncServer>();
 
         private ISynchronizer Synchronizer => Container.Resolve<ISynchronizer>();
         private ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
@@ -344,9 +344,7 @@ public class SynchronizerTests
 
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
-            ContainerBuilder builder = new ContainerBuilder();
-
-            builder
+            ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new DbModule())
                 .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
@@ -368,6 +366,7 @@ public class SynchronizerTests
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton(beaconPivot)
+                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
                 .AddSingleton(_logManager);
 
             if (IsMerge(synchronizerType))
@@ -376,23 +375,9 @@ public class SynchronizerTests
             }
 
             Container = builder.Build();
-            SyncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
-                codeDb,
-                BlockTree,
-                NullReceiptStorage.Instance,
-                Always.Valid,
-                Always.Valid,
-                SyncPeerPool,
-                Container.Resolve<ISyncModeSelector>(),
-                syncConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                _logManager);
-
+            Container.Resolve<ISyncServer>(); // Need to be created once to register events.
             SyncPeerPool.Start();
             Synchronizer.Start();
-
             AllInstances.Enqueue(this);
         }
 
