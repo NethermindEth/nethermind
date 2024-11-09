@@ -70,6 +70,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool NeedToWaitForHeader { get; set; }
         public bool VerifyTrieOnStateSyncFinished { get; set; }
         public bool TrieHealing { get; set; } = true;
+        public int StateMaxDistanceFromHead { get; set; } = 128;
+        public int StateMinDistanceFromHead { get; set; } = 32;
 
         public override string ToString()
         {

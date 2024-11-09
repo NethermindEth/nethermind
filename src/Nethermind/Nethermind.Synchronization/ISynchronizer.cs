@@ -6,12 +6,10 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Synchronization
 {
-    public interface ISynchronizer : IDisposable
+    public interface ISynchronizer : IAsyncDisposable
     {
         event EventHandler<SyncEventArgs> SyncEvent;
 
         void Start();
-
-        Task StopAsync();
     }
 }

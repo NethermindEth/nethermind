@@ -48,8 +48,8 @@ namespace Nethermind.Api
         ISyncModeSelector SyncModeSelector { get; }
         ISyncProgressResolver? SyncProgressResolver { get; }
         IPivot? Pivot { get; set; }
-        ISyncPeerPool? SyncPeerPool { get; set; }
-        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
+        ISyncPeerPool? SyncPeerPool { get; }
+        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
