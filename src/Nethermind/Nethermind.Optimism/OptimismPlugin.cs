@@ -41,6 +41,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
+    private OptimismChainSpecEngineParameters? _chainSpecParameters;
     private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
@@ -103,7 +104,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
 
-        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _api.ChainSpec.Optimism.BedrockBlockNumber);
+        _chainSpecParameters = _api.ChainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<OptimismChainSpecEngineParameters>();
+        _api.PoSSwitcher = new OptimismPoSSwitcher(_api.SpecProvider, _chainSpecParameters.BedrockBlockNumber!.Value);
 
         _blockCacheService = new BlockCacheService();
         _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
@@ -162,7 +165,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         builder.RegisterModule(new SynchronizerModule(_syncConfig));
         builder.RegisterModule(new MergeSynchronizerModule());
-        builder.RegisterModule(new OptimismSynchronizerModule(_api.ChainSpec.Optimism, _api.SpecProvider));
+        builder.RegisterModule(new OptimismSynchronizerModule(_chainSpecParameters!, _api.SpecProvider));
 
         IContainer container = builder.Build();
 
@@ -260,8 +263,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),

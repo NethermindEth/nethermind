@@ -338,8 +338,9 @@ namespace Nethermind.Synchronization.Peers
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
                 int waitTime = 10 * tryCount++;
+                waitTime = Math.Min(waitTime, timeoutMilliseconds);
 
-                if (!_signals.SafeWaitHandle.IsClosed)
+                if (waitTime > 0 && !_signals.SafeWaitHandle.IsClosed)
                 {
                     await _signals.WaitOneAsync(waitTime, cts.Token);
                     if (!_signals.SafeWaitHandle.IsClosed)

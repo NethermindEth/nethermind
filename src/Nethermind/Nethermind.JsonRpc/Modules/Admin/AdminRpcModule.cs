@@ -12,12 +12,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Era1;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin;
 
 public class AdminRpcModule : IAdminRpcModule
 {
+    private readonly ChainParameters _parameters;
     private readonly IBlockTree _blockTree;
     private readonly INetworkConfig _networkConfig;
     private readonly IPeerPool _peerPool;
@@ -36,7 +38,8 @@ public class AdminRpcModule : IAdminRpcModule
         IEnode enode,
         IAdminEraService eraService,
         string dataDir,
-        ManualPruningTrigger pruningTrigger)
+        ManualPruningTrigger pruningTrigger,
+        ChainParameters parameters)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -46,20 +49,27 @@ public class AdminRpcModule : IAdminRpcModule
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
         _eraService = eraService;
+        _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+
         BuildNodeInfo();
     }
 
     private void BuildNodeInfo()
     {
-        _nodeInfo = new NodeInfo();
-        _nodeInfo.Name = ProductInfo.ClientId;
-        _nodeInfo.Enode = _enode.Info;
-        byte[] publicKeyBytes = _enode.PublicKey?.Bytes;
-        _nodeInfo.Id = (publicKeyBytes is null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
-        _nodeInfo.Ip = _enode.HostIp?.ToString();
-        _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
-        _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;
-        _nodeInfo.Ports.Listener = _networkConfig.P2PPort;
+        _nodeInfo = new NodeInfo
+        {
+            Name = ProductInfo.ClientId,
+            Enode = _enode.Info,
+            Id = (_enode.PublicKey?.Hash ?? Keccak.Zero).ToString(false),
+            Ip = _enode.HostIp?.ToString(),
+            ListenAddress = $"{_enode.HostIp}:{_enode.Port}",
+            Ports =
+            {
+                Discovery = _networkConfig.DiscoveryPort,
+                Listener = _networkConfig.P2PPort
+            }
+        };
+
         UpdateEthProtocolInfo();
     }
 
@@ -69,6 +79,7 @@ public class AdminRpcModule : IAdminRpcModule
         _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.ChainId;
         _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
         _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
+        _nodeInfo.Protocols["eth"].Config = _parameters;
     }
 
     public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)

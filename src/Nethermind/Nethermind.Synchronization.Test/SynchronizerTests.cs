@@ -9,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -310,6 +309,8 @@ public class SynchronizerTests
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
             syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
+            syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
+            syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb stateDb = new MemDb();
@@ -345,9 +346,10 @@ public class SynchronizerTests
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
             ContainerBuilder builder = new ContainerBuilder();
-            dbProvider.ConfigureServiceCollection(builder);
 
             builder
+                .AddModule(new DbModule())
+                .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
@@ -369,8 +371,6 @@ public class SynchronizerTests
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton(beaconPivot)
                 .AddSingleton(_logManager);
-
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
 
             if (IsMerge(synchronizerType))
             {
@@ -522,7 +522,7 @@ public class SynchronizerTests
 
         public SyncingContext PeerCountEventuallyIs(long i)
         {
-            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 100), "peer count");
+            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 10), "peer count");
             return this;
         }
 

@@ -42,8 +42,10 @@ namespace Nethermind.Taiko;
 
 public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
 {
+    public const string Taiko = "Taiko";
+    private const string L1OriginDbName = "L1Origin";
     public string Author => "Nethermind";
-    public string Name => "Taiko";
+    public string Name => Taiko;
     public string Description => "Taiko support for Nethermind";
 
     private TaikoNethermindApi? _api;
@@ -56,8 +58,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
     private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
-
-    private const string L1OriginDbName = "L1Origin";
 
     public Task Init(INethermindApi api)
     {
@@ -227,8 +227,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                 _api.Config<IMergeConfig>().SimulateBlockProduction),
             new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
             new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByHashV2Handler(_api.BlockTree, _api.LogManager),
-            new GetPayloadBodiesByRangeV2Handler(_api.BlockTree, _api.LogManager),
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             new GetBlobsHandler(_api.TxPool),

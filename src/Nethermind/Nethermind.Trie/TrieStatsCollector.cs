@@ -10,7 +10,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie
 {
-    public class TrieStatsCollector : ITreeVisitor
+    public class TrieStatsCollector : ITreeVisitor<TreePathContextWithStorage>
     {
         private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
@@ -29,29 +29,32 @@ namespace Nethermind.Trie
         public TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
+        public void VisitTree(in TreePathContextWithStorage nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        {
+        }
 
-        public bool ShouldVisit(Hash256 nextNode)
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, Hash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext) { }
-
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
+                if (_logger.IsWarn) _logger.Warn($"Missing node. Storage: {nodeContext.Storage} Path: {nodeContext.Path} Hash: {nodeHash}");
                 Interlocked.Increment(ref Stats._missingStorage);
             }
             else
             {
+                if (_logger.IsWarn) _logger.Warn($"Missing node. Path: {nodeContext.Path} Hash: {nodeHash}");
                 Interlocked.Increment(ref Stats._missingState);
             }
 
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
         {
             _cancellationToken.ThrowIfCancellationRequested();
 
@@ -69,7 +72,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -85,7 +88,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             long lastAccountNodeCount = _lastAccountNodeCount;
             long currentNodeCount = Stats.NodesCount;
@@ -108,7 +111,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in TreePathContextWithStorage nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             ValueHash256 key = new ValueHash256(codeHash.Bytes);
             bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
@@ -130,6 +133,7 @@ namespace Nethermind.Trie
             }
             else
             {
+                if (_logger.IsWarn) _logger.Warn($"Missing code. Hash: {codeHash}");
                 Interlocked.Increment(ref Stats._missingCode);
             }
 

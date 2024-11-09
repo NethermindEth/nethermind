@@ -4,8 +4,8 @@
 using System;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -250,6 +250,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithEmptyRequestsHash()
+        {
+            TestObjectInternal.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+            TestObjectInternal.ExecutionRequests = ExecutionRequestExtensions.EmptyRequests;
+            return this;
+        }
+
         public BlockBuilder WithGasUsed(long gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
@@ -274,28 +281,6 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.WithdrawalsRoot = withdrawals is null
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
-
-            return this;
-        }
-
-        public BlockBuilder WithConsensusRequests(int count)
-        {
-            var consensusRequests = new ConsensusRequest[count];
-
-            for (var i = 0; i < count; i++)
-                consensusRequests[i] = new Deposit();
-
-            return WithConsensusRequests(consensusRequests);
-        }
-
-        public BlockBuilder WithConsensusRequests(params ConsensusRequest[]? requests)
-        {
-            TestObjectInternal = TestObjectInternal
-                .WithReplacedBody(TestObjectInternal.Body.WithChangedConsensusRequests(requests));
-
-            TestObjectInternal.Header.RequestsRoot = requests is null
-                ? null
-                : new RequestsTrie(requests).RootHash;
 
             return this;
         }

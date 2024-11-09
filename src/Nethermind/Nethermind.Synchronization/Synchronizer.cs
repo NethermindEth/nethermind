@@ -87,6 +87,9 @@ namespace Nethermind.Synchronization
             WireMultiSyncModeSelector();
 
             SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+
+            // Make unit test faster.
+            SyncModeSelector.Update();
         }
 
         private void StartFullSyncComponents()

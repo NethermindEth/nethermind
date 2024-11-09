@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -46,6 +47,11 @@ public class AdminModuleTests
         IAdminEraService eraService = Substitute.For<IAdminEraService>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         Enode enode = new(_enodeString);
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters()
+        };
+
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
             _networkConfig,
@@ -54,7 +60,8 @@ public class AdminModuleTests
             enode,
             eraService,
             _exampleDataDir,
-            new ManualPruningTrigger());
+            new ManualPruningTrigger(),
+            chainSpec.Parameters);
 
         _serializer = new EthereumJsonSerializer();
     }

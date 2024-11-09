@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -56,7 +55,7 @@ namespace Nethermind.Runner.Test.Ethereum
         public static NethermindApi ContextWithMocks()
         {
             var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec())
+                new ChainSpec { Parameters = new ChainParameters(), })
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),

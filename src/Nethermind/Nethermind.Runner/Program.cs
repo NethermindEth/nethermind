@@ -242,22 +242,27 @@ void AddConfigurationOptions(CliCommand command)
 
         ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
-        if (typeLevel is not null && (typeLevel.DisabledForCli || typeLevel.HiddenFromDocs))
+        if (typeLevel is not null && typeLevel.DisabledForCli)
             continue;
+
+        bool categoryHidden = typeLevel?.HiddenFromDocs == true;
 
         foreach (PropertyInfo propertyInfo in
             configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
             ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (configItemAttribute?.DisabledForCli == false || configItemAttribute?.HiddenFromDocs == false)
+            if (configItemAttribute?.DisabledForCli != true)
             {
+                bool hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
+
                 command.Add(new CliOption<string>(
                     $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
                     $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
                 {
                     Description = configItemAttribute?.Description,
-                    HelpName = "value"
+                    HelpName = "value",
+                    Hidden = hidden
                 });
             }
 
@@ -325,7 +330,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     logger = logManager.GetClassLogger();
 
-    string logLevel = parseResult.GetValue(BasicOptions.LogLevel) ?? "info";
+    string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
