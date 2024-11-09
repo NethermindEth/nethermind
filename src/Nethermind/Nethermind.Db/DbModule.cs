@@ -43,6 +43,8 @@ public class DbModule : Module
             })
             .ExternallyOwned()
             .Named<IDb>(dbName)
+            .Named<IReadOnlyKeyValueStore>(dbName)
+            .Named<IKeyValueStore>(dbName)
             .Named<IDbMeta>(dbName);
 
         builder.Register((ctx) =>
