@@ -135,8 +135,6 @@ public class InitializeNetwork : IStep
             healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
         }
 
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
-            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
