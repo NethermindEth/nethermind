@@ -164,11 +164,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
         _vmConfig = new VMConfig
         {
-            JittingThreshold = 1,
+            JittingThreshold = 2,
             IsJitEnabled = true,
-            BakeInTracingInJitMode = true,
+            BakeInTracingInJitMode = false,
             AggressiveJitMode = true,
-            AnalysisQueueMaxSize = 2
+            AnalysisQueueMaxSize = 4
         };
     }
 
