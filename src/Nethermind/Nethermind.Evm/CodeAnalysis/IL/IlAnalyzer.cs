@@ -12,6 +12,7 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
@@ -19,6 +20,8 @@ using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using static Org.BouncyCastle.Crypto.Engines.SM2Engine;
 using ILMode = int;
 
+[assembly : InternalsVisibleTo("Nethermind.Evm.Tests")]
+[assembly : InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 /// <summary>
@@ -48,7 +51,7 @@ public static class IlAnalyzer
         while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
         {
             if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {worklet.CodeInfo.Address}");
-            IlAnalyzer.StartAnalysis(worklet.CodeInfo, worklet.Mode, config, logger);
+            IlAnalyzer.Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
         }
     }
 
@@ -110,7 +113,7 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    internal static void StartAnalysis(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
+    public static void Analyse(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
     {
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;

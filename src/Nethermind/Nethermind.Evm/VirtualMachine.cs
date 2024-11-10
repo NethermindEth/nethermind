@@ -164,11 +164,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
         _vmConfig = new VMConfig
         {
-            JittingThreshold = 1,
+            JittingThreshold = 2,
             IsJitEnabled = true,
-            BakeInTracingInJitMode = true,
+            BakeInTracingInJitMode = false,
             AggressiveJitMode = true,
-            AnalysisQueueMaxSize = 2
+            AnalysisQueueMaxSize = 4
         };
     }
 
@@ -767,9 +767,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
         {
-#if DEBUG
-            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
-#endif
 
             // try execute as many as possible
             while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
@@ -823,6 +820,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 }
             }
 
+#if DEBUG
+            debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
+#endif
+            
             Instruction instruction = (Instruction)code[programCounter];
 
             if (isCancelable && _txTracer.IsCancelled)

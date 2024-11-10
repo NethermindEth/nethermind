@@ -14,6 +14,9 @@ using NonBlocking;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static Nethermind.Evm.VirtualMachine;
 
+[assembly: InternalsVisibleTo("Nethermind.Evm.Tests")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
+
 namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
 /// Represents the IL-EVM information about the contract.
