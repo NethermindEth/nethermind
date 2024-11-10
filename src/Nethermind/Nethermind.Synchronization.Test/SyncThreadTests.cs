@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -219,10 +218,11 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncTestContext
         {
+            public IContainer Container { get; set; } = null!;
             public IEthereumEcdsa Ecdsa { get; set; } = null!;
             public ITxPool TxPool { get; set; } = null!;
             public ISyncServer SyncServer { get; set; } = null!;
-            public ISyncPeerPool? PeerPool { get; set; }
+            public ISyncPeerPool? PeerPool => Container.Resolve<ISyncPeerPool>();
             public IBlockchainProcessor? BlockchainProcessor { get; set; }
             public ISynchronizer? Synchronizer { get; set; }
             public IBlockTree Tree { get; set; } = null!;
@@ -236,8 +236,7 @@ namespace Nethermind.Synchronization.Test
             {
                 await (BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
                 await (BlockProducerRunner?.StopAsync() ?? Task.CompletedTask);
-                await (PeerPool?.StopAsync() ?? Task.CompletedTask);
-                await (Synchronizer?.StopAsync() ?? Task.CompletedTask);
+                await (Container?.DisposeAsync() ?? ValueTask.CompletedTask);
                 Logger?.Flush();
             }
         }
@@ -313,7 +312,6 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             WorldState devState = new(trieStore, codeDb, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
@@ -366,7 +364,6 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IBlockTree>(tree)
                 .AddSingleton(NullReceiptStorage.Instance)
-                .AddSingleton<ISyncPeerPool>(syncPeerPool)
                 .AddSingleton<INodeStatsManager>(nodeStatsManager)
                 .AddSingleton(syncConfig)
                 .AddSingleton<IBlockValidator>(blockValidator)
@@ -380,6 +377,7 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
                 .AddSingleton<ILogManager>(logManager);
             IContainer container = builder.Build();
+            ISyncPeerPool syncPeerPool = container.Resolve<ISyncPeerPool>();
 
             Synchronizer synchronizer = container.Resolve<Synchronizer>();
 
@@ -418,9 +416,9 @@ namespace Nethermind.Synchronization.Test
             }
 
             SyncTestContext context = new();
+            context.Container = container;
             context.Ecdsa = ecdsa;
             context.BlockchainProcessor = processor;
-            context.PeerPool = syncPeerPool;
             context.StateProvider = stateProvider;
             context.Synchronizer = synchronizer;
             context.SyncServer = syncServer;

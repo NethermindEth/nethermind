@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -39,7 +40,7 @@ public class SnapServerTest
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         MemDb clientStateDb = new();
-        using ProgressTracker progressTracker = new(null!, clientStateDb, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(null!, clientStateDb, new SyncConfig(), LimboLogs.Instance);
 
         INodeStorage nodeStorage = new NodeStorage(clientStateDb);
 
@@ -261,7 +262,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, new SyncConfig(), LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
@@ -297,7 +298,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, new SyncConfig(), LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;

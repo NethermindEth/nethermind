@@ -19,6 +19,7 @@ using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
@@ -221,11 +222,11 @@ namespace Nethermind.Synchronization
             SyncEvent?.Invoke(this, e);
         }
 
-        public Task StopAsync()
+        public async ValueTask DisposeAsync()
         {
             _syncCancellation?.Cancel();
 
-            return Task.WhenAny(
+            await Task.WhenAny(
                 Task.Delay(FeedsTerminationTimeout),
                 Task.WhenAll(
                     fullSyncComponent.Feed.FeedTask,
@@ -235,6 +236,8 @@ namespace Nethermind.Synchronization
                     fastHeaderComponent.Feed.FeedTask,
                     oldBodiesComponent.Feed.FeedTask,
                     oldReceiptsComponent.Feed.FeedTask));
+
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
 
         private void WireMultiSyncModeSelector()
@@ -256,11 +259,6 @@ namespace Nethermind.Synchronization
                 feed?.SyncModeSelectorOnChanged(args.Current);
             });
             feed?.SyncModeSelectorOnChanged(SyncModeSelector.Current);
-        }
-
-        public void Dispose()
-        {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
     }
 }
@@ -311,6 +309,12 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync);
+
+        builder
+            .RegisterType<SyncPeerPool>()
+            .As<ISyncPeerPool>()
+            .As<IPeerDifficultyRefreshPool>()
+            .SingleInstance();
     }
 
     private void ConfigureFullSync(ContainerBuilder scopeConfig)
