@@ -78,11 +78,11 @@ public class GethLikeTxTraceResponseDebugTraceBlock
     public Hash256 TransactionHash { get; set; }
     public GethLikeTxTraceResultDebugTraceBlock Result { get; set; }
 
-    public GethLikeTxTraceResponseDebugTraceBlock() {}
+    public GethLikeTxTraceResponseDebugTraceBlock() { }
 
     public GethLikeTxTraceResponseDebugTraceBlock(GethLikeTxTrace trace)
     {
-        Result = new (trace);
+        Result = new(trace);
         TransactionHash = trace.TransactionHash;
     }
 

@@ -273,7 +273,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportTransaction(Transaction transaction) {}
+    public void ReportTransaction(Transaction transaction) { }
 
     public void Dispose() { }
 }
