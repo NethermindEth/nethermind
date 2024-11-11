@@ -37,7 +37,7 @@ namespace Ethereum.Test.Base
         public UInt256? ParentBlobGasUsed { get; set; }
         public UInt256? ParentExcessBlobGas { get; set; }
 
-        public Hash256? RequestsRoot { get; set; }
+        public Hash256? RequestsHash { get; set; }
 
         public override string ToString()
         {

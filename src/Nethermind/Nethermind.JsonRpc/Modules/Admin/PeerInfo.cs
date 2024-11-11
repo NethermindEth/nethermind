@@ -6,7 +6,6 @@ using System.Globalization;
 using System.Net;
 using Nethermind.Network;
 using Nethermind.Stats.Model;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {

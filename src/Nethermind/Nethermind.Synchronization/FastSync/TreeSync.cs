@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -59,8 +59,8 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly INodeStorage _nodeStorage;
-
         private readonly IBlockTree _blockTree;
+        private readonly ISyncConfig _syncConfig;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
@@ -78,18 +78,13 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
-            : this(SyncMode.StateNodes, codeDb, nodeStorage, blockTree, logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
-
-        }
-
-        public TreeSync(SyncMode syncMode, IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
-        {
-            _syncMode = syncMode;
+            _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _syncConfig = syncConfig;
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -403,15 +398,16 @@ namespace Nethermind.Synchronization.FastSync
 
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (bestSuggested is null || bestSuggested.Number == 0)
+            long targetBlockNumber = Math.Max((_blockTree.BestSuggestedHeader?.Number ?? 0) - _syncConfig.StateMinDistanceFromHead, 0);
+            BlockHeader headerForState = _blockTree.FindHeader(targetBlockNumber);
+            if (headerForState is null)
             {
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
+            if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
-            ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!, currentState);
+            ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
         }
 
         public void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)

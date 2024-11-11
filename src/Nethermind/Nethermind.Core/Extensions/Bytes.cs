@@ -282,18 +282,24 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] Concat(params byte[][] parts)
         {
+            return Concat(parts.AsSpan());
+        }
+
+        public static byte[] Concat(ReadOnlySpan<byte[]> bytes)
+        {
             int totalLength = 0;
-            for (int i = 0; i < parts.Length; i++)
+            foreach (byte[] byteArray in bytes)
             {
-                totalLength += parts[i].Length;
+                totalLength += byteArray.Length;
             }
 
             byte[] result = new byte[totalLength];
-            int position = 0;
-            for (int i = 0; i < parts.Length; i++)
+            int offset = 0;
+
+            foreach (byte[] byteArray in bytes)
             {
-                Buffer.BlockCopy(parts[i], 0, result, position, parts[i].Length);
-                position += parts[i].Length;
+                Array.Copy(byteArray, 0, result, offset, byteArray.Length);
+                offset += byteArray.Length;
             }
 
             return result;
