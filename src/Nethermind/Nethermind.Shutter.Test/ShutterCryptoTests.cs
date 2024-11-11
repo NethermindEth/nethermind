@@ -177,11 +177,10 @@ class ShutterCryptoTests
     )]
     public void Can_verify_validator_registration_signature(string msgHex, string sigHex, string pkHex)
     {
-        Assert.That(ShutterCrypto.CheckValidatorRegistrySignature(
-            new(Convert.FromHexString(pkHex)),
-            Convert.FromHexString(sigHex),
-            Convert.FromHexString(msgHex)
-        ));
+        BlsSigner.AggregatedPublicKey pk = new();
+        pk.Decode(Convert.FromHexString(pkHex));
+
+        Assert.That(ShutterCrypto.CheckValidatorRegistrySignatures(pk, Convert.FromHexString(sigHex), Convert.FromHexString(msgHex)));
     }
 
     [Test]

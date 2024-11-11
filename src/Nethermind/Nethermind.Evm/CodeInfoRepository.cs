@@ -16,7 +16,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm;
 

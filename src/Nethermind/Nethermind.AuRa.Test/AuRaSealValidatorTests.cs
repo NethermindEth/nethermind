@@ -7,10 +7,10 @@ using System.Collections.Generic;
 using System.Net;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -24,7 +24,7 @@ namespace Nethermind.AuRa.Test
     public class AuRaSealValidatorTests
     {
         private AuRaSealValidator _sealValidator;
-        private AuRaParameters _auRaParameters;
+        private AuRaChainSpecEngineParameters _auRaParameters;
         private IAuRaStepCalculator _auRaStepCalculator;
         private ILogManager _logManager;
         private IWallet _wallet;
@@ -38,7 +38,7 @@ namespace Nethermind.AuRa.Test
         [SetUp]
         public void SetUp()
         {
-            _auRaParameters = new AuRaParameters();
+            _auRaParameters = new AuRaChainSpecEngineParameters();
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _logManager = LimboLogs.Instance;
             _wallet = new DevWallet(new WalletConfig(), _logManager);
@@ -89,7 +89,7 @@ namespace Nethermind.AuRa.Test
                 TestCaseData GetTestCaseData(
                     BlockHeaderBuilder parent,
                     BlockHeaderBuilder block,
-                    Action<AuRaParameters> paramAction = null,
+                    Action<AuRaChainSpecEngineParameters> paramAction = null,
                     Repeat repeat = Repeat.No,
                     bool parentIsHead = true,
                     bool isValidSealer = true) =>
@@ -141,7 +141,7 @@ namespace Nethermind.AuRa.Test
         }
 
         [TestCaseSource(nameof(ValidateParamsTests))]
-        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
+        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaChainSpecEngineParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
             _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
             _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value, out _).Returns(isValidSealer);

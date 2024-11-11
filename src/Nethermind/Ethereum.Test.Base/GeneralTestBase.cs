@@ -106,7 +106,7 @@ namespace Ethereum.Test.Base
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
-            header.RequestsRoot = test.RequestsRoot;
+            header.RequestsHash = test.RequestsHash;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -167,7 +167,7 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(Dictionary<Address, AccountState> preState, WorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestState(Dictionary<Address, AccountState> preState, WorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in preState)
             {

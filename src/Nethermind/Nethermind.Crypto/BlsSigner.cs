@@ -40,6 +40,7 @@ public static class BlsSigner
     public static Signature Sign(Bls.SecretKey sk, ReadOnlySpan<byte> message)
         => Sign(new long[G2.Sz], sk, message);
 
+    [SkipLocalsInit]
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
         int len = 2 * GT.Sz;
@@ -126,6 +127,9 @@ public static class BlsSigner
         public void FromSk(Bls.SecretKey sk)
             => _point.FromSk(sk);
 
+        public void Reset()
+            => _point.Zero();
+
         public bool TryDecode(ReadOnlySpan<byte> publicKeyBytes, out Bls.ERROR err)
             => _point.TryDecode(publicKeyBytes, out err);
 
@@ -138,6 +142,7 @@ public static class BlsSigner
         public void Aggregate(AggregatedPublicKey aggregatedPublicKey)
             => _point.Aggregate(aggregatedPublicKey.PublicKey);
 
+        [SkipLocalsInit]
         public bool TryAggregate(ReadOnlySpan<byte> publicKeyBytes, out Bls.ERROR err)
         {
             G1Affine pk = new(stackalloc long[G1Affine.Sz]);

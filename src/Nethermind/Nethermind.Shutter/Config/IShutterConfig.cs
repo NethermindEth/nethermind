@@ -60,7 +60,7 @@ public interface IShutterConfig : IConfig
     string ShutterKeyFile { get; set; }
 
     [ConfigItem(Description = "The Shutter validator registry message version.",
-        DefaultValue = "0", HiddenFromDocs = true)]
+        DefaultValue = "1", HiddenFromDocs = true)]
     ulong ValidatorRegistryMessageVersion { get; set; }
 
     [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
@@ -74,6 +74,18 @@ public interface IShutterConfig : IConfig
     [ConfigItem(Description = "Whether to build Shutter blocks or just give metrics on Shutter transactions.",
         DefaultValue = "true", HiddenFromDocs = true)]
     bool Validator { get; set; }
+
+    [ConfigItem(Description = "How many milliseconds to wait for transactions before sending a disconnection warning.",
+        DefaultValue = "1200000", HiddenFromDocs = true)]
+    uint DisconnectionLogTimeout { get; set; }
+
+    [ConfigItem(Description = "How many milliseconds in between each disconnection warning.",
+        DefaultValue = "60000", HiddenFromDocs = true)]
+    uint DisconnectionLogInterval { get; set; }
+
+    [ConfigItem(Description = "Whether to output libp2p logs.",
+        DefaultValue = "false", HiddenFromDocs = true)]
+    bool P2PLogsEnabled { get; set; }
 
     public void Validate(out Multiaddress[] bootnodeP2PAddresses)
     {
@@ -105,6 +117,11 @@ public interface IShutterConfig : IConfig
         if (KeyperSetManagerContractAddress is null || !Address.TryParse(KeyperSetManagerContractAddress, out _))
         {
             throw new ArgumentException("Must set Shutter keyper set manager contract address to valid address.");
+        }
+
+        if (DisconnectionLogTimeout < 60000)
+        {
+            throw new ArgumentException("Must set Shutter disconnection log timeout to at least a minute.");
         }
 
         if (P2PAgentVersion is null)
