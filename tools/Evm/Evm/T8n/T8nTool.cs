@@ -18,7 +18,7 @@ public static class T8nTool
 
     static T8nTool()
     {
-        EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
+        EthereumJsonSerializer.AddConverter(new ReceiptJsonConverter());
         EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
     }
 
