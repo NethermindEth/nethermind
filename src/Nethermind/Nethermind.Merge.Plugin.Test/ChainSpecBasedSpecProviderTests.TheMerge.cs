@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -22,7 +22,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
             Parameters = new ChainParameters
             {
                 TerminalPoWBlockNumber = terminalBlockNumber
-            }
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -42,9 +43,9 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
         Assert.That(chainSpec.MergeForkIdBlockNumber, Is.EqualTo(72));
 
-        Assert.True(provider.TransitionActivations.ToList().Contains((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
-        Assert.False(provider.TransitionActivations.ToList().Contains((ForkActivation)100)); // merge block number shouldn't affect transition blocks
-        Assert.False(provider.TransitionActivations.ToList().Contains((ForkActivation)101)); // merge block number shouldn't affect transition blocks
+        Assert.That(provider.TransitionActivations, Has.Member((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
+        Assert.That(provider.TransitionActivations, Has.No.Member((ForkActivation)100)); // merge block number shouldn't affect transition blocks
+        Assert.That(provider.TransitionActivations, Has.No.Member((ForkActivation)101)); // merge block number shouldn't affect transition blocks
     }
 
     [Test]
@@ -52,7 +53,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     {
         ChainSpec chainSpec = new()
         {
-            Parameters = new ChainParameters { }
+            Parameters = new ChainParameters { },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);

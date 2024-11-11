@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -88,6 +89,7 @@ namespace Nethermind.Api
         IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
+        IBlockImprovementContextFactory? BlockImprovementContextFactory { get; set; }
 
         IGasPriceOracle? GasPriceOracle { get; set; }
 
@@ -99,5 +101,12 @@ namespace Nethermind.Api
         INodeStorageFactory NodeStorageFactory { get; set; }
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
         CensorshipDetector CensorshipDetector { get; set; }
+
+        public ContainerBuilder ConfigureContainerBuilderFromApiWithBlockchain(ContainerBuilder builder)
+        {
+            return ConfigureContainerBuilderFromApiWithStores(builder)
+                .AddPropertiesFrom<IApiWithBlockchain>(this)
+                .AddSingleton<INodeStorage>(NodeStorageFactory.WrapKeyValueStore(DbProvider!.StateDb));
+        }
     }
 }

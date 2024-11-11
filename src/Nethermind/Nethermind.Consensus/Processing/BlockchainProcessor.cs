@@ -6,8 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -16,7 +14,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Memory;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -93,7 +90,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
         _blockTree.NewHeadBlock += OnNewHeadBlock;
 
-        _stats = new ProcessingStats(_logger);
+        _stats = new ProcessingStats(stateReader, _logger);
     }
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -397,6 +394,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
+        _stopwatch.Stop();
         if (processedBlocks is null)
         {
             return null;
@@ -414,6 +412,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
         }
 
+        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+        if (!readonlyChain)
+        {
+            long blockProcessingTimeInMicrosecs = _stopwatch.ElapsedMicroseconds();
+            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMicrosecs / 1000;
+            Metrics.RecoveryQueueSize = _recoveryQueue.Count;
+            Metrics.ProcessingQueueSize = _blockQueue.Count;
+
+            _stats.UpdateStats(lastProcessed, processingBranch.Root, blockProcessingTimeInMicrosecs);
+        }
+
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
         if (updateHead)
         {
@@ -421,26 +430,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockTree.UpdateMainChain(processingBranch.Blocks, true);
         }
 
-        bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-        long blockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
-        if (!readonlyChain)
-        {
-            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMs;
-        }
-
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
         {
             if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
             _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
-
-            Metrics.LastBlockProcessingTimeInMs = blockProcessingTimeInMs;
         }
 
         if (!readonlyChain)
         {
-            Metrics.RecoveryQueueSize = _recoveryQueue.Count;
-            Metrics.ProcessingQueueSize = _blockQueue.Count;
-            _stats.UpdateStats(lastProcessed, _blockTree, _stopwatch.ElapsedMicroseconds());
+            Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
         }
 
         return lastProcessed;
@@ -632,8 +630,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            branchingPoint = options.ContainsFlag(ProcessingOptions.ForceSameBlock)
+                ? toBeProcessed.Header
+                : _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
             if (branchingPoint is null)
             {
                 // genesis block

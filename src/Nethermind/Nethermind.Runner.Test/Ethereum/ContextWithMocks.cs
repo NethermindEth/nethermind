@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -42,10 +42,11 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Core;
+using Nethermind.Facade.Find;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -54,7 +55,7 @@ namespace Nethermind.Runner.Test.Ethereum
         public static NethermindApi ContextWithMocks()
         {
             var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec())
+                new ChainSpec { Parameters = new ChainParameters(), })
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
@@ -75,7 +76,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 StaticNodesManager = Substitute.For<IStaticNodesManager>(),
                 BloomStorage = Substitute.For<IBloomStorage>(),
                 Sealer = Substitute.For<ISealer>(),
-                Synchronizer = Substitute.For<ISynchronizer>(),
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
                 BlockProducer = Substitute.For<IBlockProducer>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
@@ -102,9 +102,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 EngineSignerStore = Substitute.For<ISignerStore>(),
                 NodeStatsManager = Substitute.For<INodeStatsManager>(),
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
-                SyncModeSelector = Substitute.For<ISyncModeSelector>(),
-                SyncPeerPool = Substitute.For<ISyncPeerPool>(),
-                PeerDifficultyRefreshPool = Substitute.For<IPeerDifficultyRefreshPool>(),
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
@@ -116,10 +113,17 @@ namespace Nethermind.Runner.Test.Ethereum
                 TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
                 UnclesValidator = Substitute.For<IUnclesValidator>(),
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
-                SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                BadBlocksStore = Substitute.For<IBlockStore>()
+                BadBlocksStore = Substitute.For<IBadBlockStore>(),
+
+                ApiWithNetworkServiceContainer = new ContainerBuilder()
+                    .AddSingleton(Substitute.For<ISyncModeSelector>())
+                    .AddSingleton(Substitute.For<ISyncProgressResolver>())
+                    .AddSingleton(Substitute.For<ISynchronizer>())
+                    .AddSingleton(Substitute.For<ISyncPeerPool>())
+                    .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
+                    .Build(),
             };
 
             api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);

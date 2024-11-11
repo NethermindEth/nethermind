@@ -22,7 +22,6 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -163,7 +162,7 @@ public class Startup
                 if (jsonRpcUrl.MaxRequestBodySize is not null)
                     ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
+                long startTime = Stopwatch.GetTimestamp();
                 CountingPipeReader request = new(ctx.Request.BodyReader);
                 try
                 {
@@ -243,7 +242,7 @@ public class Startup
                                 await ctx.Response.CompleteAsync();
                             }
 
-                            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                            long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                             _ = jsonRpcLocalStats.ReportCall(result.IsCollection
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);

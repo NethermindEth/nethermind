@@ -15,7 +15,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -99,6 +98,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     {
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
+
+    public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
 
     private void TimerOnElapsed(object sender, ElapsedEventArgs e)
     {
@@ -498,8 +499,7 @@ public class CliqueBlockProducer : IBlockProducer
             header,
             selectedTxs,
             Array.Empty<BlockHeader>(),
-            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null,
-            spec.ConsensusRequestsEnabled ? Enumerable.Empty<ConsensusRequest>() : null
+            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
         );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;

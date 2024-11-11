@@ -2,20 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
-public class OptimismSpecHelper(OptimismParameters parameters) : IOptimismSpecHelper
+public class OptimismSpecHelper(OptimismChainSpecEngineParameters parameters) : IOptimismSpecHelper
 {
-    private readonly long _bedrockBlockNumber = parameters.BedrockBlockNumber;
-    private readonly ulong _regolithTimestamp = parameters.RegolithTimestamp;
+    private readonly long? _bedrockBlockNumber = parameters.BedrockBlockNumber;
+    private readonly ulong? _regolithTimestamp = parameters.RegolithTimestamp;
     private readonly ulong? _canyonTimestamp = parameters.CanyonTimestamp;
     private readonly ulong? _ecotoneTimestamp = parameters.EcotoneTimestamp;
     private readonly ulong? _fjordTimestamp = parameters.FjordTimestamp;
     private readonly ulong? _graniteTimestamp = parameters.GraniteTimestamp;
 
-    public Address L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
+    public Address? L1FeeReceiver { get; init; } = parameters.L1FeeRecipient;
 
     public bool IsRegolith(BlockHeader header)
     {

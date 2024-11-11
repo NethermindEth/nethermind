@@ -11,6 +11,4 @@ namespace Nethermind.Consensus.Transactions
     {
         IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null);
     }
-
-
 }
