@@ -46,7 +46,8 @@ namespace Nethermind.Merge.Plugin
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
         {
             BlockHeader? currentHeader;
-            if(header.Hash != null){
+            if (header.Hash != null)
+            {
                 currentHeader = _blockTree.FindHeader(header.Hash, BlockTreeLookupOptions.None);
             }
 

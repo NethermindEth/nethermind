@@ -68,9 +68,9 @@ public class ValidateSubmissionHandler
         {
             return FlashbotsResult.Invalid("Parent beacon block root must be set in the request");
         }
-        
+
         payload.ParentBeaconBlockRoot = new Hash256(request.ParentBeaconBlockRoot);
-        
+
 
         BlobsBundleV1 blobsBundle = request.BlockRequest.BlobsBundle;
 
@@ -144,7 +144,7 @@ public class ValidateSubmissionHandler
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
     {
         // get sum of length of blobs of each transaction
-        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes is not null ?  t.BlobVersionedHashes.Length : 0);
+        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes is not null ? t.BlobVersionedHashes.Length : 0);
 
         if (totalBlobsLength != blobsBundle.Blobs.Length)
         {
@@ -197,7 +197,7 @@ public class ValidateSubmissionHandler
         IWorldState currentState = processingScope.WorldState;
         ITransactionProcessor transactionProcessor = processingScope.TransactionProcessor;
 
-        UInt256 feeRecipientBalanceBefore = currentState.HasStateForRoot(currentState.StateRoot) ?  ( currentState.AccountExists(feeRecipient) ?  currentState.GetBalance(feeRecipient) : UInt256.Zero): UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = currentState.HasStateForRoot(currentState.StateRoot) ? (currentState.AccountExists(feeRecipient) ? currentState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         BlockProcessor blockProcessor = CreateBlockProcessor(currentState, transactionProcessor);
 
@@ -250,10 +250,12 @@ public class ValidateSubmissionHandler
         return true;
     }
 
-    private void RecoverSenderAddress(Block block, EthereumEcdsa ecdsa, IReleaseSpec spec){
+    private void RecoverSenderAddress(Block block, EthereumEcdsa ecdsa, IReleaseSpec spec)
+    {
         foreach (Transaction tx in block.Transactions)
         {
-            if(tx.SenderAddress is null){
+            if (tx.SenderAddress is null)
+            {
                 tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
         }
