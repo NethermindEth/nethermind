@@ -345,18 +345,18 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueStorageRange(PathWithAccount account, ValueHash256? startingHash, ValueHash256 lastProcessedHash, ValueHash256? limitHash)
         {
+            limitHash ??= Keccak.MaxValue;
+
             if (lastProcessedHash > limitHash)
                 return;
 
-            limitHash ??= Keccak.MaxValue;
-
             UInt256 limit = new UInt256(limitHash.Value.Bytes, true);
             UInt256 lastProcessed = new UInt256(lastProcessedHash.Bytes, true);
+            UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
 
-            var fullRange =
-                limit - (startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : new UInt256(0));
+            var fullRange = limit - start;
 
-            if (lastProcessed < fullRange / StorageRangeSplitFactor)
+            if (lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
                 var halfOfLeft = (limit - lastProcessed) / 2 + lastProcessed;
                 var halfOfLeftHash = new ValueHash256(halfOfLeft);

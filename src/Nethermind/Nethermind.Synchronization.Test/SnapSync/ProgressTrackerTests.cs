@@ -161,4 +161,69 @@ public class ProgressTrackerTests
         memDb.WasFlushed.Should().BeTrue();
         memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
     }
+
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x2000000000000000000000000000000000000000000000000000000000000000", null, "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    [TestCase("0x2000000000000000000000000000000000000000000000000000000000000000", "0x4000000000000000000000000000000000000000000000000000000000000000", "0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0x67ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
+    public void Should_partition_storage_request_if_last_processed_less_than_threshold(string start, string lastProcessed, string? limit, string expectedSplit)
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
+            .WithStateRoot(Keccak.EmptyTreeHash)
+            .TestObject).TestObject;
+        TestMemDb memDb = new();
+        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+
+        var startHash = new ValueHash256(start);
+        var lastProcessedHash = new ValueHash256(lastProcessed);
+        ValueHash256? limitHash = limit is null ? (ValueHash256?)null: new ValueHash256(limit);
+
+        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
+
+        //ignore account range
+        bool isFinished = progressTracker.IsFinished(out _);
+
+        //expecting 2 batches
+        isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
+        isFinished.Should().BeFalse();
+        batch1.Should().NotBeNull();
+
+        isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch2);
+        isFinished.Should().BeFalse();
+        batch2.Should().NotBeNull();
+
+        batch2?.StorageRangeRequest?.StartingHash.Should().Be(batch1?.StorageRangeRequest?.LimitHash);
+        batch1?.StorageRangeRequest?.StartingHash.Should().Be(lastProcessedHash);
+        batch2?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
+
+        batch1?.StorageRangeRequest?.LimitHash.Should().Be(new ValueHash256(expectedSplit));
+    }
+
+
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0xb100000000000000000000000000000000000000000000000000000000000000", null)]
+    [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null)]
+    public void Should_not_partition_storage_request_if_last_processed_more_than_threshold(string start, string lastProcessed, string? limit)
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
+            .WithStateRoot(Keccak.EmptyTreeHash)
+            .TestObject).TestObject;
+        TestMemDb memDb = new();
+        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+
+        var startHash = new ValueHash256(start);
+        var lastProcessedHash = new ValueHash256(lastProcessed);
+        ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
+
+        progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
+
+        //ignore account range
+        bool isFinished = progressTracker.IsFinished(out _);
+
+        //expecting 1 batch
+        isFinished = progressTracker.IsFinished(out SnapSyncBatch? batch1);
+        isFinished.Should().BeFalse();
+        batch1.Should().NotBeNull();
+
+        batch1?.StorageRangeRequest?.StartingHash.Should().Be(lastProcessedHash);
+        batch1?.StorageRangeRequest?.LimitHash.Should().Be(limitHash ?? Keccak.MaxValue);
+    }
 }
