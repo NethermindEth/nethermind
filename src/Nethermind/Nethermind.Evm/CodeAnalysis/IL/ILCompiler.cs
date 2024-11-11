@@ -626,7 +626,7 @@ internal class ILCompiler
                 case Instruction.DUP16:
                     {
                         int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
-                        method.Load(stack, head);
+                        method.Load<ExecuteSegment, Word>(stack, head);
                         method.StackLoadPrevious(stack, head, count);
                         method.LoadObject(typeof(Word));
                         method.StoreObject(typeof(Word));
@@ -1075,7 +1075,7 @@ internal class ILCompiler
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256A);
                         method.StackLoadPrevious(stack, head, 2);
-                        method.Call(Word.GetSpan);
+                        method.Call(Word.GetReadOnlySpan);
                         method.StoreLocal(localReadonOnlySpan);
                         method.StackPop(head, 2);
 
@@ -1430,7 +1430,7 @@ internal class ILCompiler
                         method.LoadLocal(hash256);
                         method.Call(GetPropertyInfo(typeof(Hash256), nameof(Hash256.Bytes), false, out _));
                         method.Call(ConvertionImplicit(typeof(Span<byte>), typeof(Span<byte>)));
-                        method.Call(Word.SetSpan);
+                        method.Call(Word.SetReadOnlySpan);
                         method.Branch(endOfOpcode);
                         // equal to null
 
@@ -1446,36 +1446,40 @@ internal class ILCompiler
                         Label signIsNegative = method.DefineLabel();
                         Label endOfOpcodeHandling = method.DefineLabel();
                         Label argumentGt32 = method.DefineLabel();
+                        using Local wordSpan = method.DeclareLocal(typeof(Span<byte>));
 
                         method.StackLoadPrevious(stack, head, 1);
+                        method.Duplicate();
                         method.Call(Word.GetUInt0);
                         method.StoreLocal(uint32A);
+                        method.Call(Word.GetUInt256);
+                        method.StoreLocal(uint256A);
 
-                        method.LoadLocal(uint32A);
+                        method.LoadLocalAddress(uint256A);
                         method.LoadConstant(32);
-                        method.BranchIfGreaterOrEqual(argumentGt32);
+                        method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
+                        method.BranchIfFalse(argumentGt32);
 
                         method.StackLoadPrevious(stack, head, 2);
-                        method.Call(Word.GetArray);
-                        method.StoreLocal(localArray);
+                        method.Call(Word.GetMutableSpan);
+                        method.StoreLocal(wordSpan);
 
                         method.LoadConstant((uint)31);
                         method.LoadLocal(uint32A);
                         method.Subtract();
                         method.StoreLocal(uint32A);
 
-                        method.LoadLocal(localArray);
-                        method.LoadLocal(uint32A);
-                        method.LoadElement<byte>();
+                        method.Load<ExecuteSegment, byte>(wordSpan, uint32A);
+                        method.LoadIndirect<byte>();
                         method.Convert<sbyte>();
                         method.LoadConstant((sbyte)0);
                         method.BranchIfLess(signIsNegative);
 
-                        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32)));
+                        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesZero32), BindingFlags.Static | BindingFlags.Public));
                         method.Branch(endOfOpcodeHandling);
 
                         method.MarkLabel(signIsNegative);
-                        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesMax32)));
+                        method.LoadField(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BytesMax32), BindingFlags.Static | BindingFlags.Public));
 
                         method.MarkLabel(endOfOpcodeHandling);
                         method.LoadConstant(0);
@@ -1483,19 +1487,13 @@ internal class ILCompiler
                         method.EmitAsSpan();
                         method.StoreLocal(localSpan);
 
-                        using Local tempLocalSpan = method.DeclareLocal(typeof(Span<byte>));
-                        method.LoadLocal(localArray);
-                        method.Duplicate();
-                        method.Call(GetPropertyInfo(typeof(byte[]), nameof(Array.Length), false, out _));
-                        method.StoreLocal(uint32B);
-                        method.LoadConstant(0);
-                        method.LoadLocal(uint32B);
-                        method.EmitAsSpan();
-                        method.StoreLocal(tempLocalSpan);
-
                         method.LoadLocalAddress(localSpan);
-                        method.LoadLocal(tempLocalSpan);
+                        method.LoadLocalAddress(wordSpan);
+                        method.LoadConstant(0);
+                        method.LoadLocal(uint32A);
+                        method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.Slice), [typeof(int), typeof(int)]));
                         method.Call(typeof(Span<byte>).GetMethod(nameof(Span<byte>.CopyTo), [typeof(Span<byte>)]));
+
                         method.MarkLabel(argumentGt32);
                         method.StackPop(head, 1);
                     }
@@ -1567,7 +1565,7 @@ internal class ILCompiler
 
                         method.CleanAndLoadWord(stack, head);
                         method.LoadLocal(localReadonOnlySpan);
-                        method.Call(Word.SetSpan);
+                        method.Call(Word.SetReadOnlySpan);
                         method.StackPush(head);
                     }
                     break;
@@ -1577,7 +1575,7 @@ internal class ILCompiler
                         method.Call(Word.GetUInt256);
                         method.StoreLocal(uint256A);
                         method.StackLoadPrevious(stack, head, 2);
-                        method.Call(Word.GetSpan);
+                        method.Call(Word.GetReadOnlySpan);
                         method.StoreLocal(localReadonOnlySpan);
                         method.StackPop(head, 2);
 
@@ -1673,7 +1671,7 @@ internal class ILCompiler
 
                         method.CleanAndLoadWord(stack, head);
                         method.LoadLocal(localReadonOnlySpan);
-                        method.Call(Word.SetSpan);
+                        method.Call(Word.SetReadOnlySpan);
                         method.StackPush(head);
                     }
                     break;
@@ -2115,7 +2113,6 @@ internal class ILCompiler
         method.LoadArgument(TXTRACER_INDEX);
         method.IsInstance(typeof(Tracing.Debugger.DebugTracer));
         method.StoreLocal(debugTracer);
-        method.Print(convertedPc);
 
         method.LoadLocal(debugTracer);
         method.LoadNull();
@@ -2153,8 +2150,8 @@ internal class ILCompiler
 
         method.ForBranch(head, (il, idx) =>
         {
-            il.Load(newStack, idx);
-            il.Load(stack, idx);
+            il.Load<ExecuteSegment, Word>(newStack, idx);
+            il.Load<ExecuteSegment, Word>(stack, idx);
             il.LoadObject(typeof(Word));
             il.StoreObject(typeof(Word));
         });
