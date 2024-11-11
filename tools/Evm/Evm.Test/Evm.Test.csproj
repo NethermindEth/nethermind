@@ -25,4 +25,10 @@
       <ProjectReference Include="..\Evm.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Update="testdata\**">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
 </Project>
