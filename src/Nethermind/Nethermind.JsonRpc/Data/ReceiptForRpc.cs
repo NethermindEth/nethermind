@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Data
             BlobGasPrice = gasInfo.BlobGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
-            ContractAddress = receipt.ContractAddress;
+            ContractAddress = receipt.ContractAddress ?? Address.Zero;
             Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Data
         public Address To { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Address? ContractAddress { get; set; }
+        public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }

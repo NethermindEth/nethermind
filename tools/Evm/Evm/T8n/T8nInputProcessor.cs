@@ -27,7 +27,7 @@ public static class T8nInputProcessor
             throw new T8nException("Env is not provided", T8nErrorCodes.ErrorIO);
         }
 
-        (ISpecProvider specProvider, IReleaseSpec spec) = GetSpec(arguments, inputData.Env);
+        (ISpecProvider specProvider, IReleaseSpec overridableReleaseSpec, IReleaseSpec spec) = GetSpec(arguments, inputData.Env);
 
         T8nValidator.ApplyChecks(inputData.Env, specProvider, spec);
 
@@ -37,7 +37,7 @@ public static class T8nInputProcessor
             DisableStack = arguments.TraceNoStack
         };
 
-        T8nTest test = new(spec, specProvider, inputData.Env.CurrentCoinbase)
+        T8nTest test = new(overridableReleaseSpec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
             Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId),
@@ -68,7 +68,7 @@ public static class T8nInputProcessor
         return test;
     }
 
-    private static (ISpecProvider, IReleaseSpec) GetSpec(T8nCommandArguments arguments, EnvJson env)
+    private static (ISpecProvider, IReleaseSpec, IReleaseSpec) GetSpec(T8nCommandArguments arguments, EnvJson env)
     {
         IReleaseSpec spec;
         try
@@ -95,6 +95,6 @@ public static class T8nInputProcessor
             specProvider.UpdateMergeTransitionInfo(env.CurrentNumber, 0);
         }
 
-        return (specProvider, overridableReleaseSpec);
+        return (specProvider, overridableReleaseSpec, spec);
     }
 }

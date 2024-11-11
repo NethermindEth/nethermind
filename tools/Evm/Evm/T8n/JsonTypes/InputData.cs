@@ -29,24 +29,32 @@ public class InputData
         }
         else if (Txs is not null && TransactionMetaDataList is not null)
         {
-            var ecdsa = new EthereumEcdsa(chainId);
 
             for (int i = 0; i < Txs.Length; i++)
             {
                 var transaction = Txs[i].ToTransaction();
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
-
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc) Txs[i]);
-
-                transaction.ChainId ??= chainId;
-                transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
-                transaction.Hash = transaction.CalculateHash();
 
                 transactions.Add(transaction);
             }
         }
 
+        RecoverAddress(transactions, chainId);
+
         return transactions.ToArray();
+    }
+
+    private static void RecoverAddress(List<Transaction> transactions, ulong chainId)
+    {
+        var ecdsa = new EthereumEcdsa(chainId);
+
+        foreach (Transaction transaction in transactions)
+        {
+            transaction.ChainId ??= chainId;
+            transaction.SenderAddress ??= ecdsa.RecoverAddress(transaction);
+            transaction.Hash = transaction.CalculateHash();
+        }
     }
 
     private static void SignTransaction(Transaction transaction, TransactionMetaData transactionMetaData, LegacyTransactionForRpc txLegacy)

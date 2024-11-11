@@ -57,6 +57,7 @@ public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address curr
             .WithNumber(CurrentNumber)
             .TestObject;
 
+        if (ParentBeaconBlockRoot is not null) header.ParentBeaconBlockRoot ??= ParentBeaconBlockRoot;
         if (CurrentRandom is not null) header.MixHash = CurrentRandom;
         if (CurrentBaseFee.HasValue) header.BaseFeePerGas = CurrentBaseFee.Value;
         if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)

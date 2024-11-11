@@ -77,7 +77,7 @@ public static class T8nExecutor
         blockReceiptsTracer.StartNewBlockTrace(block);
 
         BeaconBlockRootHandler beaconBlockRootHandler = new(transactionProcessor, stateProvider);
-        if (test.ParentBeaconBlockRoot is not null)
+        if (block.ParentBeaconBlockRoot is not null)
         {
             beaconBlockRootHandler.StoreBeaconRoot(block, test.Spec, storageTxTracer);
         }

@@ -2,42 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Evm.T8n;
+using Evm.T8n.JsonTypes;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Evm.Test;
 
-public class InputParams
+public class InputParams(string basedir, string alloc, string env, string txs, string stateFork, string? stateReward = null)
 {
-    public readonly string Alloc;
-    public readonly string Env;
-    public readonly string Txs;
-    public readonly string StateFork;
-    public readonly string? StateReward;
-
-    public InputParams(string basedir, string alloc, string env, string txs, string stateFork, string? stateReward = null)
-    {
-        Alloc = basedir + alloc;
-        Env = basedir + env;
-        Txs = basedir + txs;
-        StateFork = stateFork;
-        StateReward = stateReward;
-    }
+    public readonly string Alloc = Path.Combine(basedir, alloc);
+    public readonly string Env = Path.Combine(basedir, env);
+    public readonly string Txs = Path.Combine(basedir, txs);
+    public readonly string StateFork = stateFork;
+    public readonly string? StateReward = stateReward;
 }
 
-public class OutputParams
+public class OutputParams(string? alloc = null, string? result = null, string? body = null)
 {
-    public string? Alloc;
-    public string? Result;
-    public string? Body;
-
-    public OutputParams(string? alloc = null, string? result = null, string? body = null)
-    {
-        Alloc = alloc;
-        Result = result;
-        Body = body;
-    }
+    public readonly string? Alloc = alloc;
+    public readonly string? Result = result;
+    public readonly string? Body = body;
 }
 
 public class T8nTests
@@ -86,7 +71,7 @@ public class T8nTests
     public void Test5()
     {
         Execute(
-            new InputParams("testdata/5/", "alloc.json", "env.json", "txs.json", "Byzantium", "0x80"),
+            new("testdata/5/", "alloc.json", "env.json", "txs.json", "Byzantium", "0x80"),
             new OutputParams(alloc: "stdout", result: "stdout"),
             expectedExitCode: 0,
             expectedOutputFile: "testdata/5/exp.json");
@@ -255,7 +240,7 @@ public class T8nTests
         if (outputParams.Result is not null) arguments.OutputResult = outputParams.Result;
         if (inputParams.StateReward is not null) arguments.StateReward = inputParams.StateReward;
 
-        var output = T8nTool.Run(arguments, NullLogManager.Instance);
+        T8nOutput output = T8nTool.Run(arguments, NullLogManager.Instance);
 
         Assert.That(output.ExitCode, Is.EqualTo(expectedExitCode));
 
@@ -268,8 +253,8 @@ public class T8nTests
 
     private static bool AreEqual(string json1, string json2)
     {
-        JToken expected = JToken.Parse(json1);
-        JToken actual = JToken.Parse(json2);
+        var expected = JToken.Parse(json1);
+        var actual = JToken.Parse(json2);
         return JToken.DeepEquals(actual, expected);
     }
 }
