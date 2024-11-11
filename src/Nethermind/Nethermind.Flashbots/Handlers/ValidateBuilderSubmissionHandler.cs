@@ -35,8 +35,7 @@ public class ValidateSubmissionHandler
          | ProcessingOptions.IgnoreParentNotOnMainChain
          | ProcessingOptions.ForceProcessing
          | ProcessingOptions.StoreReceipts
-         | ProcessingOptions.NoValidation
-         | ProcessingOptions.DoNotVerifyNonce;
+         | ProcessingOptions.NoValidation;
     private readonly ReadOnlyTxProcessingEnv _txProcessingEnv;
     private readonly IBlockTree _blockTree;
     private readonly IHeaderValidator _headerValidator;
@@ -145,7 +144,7 @@ public class ValidateSubmissionHandler
     private bool ValidateBlobsBundle(Transaction[] transactions, BlobsBundleV1 blobsBundle, out string? error)
     {
         // get sum of length of blobs of each transaction
-        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes!.Length);
+        int totalBlobsLength = transactions.Sum(t => t.BlobVersionedHashes is not null ?  t.BlobVersionedHashes.Length : 0);
 
         if (totalBlobsLength != blobsBundle.Blobs.Length)
         {
@@ -377,6 +376,19 @@ public class ValidateSubmissionHandler
             error = "Malformed proposer payment, gas price not equal to base fee";
             return false;
         }
+
+        if (paymentTx.MaxPriorityFeePerGas != processedBlock.BaseFeePerGas && paymentTx.MaxPriorityFeePerGas != 0)
+        {
+            error = "Malformed proposer payment, max priority fee per gas not equal to block max priority fee per gas";
+            return false;
+        }
+
+        if (paymentTx.MaxFeePerGas != processedBlock.BaseFeePerGas)
+        {
+            error = "Malformed proposer payment, max fee per gas not equal to block base fee per gas";
+            return false;
+        }
+
         error = null;
         return true;
     }

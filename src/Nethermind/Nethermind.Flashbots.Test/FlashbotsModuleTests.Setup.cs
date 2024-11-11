@@ -41,7 +41,7 @@ public partial class FlashbotsModuleTests
 
     internal class TestKeyAndAddress
     {
-        public PrivateKey privateKey = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        public PrivateKey PrivateKey = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
         public Address TestAddr;
 
         public PrivateKey TestValidatorKey = new PrivateKey("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0");
@@ -52,9 +52,11 @@ public partial class FlashbotsModuleTests
 
         public UInt256 TestBalance = UInt256.Parse("2000000000000000000");
         public byte[] logCode = Bytes.FromHexString("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00");
+
+        public UInt256 BaseInitialFee  = 1000000000;
         public TestKeyAndAddress()
         {
-            TestAddr = privateKey.Address;
+            TestAddr = PrivateKey.Address;
             TestValidatorAddr = TestValidatorKey.Address;
             TestBuilderAddr = TestBuilderKey.Address;
         }
@@ -127,7 +129,7 @@ public partial class FlashbotsModuleTests
                 State,
                 ReceiptStorage,
                 TxProcessor,
-                new BeaconBlockRootHandler(TxProcessor),
+                new BeaconBlockRootHandler(TxProcessor, State),
                 new BlockhashStore(SpecProvider, State),
                 LogManager,
                 WithdrawalProcessor

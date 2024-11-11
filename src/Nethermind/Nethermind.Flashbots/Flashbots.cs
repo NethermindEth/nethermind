@@ -31,8 +31,7 @@ public class Flashbots : INethermindPlugin
             _api.WorldStateManager ?? throw new ArgumentNullException(nameof(_api.WorldStateManager)),
             _api.BlockTree ?? throw new ArgumentNullException(nameof(_api.BlockTree)),
             _api.SpecProvider,
-            _api.LogManager,
-            _api.WorldState
+            _api.LogManager
         );
         ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
             _api.HeaderValidator ?? throw new ArgumentNullException(nameof(_api.HeaderValidator)),
