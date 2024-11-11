@@ -6,8 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -32,6 +31,11 @@ namespace Nethermind.Serialization.Json
         {
             _maxDepth = maxDepth;
             _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
+        }
+
+        public object Deserialize(string json, Type type)
+        {
+            return JsonSerializer.Deserialize(json, type, _jsonOptions);
         }
 
         public T Deserialize<T>(Stream stream)
@@ -65,6 +69,7 @@ namespace Nethermind.Serialization.Json
                 DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
                 Converters =
                 {
                     new LongConverter(),

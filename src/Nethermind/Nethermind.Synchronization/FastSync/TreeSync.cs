@@ -8,7 +8,9 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -24,7 +26,7 @@ using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class TreeSync
+    public class TreeSync : ITreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
         public const int MaxRequestSize = 384;
@@ -57,8 +59,8 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly INodeStorage _nodeStorage;
-
         private readonly IBlockTree _blockTree;
+        private readonly ISyncConfig _syncConfig;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
@@ -74,12 +76,15 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private readonly SyncMode _syncMode;
 
-        public TreeSync(SyncMode syncMode, IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ILogManager logManager)
+        public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
+
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
-            _syncMode = syncMode;
+            _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _syncConfig = syncConfig;
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -167,7 +172,7 @@ namespace Nethermind.Synchronization.FastSync
                         if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
-                    Stopwatch handleWatch = Stopwatch.StartNew();
+                    long startTime = Stopwatch.GetTimestamp();
 
                     bool isMissingRequestData = batch.RequestedNodes is null;
                     if (isMissingRequestData)
@@ -289,24 +294,24 @@ namespace Nethermind.Synchronization.FastSync
 
                     _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
-                    handleWatch.Stop();
-                    long total = handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+                    long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+                    long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
                     {
                         // calculate averages
                         if (_logger.IsTrace)
                             _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {handleWatch.ElapsedMilliseconds}ms ({(decimal)handleWatch.ElapsedMilliseconds / total:P0})");
+                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {elapsedTime:N0}ms ({(decimal)elapsedTime / total:P0})");
                     }
 
-                    if (handleWatch.ElapsedMilliseconds > 250)
+                    if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
                         if (_logger.IsDebug)
                             _logger.Debug(
-                                $"Handle watch {handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                                $"Handle watch {elapsedTime:N0}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, handleWatch.ElapsedMilliseconds);
+                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
                     _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
@@ -393,15 +398,16 @@ namespace Nethermind.Synchronization.FastSync
 
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (bestSuggested is null || bestSuggested.Number == 0)
+            long targetBlockNumber = Math.Max((_blockTree.BestSuggestedHeader?.Number ?? 0) - _syncConfig.StateMinDistanceFromHead, 0);
+            BlockHeader headerForState = _blockTree.FindHeader(targetBlockNumber);
+            if (headerForState is null)
             {
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
+            if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
-            ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!, currentState);
+            ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
         }
 
         public void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)
@@ -679,7 +685,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _nodeStorage.Flush();
+                _nodeStorage.Flush(onlyWal: false);
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
@@ -699,7 +705,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
 
                 _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
-                // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
             if (_pendingItems.Count != 0)
@@ -708,6 +713,8 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             CleanupMemory();
+
+            SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(_rootNode));
         }
 
         private void CleanupMemory()

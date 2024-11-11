@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
+    public class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
         private const StateSyncBatch EmptyBatch = null;
 

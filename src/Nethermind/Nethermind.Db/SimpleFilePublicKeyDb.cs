@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -86,10 +85,12 @@ namespace Nethermind.Db
             return _cache.ContainsKey(key);
         }
 
-        public void Flush() { }
+        public void Flush(bool onlyWal = false) { }
+
         public void Clear()
         {
             File.Delete(DbPath);
+            _cache.Clear();
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;

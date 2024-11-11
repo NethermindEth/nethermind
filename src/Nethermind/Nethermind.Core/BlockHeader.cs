@@ -27,7 +27,8 @@ public class BlockHeader
         byte[] extraData,
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
-        Hash256? parentBeaconBlockRoot = null)
+        Hash256? parentBeaconBlockRoot = null,
+        Hash256? requestsHash = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -38,6 +39,7 @@ public class BlockHeader
         Timestamp = timestamp;
         ExtraData = extraData;
         ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        RequestsHash = requestsHash;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
     }
@@ -70,6 +72,7 @@ public class BlockHeader
     public UInt256 BaseFeePerGas { get; set; }
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
+    public Hash256? RequestsHash { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
@@ -115,6 +118,10 @@ public class BlockHeader
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
+        if (RequestsHash is not null)
+        {
+            builder.AppendLine($"{indent}RequestsHash: {RequestsHash}");
+        }
 
         return builder.ToString();
     }

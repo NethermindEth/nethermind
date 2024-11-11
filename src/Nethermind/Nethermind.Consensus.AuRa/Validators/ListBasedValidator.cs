@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

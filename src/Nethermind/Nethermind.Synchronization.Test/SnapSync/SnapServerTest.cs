@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -39,7 +40,7 @@ public class SnapServerTest
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         MemDb clientStateDb = new();
-        using ProgressTracker progressTracker = new(null!, clientStateDb, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(null!, clientStateDb, new SyncConfig(), LimboLogs.Instance);
 
         INodeStorage nodeStorage = new NodeStorage(clientStateDb);
 
@@ -261,7 +262,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, new SyncConfig(), LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
@@ -297,7 +298,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, new SyncConfig(), LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
@@ -342,7 +343,7 @@ public class SnapServerTest
         {
             stateTree.Set(TestItem.GetRandomAddress(), TestItem.GenerateRandomAccount());
         }
-        stateTree.Commit(0);
+        stateTree.Commit();
 
         List<PathWithAccount> accountWithStorage = new();
         for (int i = 1000; i < 10000; i += 1000)
@@ -353,12 +354,12 @@ public class SnapServerTest
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
             }
-            storageTree.Commit(1);
+            storageTree.Commit();
             var account = TestItem.GenerateRandomAccount().WithChangedStorageRoot(storageTree.RootHash);
             stateTree.Set(address, account);
             accountWithStorage.Add(new PathWithAccount() { Path = Keccak.Compute(address.Bytes), Account = account });
         }
-        stateTree.Commit(1);
+        stateTree.Commit();
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 

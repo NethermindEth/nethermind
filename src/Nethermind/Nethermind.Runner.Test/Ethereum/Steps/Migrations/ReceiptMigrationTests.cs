@@ -130,14 +130,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
-            public TxReceipt[] Get(Block block, bool recover = true) => _inStorage.Get(block, recover);
+            public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => _inStorage.Get(block, recover, recoverSender);
 
             public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => _inStorage.Get(blockHash, recover);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
             public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) => _outStorage.Insert(block, txReceipts);
+            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical, WriteFlags writeFlags) => _outStorage.Insert(block, txReceipts, ensureCanonical, writeFlags);
 
             public long? LowestInsertedReceiptBlockNumber
             {

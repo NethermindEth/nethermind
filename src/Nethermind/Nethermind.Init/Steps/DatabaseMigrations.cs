@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +10,7 @@ using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
+    [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork))]
     public sealed class DatabaseMigrations : IStep
     {
         private readonly IApiWithNetwork _api;

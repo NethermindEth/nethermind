@@ -259,7 +259,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteNotStartedReport()
         {
-            _logger.Info($"Waiting for peers... {(DateTime.UtcNow - StartTime).Seconds}s");
+            _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
         }
 
         private void WriteFullSyncReport()

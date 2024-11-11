@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -29,6 +30,9 @@ namespace Nethermind.Core
         /// </summary>
         public TxType Type { get; set; }
 
+        // Taiko Anchor transaction
+        public bool IsAnchorTx { get; set; }
+
         // Optimism deposit transaction fields
         // SourceHash uniquely identifies the source of the deposit
         public Hash256? SourceHash { get; set; }
@@ -46,6 +50,7 @@ namespace Nethermind.Core
         public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
         public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
         public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
+        public bool SupportsAuthorizationList => Type == TxType.SetCode && Type != TxType.DepositTx;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -55,6 +60,12 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+
+        [MemberNotNullWhen(true, nameof(AuthorizationList))]
+        public bool HasAuthorizationList =>
+            Type == TxType.SetCode &&
+            AuthorizationList is not null &&
+            AuthorizationList.Length > 0;
 
         private Hash256? _hash;
 
@@ -162,6 +173,12 @@ namespace Nethermind.Core
         public object? NetworkWrapper { get; set; }
 
         /// <summary>
+        /// List of EOA code authorizations.
+        /// https://eips.ethereum.org/EIPS/eip-7702
+        /// </summary>
+        public AuthorizationTuple[]? AuthorizationList { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -263,6 +280,7 @@ namespace Nethermind.Core
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
+                obj.AuthorizationList = default;
 
                 return true;
             }
@@ -293,6 +311,7 @@ namespace Nethermind.Core
             tx.IsServiceTransaction = IsServiceTransaction;
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
+            tx.AuthorizationList = AuthorizationList;
         }
     }
 
@@ -304,7 +323,10 @@ namespace Nethermind.Core
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public class SystemTransaction : Transaction { }
+    public class SystemTransaction : Transaction
+    {
+        private new const long GasLimit = 30_000_000L;
+    }
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size

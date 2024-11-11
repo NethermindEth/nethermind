@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Sepolia`** **`Holesky`** **`Gnosis (xDai)`** **`Chiado`** **`OP Mainnet`** **`OP Sepolia`** **`Base Mainnet`** **`Base Sepolia`** **`Energy Web`** **`Volta`**
+**`Mainnet`** **`Sepolia`** **`Holesky`** **`Gnosis`** **`Chiado`** **`OP Mainnet`** **`OP Sepolia`** **`Base Mainnet`** **`Base Sepolia`** **`Energy Web`** **`Volta`**
 
 ## Download and run
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using Nethermind.Core;
@@ -104,7 +103,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         NativeCallTracerCallFrame callFrame = _callStack[^1];
 
         NativeCallTracerLogEntry callLog = new(
-            log.LoggersAddress,
+            log.Address,
             log.Data,
             log.Topics,
             (ulong)callFrame.Calls.Count);

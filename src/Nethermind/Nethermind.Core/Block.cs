@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -25,8 +24,7 @@ public class Block
         Body = body ?? throw new ArgumentNullException(nameof(body));
     }
 
-    public Block(
-        BlockHeader header,
+    public Block(BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null)
@@ -37,11 +35,14 @@ public class Block
 
     public Block(BlockHeader header) : this(
         header,
-        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+        new(
+            null,
+            null,
+            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
     )
     { }
 
-    public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
     public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
 
@@ -61,7 +62,7 @@ public class Block
 
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
-    public Withdrawal[]? Withdrawals => Body.Withdrawals;
+    public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
@@ -113,6 +114,11 @@ public class Block
 
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
+
+    public Hash256? RequestsHash => Header.RequestsHash; // do not add setter here
+
+    [JsonIgnore]
+    public byte[][]? ExecutionRequests { get; set; }
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }

@@ -114,17 +114,14 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes.GetSimplifiedHashCode();
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public void Add(LogEntry[] logEntries, Bloom? blockBloom = null)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
                 LogEntry logEntry = logEntries[entryIndex];
-                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
+                byte[] addressBytes = logEntry.Address.Bytes;
                 Set(addressBytes, blockBloom);
                 Hash256[] topics = logEntry.Topics;
                 for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
@@ -147,7 +144,7 @@ namespace Nethermind.Core
 
         public bool Matches(LogEntry logEntry)
         {
-            if (Matches(logEntry.LoggersAddress))
+            if (Matches(logEntry.Address))
             {
                 Hash256[] topics = logEntry.Topics;
                 for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
@@ -278,14 +275,11 @@ namespace Nethermind.Core
             return Equals((Bloom)obj);
         }
 
-        public override readonly int GetHashCode()
-        {
-            return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
-        }
+        public override readonly int GetHashCode() => Bytes.FastHash();
 
         public readonly bool Matches(LogEntry logEntry)
         {
-            if (Matches(logEntry.LoggersAddress))
+            if (Matches(logEntry.Address))
             {
                 Hash256[] topics = logEntry.Topics;
                 for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)

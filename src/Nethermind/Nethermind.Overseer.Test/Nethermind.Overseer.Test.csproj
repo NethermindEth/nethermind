@@ -26,13 +26,13 @@
     <Content Include="chainspec\nethdev.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="configs\auRaMiner.cfg">
+    <Content Include="configs\auRaMiner.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="configs\cliqueMiner.cfg">
+    <Content Include="configs\cliqueMiner.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="configs\cliqueNode.cfg">
+    <Content Include="configs\cliqueNode.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <None Remove="chainspec\auRa.json" />

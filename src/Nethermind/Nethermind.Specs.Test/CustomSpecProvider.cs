@@ -55,5 +55,6 @@ public class CustomSpecProvider : SpecProviderBase, ISpecProvider
         }
     }
 
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
 }
 
