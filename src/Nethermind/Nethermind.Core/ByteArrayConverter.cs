@@ -99,6 +99,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         bool skipLeadingZeros = true,
         bool addQuotations = true)
     {
+        
         const int maxStackLength = 128;
         const int stackLength = 256;
 

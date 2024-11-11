@@ -14,7 +14,7 @@ namespace Nethermind.State.Proofs
     {
         public byte[]? Key { get; set; }
         public byte[][]? Proof { get; set; }
-        [JsonConverter(typeof(NullableByteReadOnlyMemoryConverter2))]
+        //[JsonConverter(typeof(NullableByteReadOnlyMemoryConverter2))]
         public ReadOnlyMemory<byte>? Value { get; set; }
     }
 }

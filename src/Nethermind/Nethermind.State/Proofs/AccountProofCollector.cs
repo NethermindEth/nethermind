@@ -138,7 +138,7 @@ namespace Nethermind.State.Proofs
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();
+                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].Where(x=>x is not [] and not null).ToArray();
             }
 
             return _accountProof;
