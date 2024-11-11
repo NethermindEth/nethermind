@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Evm.csproj" />
+      <ProjectReference Include="..\Evm\Evm.csproj" />
     </ItemGroup>
 
     <ItemGroup>
