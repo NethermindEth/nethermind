@@ -16,9 +16,10 @@ using Nethermind.Specs.Forks;
 
 namespace Evm.T8n;
 
-public class T8nTest(IReleaseSpec spec, ISpecProvider specProvider, Address currentCoinbase)
+public class T8nTest(IReleaseSpec spec, IReleaseSpec overridableReleaseSpec, ISpecProvider specProvider, Address currentCoinbase)
 {
     public IReleaseSpec Spec { get; set; } = spec;
+    public IReleaseSpec OverridableReleaseSpec { get; set; } = overridableReleaseSpec;
     public ISpecProvider SpecProvider { get; set; } = specProvider;
     public Dictionary<Address, AccountState> Alloc { get; set; } = [];
     public Transaction[] Transactions { get; set; } = [];

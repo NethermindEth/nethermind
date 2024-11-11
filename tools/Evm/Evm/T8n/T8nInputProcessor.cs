@@ -37,7 +37,7 @@ public static class T8nInputProcessor
             DisableStack = arguments.TraceNoStack
         };
 
-        T8nTest test = new(overridableReleaseSpec, specProvider, inputData.Env.CurrentCoinbase)
+        T8nTest test = new(spec, overridableReleaseSpec, specProvider, inputData.Env.CurrentCoinbase)
         {
             Alloc = inputData.Alloc ?? [],
             Transactions = inputData.GetTransactions(TxDecoder, specProvider.ChainId),

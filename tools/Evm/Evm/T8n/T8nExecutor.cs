@@ -61,7 +61,7 @@ public static class T8nExecutor
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
         withdrawalProcessor.ProcessWithdrawals(block, test.Spec);
 
-        ApplyRewards(block, stateProvider, test.Spec, test.SpecProvider);
+        ApplyRewards(block, stateProvider, test.OverridableReleaseSpec, test.SpecProvider);
 
         CompositeBlockTracer compositeBlockTracer = new();
 
