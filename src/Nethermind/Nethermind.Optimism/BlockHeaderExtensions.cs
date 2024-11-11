@@ -23,6 +23,15 @@ public readonly struct EIP1559Parameters
         Denominator = denominator;
         Elasticity = elasticity;
     }
+
+    public bool IsZero() => Denominator == 0 && Elasticity == 0;
+
+    public void WriteTo(Span<byte> span)
+    {
+        span[0] = Version;
+        BinaryPrimitives.WriteUInt32BigEndian(span.Slice(1, 4), Denominator);
+        BinaryPrimitives.WriteUInt32BigEndian(span.Slice(5, 4), Elasticity);
+    }
 }
 
 public static class BlockHeaderExtensions
