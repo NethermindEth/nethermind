@@ -91,7 +91,26 @@ internal struct Word
         }
     }
 
-    public unsafe ReadOnlySpan<byte> Span
+    public unsafe ReadOnlySpan<byte> ReadOnlySpan
+    {
+        get
+        {
+            fixed (byte* src = _buffer)
+            {
+                return new Span<byte>(src, 32);
+            }
+        }
+        set
+        {
+            fixed (byte* src = value, dest = _buffer)
+            {
+                Buffer.MemoryCopy(src, dest + (32 - value.Length), value.Length, value.Length);
+            }
+        }
+    }
+
+
+    public unsafe Span<byte> Span
     {
         get
         {
@@ -340,8 +359,10 @@ internal struct Word
     public static readonly MethodInfo GetArray = typeof(Word).GetProperty(nameof(Array))!.GetMethod;
     public static readonly MethodInfo SetArray = typeof(Word).GetProperty(nameof(Array))!.SetMethod;
 
-    public static readonly MethodInfo GetSpan = typeof(Word).GetProperty(nameof(Span))!.GetMethod;
-    public static readonly MethodInfo SetSpan = typeof(Word).GetProperty(nameof(Span))!.SetMethod;
+    public static readonly MethodInfo GetMutableSpan = typeof(Word).GetProperty(nameof(Span))!.GetMethod;
+    public static readonly MethodInfo SetMutableSpan = typeof(Word).GetProperty(nameof(Span))!.SetMethod;
+    public static readonly MethodInfo GetReadOnlySpan = typeof(Word).GetProperty(nameof(ReadOnlySpan))!.GetMethod;
+    public static readonly MethodInfo SetReadOnlySpan = typeof(Word).GetProperty(nameof(ReadOnlySpan))!.SetMethod;
     public static readonly MethodInfo SetZeroPaddedSpan = typeof(Word).GetProperty(nameof(ZeroPaddedSpan))!.SetMethod;
 
     public static explicit operator Word(Span<byte> span)
@@ -349,7 +370,7 @@ internal struct Word
         unsafe
         {
             var result = new Word();
-            result.Span = span;
+            result.ReadOnlySpan = span;
             return result;
         }
     }

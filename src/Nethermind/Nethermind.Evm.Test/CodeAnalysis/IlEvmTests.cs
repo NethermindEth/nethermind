@@ -1325,13 +1325,37 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .PushData(1)
                 .SSTORE()
                 .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
+            
             yield return (Instruction.SIGNEXTEND, Prepare.EvmCode
                 .PushData(1024)
                 .PushData(16)
                 .SIGNEXTEND()
                 .PushData(1)
                 .SSTORE()
+                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+            yield return (Instruction.SIGNEXTEND, Prepare.EvmCode
+                .PushData(255)
+                .PushData(0)
+                .Op(Instruction.SIGNEXTEND)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+            yield return (Instruction.SIGNEXTEND, Prepare.EvmCode
+                .PushData(255)
+                .PushData(32)
+                .Op(Instruction.SIGNEXTEND)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+            yield return (Instruction.SIGNEXTEND, Prepare.EvmCode
+                .PushData(UInt256.MaxValue)
+                .PushData(31)
+                .Op(Instruction.SIGNEXTEND)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
                 .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
             yield return (Instruction.INVALID, Prepare.EvmCode
