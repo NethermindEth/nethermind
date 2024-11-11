@@ -53,13 +53,12 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     protected override GethLikeTxTrace OnEnd(GethLikeTxFileTracer txTracer)
     {
         var trace = txTracer.BuildResult();
-        var returnValue = trace.ReturnValue.ToHexString(true);
 
         JsonSerializer.Serialize(_jsonWriter,
             new
             {
-                output = returnValue == "0x" ? "" : returnValue, // empty on null return value? if so move this into "ToHexString" using emptyIfZero parameter?
-                gasUsed = trace.Gas.ToString()
+                output = trace.ReturnValue.ToHexString(true),
+                gasUsed = $"0x{trace.Gas:x}"
             },
             _serializerOptions);
 
