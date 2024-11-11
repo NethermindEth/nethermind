@@ -744,7 +744,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if(env.CodeInfo.IlInfo.IsEmpty)
         {
-            IlAnalyzer.StartAnalysis(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
+            IlAnalyzer.Analyse(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
         }
 
         EvmExceptionType exceptionType = EvmExceptionType.None;
