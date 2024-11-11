@@ -6,7 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -114,15 +116,14 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
+
         AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
         Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
         Assert.That(db.KeyExists(rootHash), Is.False);
     }
 
@@ -134,15 +135,14 @@ public class RecreateStateFromAccountRangesTests
         byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
+
         var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
         Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
         Assert.That(db.KeyExists(rootHash), Is.False);
     }
 
@@ -151,15 +151,14 @@ public class RecreateStateFromAccountRangesTests
     {
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
+
         var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
         Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
         Assert.That(db.KeyExists(rootHash), Is.False); // the root node is NOT a part of the proof nodes
     }
 
@@ -169,25 +168,23 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
 
         var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(2));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(2));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
 
         var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -197,7 +194,7 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
         Assert.That(db.KeyExists(rootHash), Is.False);
     }
 
@@ -207,23 +204,21 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
         byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
         var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(4));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(4));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
         var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
@@ -232,7 +227,7 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
         Assert.That(db.KeyExists(rootHash), Is.False);
     }
 
@@ -242,23 +237,21 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
         byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
         var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(4));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(4));
 
         firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
         var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
@@ -267,7 +260,7 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
         Assert.That(db.KeyExists(rootHash), Is.False);
     }
 
@@ -277,18 +270,16 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
 
         var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..3], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(3));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(3));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
@@ -300,7 +291,7 @@ public class RecreateStateFromAccountRangesTests
 
         var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[3].Path, TestItem.Tree.AccountsWithPaths[3..5], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -311,7 +302,7 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result4, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
         Assert.That(db.KeyExists(rootHash), Is.False);
     }
 
@@ -321,12 +312,6 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
-
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
         byte[][] proofs = firstProof.Concat(lastProof).ToArray();
@@ -375,12 +360,6 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
-
         byte[][] firstProof = CreateProofForPath(ac1.Path.Bytes, tree);
         byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
         byte[][] proofs = firstProof.Concat(lastProof).ToArray();
@@ -414,18 +393,16 @@ public class RecreateStateFromAccountRangesTests
         Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
         // output state
-        MemDb db = new();
-        DbProvider dbProvider = new();
-        dbProvider.RegisterDb(DbNames.State, db);
-        using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-        SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+        using IContainer container = new ContainerBuilder().AddModule(new TestSynchronizerModule(new SyncConfig())).Build();
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        IDb db = container.ResolveKeyed<IDb>(DbNames.State);
 
         byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
         byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
 
         var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(2));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(2));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes);
@@ -433,7 +410,7 @@ public class RecreateStateFromAccountRangesTests
         // missing TestItem.Tree.AccountsWithHashes[2]
         var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
-        Assert.That(db.Keys.Count, Is.EqualTo(2));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(2));
 
         firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
         lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -443,20 +420,7 @@ public class RecreateStateFromAccountRangesTests
         Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
         Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
         Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-        Assert.That(db.Keys.Count, Is.EqualTo(6));
+        Assert.That(db.GetAllKeys().Count, Is.EqualTo(6));
         Assert.That(db.KeyExists(rootHash), Is.False);
-    }
-
-    private SnapProvider CreateSnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider)
-    {
-        try
-        {
-            IDb _ = dbProvider.CodeDb;
-        }
-        catch (ArgumentException)
-        {
-            dbProvider.RegisterDb(DbNames.Code, new MemDb());
-        }
-        return new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
     }
 }
