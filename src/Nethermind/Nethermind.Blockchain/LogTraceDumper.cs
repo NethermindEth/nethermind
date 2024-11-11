@@ -69,7 +69,7 @@ public static class BlockTraceDumper
                 fileName = $"gethStyle_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock> trace = gethTracer.BuildResult()
-                    .Select((gtrace) => new GethLikeTxTraceResponseDebugTraceBlock(gtrace)).ToList();
+                    .Select((gTrace) => new GethLikeTxTraceResponseDebugTraceBlock(gTrace)).ToList();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Geth-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");

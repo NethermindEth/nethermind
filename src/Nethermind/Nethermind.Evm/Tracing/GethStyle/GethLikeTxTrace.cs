@@ -60,13 +60,11 @@ public class GethLikeTxTraceResultDebugTraceBlock
 
     public GethLikeTxTraceResultDebugTraceBlock() { }
 
-    // place converter annotation here, zero ripple effect as it's not used by other endpoints (solves item 3 headache)
     [JsonConverter(typeof(LongRawJsonConverter))]
     public long Gas { get; set; }
 
     public bool Failed { get; set; }
 
-    // same here add converter to turn "0x" to "" for same reason as the above
     public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
 
     public List<GethTxTraceEntry> Entries { get; set; } = new();
