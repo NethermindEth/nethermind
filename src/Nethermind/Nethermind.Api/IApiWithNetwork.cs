@@ -50,7 +50,7 @@ namespace Nethermind.Api
         IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; }
         IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; }
-        ISyncServer? SyncServer { get; set; }
+        ISyncServer? SyncServer { get; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
 

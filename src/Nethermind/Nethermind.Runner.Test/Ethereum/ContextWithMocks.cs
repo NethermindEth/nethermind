@@ -61,7 +61,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),
                 BlockTree = Substitute.For<IBlockTree>(),
-                SyncServer = Substitute.For<ISyncServer>(),
                 DbProvider = TestMemDbProvider.Init(),
                 PeerManager = Substitute.For<IPeerManager>(),
                 PeerPool = Substitute.For<IPeerPool>(),
@@ -123,6 +122,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .AddSingleton(Substitute.For<ISynchronizer>())
                     .AddSingleton(Substitute.For<ISyncPeerPool>())
                     .AddSingleton(Substitute.For<IPeerDifficultyRefreshPool>())
+                    .AddSingleton(Substitute.For<ISyncServer>())
                     .Build(),
             };
 

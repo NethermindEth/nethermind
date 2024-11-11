@@ -195,7 +195,7 @@ namespace Nethermind.Api
         public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
-        public ISyncServer? SyncServer { get; set; }
+        public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
