@@ -74,12 +74,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public void CastVote(Address signer, bool vote)
     {
-        bool success = _blockProducer.Proposals.TryAdd(signer, vote);
-        if (!success)
-        {
-            throw new InvalidOperationException($"A vote for {signer} has already been cast.");
-        }
-
+        _blockProducer.Proposals.AddOrUpdate(signer, vote, (key, existingValue) => vote);
         if (_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
     }
 
