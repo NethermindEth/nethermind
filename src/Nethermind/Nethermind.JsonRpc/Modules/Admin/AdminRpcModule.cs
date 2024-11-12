@@ -46,12 +46,12 @@ public class AdminRpcModule : IAdminRpcModule
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
-
         BuildNodeInfo();
     }
 
     private void BuildNodeInfo()
     {
+        // makes sense to remove this logic from here
         _nodeInfo = new NodeInfo
         {
             Name = ProductInfo.ClientId,
@@ -71,6 +71,11 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void UpdateEthProtocolInfo()
     {
+        // replace this with a way to qeury protocol info and capabilities (i.e supported protocols)
+        // info for all peer nodes including self.
+        // from a single source of truth.
+        // might require the "peer pool" to also store current node but not count it as number of peers.
+        // every peer should be able to generate its own info same with every node.
         _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
         _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
         _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
@@ -121,6 +126,7 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<NodeInfo> admin_nodeInfo()
     {
+        // why the repetition? already called at contructor!
         UpdateEthProtocolInfo();
         return ResultWrapper<NodeInfo>.Success(_nodeInfo);
     }
