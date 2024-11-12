@@ -3,16 +3,13 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization
 {
-    public interface ISynchronizer : IDisposable
+    public interface ISynchronizer : IAsyncDisposable
     {
         event EventHandler<SyncEventArgs> SyncEvent;
 
         void Start();
-
-        Task StopAsync();
     }
 }

@@ -32,7 +32,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;

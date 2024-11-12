@@ -46,7 +46,7 @@ public class SyncPeerPoolTests
 
         public async ValueTask DisposeAsync()
         {
-            await Pool.StopAsync();
+            await Pool.DisposeAsync();
         }
     }
 
@@ -286,7 +286,7 @@ public class SyncPeerPoolTests
             ctx.Pool.AddPeer(syncPeers[i]);
         }
 
-        await ctx.Pool.StopAsync();
+        await ctx.Pool.DisposeAsync();
 
         for (int i = 3; i > 0; i--)
         {
@@ -358,7 +358,6 @@ public class SyncPeerPoolTests
     {
         await using Context ctx = new();
         ctx.Pool.Start();
-        await ctx.Pool.StopAsync();
     }
 
     [Test, Retry(3)]
