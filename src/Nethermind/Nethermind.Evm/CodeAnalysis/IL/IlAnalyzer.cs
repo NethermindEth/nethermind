@@ -164,7 +164,7 @@ public static class IlAnalyzer
                     continue;
                 }
 
-                var segmentExecutionCtx = CompileSegment(segmentName, segment, codeData.Item2, vmConfig);
+                var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig);
                 if (vmConfig.AggressiveJitMode)
                 {
                     ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
