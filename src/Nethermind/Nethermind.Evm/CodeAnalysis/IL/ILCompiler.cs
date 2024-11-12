@@ -40,7 +40,7 @@ internal class ILCompiler
         public byte[][] Data;
         public ushort[] JumpDestinations;
     }
-    public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data, IVMConfig config)
+    public static SegmentExecutionCtx CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
@@ -48,7 +48,7 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
-        ushort[] jumpdests = EmitSegmentBody(method, code, config.BakeInTracingInJitMode);
+        ushort[] jumpdests = EmitSegmentBody(method, codeInfo, code, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
@@ -58,7 +58,7 @@ internal class ILCompiler
         };
     }
 
-    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, OpcodeInfo[] code, bool bakeInTracerCalls)
+    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -672,7 +672,7 @@ internal class ILCompiler
                     {
                         var lastOpcode = code[^1];
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadConstant(lastOpcode.ProgramCounter + lastOpcode.Metadata.AdditionalBytes + 1);
+                        method.LoadConstant(codeinfo.MachineCode.Length);
                         method.Call(Word.SetInt0);
                         method.StackPush(head);
                     }
@@ -1359,6 +1359,7 @@ internal class ILCompiler
                 case Instruction.BLOBHASH:
                     {
                         Label blobVersionedHashNotFound = method.DefineLabel();
+                        Label indexTooLarge = method.DefineLabel();
                         Label endOfOpcode = method.DefineLabel();
                         using Local byteMatrix = method.DeclareLocal(typeof(byte[][]));
 
@@ -1380,7 +1381,7 @@ internal class ILCompiler
                         method.LoadLocal(byteMatrix);
                         method.Call(GetPropertyInfo(typeof(byte[][]), nameof(Array.Length), false, out _));
                         method.Call(typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
-                        method.BranchIfFalse(blobVersionedHashNotFound);
+                        method.BranchIfFalse(indexTooLarge);
 
                         method.LoadLocal(byteMatrix);
                         method.LoadLocal(uint256A);
@@ -1395,6 +1396,8 @@ internal class ILCompiler
                         method.Branch(endOfOpcode);
 
                         method.MarkLabel(blobVersionedHashNotFound);
+                        method.StackPop(head, 1);
+                        method.MarkLabel(indexTooLarge);
                         method.CleanWord(stack, head);
                         method.MarkLabel(endOfOpcode);
                         method.StackPush(head);
@@ -1996,8 +1999,14 @@ internal class ILCompiler
         // jump table
         method.MarkLabel(jumpTable);
         method.StackLoadPrevious(stack, head, 1);
+
+        method.Duplicate();
         method.Call(Word.GetInt0);
         method.StoreLocal(jmpDestination);
+
+        method.Call(Word.GetIsUint16);
+        method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
+
         method.StackPop(head);
 
         method.StackPop(head, consumeJumpCondition);

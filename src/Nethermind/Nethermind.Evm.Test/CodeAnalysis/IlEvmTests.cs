@@ -2064,7 +2064,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 OpcodeInfo opcode = new OpcodeInfo(0, instruction, null);
                 try
                 {
-                    ILCompiler.CompileSegment(name, [opcode], [], config);
+                    var codeinfo = new CodeInfo([(byte)instruction]);
+                    ILCompiler.CompileSegment(name, codeinfo, [opcode], [], config);
                 }
                 catch (NotSupportedException nse)
                 {
@@ -2120,7 +2121,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2, config);
+            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", codeInfo, metadata.Item1, metadata.Item2, config);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ctx.Data);
 
             Assert.That(iLEvmState.EvmException == testcase.exceptionType);
@@ -2157,7 +2158,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2, config);
+            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", codeInfo, metadata.Item1, metadata.Item2, config);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ctx.Data);
 
             var tracedOpcodes = tracer.BuildResult().Entries;
@@ -2202,7 +2203,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2, config);
+            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", codeInfo, metadata.Item1, metadata.Item2, config);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, NullTxTracer.Instance, ctx.Data);
 
             var tracedOpcodes = tracer.BuildResult().Entries;

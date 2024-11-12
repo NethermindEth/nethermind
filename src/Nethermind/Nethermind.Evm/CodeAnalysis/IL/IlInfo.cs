@@ -110,10 +110,10 @@ internal class IlInfo
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
-
             return true;
         }
-        else if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+
+        if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
         {
             var executionResult = new ILChunkExecutionResult();
             Metrics.IlvmPredefinedPatternsExecutions++;
