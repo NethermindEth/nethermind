@@ -165,11 +165,7 @@ public class ProgressTrackerTests
     [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xbfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null, "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
     public void Should_partition_storage_request_if_last_processed_less_than_threshold(string start, string lastProcessed, string? limit, string expectedSplit)
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
-            .WithStateRoot(Keccak.EmptyTreeHash)
-            .TestObject).TestObject;
-        TestMemDb memDb = new();
-        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+        using ProgressTracker progressTracker = CreateProgressTracker();
 
         var startHash = new ValueHash256(start);
         var lastProcessedHash = new ValueHash256(lastProcessed);
@@ -201,11 +197,7 @@ public class ProgressTrackerTests
     [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null)]
     public void Should_not_partition_storage_request_if_last_processed_more_than_threshold(string start, string lastProcessed, string? limit)
     {
-        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
-            .WithStateRoot(Keccak.EmptyTreeHash)
-            .TestObject).TestObject;
-        TestMemDb memDb = new();
-        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+        using ProgressTracker progressTracker = CreateProgressTracker();
 
         var startHash = new ValueHash256(start);
         var lastProcessedHash = new ValueHash256(lastProcessed);
