@@ -69,9 +69,10 @@ public static class T8nValidator
             if (env.CurrentRandom is null)
                 throw new T8nException("post-merge requires currentRandom to be defined in env",
                     T8nErrorCodes.ErrorConfig);
-            if (env.CurrentDifficulty?.IsZero ?? false)
+            if (!env.CurrentDifficulty?.IsZero ?? false)
                 throw new T8nException("post-merge difficulty must be zero (or omitted) in env",
                     T8nErrorCodes.ErrorConfig);
+            env.CurrentDifficulty = null;
             return;
         }
 

@@ -61,7 +61,10 @@ public class T8nTest(IReleaseSpec spec, IReleaseSpec overridableReleaseSpec, ISp
         if (ParentBeaconBlockRoot is not null) header.ParentBeaconBlockRoot ??= ParentBeaconBlockRoot;
         if (CurrentRandom is not null) header.MixHash = CurrentRandom;
         if (CurrentBaseFee.HasValue) header.BaseFeePerGas = CurrentBaseFee.Value;
-        if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
+        if (CurrentExcessBlobGas.HasValue)
+        {
+            header.ExcessBlobGas = CurrentExcessBlobGas.Value;
+        } else if (ParentExcessBlobGas.HasValue && ParentBlobGasUsed.HasValue)
         {
             BlockHeader parentHeader = Build.A.BlockHeader
                 .WithExcessBlobGas((ulong)ParentExcessBlobGas)
