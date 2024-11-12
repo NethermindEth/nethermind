@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -63,7 +64,6 @@ public class JsonRpcSocketsClientTests
             Assert.That(sent, Is.EqualTo(received));
         }
 
-        [Test]
         [TestCase(1)]
         [TestCase(2)]
         [TestCase(10)]
@@ -81,7 +81,12 @@ public class JsonRpcSocketsClientTests
                     while (true)
                     {
                         ReceiveResult? result = await stream.ReceiveAsync(buffer);
-                        if (result?.EndOfMessage == true)
+
+                        // Imitate random delays
+                        if (Stopwatch.GetTimestamp() % 101 == 0)
+                            await Task.Delay(1);
+
+                        if (result is not null && IsEndOfIpcMessage(result))
                         {
                             messages++;
                         }
@@ -123,9 +128,9 @@ public class JsonRpcSocketsClientTests
 
                 for (int i = 0; i < messageCount; i++)
                 {
-                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000, () => disposeCount++), default);
+                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(100, () => disposeCount++), default);
                     await client.SendJsonRpcResult(result);
-                    await Task.Delay(100);
+                    await Task.Delay(1);
                 }
 
                 disposeCount.Should().Be(messageCount);
@@ -162,13 +167,13 @@ public class JsonRpcSocketsClientTests
                         if (result is not null)
                         {
                             msg.AddRange(buffer.Take(result.Read));
-                        }
 
-                        if (result?.EndOfMessage == true)
-                        {
-                            messages++;
-                            receivedMessages.Add(msg.ToArray());
-                            msg = [];
+                            if (IsEndOfIpcMessage(result))
+                            {
+                                messages++;
+                                receivedMessages.Add(msg.ToArray());
+                                msg = [];
+                            }
                         }
 
                         if (result is null || result.Closed)
@@ -216,11 +221,11 @@ public class JsonRpcSocketsClientTests
                     messageCount++;
                     var msg = Enumerable.Range(11, i).Select(x => (byte)x).ToArray();
                     sentMessages.Add(msg);
-                    await stream.WriteAsync(msg);
-                    await stream.WriteEndOfMessageAsync();
+                    await stream.WriteAsync(msg.Append((byte)'\n').ToArray());
+
                     if (i % 10 == 0)
                     {
-                        await Task.Delay(100);
+                        await Task.Delay(1);
                     }
                 }
                 stream.Close();
@@ -234,7 +239,7 @@ public class JsonRpcSocketsClientTests
             int received = receiveMessages.Result;
 
             Assert.That(received, Is.EqualTo(sent));
-            CollectionAssert.AreEqual(sentMessages, receivedMessages);
+            Assert.That(sentMessages, Is.EqualTo(receivedMessages).AsCollection);
         }
 
         private static async Task<T> OneShotServer<T>(IPEndPoint ipEndPoint, Func<Socket, Task<T>> func)
@@ -551,4 +556,6 @@ public class JsonRpcSocketsClientTests
         }
         return new string(stringChars);
     }
+
+    private static bool IsEndOfIpcMessage(ReceiveResult result) => result.EndOfMessage && (!result.Closed || result.Read != 0);
 }

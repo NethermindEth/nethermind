@@ -1560,6 +1560,30 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
+            public byte DecodeByte()
+            {
+                byte byteValue = PeekByte();
+                if (byteValue < 128)
+                {
+                    SkipBytes(1);
+                    return byteValue;
+                }
+
+                if (byteValue == 128)
+                {
+                    SkipBytes(1);
+                    return 0;
+                }
+
+                if (byteValue == 129)
+                {
+                    SkipBytes(1);
+                    return ReadByte();
+                }
+
+                throw new RlpException($"Unexpected value while decoding byte {byteValue}");
+            }
+
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
                 T defaultElement = default)
             {
@@ -1572,7 +1596,7 @@ namespace Nethermind.Serialization.Rlp
                     }
                 }
                 int positionCheck = ReadSequenceLength() + Position;
-                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+                int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
                 T[] result = new T[count];
                 for (int i = 0; i < result.Length; i++)
                 {
@@ -1602,10 +1626,7 @@ namespace Nethermind.Serialization.Rlp
             return Equals(other as Rlp);
         }
 
-        public override int GetHashCode()
-        {
-            return Bytes is not null ? Bytes.GetSimplifiedHashCode() : 0;
-        }
+        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
 
         public bool Equals(Rlp? other)
         {

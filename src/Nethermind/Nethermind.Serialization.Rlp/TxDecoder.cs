@@ -9,18 +9,21 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Serialization.Rlp;
 
+[Rlp.SkipGlobalRegistration]
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
-    public static readonly ObjectPool<Transaction> TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
+    public static readonly ObjectPool<Transaction> TxObjectPool;
 
-#pragma warning disable CS0618
-    public static readonly TxDecoder Instance = new();
-#pragma warning restore CS0618
+    public static readonly TxDecoder Instance;
 
-    // Rlp will try to find a public parameterless constructor during static initialization.
-    // The lambda cannot be removed due to static block initialization order.
-    [Obsolete("Use `TxDecoder.Instance` instead")]
-    public TxDecoder() : base(() => TxObjectPool.Get()) { }
+    private TxDecoder(Func<Transaction> transactionFactory) : base(transactionFactory) { }
+
+    static TxDecoder()
+    {
+        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
+        Instance = new TxDecoder(() => TxObjectPool.Get());
+        Rlp.RegisterDecoder(typeof(Transaction), Instance);
+    }
 }
 
 public sealed class SystemTxDecoder : TxDecoder<SystemTransaction>;
@@ -37,6 +40,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
         RegisterDecoder(new AccessListTxDecoder<T>(factory));
         RegisterDecoder(new EIP1559TxDecoder<T>(factory));
         RegisterDecoder(new BlobTxDecoder<T>(factory));
+        RegisterDecoder(new SetCodeTxDecoder<T>(factory));
     }
 
     public void RegisterDecoder(ITxDecoder decoder) => _decoders[(int)decoder.Type] = decoder;

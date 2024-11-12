@@ -11,7 +11,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class PeerInfo
     {
-        public string ClientId { get; set; }
+        public string Name { get; set; }
+        public string Id { get; }
         public string Host { get; set; }
         public int Port { get; set; }
         public string Address { get; set; }
@@ -38,7 +39,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
                     $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
             }
 
-            ClientId = peer.Node.ClientId;
+            Name = peer.Node.ClientId;
+            Id = peer.Node.Id.Hash.ToString(false);
             Host = peer.Node.Host is null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();

@@ -97,15 +97,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             using var _ = msg;
             AddNotifiedTransactions(msg.Hashes);
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
 
             TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
             _pooledTxsRequestor.RequestTransactions(Send, msg.Hashes);
 
-            stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage)} to {Node:c} " +
-                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
         protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
@@ -119,12 +118,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            var stopwatch = Stopwatch.StartNew();
+            long startTime = Stopwatch.GetTimestamp();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
-            stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
-                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
+                             $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)

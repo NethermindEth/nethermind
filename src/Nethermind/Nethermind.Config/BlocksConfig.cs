@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection.Metadata;
 using System.Text;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -26,7 +25,9 @@ namespace Nethermind.Config
 
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
 
-        public int BlockProductionTimeoutMs { get; set; } = 4000;
+        public int BlockProductionTimeoutMs { get; set; } = 4_000;
+
+        public int GenesisTimeoutMs { get; set; } = 40_000;
 
         public string ExtraData
         {
@@ -52,5 +53,9 @@ namespace Nethermind.Config
         {
             return _extraDataBytes;
         }
+
+        public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
+
+        public static string GasTokenTicker { get; set; } = "ETH";
     }
 }

@@ -27,7 +27,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -267,12 +266,6 @@ public class TxPermissionFilterTest
 
         protected override BlockProcessor CreateBlockProcessor()
         {
-            AuRaParameters.Validator validator = new()
-            {
-                Addresses = TestItem.Addresses,
-                ValidatorType = AuRaParameters.ValidatorType.List
-            };
-
             TransactionPermissionContractVersions =
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
@@ -296,10 +289,12 @@ public class TxPermissionFilterTest
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
                 ReceiptStorage,
-                new BeaconBlockRootHandler(TxProcessor),
+                new BeaconBlockRootHandler(TxProcessor, State),
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                TxProcessor,
+                null,
                 txFilter: PermissionBasedTxFilter,
                 preWarmer: CreateBlockCachePreWarmer());
         }

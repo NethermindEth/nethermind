@@ -113,7 +113,7 @@ namespace Nethermind.Core.Crypto
                 return OfAnEmptyString;
             }
 
-            return new Hash256(KeccakHash.ComputeHashBytes(input));
+            return new Hash256(ValueKeccak.Compute(input));
         }
 
         [DebuggerStepThrough]

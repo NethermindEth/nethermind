@@ -74,12 +74,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public void CastVote(Address signer, bool vote)
     {
-        bool success = _blockProducer.Proposals.TryAdd(signer, vote);
-        if (!success)
-        {
-            throw new InvalidOperationException($"A vote for {signer} has already been cast.");
-        }
-
+        _blockProducer.Proposals.AddOrUpdate(signer, vote, (key, existingValue) => vote);
         if (_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
     }
 
@@ -98,6 +93,8 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
     {
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
+
+    public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
 
     private void TimerOnElapsed(object sender, ElapsedEventArgs e)
     {

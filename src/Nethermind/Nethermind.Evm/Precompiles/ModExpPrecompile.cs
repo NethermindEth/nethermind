@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles
         /// <param name="inputData"></param>
         /// <param name="releaseSpec"></param>
         /// <returns>Gas cost of the MODEXP operation in the context of EIP2565</returns>
-        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (!releaseSpec.IsEip2565Enabled)
             {
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Precompiles
             return result;
         }
 
-        private static (int, int, int) GetInputLengths(in ReadOnlyMemory<byte> inputData)
+        private static (int, int, int) GetInputLengths(ReadOnlyMemory<byte> inputData)
         {
             Span<byte> extendedInput = stackalloc byte[96];
             inputData[..Math.Min(96, inputData.Length)].Span
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Precompiles
             return (baseLength, expLength, modulusLength);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.ModExpPrecompile++;
 

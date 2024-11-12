@@ -22,7 +22,6 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -133,25 +132,37 @@ public class Startup
 
         app.Run(async ctx =>
         {
-            if (ctx.Request.Method == "GET")
+            var method = ctx.Request.Method;
+            if (method is not "POST" and not "GET")
+            {
+                return;
+            }
+
+            if (!jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
+                !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+            {
+                return;
+            }
+
+            if (jsonRpcUrl.IsAuthenticated)
+            {
+                if (!await rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
+                {
+                    await PushErrorResponse(StatusCodes.Status401Unauthorized, ErrorCodes.InvalidRequest, "Authentication error");
+                    return;
+                }
+            }
+
+            if (method == "GET")
             {
                 await ctx.Response.WriteAsync("Nethermind JSON RPC");
             }
-
-            if (ctx.Request.Method == "POST" &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
+            else
             {
                 if (jsonRpcUrl.MaxRequestBodySize is not null)
                     ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
 
-                if (jsonRpcUrl.IsAuthenticated && !await rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
-                {
-                    await PushErrorResponse(StatusCodes.Status403Forbidden, ErrorCodes.InvalidRequest, "Authentication error");
-                    return;
-                }
-
-                Stopwatch stopwatch = Stopwatch.StartNew();
+                long startTime = Stopwatch.GetTimestamp();
                 CountingPipeReader request = new(ctx.Request.BodyReader);
                 try
                 {
@@ -231,7 +242,7 @@ public class Startup
                                 await ctx.Response.CompleteAsync();
                             }
 
-                            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                            long handlingTimeMicroseconds = (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds;
                             _ = jsonRpcLocalStats.ReportCall(result.IsCollection
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
