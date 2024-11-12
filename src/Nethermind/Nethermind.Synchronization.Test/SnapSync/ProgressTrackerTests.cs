@@ -175,7 +175,7 @@ public class ProgressTrackerTests
 
         var startHash = new ValueHash256(start);
         var lastProcessedHash = new ValueHash256(lastProcessed);
-        ValueHash256? limitHash = limit is null ? (ValueHash256?)null: new ValueHash256(limit);
+        ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
         progressTracker.EnqueueStorageRange(TestItem.Tree.AccountsWithPaths[0], startHash, lastProcessedHash, limitHash);
 
