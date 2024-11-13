@@ -32,7 +32,7 @@ public class OptimismBaseFeeCalculatorTests
             IsOpHoloceneEnabled = true
         };
 
-        var extraData = new byte[32];
+        var extraData = new byte[EIP1559Parameters.ByteLength];
         var parameters = new EIP1559Parameters(0, denominator, elasticity);
         parameters.WriteTo(extraData);
 

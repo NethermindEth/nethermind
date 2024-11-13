@@ -11,6 +11,8 @@ namespace Nethermind.Optimism;
 
 public readonly struct EIP1559Parameters
 {
+    public const int ByteLength = 9;
+
     public byte Version { get; }
     public UInt32 Denominator { get; }
     public UInt32 Elasticity { get; }
@@ -39,7 +41,7 @@ public static class EIP1559ParametersExtensions
 {
     public static EIP1559Parameters DecodeEIP1559Parameters(this BlockHeader header)
     {
-        if (header.ExtraData.Length < 9) throw new ArgumentException($"{nameof(header.ExtraData)} data must be at least 9 bytes long");
+        if (header.ExtraData.Length < EIP1559Parameters.ByteLength) throw new ArgumentException($"{nameof(header.ExtraData)} data must be at least 9 bytes long");
         // TODO: Add check for `there is no additional data beyond these 9 bytes` (whatever that means): https://github.com/roberto-bayardo/op-geth/blob/6c32375dda12d3f0b8f3498404f00fe1ae872547/consensus/misc/eip1559/eip1559.go#L112-L114
 
         ReadOnlySpan<byte> extraData = header.ExtraData.AsSpan();
