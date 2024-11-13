@@ -15,6 +15,7 @@ jobs:
       matrix:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
+        dotnet-version: [8.0.403, 8.0.404]
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -33,7 +34,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.403
+          dotnet-version: ${{ matrix.dotnet-version }}
       - name: Cache dotnet packages
         id: cache-dotnet
         uses: actions/cache@v4
