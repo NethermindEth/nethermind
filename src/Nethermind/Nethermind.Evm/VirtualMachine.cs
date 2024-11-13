@@ -166,7 +166,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         {
             JittingThreshold = 2,
             IsJitEnabled = true,
-            BakeInTracingInJitMode = false,
+            BakeInTracingInJitMode = true,
             AggressiveJitMode = true,
             AnalysisQueueMaxSize = 4
         };
