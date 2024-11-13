@@ -462,7 +462,7 @@ public class CliqueBlockProducer : IBlockProducer
 
         var spec = _specProvider.GetSpec(header);
 
-        header.BaseFeePerGas = new BaseFeeCalculator().Calculate(parentHeader, spec);
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty
         header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
         header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;

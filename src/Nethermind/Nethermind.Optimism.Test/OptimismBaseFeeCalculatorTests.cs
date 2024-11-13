@@ -45,9 +45,10 @@ public class OptimismBaseFeeCalculatorTests
 
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(blockHeader).Returns(releaseSpec);
-        var calculator = new OptimismBaseFeeCalculator(new BaseFeeCalculator(), specProvider);
 
-        UInt256 actualBaseFee = calculator.Calculate(blockHeader, releaseSpec);
+        BaseFeeCalculator.Override(new OptimismBaseFeeCalculator(new DefaultBaseFeeCalculator(), specProvider));
+        UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
+        BaseFeeCalculator.Reset();
 
         actualBaseFee.Should().Be((UInt256)expectedBaseFee);
     }

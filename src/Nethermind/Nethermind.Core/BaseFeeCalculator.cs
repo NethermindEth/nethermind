@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -15,12 +14,8 @@ public interface IBaseFeeCalculator
 /// <summary>
 /// Calculate <c>BaseFee</c> based on parent <see cref="BlockHeader"/> and <see cref="IEip1559Spec"/>.
 /// </summary>
-public sealed class BaseFeeCalculator : IBaseFeeCalculator
+public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 {
-    public static IBaseFeeCalculator Instance =>
-        LazyInitializer.EnsureInitialized(ref _instance, () => new BaseFeeCalculator());
-    private static BaseFeeCalculator? _instance;
-
     public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
     {
         UInt256 expectedBaseFee = parent.BaseFeePerGas;
@@ -66,4 +61,21 @@ public sealed class BaseFeeCalculator : IBaseFeeCalculator
 
         return expectedBaseFee;
     }
+}
+
+/// <remarks>
+/// This class is a hack to support custom base fee calculations while still using a Singleton
+/// Due to the extensive use of `BaseFeeCalculator.Calculate` in the codebase, it is not feasible to pass the calculator as a parameter.
+/// Thus, for now we will use a Singleton pattern to allow for custom base fee calculations.
+///
+/// When required, plugins can call <see cref="Override"/> to modify the global <see cref="IBaseFeeCalculator"/>
+/// </remarks>
+public static class BaseFeeCalculator
+{
+    private static IBaseFeeCalculator _instance = new DefaultBaseFeeCalculator();
+
+    public static void Override(IBaseFeeCalculator calculator) => _instance = calculator;
+    public static void Reset() => _instance = new DefaultBaseFeeCalculator();
+
+    public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559) => _instance!.Calculate(parent, specFor1559);
 }

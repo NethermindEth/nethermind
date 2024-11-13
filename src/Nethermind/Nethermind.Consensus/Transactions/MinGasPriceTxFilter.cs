@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Transactions
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber, blockTimestamp);
             if (spec.IsEip1559Enabled)
             {
-                baseFeePerGas = new BaseFeeCalculator().Calculate(parentHeader, spec);
+                baseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
                 tx.TryCalculatePremiumPerGas(baseFeePerGas, out premiumPerGas);
             }
 

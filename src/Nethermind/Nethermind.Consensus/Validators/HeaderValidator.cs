@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.Validators
         {
             if (spec.IsEip1559Enabled)
             {
-                UInt256? expectedBaseFee = new BaseFeeCalculator().Calculate(parent, spec);
+                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
 
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {

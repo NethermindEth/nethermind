@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Producers
         {
             long blockNumber = parent.Number + 1;
             IReleaseSpec spec = _specProvider.GetSpec(parent);
-            UInt256 baseFee = new BaseFeeCalculator().Calculate(parent, spec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
             IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))

@@ -285,7 +285,7 @@ namespace Nethermind.Facade
 
             IReleaseSpec releaseSpec = _specProvider.GetSpec(callHeader);
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                ? new BaseFeeCalculator().Calculate(blockHeader, releaseSpec)
+                ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
                 : blockHeader.BaseFeePerGas;
 
             if (releaseSpec.IsEip4844Enabled)
