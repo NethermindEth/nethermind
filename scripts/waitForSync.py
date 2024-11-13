@@ -3,10 +3,16 @@ import subprocess
 import sys
 
 network = os.getenv("NETWORK")
+verify_trie = os.getenv("VERIFY_TRIE", "false").lower() == "true"
 
-bad_logs = {"Exception": 1, "Missing node found!": 1}
-good_logs = {"Processed": 0, "Stats after finishing state": 0}
-required_count = {"Processed": 20, "Stats after finishing state": 1}
+bad_logs = {"Exception": 1}
+good_logs = {"Processed": 0}
+required_count = {"Processed": 20}
+
+if verify_trie:
+    bad_logs["Missing node found!"] = 1
+    good_logs["Stats after finishing state"] = 0
+    required_count["Stats after finishing state"] = 1
 
 if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia"}:
     good_logs["Synced Chain Head"] = 0
