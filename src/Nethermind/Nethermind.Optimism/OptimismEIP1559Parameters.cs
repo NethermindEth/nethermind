@@ -49,4 +49,15 @@ public static class EIP1559ParametersExtensions
 
         return new EIP1559Parameters(version, denominator, elasticity);
     }
+
+    public static EIP1559Parameters DecodeEIP1559Parameters(this OptimismPayloadAttributes attributes)
+    {
+        if (attributes.EIP1559Params?.Length != 8) throw new ArgumentException($"{nameof(attributes.EIP1559Params)} must be 8 bytes long");
+
+        ReadOnlySpan<byte> span = attributes.EIP1559Params.AsSpan();
+        var denominator = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
+        var elasticity = BinaryPrimitives.ReadUInt32BigEndian(span.TakeAndMove(4));
+
+        return new EIP1559Parameters(0, denominator, elasticity);
+    }
 }
