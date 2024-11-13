@@ -206,6 +206,7 @@ jobs:
         id: wait
         env:
           NETWORK: ${{ matrix.config.network }}
+          VERIFY_TRIE: ${{ inputs.verify_trie_on_sync }}
         run: |
           python scripts/waitForSync.py
           
@@ -218,10 +219,6 @@ jobs:
           else
             docker logs sedge-consensus-client      
           fi
-          
-      - name: Check size of DB 
-        run: |
-          du -h $GITHUB_WORKSPACE/sedge
 
       - name: Destroy VM
         if: always()
