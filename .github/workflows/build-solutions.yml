@@ -10,11 +10,12 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest-16-cores]
     strategy:
       matrix:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
+        dotnet-version: [8.0.403, 8.0.404]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -23,7 +24,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.403
+          dotnet-version: ${{ matrix.dotnet-version }}
       - name: Cache dotnet packages
         id: cache-dotnet
         uses: actions/cache@v4
@@ -35,3 +36,7 @@ jobs:
             ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
       - name: Build ${{ matrix.solution }}.sln
         run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
+      - name: Check sizes
+        run: |
+          du -h
+          df -h
