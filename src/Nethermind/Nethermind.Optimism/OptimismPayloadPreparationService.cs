@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -14,9 +15,11 @@ namespace Nethermind.Optimism;
 
 public class OptimismPayloadPreparationService : PayloadPreparationService
 {
+    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
     public OptimismPayloadPreparationService(
+        ISpecProvider specProvider,
         PostMergeBlockProducer blockProducer,
         IBlockImprovementContextFactory blockImprovementContextFactory,
         ITimerFactory timerFactory,
@@ -35,6 +38,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             improvementDelay,
             minTimeForProduction)
     {
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
     }
 
@@ -50,6 +54,21 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             _payloadStorage.TryAdd(payloadId,
                 new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
         }
-        else base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+        else
+        {
+            if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
+            {
+                var spec = _specProvider.GetSpec(currentBestBlock.Header);
+                if (spec.IsOpHoloceneEnabled)
+                {
+                    var eip1559Parameters = optimismPayload.DecodeEIP1559Parameters();
+
+                    currentBestBlock.Header.ExtraData = new byte[32];
+                    eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
+                }
+            }
+
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime);
+        }
     }
 }
