@@ -10,13 +10,23 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: [ubuntu-latest-16-cores]
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
         dotnet-version: [8.0.403, 8.0.404]
     steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: false
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
       - name: Check out repository
         uses: actions/checkout@v4
         with:
