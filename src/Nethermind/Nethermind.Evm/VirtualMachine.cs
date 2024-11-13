@@ -169,7 +169,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             IsJitEnabled = false,
             AggressiveJitMode = true,
             IsPatternMatchingEnabled = false,
-            BakeInTracingInJitMode = true,
+            BakeInTracingInJitMode = false,
             JittingThreshold = 1,
             PatternMatchingThreshold = int.MaxValue
         };
