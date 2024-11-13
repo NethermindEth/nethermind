@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
@@ -44,15 +43,15 @@ public class OptimismEngineModuleTests
         payloadId.Should().Be(testCase.PayloadId);
     }
 
-    private static IEnumerable<(byte[]?, PayloadAttributesValidationResult)> Validate_EIP1559Params_AfterHolocene_TestCases()
+    private static IEnumerable<(byte[]?, PayloadAttributesValidationResult, PayloadAttributesValidationResult)> Validate_EIP1559Params_Holocene_TestCases()
     {
-        yield return (null, PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[7], PayloadAttributesValidationResult.InvalidPayloadAttributes);
-        yield return (new byte[8], PayloadAttributesValidationResult.Success);
-        yield return (new byte[9], PayloadAttributesValidationResult.InvalidPayloadAttributes);
+        yield return (null, PayloadAttributesValidationResult.Success, PayloadAttributesValidationResult.InvalidPayloadAttributes);
+        yield return (new byte[7], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
+        yield return (new byte[8], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.Success);
+        yield return (new byte[9], PayloadAttributesValidationResult.InvalidPayloadAttributes, PayloadAttributesValidationResult.InvalidPayloadAttributes);
     }
-    [TestCaseSource(nameof(Validate_EIP1559Params_AfterHolocene_TestCases))]
-    public void Validate_EIP1559Params_AfterHolocene((byte[]? Eip1559Params, PayloadAttributesValidationResult ExpectedResult) testCase)
+    [TestCaseSource(nameof(Validate_EIP1559Params_Holocene_TestCases))]
+    public void Validate_EIP1559Params_Holocene((byte[]? Eip1559Params, PayloadAttributesValidationResult BeforeHolocene, PayloadAttributesValidationResult AfterHolocene) testCase)
     {
         var payloadAttributes = new OptimismPayloadAttributes
         {
@@ -63,12 +62,19 @@ public class OptimismEngineModuleTests
             EIP1559Params = testCase.Eip1559Params
         };
 
-        var releaseSpec = Substitute.For<IReleaseSpec>();
-        releaseSpec.IsOpHoloceneEnabled.Returns(true);
-        var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        static ISpecProvider BuildSpecProvider(bool isHolocene)
+        {
+            var releaseSpec = Substitute.For<IReleaseSpec>();
+            releaseSpec.IsOpHoloceneEnabled.Returns(isHolocene);
+            var specProvider = Substitute.For<ISpecProvider>();
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+            return specProvider;
+        }
 
-        var result = payloadAttributes.Validate(specProvider, 1, out var _);
-        result.Should().Be(testCase.ExpectedResult);
+        var beforeHolocene = payloadAttributes.Validate(BuildSpecProvider(isHolocene: false), 1, out var _);
+        beforeHolocene.Should().Be(testCase.BeforeHolocene);
+
+        var afterHolocene = payloadAttributes.Validate(BuildSpecProvider(isHolocene: true), 1, out var _);
+        afterHolocene.Should().Be(testCase.AfterHolocene);
     }
 }
