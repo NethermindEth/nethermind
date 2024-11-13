@@ -166,7 +166,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if ILVM_DEBUG
         _vmConfig = new VMConfig
         {
-            IsJitEnabled = false,
+            IsJitEnabled = true,
             AggressiveJitMode = true,
             IsPatternMatchingEnabled = false,
             BakeInTracingInJitMode = false,
