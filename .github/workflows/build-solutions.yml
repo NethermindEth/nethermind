@@ -38,5 +38,5 @@ jobs:
         run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
       - name: Check sizes
         run: |
-          du -h
+          du -k
           df -h
