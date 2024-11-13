@@ -26,7 +26,6 @@ public class TransactionSubstate
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    public const string RevertedErrorMessagePrefix = "Reverted ";
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
@@ -91,10 +90,7 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = string.Concat(
-            RevertedErrorMessagePrefix,
-            TryGetErrorMessage(span) ?? EncodeErrorMessage(span)
-        );
+        Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
