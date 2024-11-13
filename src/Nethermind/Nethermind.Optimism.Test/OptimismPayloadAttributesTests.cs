@@ -14,7 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
-public class OptimismEngineModuleTests
+public class OptimismPayloadAttributesTests
 {
     private static IEnumerable<(string, string)> PayloadIdTestCases()
     {
