@@ -70,19 +70,19 @@ internal class IlInfo
     /// </summary>
     private IlInfo()
     {
-        Chunks = new ConcurrentDictionary<ushort, InstructionChunk>();
-        Segments = new ConcurrentDictionary<ushort, SegmentExecutionCtx>();
+        Chunks = new ConcurrentDictionary<int, InstructionChunk>();
+        Segments = new ConcurrentDictionary<int, SegmentExecutionCtx>();
     }
 
-    public IlInfo(ConcurrentDictionary<ushort, InstructionChunk> mappedOpcodes, ConcurrentDictionary<ushort, SegmentExecutionCtx> segments)
+    public IlInfo(ConcurrentDictionary<int, InstructionChunk> mappedOpcodes, ConcurrentDictionary<int, SegmentExecutionCtx> segments)
     {
         Chunks = mappedOpcodes;
         Segments = segments;
     }
 
     // assumes small number of ILed
-    public ConcurrentDictionary<ushort, InstructionChunk> Chunks { get; } = new();
-    public ConcurrentDictionary<ushort, SegmentExecutionCtx> Segments { get; } = new();
+    public ConcurrentDictionary<int, InstructionChunk> Chunks { get; } = new();
+    public ConcurrentDictionary<int, SegmentExecutionCtx> Segments { get; } = new();
 
     public bool TryExecute<TTracingInstructions>(ILogger logger, EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
@@ -91,7 +91,7 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue || this.IsEmpty)
             return false;
 
-        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue((ushort)programCounter, out SegmentExecutionCtx ctx))
+        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue(programCounter, out SegmentExecutionCtx ctx))
         {
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -99,7 +99,7 @@ internal class IlInfo
             if (logger.IsInfo) logger.Info($"Executing segment {ctx.Name} at {programCounter}");
 
             vmState.DataStackHead = stack.Head;
-            var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, (ushort)programCounter, gasAvailable, ref outputBuffer);
+            var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, programCounter, gasAvailable, ref outputBuffer);
 
             ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer, ctx.Data);
 
@@ -113,7 +113,7 @@ internal class IlInfo
             return true;
         }
 
-        if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk))
+        if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue(programCounter, out InstructionChunk chunk))
         {
             var executionResult = new ILChunkExecutionResult();
             Metrics.IlvmPredefinedPatternsExecutions++;

@@ -1,4 +1,5 @@
 
+#define ILVM_DEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -162,7 +163,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+#if ILVM_DEBUG
+        _vmConfig = new VMConfig
+        {
+            IsJitEnabled = false,
+            AggressiveJitMode = true,
+            IsPatternMatchingEnabled = false,
+            BakeInTracingInJitMode = true,
+            JittingThreshold = 1,
+            PatternMatchingThreshold = int.MaxValue
+        };
+#else
         _vmConfig = vmConfig;
+#endif
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -737,6 +750,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
 
+#if ILVM_DEBUG
+        if (env.CodeInfo.IlInfo.IsEmpty)
+        {
+            //IlAnalyzer.Analyse(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
+        }
+#endif
 
         bool isRevert = false;
 #if DEBUG

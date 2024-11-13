@@ -38,7 +38,7 @@ internal class ILCompiler
         public string Name => PrecompiledSegment.Method.Name;
         public ExecuteSegment PrecompiledSegment;
         public byte[][] Data;
-        public ushort[] JumpDestinations;
+        public int[] JumpDestinations;
     }
     public static SegmentExecutionCtx CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
@@ -46,9 +46,9 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
-        ushort[] jumpdests = EmitSegmentBody(method, codeInfo, code, config.BakeInTracingInJitMode);
+        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
@@ -58,7 +58,7 @@ internal class ILCompiler
         };
     }
 
-    private static ushort[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, bool bakeInTracerCalls)
+    private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -92,7 +92,7 @@ internal class ILCompiler
         using Local storageCell = method.DeclareLocal(typeof(StorageCell));
 
         using Local gasAvailable = method.DeclareLocal(typeof(long));
-        using Local programCounter = method.DeclareLocal(typeof(ushort));
+        using Local programCounter = method.DeclareLocal(typeof(int));
 
         using Local stack = method.DeclareLocal(typeof(Span<Word>));
         using Local head = method.DeclareLocal(typeof(int));
@@ -136,9 +136,11 @@ internal class ILCompiler
         method.CompareEqual();
         method.BranchIfFalse(isContinuation);
 
-        Dictionary<ushort, Label> jumpDestinations = new();
+        Dictionary<int, Label> jumpDestinations = new();
 
         var costs = BuildCostLookup(code);
+
+        bool hasJump = false;
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
         for (int i = 0; i < code.Length; i++)
@@ -264,6 +266,7 @@ internal class ILCompiler
                             EmitCallToEndInstructionTrace(method, gasAvailable);
                         }
                         method.FakeBranch(jumpTable);
+                        hasJump = true;
                     }
                     break;
                 case Instruction.JUMPI:
@@ -288,6 +291,7 @@ internal class ILCompiler
 
                         method.MarkLabel(noJump);
                         method.StackPop(head, 2);
+                        hasJump = true;
                     }
                     break;
                 case Instruction.PUSH0:
@@ -680,8 +684,8 @@ internal class ILCompiler
                 case Instruction.PC:
                     {
                         method.CleanAndLoadWord(stack, head);
-                        method.LoadConstant((uint)op.ProgramCounter);
-                        method.Call(Word.SetUInt0);
+                        method.LoadConstant(op.ProgramCounter);
+                        method.Call(Word.SetInt0);
                         method.StackPush(head);
                     }
                     break;
@@ -1943,6 +1947,12 @@ internal class ILCompiler
             {
                 EmitCallToEndInstructionTrace(method, gasAvailable);
             }
+
+            if(!hasJump && op.IsTerminating)
+            {
+                method.Branch(ret);
+                break;
+            }
         }
 
         Label skipProgramCounterSetting = method.DefineLabel();
@@ -2037,7 +2047,6 @@ internal class ILCompiler
         method.LoadConstant(true);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
         method.LoadLocal(jmpDestination);
-        method.Convert<ushort>();
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
         method.Branch(ret);
 
