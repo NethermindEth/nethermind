@@ -17,7 +17,7 @@ on:
         default: ""
         required: false
       verify_trie_on_sync:
-        description: "Enable or disable VerifyTrieOnStateSyncFinished. Default is true."
+        description: "Verify Trie before starting block processing."
         type: boolean
         default: true
         required: false
