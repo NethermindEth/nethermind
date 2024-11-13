@@ -68,7 +68,7 @@ public class OptimismEngineModuleTests
         var specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
-        var result = payloadAttributes.Validate(specProvider, 0, out var _);
+        var result = payloadAttributes.Validate(specProvider, 1, out var _);
         result.Should().Be(testCase.ExpectedResult);
     }
 }
