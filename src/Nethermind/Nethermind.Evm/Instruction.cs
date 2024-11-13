@@ -371,16 +371,28 @@ namespace Nethermind.Evm
                 [Instruction.REVERT] = new(MEMORY_EXPANSION, 0, 2, 0), // has memory costs
             }.ToFrozenDictionary();
     }
-    public struct OpcodeInfo(ushort pc, Instruction instruction, int? argumentIndex)
+    public struct OpcodeInfo(int pc, Instruction instruction, int? argumentIndex)
     {
         public OpcodeMetadata Metadata => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
         public Instruction Operation => instruction;
-        public ushort ProgramCounter => pc;
+        public int ProgramCounter => pc;
         public int? Arguments { get; set; } = argumentIndex;
+        public bool IsTerminating => instruction.IsTerminating();
+        public bool IsStateful => instruction.IsStateful();
     }
 
     public static class InstructionExtensions
     {
+        public static bool IsTerminating(this Instruction instruction) => instruction switch
+        {
+            Instruction.STOP => true,
+            Instruction.RETURN => true,
+            Instruction.REVERT => true,
+            Instruction.INVALID => true,
+            Instruction.SELFDESTRUCT => true,
+            _ => !Enum.IsDefined<Instruction>(instruction)
+        };
+
         public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {
             Instruction.STOP => true,

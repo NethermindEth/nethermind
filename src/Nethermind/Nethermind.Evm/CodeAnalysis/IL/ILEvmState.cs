@@ -28,7 +28,7 @@ internal ref struct ILEvmState
     // in case of exceptions
     public EvmExceptionType EvmException;
     // in case of jumps crossing section boundaries
-    public ushort ProgramCounter;
+    public int ProgramCounter;
     public long GasAvailable;
     // in case STOP is executed
     public bool ShouldStop;
@@ -48,7 +48,7 @@ internal ref struct ILEvmState
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
 
-    public ILEvmState(ulong chainId, EvmState evmState, EvmExceptionType evmException, ushort programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(ulong chainId, EvmState evmState, EvmExceptionType evmException, int programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
     {
         ChainId = chainId;
         // locals for ease of access

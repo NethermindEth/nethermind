@@ -93,11 +93,11 @@ public static class IlAnalyzer
         OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
         List<byte[]> data = new List<byte[]>();
         int j = 0;
-        for (ushort i = 0; i < machineCode.Length; i++, j++)
+        for (int i = 0; i < machineCode.Length; i++, j++)
         {
             Instruction opcode = (Instruction)machineCode[i];
             int? argsIndex = null;
-            ushort pc = i;
+            int pc = i;
             if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
             {
                 ushort immediatesCount = opcode - Instruction.PUSH0;
@@ -127,7 +127,7 @@ public static class IlAnalyzer
 
             string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address.ToString()})[{segmentRange.Start}..{segmentRange.End}]";
 
-            int[] statefulOpcodeindex = new int[1 + (codeData.Item1.Length / 5)];
+            int[] statefulOpcodeindex = new int[codeData.Item1.Length];
 
             int j = 0;
             for (int i = 0; i < codeData.Item1.Length; i++)

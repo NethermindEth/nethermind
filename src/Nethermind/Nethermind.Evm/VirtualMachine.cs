@@ -1,4 +1,5 @@
 
+#define ILVM_DEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -744,6 +745,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         EvmExceptionType exceptionType = EvmExceptionType.None;
         IlInfo? ilInfo = env.CodeInfo.IlInfo;
 
+#if ILVM_DEBUG
+        if (env.CodeInfo.IlInfo.IsEmpty)
+        {
+            //IlAnalyzer.Analyse(env.CodeInfo, IlInfo.ILMode.JIT_MODE, _vmConfig, _logger);
+        }
+#endif
 
         bool isRevert = false;
 #if DEBUG
