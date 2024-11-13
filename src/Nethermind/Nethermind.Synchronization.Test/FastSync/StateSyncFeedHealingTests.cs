@@ -140,7 +140,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         await using IContainer container = PrepareDownloader(dbContext);
         SafeContext ctx = container.Resolve<SafeContext>();
-        await ActivateAndWait(ctx, dbContext, 9, timeout: 20000);
+        await ActivateAndWait(ctx, dbContext, 9, timeout: TimeoutLength * 4);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
