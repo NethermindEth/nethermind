@@ -33,8 +33,6 @@ namespace Nethermind.Core.Specs
         public UInt256 BaseFeeMaxChangeDenominator { get; set; }
         public long ElasticityMultiplier { get; set; }
 
-        public Eip1559Spec() { }
-
         public Eip1559Spec(IEip1559Spec spec)
         {
             IsEip1559Enabled = spec.IsEip1559Enabled;
