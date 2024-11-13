@@ -52,7 +52,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public ulong Timestamp { get; set; }
 
-    protected byte[][] _encodedTransactions = Array.Empty<byte[]>();
+    protected byte[][] _encodedTransactions = [];
 
     /// <summary>
     /// Gets or sets an array of RLP-encoded transaction where each item is a byte list (data)
