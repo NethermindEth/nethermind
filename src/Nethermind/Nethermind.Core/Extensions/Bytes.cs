@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -30,6 +30,10 @@ namespace Nethermind.Core.Extensions
         public static readonly BytesComparer Comparer = new();
         public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
+
+        public const string ZeroHexValue = "0x0";
+        public const string ZeroValue = "0";
+        public const string EmptyHexValue = "0x";
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
@@ -654,7 +658,7 @@ namespace Nethermind.Core.Extensions
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                return withZeroX ? "0x0" : "0";
+                return withZeroX ? ZeroHexValue : "0";
             }
 
             State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX);

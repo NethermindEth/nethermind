@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,8 @@ using System.Globalization;
 
 namespace Nethermind.Serialization.Json
 {
+    using Nethermind.Core.Extensions;
+    using Nethermind.Core.JsonConverters;
     using System.Buffers;
     using System.Buffers.Binary;
     using System.Buffers.Text;
@@ -22,7 +24,7 @@ namespace Nethermind.Serialization.Json
                 throw new JsonException("null cannot be assigned to long");
             }
 
-            if (s == "0x0")
+            if (s == Bytes.ZeroHexValue)
             {
                 return 0L;
             }

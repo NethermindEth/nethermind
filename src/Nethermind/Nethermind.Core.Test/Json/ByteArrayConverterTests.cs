@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.JsonConverters;
 using Nethermind.Serialization.Json;
 
 using NUnit.Framework;

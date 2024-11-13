@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+using Nethermind.Core.JsonConverters;
 
 namespace Nethermind.JsonRpc.Converters;
 

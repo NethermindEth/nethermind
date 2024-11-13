@@ -8,6 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json
 {
+    using Nethermind.Core.JsonConverters;
     using System.Collections.Generic;
     using System.Runtime.CompilerServices;
     using System.Text.Json;

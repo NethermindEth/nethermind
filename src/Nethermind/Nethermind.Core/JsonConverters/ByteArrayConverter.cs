@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
 using System;
 using System.Buffers;
 using System.Diagnostics;
@@ -9,9 +10,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
 
-namespace Nethermind.Serialization.Json;
+namespace Nethermind.Core.JsonConverters;
 
 public class ByteArrayConverter : JsonConverter<byte[]>
 {
@@ -53,9 +53,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         ReadOnlySpan<byte> hex = bytes is null ? reader.ValueSpan : bytes.AsSpan(0, length);
         if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
-        {
             hex = hex[2..];
-        }
 
         byte[] returnVal = Bytes.FromUtf8HexString(hex);
         if (bytes is not null)
@@ -103,7 +101,15 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         const int stackLength = 256;
 
         int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
-        int length = bytes.Length * 2 - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
+        int nibblesCount = bytes.Length * 2;
+
+        if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
+        {
+            writer.WriteStringValue(Bytes.ZeroHexValue);
+            return;
+        }
+
+        int length = nibblesCount - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
         if (length > maxStackLength)

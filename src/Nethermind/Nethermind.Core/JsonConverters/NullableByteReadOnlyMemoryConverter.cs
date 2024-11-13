@@ -5,11 +5,11 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Serialization.Json;
+namespace Nethermind.Core.JsonConverters;
 
-public class ByteReadOnlyMemoryConverter : JsonConverter<ReadOnlyMemory<byte>>
+public class NullableByteReadOnlyMemoryConverter(bool skipLeadingZeros = false) : JsonConverter<ReadOnlyMemory<byte>?>
 {
-    public override ReadOnlyMemory<byte> Read(
+    public override ReadOnlyMemory<byte>? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options) =>
@@ -17,7 +17,7 @@ public class ByteReadOnlyMemoryConverter : JsonConverter<ReadOnlyMemory<byte>>
 
     public override void Write(
         Utf8JsonWriter writer,
-        ReadOnlyMemory<byte> bytes,
+        ReadOnlyMemory<byte>? bytes,
         JsonSerializerOptions options) =>
-        ByteArrayConverter.Convert(writer, bytes.Span, skipLeadingZeros: false);
+        ByteArrayConverter.Convert(writer, bytes is null ? [] : bytes.Value.Span, skipLeadingZeros: skipLeadingZeros);
 }

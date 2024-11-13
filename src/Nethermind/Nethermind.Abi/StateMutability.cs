@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using Nethermind.Serialization.Json;
+using Nethermind.Core.JsonConverters;
 
 namespace Nethermind.Abi
 {
