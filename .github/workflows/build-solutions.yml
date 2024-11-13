@@ -39,4 +39,4 @@ jobs:
       - name: Check sizes
         run: |
           du -k
-          df -h
+          df -k
