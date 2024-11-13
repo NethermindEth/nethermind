@@ -138,7 +138,7 @@ namespace Nethermind.State.Proofs
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();
+                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();//.Where(x=>x is not [] and not null).ToArray();
             }
 
             return _accountProof;
@@ -176,11 +176,7 @@ namespace Nethermind.State.Proofs
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
                     Hash256 childHash = node.GetChildHash((byte)childIndex);
-                    if (childHash is null)
-                    {
-                        AddEmpty(node, trieVisitContext);
-                    }
-                    else
+                    if (childHash is not null)
                     {
                         ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
                         if (!exists)

@@ -103,6 +103,13 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         const int stackLength = 256;
 
         int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+
+        if (skipLeadingZeros && bytes.Length is not 0 && leadingNibbleZeros == bytes.Length * 2)
+        {
+            writer.WriteStringValue("0x0");
+            return;
+        }
+
         int length = bytes.Length * 2 - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
