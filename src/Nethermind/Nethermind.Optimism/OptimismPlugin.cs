@@ -123,6 +123,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.SealValidator = NullSealEngine.Instance;
         _api.GossipPolicy = ShouldNotGossip.Instance;
 
+        BaseFeeCalculator.Override(new OptimismBaseFeeCalculator(new DefaultBaseFeeCalculator(), _api.SpecProvider));
+
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.PoSSwitcher));
 
         return Task.CompletedTask;
