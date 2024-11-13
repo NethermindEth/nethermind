@@ -4,9 +4,8 @@ on:
   pull_request:
     branches: [master]
   push:
-    branches: [master]
+    branches: [master, kch/check_build_size]
   merge_group:
-  workflow_dispatch:
 
 jobs:
   build:
