@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class OptimismHeaderValidatorTests
 {
     private static IEnumerable<(string, bool)> EIP1559ParametersExtraData()

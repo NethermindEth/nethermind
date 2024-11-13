@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Optimism.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class OptimismPayloadPreparationServiceTests
 {
     [TestCase(8u, 2u)]

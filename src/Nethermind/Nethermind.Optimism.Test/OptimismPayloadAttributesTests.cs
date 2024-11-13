@@ -14,6 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class OptimismPayloadAttributesTests
 {
     private static IEnumerable<(string, string)> PayloadIdTestCases()

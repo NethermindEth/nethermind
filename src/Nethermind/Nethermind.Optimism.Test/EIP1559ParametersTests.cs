@@ -10,6 +10,7 @@ using System;
 
 namespace Nethermind.Optimism.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class EIP1559ParametersTests
 {
     private static IEnumerable<(string hexString, EIP1559Parameters expected)> DecodeBlockHeaderParametersCases()
