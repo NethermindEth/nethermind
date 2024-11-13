@@ -18,7 +18,8 @@ on:
         required: false
       verify_trie_on_sync:
         description: "Enable or disable VerifyTrieOnStateSyncFinished. Default is true."
-        default: "true"
+        type: boolean
+        default: true
         required: false
 
 env:
