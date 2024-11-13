@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Config;
@@ -32,12 +31,8 @@ namespace Nethermind.Consensus.Processing
                 blockToProduce.Transactions = transactions;
                 return true;
             }
-            else
-            {
-                block.Body.Transactions = transactions;
-                return true;
-            }
 
+            return false;
         }
 
         public static bool IsByNethermindNode(this Block block) => block.Header.IsByNethermindNode();
