@@ -117,12 +117,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
         IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
         if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
         {
-            error = "EIP1559Params should be null before Holocene";
+            error = $"{nameof(EIP1559Params)} should be null before Holocene";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
         if (releaseSpec.IsOpHoloceneEnabled && EIP1559Params?.Length != 8)
         {
-            error = "EIP1559Params should be 8 bytes long";
+            error = $"{nameof(EIP1559Params)} should be 8 bytes long";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
