@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
@@ -30,6 +32,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         public async Task Execute(CancellationToken cancellationToken)
         {
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+            IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
+
+            // updating jwt-secret path based on data directory.
+            jsonRpcConfig.JwtSecretFile = String.Concat(keyStoreConfig.KeyStoreDirectory,"/jwt-secret");
+
             ILogger logger = _api.LogManager.GetClassLogger();
 
             if (jsonRpcConfig.Enabled)
