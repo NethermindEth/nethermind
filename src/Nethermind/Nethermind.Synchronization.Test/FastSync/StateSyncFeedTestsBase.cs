@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             return remoteStorageTree;
         }
 
-        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
         {
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 syncPeers[i] = mock;
             }
 
-            ContainerBuilder builder = BuildTestContainerBuilder(dbContext)
+            ContainerBuilder builder = BuildTestContainerBuilder(dbContext, syncDispatcherAllocateTimeoutMs)
                 .AddSingleton<SyncPeerMock[]>(syncPeers);
 
             builder.RegisterBuildCallback((ctx) =>
@@ -112,13 +112,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             return builder.Build();
         }
 
-        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext)
+        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
                 .AddModule(new TestSynchronizerModule(new SyncConfig()
                 {
                     SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs = 10, // there is a test for requested nodes which get affected if allocate timeout
+                    SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
                     FastSync = true
                 }))
                 .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)

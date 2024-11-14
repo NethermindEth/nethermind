@@ -138,7 +138,7 @@ internal class ILCompiler
 
         Dictionary<int, Label> jumpDestinations = new();
 
-        var costs = BuildCostLookup(code);
+        var costs = BuildStaticCostLookup(code);
 
         bool hasJump = false;
 
@@ -167,27 +167,16 @@ internal class ILCompiler
             method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
             method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
 
-            if (!bakeInTracerCalls) {
-                if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
-                {
-                    method.LoadLocal(gasAvailable);
-                    method.LoadConstant(costs[op.ProgramCounter]);
-                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
-
-                    method.LoadLocal(gasAvailable);
-                    method.LoadConstant(costs[op.ProgramCounter]);
-                    method.Subtract();
-                    method.StoreLocal(gasAvailable);
-                }
-            } else
+            if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
             {
                 method.LoadLocal(gasAvailable);
-                method.LoadConstant(op.Metadata.GasCost);
-                method.Subtract();
-                method.Duplicate();
-                method.StoreLocal(gasAvailable);
-                method.LoadConstant((long)0);
+                method.LoadConstant(costs[op.ProgramCounter]);
                 method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                method.LoadLocal(gasAvailable);
+                method.LoadConstant(costs[op.ProgramCounter]);
+                method.Subtract();
+                method.StoreLocal(gasAvailable);
             }
 
             if (i == code.Length - 1)
@@ -1950,7 +1939,6 @@ internal class ILCompiler
 
             if(!hasJump && op.IsTerminating)
             {
-                method.Branch(ret);
                 break;
             }
         }
@@ -2182,7 +2170,6 @@ internal class ILCompiler
         method.MarkLabel(skipCall);
     }
 #endif
-
     private static void EmitCallToErrorTrace(Emit<ExecuteSegment> method, Local gasAvailable, KeyValuePair<EvmExceptionType, Label> kvp)
     {
         Label skipTracing = method.DefineLabel();
@@ -2197,7 +2184,6 @@ internal class ILCompiler
 
         method.MarkLabel(skipTracing);
     }
-
     private static void EmitCallToEndInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable)
     {
         Label skipTracing = method.DefineLabel();
@@ -2214,8 +2200,6 @@ internal class ILCompiler
 
         method.MarkLabel(skipTracing);
     }
-
-
     private static void EmitCallToStartInstructionTrace(Emit<ExecuteSegment> method, Local gasAvailable, Local head, OpcodeInfo op)
     {
         Label skipTracing = method.DefineLabel();
@@ -2234,7 +2218,6 @@ internal class ILCompiler
 
         method.MarkLabel(skipTracing);
     }
-
     private static void EmitShiftUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, bool isLeft, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         MethodInfo shiftOp = typeof(UInt256).GetMethod(isLeft ? nameof(UInt256.LeftShift) : nameof(UInt256.RightShift));
@@ -2284,7 +2267,6 @@ internal class ILCompiler
 
         il.MarkLabel(endOfOpcode);
     }
-
     private static void EmitShiftInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label aBiggerOrEqThan256 = il.DefineLabel();
@@ -2346,7 +2328,6 @@ internal class ILCompiler
         il.MarkLabel(endOfOpcode);
         il.StackPush(stack.idx);
     }
-
     private static void EmitBitwiseUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         // Note: Use Vector256 directoly if UInt256 does not use it internally
@@ -2374,7 +2355,6 @@ internal class ILCompiler
         il.Call(writeVector256Method);
         il.StackPop(stack.idx);
     }
-
     private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         // we the two uint256 from the stack
@@ -2402,7 +2382,6 @@ internal class ILCompiler
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx);
     }
-
     private static void EmitComparaisonInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, bool isGreaterThan, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label endOpcodeHandling = il.DefineLabel();
@@ -2447,7 +2426,6 @@ internal class ILCompiler
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx);
     }
-
     private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label label = il.DefineLabel();
@@ -2479,7 +2457,6 @@ internal class ILCompiler
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx);
     }
-
     private static void EmitBinaryInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label label = il.DefineLabel();
@@ -2514,7 +2491,6 @@ internal class ILCompiler
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx);
     }
-
     private static void EmitTrinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label label = il.DefineLabel();
@@ -2550,7 +2526,6 @@ internal class ILCompiler
         il.Call(Word.SetUInt256);
         il.StackPush(stack.idx);
     }
-
 
     private static void EmitLogMethod<T>(
         Emit<T> il,
@@ -2661,7 +2636,8 @@ internal class ILCompiler
         il.LoadConstant(0);
         il.BranchIfLess(outOfGasLabel);
     }
-    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
+
+    private static Dictionary<int, long> BuildStaticCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
         Dictionary<int, long> costs = new();
         int costStart = code[0].ProgramCounter;
@@ -2669,7 +2645,6 @@ internal class ILCompiler
 
         for (int pc = 0; pc < code.Length; pc++)
         {
-
             OpcodeInfo op = code[pc];
             switch (op.Operation)
             {
@@ -2682,6 +2657,7 @@ internal class ILCompiler
                 case Instruction.REVERT:
                 case Instruction.STOP:
                 case Instruction.GAS:
+                case Instruction.INVALID:
                 case Instruction.JUMPI:
                 case Instruction.JUMP:
                     coststack += op.Metadata.GasCost;
