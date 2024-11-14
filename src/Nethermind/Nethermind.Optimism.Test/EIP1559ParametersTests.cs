@@ -29,7 +29,7 @@ public class EIP1559ParametersTests
         var bytes = Bytes.FromHexString(testCase.HexString);
         var blockHeader = Build.A.BlockHeader.WithExtraData(bytes).TestObject;
 
-        EIP1559Parameters? decoded = blockHeader.DecodeEIP1559Parameters();
+        EIP1559Parameters decoded = blockHeader.DecodeEIP1559Parameters();
 
         decoded.Should().Be(testCase.Expected);
     }
