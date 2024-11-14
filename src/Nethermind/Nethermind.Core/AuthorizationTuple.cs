@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System;
 
 namespace Nethermind.Core;
 public class AuthorizationTuple(

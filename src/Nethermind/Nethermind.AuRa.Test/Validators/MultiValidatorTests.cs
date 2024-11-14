@@ -12,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;

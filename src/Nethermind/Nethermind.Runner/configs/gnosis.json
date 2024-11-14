@@ -26,7 +26,7 @@
     "GasToken": "XDAI"
   },
   "Shutter": {
-    "SequencerContractAddress": "0x2aD8E2feB00xc5C4b277277A1A8401E0F039dfC49151bA64DC2ED5b2EC8e700edB725f120576994ed",
+    "SequencerContractAddress": "0xc5C4b277277A1A8401E0F039dfC49151bA64DC2E",
     "ValidatorRegistryContractAddress": "0xefCC23E71f6bA9B22C4D28F7588141d44496A6D6",
     "KeyBroadcastContractAddress": "0x626dB87f9a9aC47070016A50e802dd5974341301",
     "KeyperSetManagerContractAddress": "0x7C2337f9bFce19d8970661DA50dE8DD7d3D34abb",
@@ -35,9 +35,6 @@
       "/ip4/159.89.15.119/tcp/23003/p2p/12D3KooWRzAhgPA16DiBQhiuYoasYzJaQSAbtc5i5FvgTi9ZDQtS"
     ],
     "InstanceID": "1000"
-  },
-  "Mining": {
-    "MinGasPrice": "1000000000"
   },
   "EthStats": {
     "Name": "Nethermind Gnosis"

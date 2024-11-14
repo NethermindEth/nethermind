@@ -15,7 +15,6 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;

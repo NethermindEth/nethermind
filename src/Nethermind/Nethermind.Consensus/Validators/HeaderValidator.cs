@@ -91,7 +91,31 @@ namespace Nethermind.Consensus.Validators
                 && ValidateTimestamp(header, parent, ref error)
                 && ValidateBlockNumber(header, parent, ref error)
                 && Validate1559(header, parent, spec, ref error)
-                && ValidateBlobGasFields(header, parent, spec, ref error);
+                && ValidateBlobGasFields(header, parent, spec, ref error)
+                && ValidateRequestsHash(header, spec, ref error);
+        }
+
+        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.RequestsEnabled)
+            {
+                if (header.RequestsHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field is not set.");
+                    error = BlockErrorMessages.MissingRequests;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.RequestsHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("RequestsHash field should not have value.");
+                    error = BlockErrorMessages.RequestsNotEnabled;
+                    return false;
+                }
+            }
+            return true;
         }
 
         protected virtual bool Validate1559(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)

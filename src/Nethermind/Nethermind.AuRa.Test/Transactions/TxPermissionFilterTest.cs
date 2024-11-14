@@ -13,7 +13,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;

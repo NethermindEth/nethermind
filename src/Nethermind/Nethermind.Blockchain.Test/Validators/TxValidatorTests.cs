@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Routing;
 using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
