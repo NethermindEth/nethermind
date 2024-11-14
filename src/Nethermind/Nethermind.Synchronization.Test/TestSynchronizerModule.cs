@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Trie;
 using NSubstitute;
@@ -28,6 +29,7 @@ public class TestSynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<IBlockTree>(Substitute.For<IBlockTree>())
             .AddSingleton<ITimerFactory>(Substitute.For<ITimerFactory>())
             .AddSingleton<ISyncConfig>(syncConfig)
+            .AddSingleton<IStateReader>(Substitute.For<IStateReader>())
             .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
             .AddSingleton<INodeStatsManager, NodeStatsManager>()
             .AddSingleton<CancelOnDisposeToken>()

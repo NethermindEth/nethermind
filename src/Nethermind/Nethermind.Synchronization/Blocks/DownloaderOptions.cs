@@ -12,7 +12,7 @@ namespace Nethermind.Synchronization.Blocks
         Process = 1,
         WithReceipts = 2,
         MoveToMain = 4,
-        WithBodies = 8,
+        // WithBodies = 8,
         // ReSharper disable once UnusedMember.Global
         All = 15
     }
