@@ -27,6 +27,8 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? GraniteTimestamp { get; set; }
 
+    public ulong? HoloceneTimestamp { get; set; }
+
     public Address? L1FeeRecipient { get; set; }
 
     public Address? L1BlockAddress { get; set; }
@@ -45,12 +47,14 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
         ArgumentNullException.ThrowIfNull(FjordTimestamp);
         ArgumentNullException.ThrowIfNull(GraniteTimestamp);
+        ArgumentNullException.ThrowIfNull(HoloceneTimestamp);
         blockNumbers.Add(BedrockBlockNumber.Value);
         timestamps.Add(RegolithTimestamp.Value);
         timestamps.Add(CanyonTimestamp.Value);
         timestamps.Add(EcotoneTimestamp.Value);
         timestamps.Add(FjordTimestamp.Value);
         timestamps.Add(GraniteTimestamp.Value);
+        timestamps.Add(HoloceneTimestamp.Value);
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
