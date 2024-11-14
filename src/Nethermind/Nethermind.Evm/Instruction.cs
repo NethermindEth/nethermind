@@ -392,6 +392,19 @@ namespace Nethermind.Evm
             Instruction.SELFDESTRUCT => true,
             _ => !Enum.IsDefined<Instruction>(instruction)
         };
+        public static bool IsStateful(this Instruction instruction) => instruction switch
+        {
+            Instruction.CREATE or Instruction.CREATE2 => true,
+            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
+            Instruction.SELFDESTRUCT => true,
+            _ => false,
+        };
+        public static bool IsJump(this Instruction instruction) => instruction switch
+        {
+            Instruction.JUMP => true,
+            Instruction.JUMPI => true,
+            _ => false
+        };
 
         public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {
@@ -481,14 +494,6 @@ namespace Nethermind.Evm
             Instruction.MCOPY => spec.MCopyIncluded,
             _ => false
         };
-        public static bool IsStateful(this Instruction instruction) => instruction switch
-        {
-            Instruction.CREATE or Instruction.CREATE2 => true,
-            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
-            Instruction.SELFDESTRUCT => true,
-            _ => false,
-        };
-
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
             instruction switch
             {
