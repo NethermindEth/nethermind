@@ -41,8 +41,7 @@ public static class EIP1559ParametersExtensions
 {
     public static EIP1559Parameters DecodeEIP1559Parameters(this BlockHeader header)
     {
-        if (header.ExtraData.Length < EIP1559Parameters.ByteLength) throw new ArgumentException($"{nameof(header.ExtraData)} data must be at least 9 bytes long");
-        // TODO: Add check for `there is no additional data beyond these 9 bytes` (whatever that means): https://github.com/roberto-bayardo/op-geth/blob/6c32375dda12d3f0b8f3498404f00fe1ae872547/consensus/misc/eip1559/eip1559.go#L112-L114
+        if (header.ExtraData.Length != EIP1559Parameters.ByteLength) throw new ArgumentException($"{nameof(header.ExtraData)} data must be {EIP1559Parameters.ByteLength} bytes long");
 
         ReadOnlySpan<byte> extraData = header.ExtraData.AsSpan();
         var version = extraData.TakeAndMove(1)[0];
