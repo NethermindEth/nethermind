@@ -25,13 +25,13 @@ namespace Nethermind.Core.Specs
 
     public sealed class Eip1559Spec : IEip1559Spec
     {
-        public bool IsEip1559Enabled { get; set; }
-        public long Eip1559TransitionBlock { get; set; }
-        public Address? FeeCollector { get; set; }
-        public UInt256? Eip1559BaseFeeMinValue { get; set; }
-        public UInt256 ForkBaseFee { get; set; }
-        public UInt256 BaseFeeMaxChangeDenominator { get; set; }
-        public long ElasticityMultiplier { get; set; }
+        public bool IsEip1559Enabled { get; init; }
+        public long Eip1559TransitionBlock { get; init; }
+        public Address? FeeCollector { get; init; }
+        public UInt256? Eip1559BaseFeeMinValue { get; init; }
+        public UInt256 ForkBaseFee { get; init; }
+        public UInt256 BaseFeeMaxChangeDenominator { get; init; }
+        public long ElasticityMultiplier { get; init; }
 
         public Eip1559Spec(IEip1559Spec spec)
         {
