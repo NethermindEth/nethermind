@@ -1,5 +1,5 @@
 
-#define ILVM_DEBUG
+// #define ILVM_DEBUG
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
@@ -75,8 +75,12 @@ public class VirtualMachine : IVirtualMachine
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _config = vmConfig ?? new VMConfig();
         _evm = logger.IsTrace
-            ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, _config, logger)
-            : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, _config, logger);
+            ? _config.IsVmOptimizationEnabled
+                ? new VirtualMachine<IsTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
+                : new VirtualMachine<IsTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger)
+            : _config.IsVmOptimizationEnabled
+                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
+                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -137,9 +141,15 @@ public class VirtualMachine : IVirtualMachine
     public interface IIsTracing { }
     public readonly struct NotTracing : IIsTracing { }
     public readonly struct IsTracing : IIsTracing { }
+
+    public interface IIsOptimizing { }
+    public readonly struct NotOptimizing : IIsOptimizing { }
+    public readonly struct IsOptimizing : IIsOptimizing { }
 }
 
-internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
+internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
+    where TLogger : struct, IIsTracing
+    where TOptimizing : struct, IIsOptimizing
 {
     private readonly byte[] _chainId;
 
@@ -720,15 +730,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // which use shared generics.
         if (!_txTracer.IsTracingRefunds)
         {
-            return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            return _txTracer.IsTracingOpLevelStorage
+                    ? ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) 
+                    : ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
         else
         {
-            return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            return _txTracer.IsTracingOpLevelStorage 
+                    ? ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) 
+                    : ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
     Empty:
         return CallResult.Empty;
@@ -774,55 +784,57 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         while ((uint)programCounter < codeLength)
         {
 
-            // try execute as many as possible
-            while (_vmConfig.IsVmOptimizationEnabled && (ilInfo?.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
-                   .GetValueOrDefault(false))
+            if(typeof(TOptimizing) == typeof(IsOptimizing))
             {
-                if (chunkExecutionResult.Value.ShouldReturn)
+                while ((ilInfo?.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult))
+                       .GetValueOrDefault(false))
                 {
-                    returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
-                    goto DataReturn;
-                }
-                if (chunkExecutionResult.Value.ShouldRevert)
-                {
-                    isRevert = true;
-                    returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
-                    goto DataReturn;
-                }
-                if (chunkExecutionResult.Value.ShouldStop)
-                {
-                    goto EmptyReturn;
-                }
-                if (chunkExecutionResult.Value.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
-                {
-                    exceptionType = EvmExceptionType.InvalidJumpDestination;
-                    goto InvalidJumpDestination;
-                }
-                if (chunkExecutionResult.Value.ShouldFail)
-                {
-                    exceptionType = chunkExecutionResult.Value.ExceptionType;
-                    switch (exceptionType)
+                    if (chunkExecutionResult.Value.ShouldReturn)
                     {
-                        case EvmExceptionType.StackOverflow:
-                            goto StackOverflow;
-                        case EvmExceptionType.StackUnderflow:
-                            goto StackUnderflow;
-                        case EvmExceptionType.InvalidJumpDestination:
-                            goto InvalidJumpDestination;
-                        case EvmExceptionType.BadInstruction:
-                            goto InvalidInstruction;
-                        case EvmExceptionType.AccessViolation:
-                            goto AccessViolation;
-                        case EvmExceptionType.OutOfGas:
-                            goto OutOfGas;
-                        case EvmExceptionType.StaticCallViolation:
-                            goto StaticCallViolation;
+                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
+                        goto DataReturn;
                     }
-                }
+                    if (chunkExecutionResult.Value.ShouldRevert)
+                    {
+                        isRevert = true;
+                        returnData = ((ReadOnlyMemory<byte>)chunkExecutionResult.Value.ReturnData).ToArray();
+                        goto DataReturn;
+                    }
+                    if (chunkExecutionResult.Value.ShouldStop)
+                    {
+                        goto EmptyReturn;
+                    }
+                    if (chunkExecutionResult.Value.ShouldJump && !vmState.Env.CodeInfo.ValidateJump(programCounter))
+                    {
+                        exceptionType = EvmExceptionType.InvalidJumpDestination;
+                        goto InvalidJumpDestination;
+                    }
+                    if (chunkExecutionResult.Value.ShouldFail)
+                    {
+                        exceptionType = chunkExecutionResult.Value.ExceptionType;
+                        switch (exceptionType)
+                        {
+                            case EvmExceptionType.StackOverflow:
+                                goto StackOverflow;
+                            case EvmExceptionType.StackUnderflow:
+                                goto StackUnderflow;
+                            case EvmExceptionType.InvalidJumpDestination:
+                                goto InvalidJumpDestination;
+                            case EvmExceptionType.BadInstruction:
+                                goto InvalidInstruction;
+                            case EvmExceptionType.AccessViolation:
+                                goto AccessViolation;
+                            case EvmExceptionType.OutOfGas:
+                                goto OutOfGas;
+                            case EvmExceptionType.StaticCallViolation:
+                                goto StaticCallViolation;
+                        }
+                    }
 
-                if (programCounter >= codeLength)
-                {
-                    goto EmptyReturnNoTrace;
+                    if (programCounter >= codeLength)
+                    {
+                        goto EmptyReturnNoTrace;
+                    }
                 }
             }
 

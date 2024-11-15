@@ -9,6 +9,7 @@ using Org.BouncyCastle.Tls;
 using Sigil;
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
@@ -156,6 +157,40 @@ static class EmitExtensions
         return typeof(T).GetMethods().First(m => m.Name == name && m.ReturnType == returnType && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(argTypes));
     }
 
+    public static void FindCorrectBranchAndJump<T>(this Emit<T> il, Local jmpDestination, Dictionary<int, Sigil.Label> jumpDestinations, Dictionary<EvmExceptionType, Sigil.Label> evmExceptionLabels)
+    {
+        int numberOfBitsSet = BitOperations.PopCount((uint)jumpDestinations.Count);
+
+        int length = 1 << numberOfBitsSet;
+        int bitMask = length - 1;
+        Sigil.Label[] jumps = new Sigil.Label[length];
+        for (int i = 0; i < length; i++)
+        {
+            jumps[i] = il.DefineLabel();
+        }
+
+        il.LoadLocal(jmpDestination);
+        il.LoadConstant(bitMask);
+        il.And();
+
+
+        il.Switch(jumps);
+
+        for (int i = 0; i < length; i++)
+        {
+            il.MarkLabel(jumps[i]);
+            // for each destination matching the bit mask emit check for the equality
+            foreach (ushort dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
+            {
+                il.LoadLocal(jmpDestination);
+                il.LoadConstant(dest);
+                il.BranchIfEqual(jumpDestinations[dest]);
+            }
+            // each bucket ends with a jump to invalid access to do not fall through to another one
+            il.Branch(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
+        }
+    }
+
     // requires a zeroed WORD on the stack
     public static void SpecialPushOpcode<T>(this Emit<T> il, OpcodeInfo op, byte[][] data)
     {
@@ -168,7 +203,7 @@ static class EmitExtensions
         {
             Array.Reverse(zpbytes);
         }
-
+        
         switch (op.Operation)
         {
             case Instruction.PUSH1:

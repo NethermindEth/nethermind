@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
 
             programCounter += 2;
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             CallCount++;
 
-            if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+            if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
                 result.ExceptionType = EvmExceptionType.OutOfGas;
 
             UInt256 lhs = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];

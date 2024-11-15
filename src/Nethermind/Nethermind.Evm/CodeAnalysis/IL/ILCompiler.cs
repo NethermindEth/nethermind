@@ -14,6 +14,7 @@ using Sigil;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -50,7 +51,10 @@ internal class ILCompiler
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
         int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
-        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
+        ExecuteSegment dynEmitedDelegate = method.CreateDelegate(out string ilcode);
+
+        File.WriteAllText($"E:/{segmentName}.il", ilcode);
+
         return new SegmentExecutionCtx
         {
             PrecompiledSegment = dynEmitedDelegate,
@@ -134,8 +138,7 @@ internal class ILCompiler
         // if last ilvmstate was a jump
         method.LoadLocal(programCounter);
         method.LoadConstant(code[0].ProgramCounter);
-        method.CompareEqual();
-        method.BranchIfFalse(isContinuation);
+        method.BranchIfGreater(isContinuation);
 
         Dictionary<int, Label> jumpDestinations = new();
 
@@ -150,8 +153,7 @@ internal class ILCompiler
             if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
-                jumpDestinations[op.ProgramCounter] = method.DefineLabel();
-                method.MarkLabel(jumpDestinations[op.ProgramCounter]);
+                method.MarkLabel(jumpDestinations[op.ProgramCounter] = method.DefineLabel());
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
             }
@@ -825,7 +827,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
@@ -909,7 +911,7 @@ internal class ILCompiler
                         method.Call(ConvertionExplicit<UInt256, int>());
                         method.StoreLocal(uint256C);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -940,7 +942,7 @@ internal class ILCompiler
                         method.Call(ConvertionExplicit<UInt256, int>());
                         method.StoreLocal(uint256C);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -963,7 +965,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadFieldAddress(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1018,7 +1020,7 @@ internal class ILCompiler
                         method.StoreLocal(uint256R);
                         method.LoadLocalAddress(uint256R);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1060,7 +1062,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
@@ -1157,7 +1159,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1253,7 +1255,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1290,7 +1292,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1601,12 +1603,12 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
 
-                        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing>)
-                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
                                     .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
-                        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing>)
-                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
                                     .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
                         if(!bakeInTracerCalls)
@@ -1671,10 +1673,10 @@ internal class ILCompiler
                         method.LoadArgument(VMSTATE_INDEX);
                         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
                         method.LoadLocalAddress(storageCell);
-                        method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing>.StorageAccessType.SLOAD);
+                        method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.StorageAccessType.SLOAD);
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(WORLD_STATE_INDEX);
@@ -1713,7 +1715,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.CleanAndLoadWord(stack, head);
@@ -1775,7 +1777,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadLocalAddress(uint256C);
@@ -1787,7 +1789,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
@@ -1841,7 +1843,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         Label pushZeroLabel = method.DefineLabel();
@@ -1931,7 +1933,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.CleanAndLoadWord(stack, head);
@@ -2057,39 +2059,20 @@ internal class ILCompiler
 
         method.MarkLabel(jumpIsLocal);
 
-        const int length = 1 << 8;
-        const int bitMask = length - 1; // 128
-        Label[] jumps = new Label[length];
-        for (int i = 0; i < length; i++)
+        if(jumpDestinations.Count < 64)
         {
-            jumps[i] = method.DefineLabel();
-        }
-
-        // we get first Word.Size bits of the jump destination since it is less than int.MaxValue
-
-        method.LoadLocal(jmpDestination);
-        method.LoadConstant(bitMask);
-        method.And();
-
-
-        // switch on the first 7 bits
-        method.Switch(jumps);
-
-        for (int i = 0; i < length; i++)
-        {
-            method.MarkLabel(jumps[i]);
-            // for each destination matching the bit mask emit check for the equality
-            foreach (ushort dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
+            foreach (var jumpdest in jumpDestinations)
             {
                 method.LoadLocal(jmpDestination);
-                method.LoadConstant(dest);
-                method.Duplicate();
-                method.StoreLocal(uint32A);
-                method.BranchIfEqual(jumpDestinations[dest]);
+                method.LoadConstant(jumpdest.Key);
+                method.BranchIfEqual(jumpdest.Value);
             }
-            // each bucket ends with a jump to invalid access to do not fall through to another one
             method.Branch(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
+        } else
+        {
+            method.FindCorrectBranchAndJump(jmpDestination, jumpDestinations, evmExceptionLabels);
         }
+
 
         foreach (var kvp in evmExceptionLabels)
         {
@@ -2186,7 +2169,7 @@ internal class ILCompiler
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadLocal(gasAvailable);
         method.LoadConstant((int)kvp.Key);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
 
         method.MarkLabel(skipTracing);
     }
@@ -2202,7 +2185,7 @@ internal class ILCompiler
         method.LoadArgument(VMSTATE_INDEX);
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
 
         method.MarkLabel(skipTracing);
     }
@@ -2220,7 +2203,7 @@ internal class ILCompiler
         method.LoadLocal(gasAvailable);
         method.LoadConstant(op.ProgramCounter);
         method.LoadLocal(head);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
 
         method.MarkLabel(skipTracing);
     }
@@ -2557,8 +2540,8 @@ internal class ILCompiler
         il.LoadLocalAddress(uint256Position); // position
         il.LoadLocalAddress(uint256Length); // length
         il.Call(
-            typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(
-                nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)
+            typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(
+                nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)
             )
         );
         il.BranchIfFalse(exceptions[EvmExceptionType.OutOfGas]);
