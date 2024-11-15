@@ -14,7 +14,6 @@ using Sigil;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -51,10 +50,7 @@ internal class ILCompiler
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
         int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
-        ExecuteSegment dynEmitedDelegate = method.CreateDelegate(out string ilcode);
-
-        File.WriteAllText($"E:/{segmentName}.il", ilcode);
-
+        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
             PrecompiledSegment = dynEmitedDelegate,
