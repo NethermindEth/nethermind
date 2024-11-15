@@ -1,5 +1,12 @@
 <Project>
 
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <!-- Required due to an issue with transitive dependencies of Colorful.Console -->
+    <!-- See: https://github.com/tomakita/Colorful.Console/pull/94 -->
+    <NoWarn>NU1605</NoWarn>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>

@@ -34,4 +34,4 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
       - name: Build ${{ matrix.solution }}.sln
-        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
+        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }} -p:CI=true
