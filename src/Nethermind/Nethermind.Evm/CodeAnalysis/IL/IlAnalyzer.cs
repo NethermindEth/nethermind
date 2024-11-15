@@ -125,7 +125,7 @@ public static class IlAnalyzer
                 return;
             }
 
-            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address.ToString()})[{segmentRange.Start}..{segmentRange.End}]";
+            string GenerateName(Range segmentRange) => $"ILEVM_PRECOMPILED_({codeInfo.Address})[{segmentRange.Start}..{segmentRange.End}]";
 
             int[] statefulOpcodeindex = new int[codeData.Item1.Length];
 

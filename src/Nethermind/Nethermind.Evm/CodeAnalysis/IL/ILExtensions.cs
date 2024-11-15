@@ -75,7 +75,7 @@ static class EmitExtensions
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
-    public static void DebugPrint<T>(this Emit<T> il, Local local)
+    public static void Print<T>(this Emit<T> il, Local local)
     {
         if (local.LocalType.IsValueType)
         {
@@ -87,8 +87,22 @@ static class EmitExtensions
             il.LoadLocal(local);
             il.CallVirtual(local.LocalType.GetMethod("ToString", []));
         }
+#if DEBUG
         il.Call(typeof(Debug).GetMethod(nameof(Debug.WriteLine), [typeof(string)]));
+#endif
+        il.Call(typeof(Console).GetMethod(nameof(Console.WriteLine), [typeof(string)]));
     }
+
+
+    public static void PrintString<T>(this Emit<T> il, string msg)
+    {
+        using Local local = il.DeclareLocal<string>();
+
+        il.LoadConstant(msg);
+        il.StoreLocal(local);
+        il.Print(local);
+    }
+
     public static void Load<T, U>(this Emit<T> il, Local local, Local idx)
     {
         il.LoadLocalAddress(local);
@@ -122,12 +136,6 @@ static class EmitExtensions
         il.Duplicate();
 
         il.InitializeObject(typeof(Word));
-    }
-
-    public static void ZeroWord<T>(this Emit<T> il, Local local, Local idx)
-    {
-        il.Load<T, Word>(local, idx);
-        il.Call(typeof(Word).GetMethod(nameof(Word.SetToZero)));
     }
 
     /// <summary>

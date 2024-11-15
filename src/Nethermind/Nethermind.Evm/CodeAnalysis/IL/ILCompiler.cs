@@ -674,7 +674,6 @@ internal class ILCompiler
                     break;
                 case Instruction.CODESIZE:
                     {
-                        var lastOpcode = code[^1];
                         method.CleanAndLoadWord(stack, head);
                         method.LoadConstant(codeinfo.MachineCode.Length);
                         method.Call(Word.SetInt0);
@@ -2051,14 +2050,6 @@ internal class ILCompiler
 
         method.MarkLabel(jumpIsLocal);
 
-
-        // if (jumpDest > uint.MaxValue)
-        method.LoadConstant(uint.MaxValue);
-        method.LoadLocal(jmpDestination);
-        // goto invalid address
-        method.BranchIfGreater(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
-        // else
-
         const int length = 1 << 8;
         const int bitMask = length - 1; // 128
         Label[] jumps = new Label[length];
@@ -2104,9 +2095,6 @@ internal class ILCompiler
             method.LoadArgument(VMSTATE_INDEX);
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
-            method.LoadArgument(VMSTATE_INDEX);
-            method.LoadLocal(gasAvailable);
-            method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
             method.Branch(exit);
         }
 
