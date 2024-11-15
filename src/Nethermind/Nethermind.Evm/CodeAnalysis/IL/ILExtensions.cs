@@ -8,8 +8,10 @@ using Nethermind.Int256;
 using Org.BouncyCastle.Tls;
 using Sigil;
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -152,6 +154,44 @@ static class EmitExtensions
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
         return typeof(T).GetMethods().First(m => m.Name == name && m.ReturnType == returnType && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(argTypes));
+    }
+
+    // requires a zeroed WORD on the stack
+    public static void SpecialPushOpcode<T>(this Emit<T> il, OpcodeInfo op, byte[][] data)
+    {
+        uint count = op.Operation - Instruction.PUSH0;
+        uint argSize = BitOperations.RoundUpToPowerOf2(count);
+
+        int argIndex = op.Arguments.Value;
+        byte[] zpbytes = data[argIndex].AsSpan().SliceWithZeroPadding(0, (int)argSize, PadDirection.Left).ToArray();
+        if(BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(zpbytes);
+        }
+
+        switch (op.Operation)
+        {
+            case Instruction.PUSH1:
+                il.LoadConstant(zpbytes[0]);
+                il.Call(Word.SetByte0);
+                break;
+            case Instruction.PUSH2:
+                il.LoadConstant(BinaryPrimitives.ReadUInt16LittleEndian(zpbytes));
+                il.Call(Word.SetUInt0);
+                break;
+            case Instruction.PUSH3:
+            case Instruction.PUSH4:
+                il.LoadConstant(BinaryPrimitives.ReadUInt32LittleEndian(zpbytes));
+                il.Call(Word.SetUInt0);
+                break;
+            case Instruction.PUSH5:
+            case Instruction.PUSH6:
+            case Instruction.PUSH7:
+            case Instruction.PUSH8:
+                il.LoadConstant(BinaryPrimitives.ReadUInt64LittleEndian(zpbytes));
+                il.Call(Word.SetULong0);
+                break;
+        }
     }
 
     /// <summary>

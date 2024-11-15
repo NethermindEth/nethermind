@@ -15,6 +15,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.IL.EmitExtensions;
@@ -48,7 +49,7 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
 
-        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, config.BakeInTracingInJitMode);
+        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new SegmentExecutionCtx
         {
@@ -58,7 +59,7 @@ internal class ILCompiler
         };
     }
 
-    private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, bool bakeInTracerCalls)
+    private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, byte[][] data, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -308,6 +309,12 @@ internal class ILCompiler
                 case Instruction.PUSH6:
                 case Instruction.PUSH7:
                 case Instruction.PUSH8:
+                    {
+                        method.CleanAndLoadWord(stack, head);
+                        method.SpecialPushOpcode(op, data);
+                        method.StackPush(head);
+                    }
+                    break;
                 case Instruction.PUSH9:
                 case Instruction.PUSH10:
                 case Instruction.PUSH11:
