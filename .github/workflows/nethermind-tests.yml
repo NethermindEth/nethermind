@@ -87,7 +87,7 @@ jobs:
     - name: ${{ matrix.project }}
       id: test
       run: |
-        dotnet test src/Nethermind/${{ matrix.project }} -c release \
+        dotnet test src/Nethermind/${{ matrix.project }} -c release -p:CI=true \
           ${{ env.COLLECT_COVERAGE == 'true' && '--collect:"XPlat Code Coverage"' || '' }}
     - name: Save test outcome
       if: success() || failure()
@@ -153,7 +153,7 @@ jobs:
     - name: ${{ matrix.project }}
       id: test
       run: |
-        dotnet test src/Nethermind/${{ matrix.project }} -c release \
+        dotnet test src/Nethermind/${{ matrix.project }} -c release -p:CI=true \
           ${{ env.COLLECT_COVERAGE == 'true' && '--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude=[Nethermind.Core.Test]*,[Nethermind.Blockchain.Test]*,[Ethereum.Test.Base]*' || '' }}
     - name: Save test outcome
       if: success() || failure()
