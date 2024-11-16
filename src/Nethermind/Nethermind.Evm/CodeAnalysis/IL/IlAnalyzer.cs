@@ -120,6 +120,8 @@ public static class IlAnalyzer
 
         static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
         {
+            Dictionary<int, SegmentExecutionCtx> segmentMap = new();
+
             if (codeData.Item1.Length == 0)
             {
                 return;
@@ -167,23 +169,25 @@ public static class IlAnalyzer
                 var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig);
                 if (vmConfig.AggressiveJitMode)
                 {
-                    ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
+                    segmentMap.Add(segment[0].ProgramCounter, segmentExecutionCtx);
                     for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
                     {
-                        ilinfo.Segments.GetOrAdd(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
+                        segmentMap.Add(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
                     }
                 }
                 else
                 {
-                    ilinfo.Segments.GetOrAdd(segment[0].ProgramCounter, segmentExecutionCtx);
+                    segmentMap.Add(segment[0].ProgramCounter, segmentExecutionCtx);
                 }
             }
 
+            ilinfo.Segments = segmentMap.ToFrozenDictionary();
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
         }
 
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
         {
+            Dictionary<int, InstructionChunk> chunkMap = new();
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
             foreach ((Type _, InstructionChunk chunkHandler) in _patterns)
             {
@@ -197,12 +201,13 @@ public static class IlAnalyzer
 
                     if (found)
                     {
-                        ilinfo.Chunks.GetOrAdd((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
+                        chunkMap.Add((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
                         i += chunkHandler.Pattern.Length - 1;
                     }
                 }
             }
 
+            ilinfo.Chunks = chunkMap.ToFrozenDictionary();
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.PAT_MODE);
         }
 

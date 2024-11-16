@@ -64,25 +64,25 @@ internal class IlInfo
     /// Represents what mode of IL-EVM is used. 0 is the default. [0 = No ILVM optimizations, 1 = Pattern matching, 2 = subsegments compiling]
     /// </summary>
     public int Mode = ILMode.NO_ILVM;
-    public bool IsEmpty => Chunks.Count == 0 && Segments.Count == 0 && Mode == ILMode.NO_ILVM;
+    public bool IsEmpty => Chunks is null && Segments is null && Mode == ILMode.NO_ILVM;
     /// <summary>
     /// No overrides.
     /// </summary>
     private IlInfo()
     {
-        Chunks = new ConcurrentDictionary<int, InstructionChunk>();
-        Segments = new ConcurrentDictionary<int, SegmentExecutionCtx>();
+        Chunks = default;
+        Segments = default;
     }
 
-    public IlInfo(ConcurrentDictionary<int, InstructionChunk> mappedOpcodes, ConcurrentDictionary<int, SegmentExecutionCtx> segments)
+    public IlInfo(FrozenDictionary<int, InstructionChunk> mappedOpcodes, FrozenDictionary<int, SegmentExecutionCtx> segments)
     {
         Chunks = mappedOpcodes;
         Segments = segments;
     }
 
     // assumes small number of ILed
-    public ConcurrentDictionary<int, InstructionChunk> Chunks { get; } = new();
-    public ConcurrentDictionary<int, SegmentExecutionCtx> Segments { get; } = new();
+    public FrozenDictionary<int, InstructionChunk>? Chunks { get; set; }
+    public FrozenDictionary<int, SegmentExecutionCtx>? Segments { get; set; }
 
     public bool TryExecute<TTracingInstructions>(ILogger logger, EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
