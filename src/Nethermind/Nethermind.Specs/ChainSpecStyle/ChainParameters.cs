@@ -79,10 +79,6 @@ public class ChainParameters
         return dencunConflicts && cancunConflicts;
     }
 
-
-
-//////////////////////////////////////////////////////////////
-
     public long? MaxCodeSize { get; set; }
     public long? MaxCodeSizeTransition { get; set; }
     public ulong? MaxCodeSizeTransitionTimestamp { get; set; }
