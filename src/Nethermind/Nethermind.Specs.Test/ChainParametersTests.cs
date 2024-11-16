@@ -29,4 +29,58 @@ public class ChainParametersTests
 
         Assert.That(chainParametersProperties, Is.EquivalentTo(chainSpecParamsJsonProperties));
     }
+
+    [Test]
+    public void SettingDencunTransitionTimestamp_SetsAllEipTimestamps()
+    {
+        var chainParameters = new ChainParameters();
+        ulong timestamp = 0x65687fd0;
+
+        // Set Dencun label timestamp
+        chainParameters.DencunTransitionTimestamp = timestamp;
+
+        // Verify all associated EIPs are set to the same timestamp
+        Assert.That(chainParameters.Eip4844TransitionTimestamp, Is.EqualTo(timestamp));
+        Assert.That(chainParameters.Eip4788TransitionTimestamp, Is.EqualTo(timestamp));
+        Assert.That(chainParameters.Eip1153TransitionTimestamp, Is.EqualTo(timestamp));
+        Assert.That(chainParameters.Eip5656TransitionTimestamp, Is.EqualTo(timestamp));
+        Assert.That(chainParameters.Eip6780TransitionTimestamp, Is.EqualTo(timestamp));
+    }
+
+    [Test]
+    public void GettingDencunTransitionTimestamp_ReturnsTimestampWhenAllMatch()
+    {
+        var chainParameters = new ChainParameters();
+        ulong timestamp = 0x65687fd0;
+        chainParameters.Eip4844TransitionTimestamp = timestamp;
+        chainParameters.Eip4788TransitionTimestamp = timestamp;
+        chainParameters.Eip1153TransitionTimestamp = timestamp;
+        chainParameters.Eip5656TransitionTimestamp = timestamp;
+        chainParameters.Eip6780TransitionTimestamp = timestamp;
+        Assert.That(chainParameters.DencunTransitionTimestamp, Is.EqualTo(timestamp));
+    }
+
+
+    [Test]
+    public void GettingDencunTransitionTimestamp_ReturnsNullWhenTimestampsDiffer()
+    {
+        var chainParameters = new ChainParameters();
+        ulong timestamp = 0x65687fd0;
+        chainParameters.Eip4844TransitionTimestamp = timestamp;
+        chainParameters.Eip4788TransitionTimestamp = timestamp;
+        chainParameters.Eip1153TransitionTimestamp = timestamp;
+        chainParameters.Eip5656TransitionTimestamp = timestamp;
+        chainParameters.Eip6780TransitionTimestamp = timestamp + 1; // Conflict is made here
+        Assert.That(chainParameters.DencunTransitionTimestamp, Is.Null); // Test to see if Dencun label getter returns null due to conflict or not
+    }
+
+    [Test]
+    public void ValidateNoTimestampConflicts_ReturnsTrueWhenAllMatch()
+    {
+        var chainParameters = new ChainParameters();
+        ulong timestamp = 0x65687fd0;
+        chainParameters.DencunTransitionTimestamp = timestamp;
+        Assert.That(chainParameters.ValidateNoTimestampConflicts(), Is.True);
+    }
+
 }
