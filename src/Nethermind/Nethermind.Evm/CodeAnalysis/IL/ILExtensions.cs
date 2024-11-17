@@ -159,7 +159,7 @@ static class EmitExtensions
 
     public static void FindCorrectBranchAndJump<T>(this Emit<T> il, Local jmpDestination, Dictionary<int, Sigil.Label> jumpDestinations, Dictionary<EvmExceptionType, Sigil.Label> evmExceptionLabels)
     {
-        int numberOfBitsSet = BitOperations.PopCount((uint)jumpDestinations.Count);
+        int numberOfBitsSet = BitOperations.Log2((uint)jumpDestinations.Count) + 1;
 
         int length = 1 << numberOfBitsSet;
         int bitMask = length - 1;
