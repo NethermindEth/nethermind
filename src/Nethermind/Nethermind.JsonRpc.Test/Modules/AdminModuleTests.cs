@@ -84,7 +84,8 @@ public class AdminModuleTests
         nodeInfo.Protocols["eth"].Difficulty.Should().Be(_blockTree.Head?.TotalDifficulty ?? 0);
         nodeInfo.Protocols["eth"].HeadHash.Should().Be(_blockTree.HeadHash);
         nodeInfo.Protocols["eth"].GenesisHash.Should().Be(_blockTree.GenesisHash);
-        nodeInfo.Protocols["eth"].NewtorkId.Should().Be(_blockTree.ChainId);
+        nodeInfo.Protocols["eth"].NewtorkId.Should().Be(_blockTree.NetworkId);
+        nodeInfo.Protocols["eth"].ChainId.Should().Be(_blockTree.ChainId);
     }
 
     [Test]

@@ -105,6 +105,14 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
+    {
+        builder.RegisterType<T>()
+            .As<T>();
+
+        return builder;
+    }
+
     /// <summary>
     /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration

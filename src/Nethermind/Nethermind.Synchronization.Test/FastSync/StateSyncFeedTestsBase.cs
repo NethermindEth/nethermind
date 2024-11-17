@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -82,7 +83,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             return remoteStorageTree;
         }
 
-        protected SafeContext PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
         {
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
@@ -96,41 +97,50 @@ namespace Nethermind.Synchronization.Test.FastSync
                 syncPeers[i] = mock;
             }
 
-            SafeContext ctx = PrepareDownloaderWithPeer(dbContext, syncPeers);
-            ctx.SyncPeerMocks = syncPeers;
-            return ctx;
+            ContainerBuilder builder = BuildTestContainerBuilder(dbContext, syncDispatcherAllocateTimeoutMs)
+                .AddSingleton<SyncPeerMock[]>(syncPeers);
+
+            builder.RegisterBuildCallback((ctx) =>
+            {
+                ISyncPeerPool peerPool = ctx.Resolve<ISyncPeerPool>();
+                foreach (ISyncPeer syncPeer in syncPeers)
+                {
+                    peerPool.AddPeer(syncPeer);
+                }
+            });
+
+            return builder.Build();
         }
 
-        protected SafeContext PrepareDownloaderWithPeer(DbContext dbContext, IEnumerable<ISyncPeer> syncPeers)
+        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
-            SafeContext ctx = new();
-            BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
-            ctx.Pool.Start();
-
-            foreach (ISyncPeer syncPeer in syncPeers)
-            {
-                ctx.Pool.AddPeer(syncPeer);
-            }
-
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
-            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
-            ctx.Downloader = new StateSyncDownloader(_logManager);
-            ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
-                new SyncConfig()
+            ContainerBuilder containerBuilder = new ContainerBuilder()
+                .AddModule(new TestSynchronizerModule(new SyncConfig()
                 {
                     SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs = 10 // there is a test for requested nodes which get affected if allocate timeout
-                },
-                ctx.Feed!,
-                ctx.Downloader,
-                ctx.Pool,
-                new StateSyncAllocationStrategyFactory(),
-                _logManager);
-            Task _ = ctx.StateSyncDispatcher.Start(CancellationToken.None);
-            return ctx;
+                    SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
+                    FastSync = true
+                }))
+                .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
+                .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
+                .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
+                .Add<SafeContext>();
+
+            // Use factory function to make it lazy in case test need to replace IBlockTree
+            containerBuilder
+                .Register(ctx => Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject)
+                .As<IBlockTree>()
+                .SingleInstance();
+
+            containerBuilder.RegisterBuildCallback((ctx) =>
+            {
+                CancelOnDisposeToken tokenHolder = ctx.Resolve<CancelOnDisposeToken>();
+                ctx.Resolve<ISyncFeed<StateSyncBatch>>().SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
+                Task _ = ctx.Resolve<SyncDispatcher<StateSyncBatch>>().Start(tokenHolder.Token);
+                ctx.Resolve<ISyncPeerPool>().Start();
+            });
+
+            return containerBuilder;
         }
 
         protected async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
@@ -152,14 +162,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Task.Delay(timeout));
         }
 
-        protected class SafeContext
+        protected class SafeContext(ILifetimeScope container)
         {
-            public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
-            public ISyncPeerPool Pool { get; set; } = null!;
-            public TreeSync TreeFeed { get; set; } = null!;
-            public StateSyncFeed Feed { get; set; } = null!;
-            public StateSyncDownloader Downloader { get; set; } = null!;
-            public SyncDispatcher<StateSyncBatch> StateSyncDispatcher { get; set; } = null!;
+            public SyncPeerMock[] SyncPeerMocks => container.Resolve<SyncPeerMock[]>();
+            public ISyncPeerPool Pool => container.Resolve<ISyncPeerPool>();
+            public TreeSync TreeFeed => container.Resolve<TreeSync>();
+            public StateSyncFeed Feed => container.Resolve<StateSyncFeed>();
         }
 
         protected class DbContext
@@ -327,7 +335,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public void Disconnect(DisconnectReason reason, string details)
             {
-                throw new NotImplementedException();
             }
 
             public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)

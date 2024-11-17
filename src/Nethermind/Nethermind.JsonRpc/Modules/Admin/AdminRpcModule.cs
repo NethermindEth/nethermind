@@ -76,7 +76,8 @@ public class AdminRpcModule : IAdminRpcModule
     private void UpdateEthProtocolInfo()
     {
         _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.ChainId;
+        _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
+        _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
         _nodeInfo.Protocols["eth"].HeadHash = _blockTree.HeadHash;
         _nodeInfo.Protocols["eth"].GenesisHash = _blockTree.GenesisHash;
         _nodeInfo.Protocols["eth"].Config = _parameters;
