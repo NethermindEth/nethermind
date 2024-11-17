@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.IO.Compression;
-using System.IO.MemoryMappedFiles;
 using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using DotNetty.Buffers;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Crypto;
 using Snappier;
 
@@ -16,18 +17,23 @@ public class E2StoreReader : IDisposable
     internal const int HeaderSize = 8;
     internal const int ValueSizeLimit = 1024 * 1024 * 50;
 
-    private MemoryMappedFile _mappedFile;
-    private MemoryMappedViewAccessor _accessor;
-    private IByteBufferAllocator _bufferAllocator = PooledByteBufferAllocator.Default;
+    private readonly SafeFileHandle _file;
 
-    public E2StoreReader(MemoryMappedFile mmf)
+    // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
+    // the page fault when looking up.
+    private long? _startBlock;
+    private long _blockCount;
+    private readonly long _fileLength;
+    private readonly IByteBufferAllocator _bufferAllocator = PooledByteBufferAllocator.Default;
+
+    public E2StoreReader(string filePath): this(File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
     {
-        _mappedFile = mmf;
-        _accessor = _mappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
     }
 
-    public E2StoreReader(string filename) : this(MemoryMappedFile.CreateFromFile(filename, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
+    public E2StoreReader(SafeFileHandle file)
     {
+        _file = file;
+        _fileLength = RandomAccess.GetLength(_file);
     }
 
     public (T, long) ReadEntryAndDecode<T>(long position, Func<IByteBuffer, T> decoder, ushort expectedType)
@@ -37,9 +43,7 @@ public class E2StoreReader : IDisposable
         IByteBuffer buffer = _bufferAllocator.Buffer((int)entry.Length);
         try
         {
-            // Surprisingly there are no safe way to get `Memory<byte>` or `Span<byte>`.
-            _accessor.ReadArray(position + HeaderSize, buffer.Array, buffer.ArrayOffset, (int)entry.Length);
-            buffer.SetWriterIndex(buffer.WriterIndex + (int)entry.Length);
+            ReadToByteBuffer(buffer, position + HeaderSize, (int)entry.Length);
             return (decoder(buffer), entry.Length + HeaderSize);
         }
         finally
@@ -65,14 +69,14 @@ public class E2StoreReader : IDisposable
 
     public Entry ReadEntry(long position, ushort? expectedType, CancellationToken token = default)
     {
-        ushort type = _accessor.ReadUInt16(position + 0);
-        uint length = _accessor.ReadUInt32(position + 2);
-        ushort reserved = _accessor.ReadUInt16(position + 6);
+        ushort type = ReadUInt16(position);
+        uint length = ReadUInt32(position + 2);
+        ushort reserved = ReadUInt16(position + 6);
 
         Entry entry = new Entry(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-        if (entry.Length + position > _accessor.Capacity)
-            throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_accessor.Capacity}.");
+        if (entry.Length + position > _fileLength)
+            throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
         if (reserved != 0)
@@ -87,7 +91,7 @@ public class E2StoreReader : IDisposable
 
         // Using _mappedFile.CreateViewStream results in crashes when things got fast enough.
         IByteBuffer inputBuffer = _bufferAllocator.Buffer((int)length);
-        _ = _accessor.ReadArray(offset, inputBuffer.Array, inputBuffer.ArrayOffset, (int)length);
+        ReadToByteBuffer(inputBuffer, offset, (int)length);
         Stream inputStream = inputBuffer.Array.AsMemory()[inputBuffer.ArrayOffset..(inputBuffer.ArrayOffset + (int)length)].AsStream();
 
         using SnappyStream decompressor = new(inputStream, CompressionMode.Decompress, true);
@@ -116,8 +120,7 @@ public class E2StoreReader : IDisposable
 
     public void Dispose()
     {
-        _accessor.Dispose();
-        _mappedFile.Dispose();
+        _file.Dispose();
     }
 
     public long BlockOffset(long blockNumber)
@@ -134,32 +137,27 @@ public class E2StoreReader : IDisposable
         // <header> + <start block> + <the rest of the index>
         int sizeIncludingHeader = HeaderSize + 8 + indexLength;
 
-        long relativeOffset = _accessor.ReadInt64(_accessor.Capacity - offsetLocation);
-        return _accessor.Capacity - sizeIncludingHeader + relativeOffset;
+        long relativeOffset = ReadInt64(_fileLength - offsetLocation);
+        return _fileLength - sizeIncludingHeader + relativeOffset;
     }
 
     private void EnsureIndexAvailable()
     {
         if (_startBlock != null) return;
 
-        if (_accessor.Capacity < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
+        if (_fileLength < 32) throw new EraFormatException("Invalid era file. Too small to contain index.");
 
         // Read the block count
-        _blockCount = _accessor.ReadInt64(_accessor.Capacity - 8);
+        _blockCount = (long)ReadUInt64(_fileLength - 8);
 
         // <starting block> + 8 * <offset> + <count>
         int indexLength = 8 + 8 * (int)_blockCount + 8;
 
         // Verify that its a block index
-        _ = ReadEntry(_accessor.Capacity - indexLength - HeaderSize, EntryTypes.BlockIndex);
+        _ = ReadEntry(_fileLength - indexLength - HeaderSize, EntryTypes.BlockIndex);
 
-        _startBlock = _accessor.ReadInt64(_accessor.Capacity - indexLength);
+        _startBlock = (long?)ReadUInt64(_fileLength - indexLength);
     }
-
-    // Read these two value ahead of time instead of fetching the value everything it is needed to reduce
-    // the page fault when looking up.
-    private long? _startBlock;
-    private long _blockCount;
 
     public long First
     {
@@ -184,7 +182,7 @@ public class E2StoreReader : IDisposable
             // <header> + <the 32 byte hash> + <indexes>
             int accumulatorFromLast = E2StoreWriter.HeaderSize + 32 + indexLength;
 
-            return _accessor.Capacity - accumulatorFromLast;
+            return _fileLength - accumulatorFromLast;
         }
     }
 
@@ -199,8 +197,44 @@ public class E2StoreReader : IDisposable
 
     public ValueHash256 CalculateChecksum()
     {
-        using MemoryMappedViewStream viewStream = _mappedFile.CreateViewStream(0, 0, MemoryMappedFileAccess.Read);
+        // Note: Don't close the stream
+        FileStream fileStream = new FileStream(_file, FileAccess.Read);
         using SHA256 sha = SHA256.Create();
-        return new ValueHash256(sha.ComputeHash(viewStream));
+        return new ValueHash256(sha.ComputeHash(fileStream));
+    }
+
+    private ushort ReadUInt16(long position)
+    {
+        Span<byte> buff = stackalloc byte[2];
+        RandomAccess.Read(_file, buff, position);
+        return BinaryPrimitives.ReadUInt16LittleEndian(buff);
+    }
+
+    private uint ReadUInt32(long position)
+    {
+        Span<byte> buff = stackalloc byte[4];
+        int readCount = RandomAccess.Read(_file, buff, position);
+        Console.Error.WriteLine($"Read {readCount}");
+        return BinaryPrimitives.ReadUInt32LittleEndian(buff);
+    }
+
+    private long ReadInt64(long position)
+    {
+        Span<byte> buff = stackalloc byte[8];
+        RandomAccess.Read(_file, buff, position);
+        return BinaryPrimitives.ReadInt64LittleEndian(buff);
+    }
+
+    private ulong ReadUInt64(long position)
+    {
+        Span<byte> buff = stackalloc byte[8];
+        RandomAccess.Read(_file, buff, position);
+        return BinaryPrimitives.ReadUInt64LittleEndian(buff);
+    }
+
+    private void ReadToByteBuffer(IByteBuffer buffer, long position, int length)
+    {
+        RandomAccess.Read(_file, buffer.Array.AsSpan().Slice(buffer.ArrayOffset, length), position);
+        buffer.SetWriterIndex(buffer.WriterIndex + length);
     }
 }

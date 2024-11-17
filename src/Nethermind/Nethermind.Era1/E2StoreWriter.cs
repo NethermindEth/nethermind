@@ -60,9 +60,9 @@ public class E2StoreWriter : IDisposable
             bytes = arraySegment;
         }
 
-        headerBuffer.AddRange(MemoryMarshal.Cast<ushort, byte>(MemoryMarshal.CreateSpan(ref type, 2)));
+        headerBuffer.AddRange(MemoryMarshal.Cast<ushort, byte>(MemoryMarshal.CreateSpan(ref type, 1)));
         int length = bytes.Length;
-        headerBuffer.AddRange(MemoryMarshal.Cast<int, byte>(MemoryMarshal.CreateSpan(ref length, 4)));
+        headerBuffer.AddRange(MemoryMarshal.Cast<int, byte>(MemoryMarshal.CreateSpan(ref length, 1)));
         headerBuffer.Add(0);
         headerBuffer.Add(0);
 

@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.IO.MemoryMappedFiles;
 using Autofac;
 using FluentAssertions;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -184,21 +186,20 @@ public class Era1ModuleTests
         }
         await builder.Finalize();
 
-        using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(tmpFile.FilePath, FileMode.Open);
-        using E2StoreReader fileReader = new E2StoreReader(mmf);
+        using SafeFileHandle file = File.OpenHandle(tmpFile.FilePath, FileMode.Open);
+        using E2StoreReader fileReader = new E2StoreReader(tmpFile.FilePath);
         Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks));
+        byte[] buf = new byte[2];
 
         for (int i = 0; i < fileReader.BlockCount; i++)
         {
             long blockOffset = fileReader.BlockOffset(fileReader.First + i);
 
-            using (var accessor = mmf.CreateViewAccessor(blockOffset, 2))
-            {
-                ushort entryType = accessor.ReadUInt16(0);
+            RandomAccess.Read(file, buf, blockOffset);
+            ushort entryType = BinaryPrimitives.ReadUInt16LittleEndian(buf);
 
-                //We expect to find a compressed header in this position
-                Assert.That(entryType, Is.EqualTo(EntryTypes.CompressedHeader));
-            }
+            // We expect to find a compressed header in this position
+            Assert.That(entryType, Is.EqualTo(EntryTypes.CompressedHeader));
         }
     }
 
