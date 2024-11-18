@@ -106,19 +106,25 @@ static class EmitExtensions
         il.Print(local);
     }
 
-    public static void Load<T, U>(this Emit<T> il, Local local, Local idx)
+    public static void LoadWord<T, U>(this Emit<T> il, Local local, Local idx)
     {
         il.LoadLocalAddress(local);
         il.LoadLocal(idx);
         il.Call(typeof(Span<U>).GetMethod("get_Item"));
     }
 
-    public static void Load<T>(this Emit<T> il, Local local, Local idx, FieldInfo wordField)
+    public static void LoadWord<T>(this Emit<T> il, Local local, Local idx, FieldInfo wordField)
     {
         il.LoadLocalAddress(local);
         il.LoadLocal(idx);
         il.Call(typeof(Span<Word>).GetMethod("get_Item"));
         il.LoadField(wordField);
+    }
+    public static void CleanAndSet<T>(this Emit<T> il, Local local, Local idx, Action<Emit<T>> SetAction)
+    {
+        il.Duplicate();
+        il.InitializeObject(typeof(Word));
+        SetAction(il);
     }
 
     public static void CleanWord<T>(this Emit<T> il, Local local, Local idx)

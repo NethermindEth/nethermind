@@ -172,7 +172,7 @@ public static class IlAnalyzer
                     segmentMap.Add(segment[0].ProgramCounter, segmentExecutionCtx);
                     for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
                     {
-                        segmentMap.Add(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
+                        segmentMap.TryAdd(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
                     }
                 }
                 else

@@ -47,7 +47,7 @@ internal class ILCompiler
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
         int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
@@ -67,6 +67,9 @@ internal class ILCompiler
         using Local address = method.DeclareLocal(typeof(Address));
 
         using Local hash256 = method.DeclareLocal(typeof(Hash256));
+
+        using Local wordRef256A = method.DeclareLocal(typeof(Word).MakeByRefType());
+        using Local wordRef256B = method.DeclareLocal(typeof(Word).MakeByRefType());
 
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
@@ -349,13 +352,184 @@ internal class ILCompiler
                     }
                     break;
                 case Instruction.ADD:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    {
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint32);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint32);
+                        method.And();
+                        method.BranchIfFalse(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Add();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.SUB:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    {
+                        Label pushNegItemB = method.DefineLabel();
+                        Label pushItemA = method.DefineLabel();
+                        // b - a a::b
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
+
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushItemA);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushNegItemB);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint32);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint32);
+                        method.And();
+                        method.BranchIfFalse(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetUInt0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetUInt0);
+                        method.BranchIfLess(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Subtract();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushItemA);
+                        method.LoadWord<ExecuteSegment, Word>(stack, head);
+                        method.LoadLocal(wordRef256A);
+                        method.LoadObject(typeof(Word));
+                        method.StoreObject(typeof(Word));
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushNegItemB);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.ToNegative);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.MUL:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    {
+                        Label push0Zero = method.DefineLabel();
+                        Label pushItemA = method.DefineLabel();
+                        Label pushItemB = method.DefineLabel();
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(push0Zero);
+
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushItemB);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsOne);
+                        method.BranchIfTrue(pushItemB);
+
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsOne);
+                        method.BranchIfTrue(pushItemA);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint16);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint16);
+                        method.And();
+                        method.BranchIfFalse(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Multiply ();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(push0Zero);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushItemA);
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(wordRef256A);
+                        method.LoadObject(typeof(Word));
+                        method.StoreObject(typeof(Word));
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushItemB);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.MOD:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
@@ -635,7 +809,7 @@ internal class ILCompiler
                 case Instruction.DUP16:
                     {
                         int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
-                        method.Load<ExecuteSegment, Word>(stack, head);
+                        method.LoadWord<ExecuteSegment, Word>(stack, head);
                         method.StackLoadPrevious(stack, head, count);
                         method.LoadObject(typeof(Word));
                         method.StoreObject(typeof(Word));
@@ -1480,7 +1654,7 @@ internal class ILCompiler
                         method.Subtract();
                         method.StoreLocal(uint32A);
 
-                        method.Load<ExecuteSegment, byte>(wordSpan, uint32A);
+                        method.LoadWord<ExecuteSegment, byte>(wordSpan, uint32A);
                         method.LoadIndirect<byte>();
                         method.Convert<sbyte>();
                         method.LoadConstant((sbyte)0);
@@ -2141,8 +2315,8 @@ internal class ILCompiler
 
         method.ForBranch(head, (il, idx) =>
         {
-            il.Load<ExecuteSegment, Word>(newStack, idx);
-            il.Load<ExecuteSegment, Word>(stack, idx);
+            il.LoadWord<ExecuteSegment, Word>(newStack, idx);
+            il.LoadWord<ExecuteSegment, Word>(stack, idx);
             il.LoadObject(typeof(Word));
             il.StoreObject(typeof(Word));
         });
@@ -2414,8 +2588,6 @@ internal class ILCompiler
     private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label label = il.DefineLabel();
-
-        // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[0]);
