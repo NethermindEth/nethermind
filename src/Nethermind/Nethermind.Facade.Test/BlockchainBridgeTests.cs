@@ -137,7 +137,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _receiptStorage.Get(block).Returns(new[] { receipt });
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
-                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject));
+                .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject, UInt256.Zero));
         }
 
         [Test]
