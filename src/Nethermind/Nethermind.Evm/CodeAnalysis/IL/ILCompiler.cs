@@ -165,10 +165,13 @@ internal class ILCompiler
             }
 
             // check if opcode is activated in current spec
-            method.LoadArgument(SPEC_INDEX);
-            method.LoadConstant((byte)op.Operation);
-            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
-            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+            if(op.Operation.RequiresAvailabilityCheck())
+            {
+                method.LoadArgument(SPEC_INDEX);
+                method.LoadConstant((byte)op.Operation);
+                method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+                method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+            }
 
             if (!bakeInTracerCalls) {
                 if (costs.TryGetValue(op.ProgramCounter, out long gasCost) && gasCost > 0)

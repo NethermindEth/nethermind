@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -405,6 +406,9 @@ namespace Nethermind.Evm
             Instruction.JUMPI => true,
             _ => false
         };
+
+        public static bool RequiresAvailabilityCheck(this Instruction instruction)
+            => !Frontier.Instance.IsEnabled(instruction);
 
         public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {
