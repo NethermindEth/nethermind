@@ -37,7 +37,7 @@ mkdir -p genesis
 
 echo "Downloading goerli chainspec from Nethermind GitHub repository"
 # Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
-wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
+wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/c8d8c33edf2a3eeaff4aa1be0f3ed8d44f78a2a0/src/Nethermind/Chains/goerli.json
 
 # Remove all post merge EIPs
 sed -i '/TransitionTimestamp/d' goerli.json
