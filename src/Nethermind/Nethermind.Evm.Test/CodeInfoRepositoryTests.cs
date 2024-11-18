@@ -4,7 +4,6 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;

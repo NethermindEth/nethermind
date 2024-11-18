@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -672,8 +671,7 @@ namespace Nethermind.Trie
 
                 if (node.IsLeaf)
                 {
-                    throw new TrieException(
-                        $"{nameof(NodeType.Leaf)} {node} cannot be a parent of {nextNode}");
+                    ThrowTrieExceptionLeftCannotBeParent(node, nextNode);
                 }
 
                 if (node.IsBranch)
@@ -730,8 +728,7 @@ namespace Nethermind.Trie
                             if (childNode is null)
                             {
                                 /* potential corrupted trie data state when we find a branch that has only one child */
-                                throw new TrieException(
-                                    "Before updating branch should have had at least two non-empty children");
+                                ThrowTrieExceptionCorruption();
                             }
 
                             ResolveNode(childNode, in traverseContext, in path);
@@ -788,20 +785,20 @@ namespace Nethermind.Trie
 
                                 TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
                                 if (_logger.IsTrace)
-                                    _logger.Trace(
-                                        $"Extending branch child {childNodeIndex} {childNode} into {extendedLeaf}");
-
-                                if (_logger.IsTrace) _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
-                                if (node.IsSealed)
                                 {
-                                    if (_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
+                                    _logger.Trace($"Extending branch child {childNodeIndex} {childNode} into {extendedLeaf}");
+                                    _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
+                                    if (node.IsSealed)
+                                    {
+                                        _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
+                                    }
                                 }
 
                                 nextNode = extendedLeaf;
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unknown node type {childNode.NodeType}");
+                                ThrowInvalidNodeType(childNode);
                             }
                         }
                     }
@@ -810,8 +807,7 @@ namespace Nethermind.Trie
                 {
                     if (nextNode is null)
                     {
-                        throw new InvalidOperationException(
-                            $"An attempt to set a null node as a child of the {node}");
+                        ThrowInvalidNullNode(node);
                     }
 
                     if (nextNode.IsLeaf)
@@ -870,16 +866,36 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Unknown node type {nextNode.NodeType}");
+                        ThrowInvalidNodeType(nextNode);
                     }
                 }
                 else
                 {
-                    throw new InvalidOperationException($"Unknown node type {node.GetType().Name}");
+                    ThrowInvalidNodeType(node);
                 }
             }
 
             RootRef = nextNode;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowTrieExceptionLeftCannotBeParent(TrieNode node, TrieNode nextNode)
+                => throw new TrieException($"{nameof(NodeType.Leaf)} {node} cannot be a parent of {nextNode}");
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowTrieExceptionCorruption()
+                => throw new TrieException("Before updating branch should have had at least two non-empty children");
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidNodeType(TrieNode node)
+                => throw new InvalidOperationException($"Unknown node type {node.NodeType}");
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidNullNode(TrieNode node)
+                => throw new InvalidOperationException($"An attempt to set a null node as a child of the {node}");
         }
 
         private ref readonly CappedArray<byte> TraverseBranches(TrieNode node, scoped ref TreePath path, TraverseContext traverseContext)

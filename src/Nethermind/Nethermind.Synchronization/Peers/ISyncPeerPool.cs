@@ -14,7 +14,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public interface ISyncPeerPool : IDisposable
+    public interface ISyncPeerPool : IAsyncDisposable
     {
         Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
@@ -90,12 +90,6 @@ namespace Nethermind.Synchronization.Peers
         /// Starts the pool loops.
         /// </summary>
         void Start();
-
-        /// <summary>
-        /// Stops the pool loops
-        /// </summary>
-        /// <returns></returns>
-        Task StopAsync();
 
         PeerInfo? GetPeer(Node node);
 

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -14,6 +15,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
         private readonly ILogger _logger;
+        private readonly ISyncConfig _syncConfig;
 
         public long Diff
         {
@@ -23,43 +25,52 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public Pivot(IBlockTree blockTree, ILogManager logManager)
+        public Pivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _blockTree = blockTree;
+            _syncConfig = syncConfig;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public BlockHeader GetPivotHeader()
         {
-            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 35)
+            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
             {
-                LogPivotChanged($"distance from HEAD:{Diff}");
-                _bestHeader = _blockTree.BestSuggestedHeader;
+                TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
 
             if (_logger.IsDebug)
             {
-                var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
-                if (currentHeader.StateRoot != _bestHeader.StateRoot)
+                if (_bestHeader is not null)
                 {
-                    _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
+                    var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
+                    if (currentHeader.StateRoot != _bestHeader.StateRoot)
+                    {
+                        _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
+                    }
                 }
             }
 
             return _bestHeader;
         }
 
-        private void LogPivotChanged(string msg)
-        {
-            _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
-        }
-
         public void UpdateHeaderForcefully()
         {
             if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
             {
-                LogPivotChanged("too many empty responses");
-                _bestHeader = _blockTree.BestSuggestedHeader;
+                TrySetNewBestHeader("too many empty responses");
+            }
+        }
+
+        private void TrySetNewBestHeader(string msg)
+        {
+            BlockHeader bestSuggestedHeader = _blockTree.BestSuggestedHeader;
+            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number - _syncConfig.StateMinDistanceFromHead, 0);
+            BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
+            if (bestHeader is not null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
+                _bestHeader = bestHeader;
             }
         }
     }

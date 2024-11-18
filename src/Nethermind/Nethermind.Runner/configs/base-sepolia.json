@@ -1,0 +1,41 @@
+{
+  "Init": {
+    "ChainSpecPath": "chainspec/base-sepolia.json",
+    "GenesisHash": "0x0dcc9e089e30b90ddfc55be9a37dd15bc551aeee999d2e2b51414c54eaf934e4",
+    "BaseDbPath": "nethermind_db/base-sepolia",
+    "LogFileName": "base-sepolia.logs.txt",
+    "DisableGcOnNewPayload": false
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "FastSyncCatchUpHeightDelta": "10000000000",
+    "PivotNumber": 16790000,
+    "PivotHash": "0xc84a9b2089788c21a0328c2efb30982bc261ed54e425a5ef195b6af8fc5a64c8",
+    "PivotTotalDifficulty": "0"
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Pruning": {
+    "PruningBoundary": 192
+  },
+  "Blocks": {
+    "SecondsPerSlot": 2,
+    "TargetBlockGasLimit": 97500000
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Optimism": {
+    "SequencerUrl": "https://sepolia-sequencer.base.org"
+  }
+}

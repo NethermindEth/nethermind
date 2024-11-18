@@ -9,8 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -278,16 +276,17 @@ public class SynchronizerTests
 
     public class SyncingContext
     {
+        private bool _wasStopped = false;
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
         private readonly Dictionary<string, ISyncPeer> _peers = new();
         private BlockTree BlockTree { get; }
 
-        private ISyncServer SyncServer { get; }
+        private ISyncServer SyncServer => Container.Resolve<ISyncServer>();
 
-        private ISynchronizer Synchronizer { get; }
-
-        private ISyncPeerPool SyncPeerPool { get; }
+        private ISynchronizer Synchronizer => Container.Resolve<ISynchronizer>();
+        private ISyncPeerPool SyncPeerPool => Container.Resolve<ISyncPeerPool>();
+        private IContainer Container { get; }
 
         readonly ILogManager _logManager = LimboLogs.Instance;
 
@@ -310,6 +309,8 @@ public class SynchronizerTests
             _logger = _logManager.GetClassLogger();
             ISyncConfig syncConfig = GetSyncConfig();
             syncConfig.MultiSyncModeSelectorLoopTimerMs = 1;
+            syncConfig.SyncDispatcherEmptyRequestDelayMs = 1;
+            syncConfig.SyncDispatcherAllocateTimeoutMs = 1;
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb stateDb = new MemDb();
@@ -339,21 +340,18 @@ public class SynchronizerTests
             StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             INodeStorage nodeStorage = new NodeStorage(dbProvider.StateDb);
 
-            SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
             Pivot pivot = new(syncConfig);
 
             IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
 
-            ContainerBuilder builder = new ContainerBuilder();
-            dbProvider.ConfigureServiceCollection(builder);
-
-            builder
+            ContainerBuilder builder = new ContainerBuilder()
+                .AddModule(new DbModule())
+                .AddModule(new SynchronizerModule(syncConfig))
                 .AddSingleton(dbProvider)
                 .AddSingleton(nodeStorage)
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                 .AddSingleton<IBlockTree>(BlockTree)
                 .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddSingleton(SyncPeerPool)
                 .AddSingleton<INodeStatsManager>(stats)
                 .AddSingleton(syncConfig)
                 .AddSingleton<IPivot>(pivot)
@@ -368,35 +366,18 @@ public class SynchronizerTests
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
                 .AddSingleton(beaconPivot)
+                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
                 .AddSingleton(_logManager);
-
-            builder.RegisterModule(new SynchronizerModule(syncConfig));
 
             if (IsMerge(synchronizerType))
             {
                 builder.RegisterModule(new MergeSynchronizerModule());
             }
 
-            IContainer container = builder.Build();
-            Synchronizer = container.Resolve<Synchronizer>();
-            SyncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
-                codeDb,
-                BlockTree,
-                NullReceiptStorage.Instance,
-                Always.Valid,
-                Always.Valid,
-                SyncPeerPool,
-                container.Resolve<ISyncModeSelector>(),
-                syncConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                _logManager);
-
+            Container = builder.Build();
+            Container.Resolve<ISyncServer>(); // Need to be created once to register events.
             SyncPeerPool.Start();
-
             Synchronizer.Start();
-
             AllInstances.Enqueue(this);
         }
 
@@ -484,7 +465,8 @@ public class SynchronizerTests
 
         public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
         {
-            ((SyncPeerMock)syncPeer).Disconnected += (_, _) => SyncPeerPool.RemovePeer(syncPeer);
+            ISyncPeerPool syncPeerPool = SyncPeerPool;
+            ((SyncPeerMock)syncPeer).Disconnected += (_, _) => syncPeerPool.RemovePeer(syncPeer);
 
             _logger.Info($"PEER ADDED {syncPeer.ClientId}");
             _peers.TryAdd(syncPeer.ClientId, syncPeer);
@@ -522,14 +504,15 @@ public class SynchronizerTests
 
         public SyncingContext PeerCountEventuallyIs(long i)
         {
-            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 100), "peer count");
+            Assert.That(() => SyncPeerPool.AllPeers.Count(), Is.EqualTo(i).After(5000, 10), "peer count");
             return this;
         }
 
         public async Task StopAsync()
         {
-            await Synchronizer.StopAsync();
-            await SyncPeerPool.StopAsync();
+            if (_wasStopped) return;
+            _wasStopped = true;
+            await Container.DisposeAsync();
         }
     }
 

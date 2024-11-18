@@ -12,9 +12,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -26,7 +26,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -35,7 +34,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Merge.Plugin.Test.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -51,6 +49,8 @@ public partial class EngineModuleTests
     [SetUp]
     public Task Setup()
     {
+        ThreadPool.GetMaxThreads(out int worker, out int completion);
+        ThreadPool.SetMinThreads(worker, completion);
         return KzgPolynomialCommitments.InitializeAsync();
     }
 
@@ -58,8 +58,8 @@ public partial class EngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null,
-        IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null) =>
-        new(mergeConfig, mockedPayloadService, logManager, mockedConsensusRequestsProcessor);
+        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null) =>
+        new(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(
@@ -67,8 +67,8 @@ public partial class EngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         ILogManager? logManager = null,
-        IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
-        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedConsensusRequestsProcessor)
+        IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
+        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, logManager, mockedExecutionRequestsProcessor)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
@@ -140,8 +140,6 @@ public partial class EngineModuleTests
                 new BlocksConfig().SecondsPerSlot),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
-            new GetPayloadBodiesByHashV2Handler(chain.BlockTree, chain.LogManager),
-            new GetPayloadBodiesByRangeV2Handler(chain.BlockTree, chain.LogManager),
             new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
             new ExchangeCapabilitiesHandler(capabilitiesProvider, chain.LogManager),
             new GetBlobsHandler(chain.TxPool),
@@ -180,14 +178,14 @@ public partial class EngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             PayloadPreparationService = mockedPayloadPreparationService;
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
             LogManager = logManager ?? LogManager;
-            ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
+            ExecutionRequestsProcessor = mockedExecutionRequestsProcessor;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -226,7 +224,7 @@ public partial class EngineModuleTests
                 transactionComparerProvider,
                 blocksConfig,
                 LogManager,
-                ConsensusRequestsProcessor);
+                ExecutionRequestsProcessor);
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
@@ -239,7 +237,7 @@ public partial class EngineModuleTests
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                 50000); // by default we want to avoid cleanup payload effects in testing
 
-            ConsensusRequestsProcessor ??= new ConsensusRequestsProcessor(TxProcessor);
+            ExecutionRequestsProcessor ??= new ExecutionRequestsProcessor(TxProcessor);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
@@ -260,7 +258,7 @@ public partial class EngineModuleTests
                 LogManager,
                 WithdrawalProcessor,
                 preWarmer: CreateBlockCachePreWarmer(),
-                consensusRequestsProcessor: ConsensusRequestsProcessor);
+                executionRequestsProcessor: ExecutionRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

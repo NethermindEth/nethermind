@@ -15,7 +15,7 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -58,11 +58,9 @@ public class MergePluginTests
             _context.LogManager!);
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
-        _context.ChainSpec!.Clique = new CliqueParameters()
-        {
-            Epoch = CliqueConfig.Default.Epoch,
-            Period = CliqueConfig.Default.BlockPeriod
-        };
+        var chainSpecParametersProvider = new TestChainSpecParametersProvider(
+            new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod });
+        _context.ChainSpec.EngineChainSpecParametersProvider = chainSpecParametersProvider;
         _plugin = new MergePlugin();
 
         _consensusPlugin = new();
@@ -75,7 +73,7 @@ public class MergePluginTests
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
 
-        JsonConfigSource? jsonSource = new("MisconfiguredConfig.cfg");
+        JsonConfigSource? jsonSource = new("MisconfiguredConfig.json");
         ConfigProvider? configProvider = new();
         configProvider.AddSource(jsonSource);
         configProvider.Initialize();

@@ -45,24 +45,14 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
         return block;
     }
 
-    public byte[]? GetRaw(long blockNumber, Hash256 blockHash)
+    public byte[]? GetRlp(long blockNumber, Hash256 blockHash)
     {
         if (_blockNumDict.TryGetValue(blockNumber, out Block block))
         {
             using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
             return newRlp.AsSpan().ToArray();
         }
-        return readonlyBaseBlockStore.GetRaw(blockNumber, blockHash);
-    }
-
-    public IEnumerable<Block> GetAll()
-    {
-        var allBlocks = new HashSet<Block>(readonlyBaseBlockStore.GetAll());
-        foreach (Block block in _blockDict.Values)
-        {
-            allBlocks.Add(block);
-        }
-        return allBlocks;
+        return readonlyBaseBlockStore.GetRlp(blockNumber, blockHash);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
@@ -90,5 +80,10 @@ public class SimulateDictionaryBlockStore(IBlockStore readonlyBaseBlockStore) : 
     public byte[]? GetMetadata(byte[] key)
     {
         return _metadataDict.TryGetValue(key, out var value) ? value : readonlyBaseBlockStore.GetMetadata(key);
+    }
+
+    public bool HasBlock(long blockNumber, Hash256 blockHash)
+    {
+        return _blockNumDict.ContainsKey(blockNumber);
     }
 }

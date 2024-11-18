@@ -94,6 +94,8 @@ namespace Nethermind.Blockchain
 
         public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
+        public bool HasBlock(long blockNumber, Hash256 blockHash) => _wrapped.HasBlock(blockNumber, blockHash);
+
         public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);

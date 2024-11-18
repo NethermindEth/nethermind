@@ -9,7 +9,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
@@ -77,12 +76,13 @@ namespace Nethermind.Api
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
+            OverridableWorldStateManager overridableWorldStateManager = new(DbProvider!, WorldStateManager!.TrieStore, LogManager);
 
             // TODO: reuse the same trie cache here
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                WorldStateManager!,
+            OverridableTxProcessingEnv txProcessingEnv = new(
+                overridableWorldStateManager,
                 readOnlyTree,
-                SpecProvider,
+                SpecProvider!,
                 LogManager);
 
             SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
@@ -97,7 +97,7 @@ namespace Nethermind.Api
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
-                readOnlyTxProcessingEnv,
+                txProcessingEnv,
                 simulateReadOnlyBlocksProcessingEnvFactory,
                 TxPool,
                 ReceiptFinder,
@@ -192,10 +192,10 @@ namespace Nethermind.Api
         public ISyncProgressResolver? SyncProgressResolver => ApiWithNetworkServiceContainer?.Resolve<ISyncProgressResolver>();
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IPivot? Pivot { get; set; }
-        public ISyncPeerPool? SyncPeerPool { get; set; }
-        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
+        public ISyncPeerPool? SyncPeerPool => ApiWithNetworkServiceContainer?.Resolve<ISyncPeerPool>();
+        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool => ApiWithNetworkServiceContainer?.Resolve<IPeerDifficultyRefreshPool>();
         public ISynchronizer? Synchronizer => ApiWithNetworkServiceContainer?.Resolve<ISynchronizer>();
-        public ISyncServer? SyncServer { get; set; }
+        public ISyncServer? SyncServer => ApiWithNetworkServiceContainer?.Resolve<ISyncServer>();
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IWorldStateManager? WorldStateManager { get; set; }
@@ -225,7 +225,7 @@ namespace Nethermind.Api
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public CensorshipDetector CensorshipDetector { get; set; } = null!;
         public IWallet? Wallet { get; set; }
-        public IBlockStore? BadBlocksStore { get; set; }
+        public IBadBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
