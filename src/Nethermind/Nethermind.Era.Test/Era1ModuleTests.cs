@@ -83,7 +83,8 @@ public class Era1ModuleTests
         var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
         {
             SealEngineType = SealEngineType.BeaconChain,
-            Parameters = new ChainParameters()
+            Parameters = new ChainParameters(),
+            EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
         });
 
         foreach (var era in eraFiles)
