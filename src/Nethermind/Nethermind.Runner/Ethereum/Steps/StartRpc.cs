@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
