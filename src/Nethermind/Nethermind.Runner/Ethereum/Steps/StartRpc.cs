@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -30,6 +31,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         public async Task Execute(CancellationToken cancellationToken)
         {
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+            IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
+
+            // Update the JWT secret path based on the data directory.
+            if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
+            {
+                jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
+            }
+
             ILogger logger = _api.LogManager.GetClassLogger();
 
             if (jsonRpcConfig.Enabled)
