@@ -46,7 +46,7 @@ namespace Nethermind.Stats
 
         private static readonly Random Random = new();
 
-        private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
+        private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Length;
 
         public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
         {
