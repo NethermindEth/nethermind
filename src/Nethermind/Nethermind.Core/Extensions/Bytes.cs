@@ -1154,7 +1154,7 @@ namespace Nethermind.Core.Extensions
             // So we allocate bytes.Length to bytes.Length * 2 chars.
             const int maxOutputChars = 32 * 2;
 
-            if (bytes == null || bytes.Length == 0 || bytes.Length > 32)
+            if (bytes.IsEmpty || bytes.Length > 32)
                 return string.Empty;
 
             // Allocate a char buffer on the stack.
