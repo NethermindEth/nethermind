@@ -213,8 +213,7 @@ public class E2StoreReader : IDisposable
     private uint ReadUInt32(long position)
     {
         Span<byte> buff = stackalloc byte[4];
-        int readCount = RandomAccess.Read(_file, buff, position);
-        Console.Error.WriteLine($"Read {readCount}");
+        RandomAccess.Read(_file, buff, position);
         return BinaryPrimitives.ReadUInt32LittleEndian(buff);
     }
 
