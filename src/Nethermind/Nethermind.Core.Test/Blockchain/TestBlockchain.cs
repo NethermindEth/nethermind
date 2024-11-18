@@ -15,9 +15,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -38,7 +38,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Synchronization;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -121,7 +120,7 @@ public class TestBlockchain : IDisposable
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
-    public IConsensusRequestsProcessor? ConsensusRequestsProcessor { get; protected set; } = null!;
+    public IExecutionRequestsProcessor? ExecutionRequestsProcessor { get; protected set; } = null!;
     public ChainLevelInfoRepository ChainLevelInfoRepository { get; protected set; } = null!;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
@@ -366,9 +365,8 @@ public class TestBlockchain : IDisposable
 
         if (SpecProvider.GenesisSpec.RequestsEnabled)
         {
-            genesisBlockBuilder.WithConsensusRequests(0);
+            genesisBlockBuilder.WithEmptyRequestsHash();
         }
-
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
@@ -394,7 +392,7 @@ public class TestBlockchain : IDisposable
             new BlockhashStore(SpecProvider, State),
             LogManager,
             preWarmer: CreateBlockCachePreWarmer(),
-            consensusRequestsProcessor: ConsensusRequestsProcessor);
+            executionRequestsProcessor: ExecutionRequestsProcessor);
 
 
     protected virtual IBlockCachePreWarmer CreateBlockCachePreWarmer() =>

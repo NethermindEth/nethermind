@@ -417,10 +417,10 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
 
-        public virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
             FindCachedOrUnknown(address, path, hash, false);
 
-        internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
+        internal virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
         {
             ArgumentNullException.ThrowIfNull(hash);
 

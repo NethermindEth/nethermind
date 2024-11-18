@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -55,7 +54,7 @@ public class SynchronizerModuleTests
 
         stateReader
             .Received()
-            .RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>());
+            .RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>());
     }
 
     [Test]
@@ -69,7 +68,7 @@ public class SynchronizerModuleTests
         ManualResetEvent treeVisitorBlocker = new ManualResetEvent(false);
 
         stateReader
-            .When(sr => sr.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>()))
+            .When(sr => sr.RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>()))
             .Do((ci) =>
             {
                 treeVisitorBlocker.WaitOne();

@@ -101,6 +101,14 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
+    {
+        builder.RegisterType<T>()
+            .As<T>();
+
+        return builder;
+    }
+
     /// <summary>
     /// A convenient way of creating a service whose member can be configured indipendent of other instance of the same
     /// type (assuming the type is of lifetime scope). This is useful for same type with multiple configuration
@@ -120,6 +128,15 @@ public static class ContainerBuilderExtensions
     public static ContainerBuilder AddModule(this ContainerBuilder builder, IModule module)
     {
         builder.RegisterModule(module);
+
+        return builder;
+    }
+
+    public static ContainerBuilder Map<TFrom, TTo>(this ContainerBuilder builder, Func<TFrom, TTo> mapper) where TFrom : notnull where TTo : notnull
+    {
+        builder.Register(mapper)
+            .As<TTo>()
+            .ExternallyOwned();
 
         return builder;
     }
