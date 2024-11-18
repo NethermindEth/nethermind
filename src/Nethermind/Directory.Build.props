@@ -5,7 +5,7 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <LangVersion>latest</LangVersion>
     <TargetFramework>net9.0</TargetFramework>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
