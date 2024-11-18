@@ -13,15 +13,16 @@ namespace Nethermind.Consensus.Clique
     {
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ISnapshotManager _snapshotManager;
-
+        private readonly int _minimumWiggle;
         private long _lastWiggleAtNumber;
 
         private int _lastWiggle;
 
-        public WiggleRandomizer(ICryptoRandom cryptoRandom, ISnapshotManager snapshotManager)
+        public WiggleRandomizer(ICryptoRandom cryptoRandom, ISnapshotManager snapshotManager, int minWiggle = 0)
         {
             _cryptoRandom = cryptoRandom;
             _snapshotManager = snapshotManager;
+            _minimumWiggle = minWiggle;
         }
 
         public int WiggleFor(BlockHeader header)
@@ -35,7 +36,7 @@ namespace Nethermind.Consensus.Clique
             {
                 int multiplier = _snapshotManager.GetOrCreateSnapshot(header.Number - 1, header.ParentHash!).Signers.Count / 2 + 1;
                 int randomPart = _cryptoRandom.NextInt(multiplier * Clique.WiggleTime);
-                _lastWiggle = randomPart;
+                _lastWiggle = randomPart < _minimumWiggle ? _minimumWiggle : randomPart;
                 _lastWiggleAtNumber = header.Number;
             }
 

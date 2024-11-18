@@ -59,7 +59,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         _blockProducer = blockProducer;
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
+        _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager, _config.MinimumOutOfTurnDelay);
 
         _timer.AutoReset = false;
         _timer.Elapsed += TimerOnElapsed;
