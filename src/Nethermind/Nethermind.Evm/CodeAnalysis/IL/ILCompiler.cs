@@ -171,14 +171,14 @@ internal class ILCompiler
             method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
 
             if (!bakeInTracerCalls) {
-                if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
+                if (costs.TryGetValue(op.ProgramCounter, out long gasCost) && gasCost > 0)
                 {
                     method.LoadLocal(gasAvailable);
-                    method.LoadConstant(costs[op.ProgramCounter]);
+                    method.LoadConstant(gasCost);
                     method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                     method.LoadLocal(gasAvailable);
-                    method.LoadConstant(costs[op.ProgramCounter]);
+                    method.LoadConstant(gasCost);
                     method.Subtract();
                     method.StoreLocal(gasAvailable);
                 }
@@ -199,17 +199,24 @@ internal class ILCompiler
                 method.StoreLocal(programCounter);
             }
 
-            if (stacks.ContainsKey(op.ProgramCounter) && stacks[op.ProgramCounter] != (0, 0, 0))
+            if (stacks.TryGetValue(op.ProgramCounter, out (int required, int max, int leftOut) metadata))
             {
-                method.LoadLocal(head);
-                method.LoadConstant(stacks[op.ProgramCounter].max);
-                method.Add();
-                method.LoadConstant(EvmStack.MaxStackSize);
-                method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                if(metadata.required != 0)
+                {
+                    method.LoadLocal(head);
+                    method.LoadConstant(metadata.required);
+                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                }
 
-                method.LoadLocal(head);
-                method.LoadConstant(stacks[op.ProgramCounter].required);
-                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                if (metadata.max != 0)
+                {
+                    method.LoadLocal(head);
+                    method.LoadConstant(metadata.max);
+                    method.Add();
+                    method.LoadConstant(EvmStack.MaxStackSize);
+                    method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                }
+
             }
             
 #if DEBUG
@@ -2849,6 +2856,7 @@ internal class ILCompiler
 
         if (metadata != (0,0,0))
         {
+            metadata.required = -metadata.required;
             stacks[stackStart] = metadata;
         }
         return stacks;
