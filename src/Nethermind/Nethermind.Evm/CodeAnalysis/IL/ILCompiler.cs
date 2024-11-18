@@ -142,6 +142,7 @@ internal class ILCompiler
         Dictionary<int, Label> jumpDestinations = new();
 
         var costs = BuildStaticCostLookup(code);
+        var stacks = AnalyseStackBehavior(code);
 
         bool hasJump = false;
 
@@ -198,22 +199,19 @@ internal class ILCompiler
                 method.StoreLocal(programCounter);
             }
 
-            if (op.Metadata.StackBehaviorPop > 0)
+            if (stacks.ContainsKey(op.ProgramCounter) && stacks[op.ProgramCounter] != (0, 0, 0))
             {
                 method.LoadLocal(head);
-                method.LoadConstant(op.Metadata.StackBehaviorPop);
-                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
-            }
-
-            if (op.Metadata.StackBehaviorPush > 0)
-            {
-                int delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
-                method.LoadLocal(head);
-                method.LoadConstant(delta);
+                method.LoadConstant(stacks[op.ProgramCounter].max);
                 method.Add();
                 method.LoadConstant(EvmStack.MaxStackSize);
                 method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+
+                method.LoadLocal(head);
+                method.LoadConstant(stacks[op.ProgramCounter].required);
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
             }
+            
 #if DEBUG
             if(bakeInTracerCalls)
             {
@@ -2794,6 +2792,67 @@ internal class ILCompiler
         il.BranchIfLess(outOfGasLabel);
     }
 
+    private static Dictionary<int, (int required, int max, int leftOut)> AnalyseStackBehavior(ReadOnlySpan<OpcodeInfo> code)
+    {
+        Dictionary<int, (int required, int max, int leftOut)> stacks = new();
+        int stackStart = code[0].ProgramCounter;
+        (int required, int max, int leftOut) metadata = (code[0].Metadata.StackBehaviorPop, code[0].Metadata.StackBehaviorPush - code[0].Metadata.StackBehaviorPop, code[0].Metadata.StackBehaviorPush);
+
+        int currentStackSize = code[0].Metadata.StackBehaviorPush;
+
+        for (int pc = 0; pc < code.Length; pc++)
+        {
+            OpcodeInfo op = code[pc];
+            switch (op.Operation)
+            {
+                case Instruction.JUMPDEST:
+                    metadata.required = -metadata.required;
+                    stacks[stackStart] = metadata; // remember the stack chain of opcodes
+                    stackStart = op.ProgramCounter;
+                    metadata = (0, 0, 0);
+                    currentStackSize = 0;
+                    break;
+                default:
+                    currentStackSize -= op.Metadata.StackBehaviorPop;
+                    if (currentStackSize < metadata.required)
+                    {
+                        metadata.required = currentStackSize;
+                    }
+
+                    currentStackSize += op.Metadata.StackBehaviorPush;
+                    if (currentStackSize > metadata.max)
+                    {
+                        metadata.max = currentStackSize;
+                    }
+
+                    metadata.leftOut = currentStackSize;
+
+                    switch(op.Operation)
+                    {
+                        case Instruction.RETURN:
+                        case Instruction.REVERT:
+                        case Instruction.STOP:
+                        case Instruction.INVALID:
+                        case Instruction.JUMPI:
+                        case Instruction.JUMP:
+                            metadata.required = -metadata.required;
+                            stacks[stackStart] = metadata; // remember the stack chain of opcodes
+                            stackStart = op.ProgramCounter + 1;             // start with the next again
+                            metadata = (0, 0, 0);
+                            currentStackSize = 0;
+                            break;
+                    }
+
+                    break;
+            }
+        }
+
+        if (metadata != (0,0,0))
+        {
+            stacks[stackStart] = metadata;
+        }
+        return stacks;
+    }
     private static Dictionary<int, long> BuildStaticCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
         Dictionary<int, long> costs = new();

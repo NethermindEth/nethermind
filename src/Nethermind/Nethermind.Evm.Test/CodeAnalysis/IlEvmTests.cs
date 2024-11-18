@@ -1911,6 +1911,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 AnalysisQueueMaxSize = 1,
                 IsJitEnabled = true,
                 AggressiveJitMode = true,
+                BakeInTracingInJitMode = true
             });
 
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
@@ -2169,7 +2170,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             ILEvmState iLEvmState = new ILEvmState(SpecProvider.ChainId, state, EvmExceptionType.None, 0, 100000, ref returnBuffer);
             var metadata = IlAnalyzer.StripByteCode(testcase.bytecode);
-            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", codeInfo, metadata.Item1, metadata.Item2, config);
+            var ctx = ILCompiler.CompileSegment($"ILEVM_TEST_{testcase.opcode}_{Guid.NewGuid()}", codeInfo, metadata.Item1, metadata.Item2, config);
             ctx.PrecompiledSegment(ref iLEvmState, _blockhashProvider, TestState, CodeInfoRepository, Prague.Instance, tracer, ctx.Data);
 
             Assert.That(iLEvmState.EvmException == testcase.exceptionType);
