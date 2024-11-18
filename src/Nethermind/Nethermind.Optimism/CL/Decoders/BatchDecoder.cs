@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
@@ -152,21 +154,175 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         };
     }
 
+    private const int ULongMaxLength = 10;
+
+    // Decodes protobuf encoded ulong
+    // Returns the number and number of bytes read
+    // TODO: maybe we should use standard library for that?
+    (ulong, int) DecodeULong(byte[] data)
+    {
+        // TODO: handle errors
+        ulong x = 0;
+        int s = 0;
+        for (int i = 0; i < ULongMaxLength; i++)
+        {
+            byte b = data[i];
+            if (b < 0x80) {
+                return (x | ((ulong)b << s), i + 1);
+            }
+
+            x |= (ulong)(b & 0x7f) << s;
+            s += 7;
+        }
+
+        throw new Exception("Overflow");
+    }
+
+    private (BigInteger, int) DecodeBits(byte[] data, ulong bitLength)
+    {
+        ulong bufLen = bitLength / 8;
+        if (bitLength % 8 != 0)
+        {
+            bufLen++;
+        }
+
+        BigInteger x = new(data[..(int)bufLen], true, true);
+        if (x.GetBitLength() > (long)bitLength)
+        {
+            throw new FormatException("Invalid bit length.");
+        }
+        return (x, (int)bufLen);
+    }
+
+    private (byte[], int, TxType) DecodeTxData(byte[] data)
+    {
+        byte firstByte = data[0];
+        int n = 0;
+        byte type;
+        RlpStream rlpStream;
+        if (firstByte <= 0x7F)
+        {
+            // Tx with type
+            n++;
+            type = firstByte;
+            rlpStream = new(data[1..]);
+        }
+        else
+        {
+            // Legacy tx
+            type = 0;
+            rlpStream = new(data[0..]);
+        }
+
+        if (!rlpStream.IsSequenceNext())
+        {
+            throw new FormatException("Invalid tx data.");
+        }
+        else
+        {
+            n += rlpStream.PeekNextRlpLength();
+            return (rlpStream.PeekNextItem().ToArray(), n, (TxType)type);
+        }
+    }
+
     public BatchV1 DecodeSpanBinary(byte[] data)
     {
-        byte version = data[4];
-        if (version != 1)
+        // byte version = data[4];
+        // if (version != 1)
+        // {
+        //     throw new FormatException("Invalid batch version.");
+        // }
+
+        // prefix
+        int n = 0;
+        (ulong relTimestamp, int n1) = DecodeULong(data);
+        n += n1;
+        (ulong l1OriginNum, int n2) = DecodeULong(data[n..]);
+        n += n2;
+        byte[] parentCheck = data[n..(n + 20)];
+        n += 20;
+        byte[] l1OriginCheck = data[n..(n + 20)];
+        n += 20;
+
+        // payload
+        (ulong blockCount, int n3) = DecodeULong(data[n..]);
+        n += n3;
+        (BigInteger originBits, int n4) = DecodeBits(data[n..], blockCount);
+        n += n4;
+
+        ulong[] blockTransactionCounts = new ulong[blockCount];
+        ulong totalTxCount = 0;
+        for (int i = 0; i < (int)blockCount; ++i)
         {
-            throw new FormatException("Invalid batch version.");
+            (blockTransactionCounts[i], int n5) = DecodeULong(data[n..]);
+            totalTxCount += blockTransactionCounts[i];
+            n += n5;
         }
-        ulong relTimestamp = BitConverter.ToUInt64(data[4..12]);
-        ulong l1OriginNum = BitConverter.ToUInt64(data[12..20]);
-        byte[] parentCheck = data[20..40];
-        byte[] l1OriginCheck = data[40..60];
-        ulong blockCount = BitConverter.ToUInt64(data[60..68]);
-        BigInteger originBits = 0;
-        // ulong[] blockTransactionCounts = rlpStream.DecodeArray(x => x.DecodeUlong());
-        // TODO: txs
+
+        // txs
+
+        (BigInteger contractCreationBits, int n6) = DecodeBits(data[n..], totalTxCount);
+        n += n6;
+        (BigInteger yParityBits, int n7) = DecodeBits(data[n..], totalTxCount);
+        n += n7;
+
+        // Signatures
+        BatchV1TransactionSignature[] signatures = new BatchV1TransactionSignature[totalTxCount];
+        for (int i = 0; i < (int)totalTxCount; ++i)
+        {
+            signatures[i] = new()
+            {
+                R = new UInt256(data[n..(n + 32)], true),
+                S = new UInt256(data[(n + 32)..(n + 64)], true)
+            };
+            n += 64;
+        }
+
+        int contractCreationCnt = 0;
+        byte[] contractCreationBytes = contractCreationBits.ToByteArray();
+        for (int i = 0; contractCreationBytes.Length <= i / 8 && i < (int)totalTxCount; ++i)
+        {
+            if (((contractCreationBytes[i / 8] >> (i % 8)) & 1) == 1)
+            {
+                contractCreationCnt++;
+            }
+        }
+
+        Address[] tos = new Address[(int)totalTxCount - contractCreationCnt];
+        for (int i = 0; i < (int)totalTxCount - contractCreationCnt; ++i)
+        {
+            tos[i] = new(data[n..(n + Address.Size)]);
+            n += Address.Size;
+        }
+
+        byte[][] datas = new byte[totalTxCount][];
+        ulong legacyTxCnt = 0;
+        for (int i = 0; i < (int)totalTxCount; ++i)
+        {
+            (datas[i], int n8, TxType type) = DecodeTxData(data[n..]);
+            if (type == TxType.Legacy)
+            {
+                legacyTxCnt++;
+            }
+            n += n8;
+        }
+
+        ulong[] nonces = new ulong[totalTxCount];
+        for (int i = 0; i < (int)totalTxCount; ++i)
+        {
+            (nonces[i], int n8) = DecodeULong(data[n..]);
+            n += n8;
+        }
+
+        ulong[] gases = new ulong[totalTxCount];
+        for (int i = 0; i < (int)totalTxCount; ++i)
+        {
+            (gases[i], int n9) = DecodeULong(data[n..]);
+            n += n9;
+        }
+
+        (BigInteger protectedBits, int n10) = DecodeBits(data[n..], legacyTxCnt);
+        n += n10;
 
         return new BatchV1()
         {
@@ -176,7 +332,18 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
             L1OriginCheck = l1OriginCheck,
             BlockCount = blockCount,
             OriginBits = originBits,
-            BlockTxCounts = Array.Empty<ulong>()
+            BlockTxCounts = blockTransactionCounts,
+            Txs = new()
+            {
+                ContractCreationBits = contractCreationBits,
+                YParityBits = yParityBits,
+                Signatures = signatures,
+                Tos = tos,
+                Datas = datas,
+                Nonces = nonces,
+                Gases = gases,
+                ProtectedBits = protectedBits
+            }
         };
     }
 

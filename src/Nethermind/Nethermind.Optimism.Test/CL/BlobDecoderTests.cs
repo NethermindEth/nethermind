@@ -85,15 +85,15 @@ public class BlobDecoderTests
     [Test]
     public void Another_test2()
     {
-        StreamReader inputReader = new StreamReader($"/home/deffrian/Documents/testvectors/channels/input125142");
-        StreamReader outputReader = new StreamReader($"/home/deffrian/Documents/testvectors/channels/decompressed125142");
+        StreamReader inputReader = new StreamReader($"/home/deffrian/Documents/testvectors/copy/input2617444");
+        // StreamReader outputReader = new StreamReader($"/home/deffrian/Documents/testvectors/channels/decompressed125142");
         byte[] input = StringToByteArray(inputReader.ReadToEnd());
-        byte[] data = StringToByteArray(outputReader.ReadToEnd());
+        // byte[] data = StringToByteArray(outputReader.ReadToEnd());
         inputReader.Close();
-        outputReader.Close();
+        // outputReader.Close();
 
         // BatchV1 decoded = BatchDecoder.Instance.DecodeSpanBatch(input)
-        BatchV1 batch = BatchDecoder.Instance.DecodeSpanBinary(data);
+        BatchV1 batch = BatchDecoder.Instance.DecodeSpanBinary(input);
         // (BatchV1[] batches, byte[] decompressed)  = ChannelDecoder.DecodeChannel(new Frame(){FrameData = input});
         // Assert.That(batches, Is.EqualTo(1));
         //Assert.That(frames[0].IsLast, Is.True);

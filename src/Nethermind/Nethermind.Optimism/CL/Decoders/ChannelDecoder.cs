@@ -8,6 +8,7 @@ using System.IO.Compression;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism.CL;
@@ -57,6 +58,7 @@ public struct BatchV0
     public byte[][] Transactions;
 }
 
+// Span batch
 public struct BatchV1
 {
     public ulong RelTimestamp;
@@ -66,5 +68,24 @@ public struct BatchV1
     public ulong BlockCount;
     public BigInteger OriginBits;
     public ulong[] BlockTxCounts;
-    public byte[][] Txs;
+    public BatchV1Transactions Txs;
+}
+
+public struct BatchV1Transactions
+{
+    public BigInteger ContractCreationBits;
+    public BigInteger YParityBits;
+    public BatchV1TransactionSignature[] Signatures;
+    public Address[] Tos;
+    public byte[][] Datas;
+    public ulong[] Nonces;
+    public ulong[] Gases;
+    public BigInteger ProtectedBits;
+}
+
+public struct BatchV1TransactionSignature
+{
+    public UInt256 R;
+    public UInt256 S;
+    public ulong V;
 }
