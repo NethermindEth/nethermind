@@ -70,6 +70,7 @@ jobs:
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
           - Nethermind.Synchronization.Test
+          - Nethermind.Taiko.Test
           - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
