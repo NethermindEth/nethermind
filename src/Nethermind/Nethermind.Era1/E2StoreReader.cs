@@ -29,7 +29,7 @@ public class E2StoreReader : IDisposable
     private long _blockCount;
     private readonly long _fileLength;
 
-    public E2StoreReader(string filePath): this(File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+    public E2StoreReader(string filePath) : this(File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
     {
     }
 
