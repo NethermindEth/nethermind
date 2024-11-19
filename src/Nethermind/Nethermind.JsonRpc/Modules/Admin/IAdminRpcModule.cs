@@ -38,7 +38,7 @@ public interface IAdminRpcModule : IRpcModule
         ResponseDescription = "List of connected peers including information",
         ExampleResponse = "[\n  {\n    \"clientId\": \"Nethermind/v1.10.33-1-5c4c185e8-20210310/X64-Linux/5.0.2\",\n    \"host\": \"94.237.54.114\",\n    \"port\": 30313,\n    \"address\": \"94.237.54.114:30313\",\n    \"isBootnode\": false,\n    \"isTrusted\": false,\n    \"isStatic\": false,\n    \"enode\": \"enode://46add44b9f13965f7b9875ac6b85f016f341012d84f975377573800a863526f4da19ae2c620ec73d11591fa9510e992ecc03ad0751f53cc02f7c7ed6d55c7291@94.237.54.114:30313\",\n    \"clientType\": \"Nethermind\",\n    \"ethDetails\": \"eth65\",\n    \"lastSignal\": \"03/11/2021 12:33:58\"\n  },\n  \n  (...)\n  \n]",
         IsImplemented = true)]
-    ResultWrapper<PeerInfo[]> admin_peers(
+    ResultWrapper<PeerInfoResult[]> admin_peers(
         [JsonRpcParameter(Description = "If true, including `clientType`, `ethDetails` and `lastSignal` (optional)", ExampleValue = "true")]
         bool includeDetails = false);
 

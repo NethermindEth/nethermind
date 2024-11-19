@@ -76,6 +76,7 @@ public class AdminRpcModule : IAdminRpcModule
         // from a single source of truth.
         // might require the "peer pool" to also store current node but not count it as number of peers.
         // every peer should be able to generate its own info same with every node.
+        // above is not possible(should not be done) as info is dependent on endpoint and isn't really a property of a peer/node.
         _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
         _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
         _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
@@ -120,9 +121,9 @@ public class AdminRpcModule : IAdminRpcModule
             : ResultWrapper<string>.Fail("Failed to remove peer.");
     }
 
-    public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
-        => ResultWrapper<PeerInfo[]>.Success(
-            _peerPool.ActivePeers.Select(p => new PeerInfo(p.Value, includeDetails)).ToArray());
+    public ResultWrapper<PeerInfoResult[]> admin_peers(bool includeDetails = false)
+        => ResultWrapper<PeerInfoResult[]>.Success(
+            _peerPool.ActivePeers.Select(p => new PeerInfoResult(p.Value, includeDetails)).ToArray());
 
     public ResultWrapper<NodeInfo> admin_nodeInfo()
     {
