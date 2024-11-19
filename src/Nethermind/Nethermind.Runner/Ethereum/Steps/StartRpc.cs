@@ -35,30 +35,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
 
-            // Update the JWT secret path based on the data directory.
-            if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
-            {
-                // check if jwt-secret file already exists in previous default directory
-                try {
-                    string defaultPath = "keystore/jwt-secret";
-                    string newPath = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-                    if(File.exists(defaultPath)) {
-                        logger.Warning();
-                        File.move(defaultPath, newPath);
-                    }
-                    else{
-                        jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-                    }
-                    jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-                }
-                catch (IOException ex) {
 
-                }
-            }
-            else {
-                jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-            }
-            
+            // Update the JWT secret path based on the data directory.
+            SetJwtSecretFilePath(jsonRpcConfig, keyStoreConfig, logger);
+
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
@@ -129,6 +109,35 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
+            }
+        }
+
+        private void SetJwtSecretFilePath(IJsonRpcConfig jsonRpcConfig, IKeyStoreConfig keyStoreConfig, ILogger logger)
+        {
+            try
+            {
+                string defaultPath = "keystore/jwt-secret";
+                string newPath = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
+                if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
+                {
+                    // check if jwt-secret file already exists in previous default directory
+                    if (File.Exists(defaultPath))
+                    {
+                        // move the jwt-secret file
+                        logger.Warn("jwt-secret already exists at the default path. Moving it to the data directory.");
+                        File.Move(defaultPath, newPath);
+                    }
+                    jsonRpcConfig.JwtSecretFile = newPath;
+                }
+                else
+                {
+                    // default path is not null
+                    jsonRpcConfig.JwtSecretFile = newPath;
+                }
+            }
+            catch (IOException ex)
+            {
+                logger.Error("IO error while setting jwt-secret file path: ", ex);
             }
         }
     }
