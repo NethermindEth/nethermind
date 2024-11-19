@@ -52,7 +52,7 @@ public class EraImporter : IEraImporter
         _syncConfig = syncConfig;
     }
 
-    public Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
+    public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!_fileSystem.Directory.Exists(src))
             throw new ArgumentException("Import directory does not exist", nameof(src));
@@ -94,15 +94,15 @@ public class EraImporter : IEraImporter
         _receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         _blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
 
-        return ImportInternal(from, to, eraStore, cancellation)
-            .ContinueWith((t) =>
-            {
-                _receiptsDb.Tune(ITunableDb.TuneType.Default);
-                _blocksDb.Tune(ITunableDb.TuneType.Default);
-
-                if (t.IsFaulted)
-                    throw t.Exception?.InnerException!;
-            }, cancellation);
+        try
+        {
+            await ImportInternal(from, to, eraStore, cancellation);
+        }
+        finally
+        {
+            _receiptsDb.Tune(ITunableDb.TuneType.Default);
+            _blocksDb.Tune(ITunableDb.TuneType.Default);
+        }
     }
 
     private async Task ImportInternal(
