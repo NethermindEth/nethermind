@@ -16,8 +16,11 @@ jobs:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
-      - name: Clean up
-        run: sudo rm -rf /usr/local/lib/android
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1
+        with:
+          large-packages: false
+          tool-cache: false
       - name: Check out repository
         uses: actions/checkout@v4
         with:
