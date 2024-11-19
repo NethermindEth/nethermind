@@ -75,12 +75,8 @@ public class VirtualMachine : IVirtualMachine
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _config = vmConfig ?? new VMConfig();
         _evm = logger.IsTrace
-            ? _config.IsVmOptimizationEnabled
                 ? new VirtualMachine<IsTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
-                : new VirtualMachine<IsTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger)
-            : _config.IsVmOptimizationEnabled
-                ? new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger)
-                : new VirtualMachine<NotTracing, NotOptimizing>(blockhashProvider, specProvider, _config, logger);
+                : new VirtualMachine<NotTracing, IsOptimizing>(blockhashProvider, specProvider, _config, logger);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
