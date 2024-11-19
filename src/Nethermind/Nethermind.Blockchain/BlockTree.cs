@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
         private readonly IHeaderStore _headerStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
-        private readonly IBlockStore _badBlockStore;
+        private readonly IBadBlockStore _badBlockStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain
             IHeaderStore? headerDb,
             IDb? blockInfoDb,
             IDb? metadataDb,
-            IBlockStore? badBlockStore,
+            IBadBlockStore? badBlockStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -445,6 +445,8 @@ namespace Nethermind.Blockchain
         }
 
         public Hash256? FindBlockHash(long blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
+
+        public bool HasBlock(long blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
 
         public BlockHeader? FindHeader(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {

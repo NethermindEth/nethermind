@@ -25,14 +25,17 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
 {
     private readonly IBlocksConfig _blocksConfig = api.Config<IBlocksConfig>();
 
+    private readonly OptimismChainSpecEngineParameters _chainSpecParameters = api.ChainSpec
+        .EngineChainSpecParametersProvider.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
+
     protected override async Task InitBlockchain()
     {
-        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-
-        api.SpecHelper = new(api.ChainSpec.Optimism);
-        api.L1CostHelper = new(api.SpecHelper, api.ChainSpec.Optimism.L1BlockAddress);
+        api.SpecHelper = new(_chainSpecParameters);
+        api.L1CostHelper = new(api.SpecHelper, _chainSpecParameters.L1BlockAddress!);
 
         await base.InitBlockchain();
+
+        api.RegisterTxType<OptimismTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
     }
 
     protected override ITransactionProcessor CreateTransactionProcessor(CodeInfoRepository codeInfoRepository, VirtualMachine virtualMachine)
@@ -100,7 +103,7 @@ public class InitializeBlockchainOptimism(OptimismNethermindApi api) : Initializ
             api.ReceiptStorage,
             transactionProcessor,
             new BlockhashStore(api.SpecProvider, api.WorldState),
-            new BeaconBlockRootHandler(transactionProcessor),
+            new BeaconBlockRootHandler(transactionProcessor, api.WorldState),
             api.LogManager,
             api.SpecHelper,
             contractRewriter,

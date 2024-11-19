@@ -16,7 +16,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm;
 
@@ -133,6 +132,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public void SetDelegation(IWorldState state, Address codeSource, Address authority, IReleaseSpec spec)
     {
+        if (codeSource == Address.Zero)
+        {
+            state.InsertCode(authority, Keccak.OfAnEmptyString, Array.Empty<byte>(), spec);
+            return;
+        }
         byte[] authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
         Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
         codeSource.Bytes.CopyTo(authorizedBuffer, Eip7702Constants.DelegationHeader.Length);

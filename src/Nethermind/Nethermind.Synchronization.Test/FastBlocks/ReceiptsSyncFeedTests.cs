@@ -9,7 +9,6 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -120,7 +119,7 @@ public class ReceiptsSyncFeedTests
     public void TearDown()
     {
         _feed?.Dispose();
-        _syncPeerPool?.Dispose();
+        _syncPeerPool?.DisposeAsync();
         _syncReport?.Dispose();
         _metadataDb?.Dispose();
     }

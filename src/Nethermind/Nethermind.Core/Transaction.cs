@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -30,6 +29,9 @@ namespace Nethermind.Core
         /// EIP-2718 transaction type
         /// </summary>
         public TxType Type { get; set; }
+
+        // Taiko Anchor transaction
+        public bool IsAnchorTx { get; set; }
 
         // Optimism deposit transaction fields
         // SourceHash uniquely identifies the source of the deposit

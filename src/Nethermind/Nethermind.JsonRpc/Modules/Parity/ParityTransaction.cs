@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity

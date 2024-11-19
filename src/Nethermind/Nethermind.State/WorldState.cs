@@ -205,6 +205,12 @@ namespace Nethermind.State
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
         }
+
+        public void Accept<TContext>(ITreeVisitor<TContext> visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TContext : struct, INodeContext<TContext>
+        {
+            _stateProvider.Accept(visitor, stateRoot, visitingOptions);
+        }
+
         public bool AccountExists(Address address)
         {
             return _stateProvider.AccountExists(address);
@@ -269,6 +275,10 @@ namespace Nethermind.State
         }
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
+        public void ResetTransient()
+        {
+            _transientStorageProvider.Reset();
+        }
 
         PreBlockCaches? IPreBlockCaches.Caches => PreBlockCaches;
     }

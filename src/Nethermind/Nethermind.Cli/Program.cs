@@ -3,175 +3,173 @@
 
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Jint.Native;
-using McMaster.Extensions.CommandLineUtils;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Config;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.Cli.Test")]
-namespace Nethermind.Cli
+namespace Nethermind.Cli;
+
+public static class Program
 {
-    public static class Program
+    private static readonly Dictionary<string, ColorScheme> _availableColorSchemes = new(){  {"basic", BasicColorScheme.Instance },
+                                                                                            {"dracula", DraculaColorScheme.Instance }};
+    private static readonly IJsonSerializer Serializer = new EthereumJsonSerializer();
+
+    public static void Main(string[] args)
     {
-        private static readonly Dictionary<string, ColorScheme> _availableColorSchemes = new(){  {"basic", BasicColorScheme.Instance },
-                                                                                                {"dracula", DraculaColorScheme.Instance }};
-        private static readonly IJsonSerializer Serializer = new EthereumJsonSerializer();
-
-        public static void Main(string[] args)
+        CliOption<string> colorSchemeOption = new("--colorScheme", "-cs")
         {
-            CommandLineApplication app = new() { Name = "Nethermind.Cli" };
-            _ = app.HelpOption("-?|-h|--help");
+            Description = "Color Scheme. Possible values: Basic|Dracula",
+            HelpName = "colorScheme"
+        };
+        CliOption<string> nodeAddressOption = new("--address", "-a")
+        {
+            Description = "Node Address",
+            HelpName = "address"
+        };
+        CliRootCommand rootCommand = [colorSchemeOption, nodeAddressOption];
 
-            var colorSchemeOption = app.Option("-cs|--colorScheme <colorScheme>", "Color Scheme. Possible values: Basic|Dracula", CommandOptionType.SingleValue);
-            var nodeAddressOption = app.Option("-a|--address <address>", "Node Address", CommandOptionType.SingleValue);
+        rootCommand.SetAction(parseResult =>
+        {
+            string? colorSchemeValue = parseResult.GetValue(colorSchemeOption);
+            ColorScheme? cs;
+            ICliConsole cliConsole = colorSchemeValue is not null && (cs = MapColorScheme(colorSchemeValue)) is not null
+                ? new ColorfulCliConsole(cs)
+                : new CliConsole();
 
-            app.OnExecute(() =>
+            var historyManager = new StatementHistoryManager(cliConsole, new FileSystem());
+            ILogManager logManager = new OneLoggerLogManager(new(new CliLogger(cliConsole)));
+            ICliEngine engine = new CliEngine(cliConsole);
+            INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);
+            var moduleLoader = new CliModuleLoader(engine, nodeManager, cliConsole);
+
+            engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
             {
-                ColorScheme? cs;
-                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value()!)) is not null
-                    ? new ColorfulCliConsole(cs)
-                    : new CliConsole();
+                string text = Serializer.Serialize(v.ToObject(), true);
+                cliConsole.WriteGood(text);
+            }));
 
-                var historyManager = new StatementHistoryManager(cliConsole, new FileSystem());
-                ILogManager logManager = new OneLoggerLogManager(new(new CliLogger(cliConsole)));
-                ICliEngine engine = new CliEngine(cliConsole);
-                INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);
-                var moduleLoader = new CliModuleLoader(engine, nodeManager, cliConsole);
+            moduleLoader.DiscoverAndLoadModules();
+            ReadLine.AutoCompletionHandler = new AutoCompletionHandler(moduleLoader);
 
-                engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
-                {
-                    string text = Serializer.Serialize(v.ToObject(), true);
-                    cliConsole.WriteGood(text);
-                }));
+            string nodeAddress = parseResult.GetValue(nodeAddressOption) ?? "http://localhost:8545";
+            nodeManager.SwitchUri(new Uri(nodeAddress));
+            historyManager.Init();
+            TestConnection(nodeManager, engine, cliConsole);
+            cliConsole.WriteLine();
+            RunEvalLoop(engine, historyManager, cliConsole);
 
-                moduleLoader.DiscoverAndLoadModules();
-                ReadLine.AutoCompletionHandler = new AutoCompletionHandler(moduleLoader);
+            cliConsole.ResetColor();
+            return ExitCodes.Ok;
+        });
 
-                string nodeAddress = nodeAddressOption.HasValue()
-                    ? nodeAddressOption.Value()!
-                    : "http://localhost:8545";
-                nodeManager.SwitchUri(new Uri(nodeAddress));
-                historyManager.Init();
-                TestConnection(nodeManager, engine, cliConsole);
-                cliConsole.WriteLine();
-                RunEvalLoop(engine, historyManager, cliConsole);
+        CliConfiguration cli = new(rootCommand);
 
-                cliConsole.ResetColor();
-                return ExitCodes.Ok;
-            });
+        cli.Invoke(args);
+    }
 
+    private static void TestConnection(INodeManager nodeManager, ICliEngine cliEngine, ICliConsole cliConsole)
+    {
+        cliConsole.WriteLine($"Connecting to {nodeManager.CurrentUri}");
+        JsValue result = cliEngine.Execute("web3.clientVersion");
+        if (result != JsValue.Null)
+        {
+            cliConsole.WriteGood("Connected");
+        }
+    }
+
+    internal static string RemoveDangerousCharacters(string statement)
+    {
+        if (string.IsNullOrWhiteSpace(statement))
+        {
+            return "";
+        }
+
+        StringBuilder cleaned = new();
+        for (int i = 0; i < statement.Length; i++)
+        {
+            switch (statement[i])
+            {
+                case '\x0008':
+                    if (cleaned.Length != 0)
+                    {
+                        cleaned.Remove(cleaned.Length - 1, 1);
+                    }
+                    break;
+                case '\x0000':
+                    return cleaned.ToString();
+                default:
+                    cleaned.Append(statement[i]);
+                    break;
+            }
+        }
+
+        return cleaned.ToString();
+    }
+
+    private static void RunEvalLoop(ICliEngine engine, StatementHistoryManager historyManager, ICliConsole console)
+    {
+        while (true)
+        {
             try
             {
-                app.Execute(args);
-            }
-            catch (CommandParsingException)
-            {
-                app.ShowHelp();
-            }
-        }
-
-        private static void TestConnection(INodeManager nodeManager, ICliEngine cliEngine, ICliConsole cliConsole)
-        {
-            cliConsole.WriteLine($"Connecting to {nodeManager.CurrentUri}");
-            JsValue result = cliEngine.Execute("web3.clientVersion");
-            if (result != JsValue.Null)
-            {
-                cliConsole.WriteGood("Connected");
-            }
-        }
-
-        internal static string RemoveDangerousCharacters(string statement)
-        {
-            if (string.IsNullOrWhiteSpace(statement))
-            {
-                return "";
-            }
-
-            StringBuilder cleaned = new();
-            for (int i = 0; i < statement.Length; i++)
-            {
-                switch (statement[i])
+                const int bufferSize = 1024 * 16;
+                string statement;
+                using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
                 {
-                    case '\x0008':
-                        if (cleaned.Length != 0)
-                        {
-                            cleaned.Remove(cleaned.Length - 1, 1);
-                        }
-                        break;
-                    case '\x0000':
-                        return cleaned.ToString();
-                    default:
-                        cleaned.Append(statement[i]);
-                        break;
+                    Colorful.Console.SetIn(new StreamReader(inStream, Colorful.Console.InputEncoding, false, bufferSize));
+                    console.WriteLessImportant("nethermind> ");
+                    statement = console.Terminal == Terminal.Cygwin ? Colorful.Console.ReadLine() : ReadLine.Read();
+                    statement = RemoveDangerousCharacters(statement);
+
+                    historyManager.UpdateHistory(statement);
                 }
-            }
 
-            return cleaned.ToString();
-        }
-
-        private static void RunEvalLoop(ICliEngine engine, StatementHistoryManager historyManager, ICliConsole console)
-        {
-            while (true)
-            {
-                try
+                if (statement == "exit")
                 {
-                    const int bufferSize = 1024 * 16;
-                    string statement;
-                    using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
-                    {
-                        Colorful.Console.SetIn(new StreamReader(inStream, Colorful.Console.InputEncoding, false, bufferSize));
-                        console.WriteLessImportant("nethermind> ");
-                        statement = console.Terminal == Terminal.Cygwin ? Colorful.Console.ReadLine() : ReadLine.Read();
-                        statement = RemoveDangerousCharacters(statement);
-
-                        historyManager.UpdateHistory(statement);
-                    }
-
-                    if (statement == "exit")
-                    {
-                        break;
-                    }
-
-                    JsValue result = engine.Execute(statement);
-                    WriteResult(console, result);
+                    break;
                 }
-                catch (Exception e)
-                {
-                    console.WriteException(e);
-                }
-            }
-        }
 
-        private static void WriteResult(ICliConsole cliConsole, JsValue result)
-        {
-            if (result.IsObject() && result.AsObject().Class == "Function")
-            {
-                cliConsole.WriteGood(result.ToString());
-                cliConsole.WriteLine();
+                JsValue result = engine.Execute(statement);
+                WriteResult(console, result);
             }
-            else if (!result.IsNull())
+            catch (Exception e)
             {
-                string text = Serializer.Serialize(result.ToObject(), true);
-                cliConsole.WriteGood(text);
-            }
-            else
-            {
-                cliConsole.WriteLessImportant("null");
-                cliConsole.WriteLine();
+                console.WriteException(e);
             }
         }
+    }
 
-        private static ColorScheme? MapColorScheme(string colorSchemeOption)
+    private static void WriteResult(ICliConsole cliConsole, JsValue result)
+    {
+        if (result.IsObject() && result.AsObject().Class == "Function")
         {
-            return _availableColorSchemes.TryGetValue(colorSchemeOption.ToLower(), out var scheme) ? scheme : null;
+            cliConsole.WriteGood(result.ToString());
+            cliConsole.WriteLine();
         }
+        else if (!result.IsNull())
+        {
+            string text = Serializer.Serialize(result.ToObject(), true);
+            cliConsole.WriteGood(text);
+        }
+        else
+        {
+            cliConsole.WriteLessImportant("null");
+            cliConsole.WriteLine();
+        }
+    }
+
+    private static ColorScheme? MapColorScheme(string colorSchemeOption)
+    {
+        return _availableColorSchemes.TryGetValue(colorSchemeOption.ToLower(), out var scheme) ? scheme : null;
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Config;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -69,6 +68,7 @@ public interface IDbConfig : IConfig
     ulong? ReceiptsDbCompactionReadAhead { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
+    bool ReceiptsDbOptimizeFiltersForHits { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -81,6 +81,7 @@ public interface IDbConfig : IConfig
     bool? BlocksDbUseDirectReads { get; set; }
     bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? BlocksDbCompactionReadAhead { get; set; }
+    bool BlocksDbOptimizeFiltersForHits { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }

@@ -2,11 +2,12 @@
 
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-    <LangVersion>latest</LangVersion>
-    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <NuGetAuditMode>direct</NuGetAuditMode>
     <Nullable>enable</Nullable>
-    <!--<TreatWarningsAsErrors>true</TreatWarningsAsErrors>-->
+    <TargetFramework>net9.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 

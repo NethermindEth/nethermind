@@ -77,7 +77,7 @@ public sealed class OptimismTransactionProcessor(
 
         if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.Value)
         {
-            return "insufficient sender balance";
+            return TransactionResult.InsufficientSenderBalance;
         }
 
         if (validate && !tx.IsDeposit())
@@ -85,34 +85,34 @@ public sealed class OptimismTransactionProcessor(
             if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                return "miner premium is negative";
+                return TransactionResult.MinerPremiumNegative;
             }
 
             if (UInt256.SubtractUnderflow(senderBalance, tx.Value, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return "insufficient sender balance";
+                return TransactionResult.InsufficientSenderBalance;
             }
 
             UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return "insufficient sender balance";
+                return TransactionResult.InsufficientSenderBalance;
             }
 
             bool overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
             if (spec.IsEip1559Enabled && !tx.IsFree() && (overflows || balanceLeft < maxGasFee))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                return "insufficient MaxFeePerGas for sender balance";
+                return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
             }
 
             overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return "insufficient sender balance";
+                return TransactionResult.InsufficientSenderBalance;
             }
 
             senderReservedGasPayment += l1Cost; // no overflow here, otherwise previous check would fail
@@ -147,7 +147,7 @@ public sealed class OptimismTransactionProcessor(
             if (opSpecHelper.IsBedrock(header))
             {
                 UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver, l1Cost, spec);
+                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
             }
         }
     }
