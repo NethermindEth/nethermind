@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [master]
   push:
-    branches: [master]
+    branches: [test/build-solutions]
   merge_group:
 
 jobs:
@@ -23,4 +23,4 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build ${{ matrix.solution }}.sln
-        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
+        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }} -a x64
