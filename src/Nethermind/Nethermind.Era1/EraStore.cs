@@ -127,18 +127,27 @@ public class EraStore : IEraStore
     {
         if (!(_verifiedEpochs.TryGetValue(epoch, out bool verified) && verified))
         {
-            ValueHash256 checksum = reader.CalculateChecksum();
-            ValueHash256 expectedChecksum = _checksums[epoch - FirstEpoch];
-            if (checksum != expectedChecksum)
+            Task checksumTask = Task.Run(() =>
             {
-                throw new EraVerificationException($"Checksum verification failed. Checksum: {checksum}, Expected: {expectedChecksum}");
-            }
+                ValueHash256 checksum = reader.CalculateChecksum();
+                ValueHash256 expectedChecksum = _checksums[epoch - FirstEpoch];
+                if (checksum != expectedChecksum)
+                {
+                    throw new EraVerificationException(
+                        $"Checksum verification failed. Checksum: {checksum}, Expected: {expectedChecksum}");
+                }
+            });
 
-            var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, cancellation);
-            if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
+            Task accumulatorTask = Task.Run(async () =>
             {
-                throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
-            }
+                var eraAccumulator = await reader.VerifyContent(_specProvider, _blockValidator, cancellation);
+                if (_trustedAccumulators != null && !_trustedAccumulators.Contains(eraAccumulator))
+                {
+                    throw new EraVerificationException($"Unable to verify epoch {epoch}. Accumulator {eraAccumulator} not trusted");
+                }
+            });
+
+            await Task.WhenAll(checksumTask, accumulatorTask);
 
             _verifiedEpochs.TryAdd(epoch, true);
         }
