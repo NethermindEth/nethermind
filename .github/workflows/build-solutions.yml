@@ -17,7 +17,7 @@ jobs:
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
       - name: Free up disk space
-        uses: jlumbroso/free-disk-space@v1
+        uses: jlumbroso/free-disk-space@main
         with:
           large-packages: false
           tool-cache: false
