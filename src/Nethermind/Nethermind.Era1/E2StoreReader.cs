@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
 using DotNetty.Buffers;
+using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Snappier;
 
 namespace Nethermind.Era1;
@@ -24,7 +28,6 @@ public class E2StoreReader : IDisposable
     private long? _startBlock;
     private long _blockCount;
     private readonly long _fileLength;
-    private readonly IByteBufferAllocator _bufferAllocator = PooledByteBufferAllocator.Default;
 
     public E2StoreReader(string filePath): this(File.OpenHandle(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
     {
@@ -36,35 +39,21 @@ public class E2StoreReader : IDisposable
         _fileLength = RandomAccess.GetLength(_file);
     }
 
-    public (T, long) ReadEntryAndDecode<T>(long position, Func<IByteBuffer, T> decoder, ushort expectedType)
+    public (T, long) ReadEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType)
     {
         Entry entry = ReadEntry(position, expectedType);
 
-        IByteBuffer buffer = _bufferAllocator.Buffer((int)entry.Length);
-        try
-        {
-            ReadToByteBuffer(buffer, position + HeaderSize, (int)entry.Length);
-            return (decoder(buffer), (long)(entry.Length + HeaderSize));
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        int length = (int)entry.Length;
+        using ArrayPoolList<byte> buffer = new ArrayPoolList<byte>(length, length);
+        RandomAccess.Read(_file, buffer.AsSpan(), position + HeaderSize);
+        return (decoder(buffer.AsMemory()), (long)(entry.Length + HeaderSize));
     }
 
-    public async Task<(T, long)> ReadSnappyCompressedEntryAndDecode<T>(long position, Func<IByteBuffer, T> decoder, ushort expectedType, CancellationToken token = default)
+    public async Task<(T, long)> ReadSnappyCompressedEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType, CancellationToken token = default)
     {
         Entry entry = ReadEntry(position, expectedType);
-
-        IByteBuffer buffer = await ReadEntryValueAsSnappy(position + HeaderSize, entry.Length, token);
-        try
-        {
-            return ((T, long))(decoder.Invoke(buffer), entry.Length + HeaderSize);
-        }
-        finally
-        {
-            buffer.Release();
-        }
+        T returnValue = await ReadEntryValueAsSnappy(position + HeaderSize, entry.Length, decoder, token);
+        return ((T, long))(returnValue, entry.Length + HeaderSize);
     }
 
     public Entry ReadEntry(long position, ushort? expectedType, CancellationToken token = default)
@@ -84,38 +73,22 @@ public class E2StoreReader : IDisposable
         return entry;
     }
 
-    private async Task<IByteBuffer> ReadEntryValueAsSnappy(long offset, ulong length, CancellationToken cancellation = default)
+    private async Task<T> ReadEntryValueAsSnappy<T>(long offset, ulong length, Func<Memory<byte>, T> decoder, CancellationToken cancellation = default)
     {
-        IByteBuffer buffer = _bufferAllocator.Buffer((int)(length * 2));
-        buffer.EnsureWritable((int)length * 2, true);
+        using ArrayPoolList<byte> inputBuffer = new ArrayPoolList<byte>((int)length, (int)length);
+        RandomAccess.Read(_file, inputBuffer.AsSpan(), offset);
+        Stream inputStream = inputBuffer.AsMemory().AsStream();
 
-        // Using _mappedFile.CreateViewStream results in crashes when things got fast enough.
-        IByteBuffer inputBuffer = _bufferAllocator.Buffer((int)length);
-        ReadToByteBuffer(inputBuffer, offset, (int)length);
-        Stream inputStream = inputBuffer.Array.AsMemory()[inputBuffer.ArrayOffset..(inputBuffer.ArrayOffset + (int)length)].AsStream();
+        await using SnappyStream decompressor = new(inputStream, CompressionMode.Decompress, true);
+        await using RecyclableMemoryStream stream = RecyclableStream.GetStream(nameof(E2StoreReader));
+        await decompressor.CopyToAsync(stream, cancellation);
 
-        using SnappyStream decompressor = new(inputStream, CompressionMode.Decompress, true);
-
-        int read;
-        do
+        if (!stream.TryGetBuffer(out ArraySegment<byte> segment))
         {
-            if (buffer.WritableBytes <= 0)
-            {
-                IByteBuffer newBuffer = _bufferAllocator.Buffer(buffer.ReadableBytes * 2);
-                newBuffer.WriteBytes(buffer);
-                buffer.Release();
-                buffer = newBuffer;
-            }
-
-            int before = buffer.WriterIndex;
-            // We don't know the uncompressed length
-            await buffer.WriteBytesAsync(decompressor, buffer.WritableBytes, cancellation);
-            read = buffer.WriterIndex - before;
+            throw new InvalidDataException("Unable to get buffer for memory stream");
         }
-        while (read != 0);
 
-        inputBuffer.Release();
-        return buffer;
+        return decoder(segment);
     }
 
     public void Dispose()

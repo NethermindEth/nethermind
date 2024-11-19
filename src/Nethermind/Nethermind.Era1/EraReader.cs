@@ -129,7 +129,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     {
         return _fileReader.ReadEntryAndDecode<ValueHash256>(
             _fileReader.AccumulatorOffset,
-            (buffer) => new ValueHash256(buffer.ReadAllBytesAsArray()),
+            (buffer) => new ValueHash256(buffer.Span),
             EntryTypes.Accumulator).Item1;
     }
 
@@ -175,7 +175,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         (UInt256 currentTotalDiffulty, readSize) = _fileReader.ReadEntryAndDecode(
             position,
-            (buffer) => new UInt256(buffer.AsSpan(), isBigEndian: false),
+            (buffer) => new UInt256(buffer.Span, isBigEndian: false),
             EntryTypes.TotalDifficulty);
         header.TotalDifficulty = currentTotalDiffulty;
 
@@ -183,21 +183,22 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return new EntryReadResult(block, receipts);
     }
 
-    private BlockBody DecodeBody(IByteBuffer buffer)
+    private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.AsSpan());
+        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
-    private BlockHeader DecodeHeader(IByteBuffer buffer)
+    private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.AsSpan());
+        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
-    private TxReceipt[] DecodeReceipts(IByteBuffer buf)
+    private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
-        return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
+        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
     }
 
     public ValueHash256 CalculateChecksum()

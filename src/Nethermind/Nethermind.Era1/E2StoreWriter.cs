@@ -12,6 +12,7 @@ using DotNetty.Buffers;
 using Microsoft.IO;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 namespace Nethermind.Era1;
@@ -22,7 +23,6 @@ public class E2StoreWriter : IDisposable
 
     private readonly Stream _stream;
     private bool _disposedValue;
-    private RecyclableMemoryStreamManager _memoryStreamManager = new();
     private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
     public long Position => _stream.Position;
@@ -32,32 +32,23 @@ public class E2StoreWriter : IDisposable
         _stream = stream;
     }
 
-    public Task<int> WriteEntryAsSnappy(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
+    public async Task<int> WriteEntryAsSnappy(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
-        return WriteEntry(type, bytes, true, cancellation);
-    }
-    public Task<int> WriteEntry(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
-    {
-        return WriteEntry(type, bytes, false, cancellation);
-    }
+        // See https://github.com/google/snappy/blob/main/framing_format.txt
+        using RecyclableMemoryStream bufferedStream = RecyclableStream.GetStream(nameof(E2StoreWriter));
+        using SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true);
 
-    private async Task<int> WriteEntry(UInt16 type, Memory<byte> bytes, bool asSnappy, CancellationToken cancellation = default)
+        await compressor!.WriteAsync(bytes, cancellation);
+        await compressor.FlushAsync();
+
+        bool canGetBuffer = bufferedStream!.TryGetBuffer(out ArraySegment<byte> arraySegment);
+        Debug.Assert(canGetBuffer);
+
+        return await WriteEntry(type, arraySegment, cancellation);
+    }
+    public async Task<int> WriteEntry(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
         using ArrayPoolList<byte> headerBuffer = new(HeaderSize);
-        // See https://github.com/google/snappy/blob/main/framing_format.txt
-        if (asSnappy && bytes.Length > 0)
-        {
-            using RecyclableMemoryStream bufferedStream = new RecyclableMemoryStream(_memoryStreamManager);
-            using SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true);
-
-            await compressor!.WriteAsync(bytes, cancellation);
-            await compressor.FlushAsync();
-
-            bool canGetBuffer = bufferedStream!.TryGetBuffer(out ArraySegment<byte> arraySegment);
-            Debug.Assert(canGetBuffer);
-
-            bytes = arraySegment;
-        }
 
         headerBuffer.AddRange(MemoryMarshal.Cast<ushort, byte>(MemoryMarshal.CreateSpan(ref type, 1)));
         int length = bytes.Length;

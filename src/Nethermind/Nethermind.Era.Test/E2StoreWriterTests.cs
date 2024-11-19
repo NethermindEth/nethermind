@@ -1,13 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
-using System.IO.MemoryMappedFiles;
-using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
@@ -117,7 +112,7 @@ internal class E2StoreWriterTests
         sut.Dispose();
 
         using E2StoreReader reader = new E2StoreReader(tmpFile);
-        (var readBytes, _) = reader.ReadEntryAndDecode(0, buf => buf.ReadAllBytesAsArray(), EntryTypes.Accumulator);
+        (var readBytes, _) = reader.ReadEntryAndDecode(0, buf => buf.ToArray(), EntryTypes.Accumulator);
         Assert.That(readBytes, Is.EquivalentTo(TestBytes));
         Assert.That(readBytes.Length, Is.EqualTo(TestBytes.Length));
     }
@@ -136,7 +131,7 @@ internal class E2StoreWriterTests
         sut.Dispose();
 
         using E2StoreReader reader = new E2StoreReader(tmpFile);
-        (var readBytes, _) = await reader.ReadSnappyCompressedEntryAndDecode(position, buf => buf.ReadAllBytesAsArray(), EntryTypes.CompressedHeader, default);
+        (var readBytes, _) = await reader.ReadSnappyCompressedEntryAndDecode<byte[]>(position, buf => buf.ToArray(), EntryTypes.CompressedHeader, default);
         Assert.That(readBytes, Is.EquivalentTo(TestBytes));
     }
 }
