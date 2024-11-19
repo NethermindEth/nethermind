@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.IO;
 
 namespace Nethermind.Era1.Test;
 internal class EraWriterTests
@@ -103,8 +104,8 @@ internal class EraWriterTests
     [Test]
     public async Task Finalize_AddOneBlock_WritesCorrectBlockIndex()
     {
-        using TmpFile tmpFile = new TmpFile();
-        EraWriter sut = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+        using TempPath tmpFile = TempPath.GetTempFile();
+        EraWriter sut = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
 
         Block block = Build.A.Block.WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -112,7 +113,7 @@ internal class EraWriterTests
 
         await sut.Finalize();
 
-        using E2StoreReader fileReader = new E2StoreReader(tmpFile.FilePath);
+        using E2StoreReader fileReader = new E2StoreReader(tmpFile.Path);
         fileReader.BlockOffset(0).Should().Be(8);
     }
 

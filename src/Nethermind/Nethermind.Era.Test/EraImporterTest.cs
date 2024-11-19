@@ -8,6 +8,7 @@ using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Test.IO;
 using Nethermind.Era1.Exceptions;
 
 namespace Nethermind.Era1.Test;
@@ -18,30 +19,30 @@ public class EraImporterTest
     {
         using IContainer testContext = EraTestModule.BuildContainerBuilder().Build();
 
-        TmpDirectory tmpDirectory = testContext.Resolve<TmpDirectory>();
+        string tmpDirectory = testContext.ResolveTempDirPath();
         IEraImporter sut = testContext.Resolve<IEraImporter>();
 
-        Assert.That(() => sut.Import(tmpDirectory.DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Import(tmpDirectory, 0, 0, null, CancellationToken.None), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
     public async Task ImportAsArchiveSync_DirectoryContainsWrongEraFiles_ThrowEraImportException()
     {
         using IContainer testContext = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10).Build();
-        TmpDirectory tempDirectory = new TmpDirectory();
+        string tempDirectory = testContext.ResolveTempDirPath();
 
         IFileSystem fileSystem = testContext.Resolve<IFileSystem>();
-        fileSystem.Directory.CreateDirectory(tempDirectory.DirectoryPath);
+        fileSystem.Directory.CreateDirectory(tempDirectory);
 
-        await fileSystem.File.WriteAllBytesAsync(Path.Join(tempDirectory.DirectoryPath, EraExporter.ChecksumsFileName), []);
+        await fileSystem.File.WriteAllBytesAsync(Path.Join(tempDirectory, EraExporter.ChecksumsFileName), []);
 
-        string badFilePath = Path.Join(tempDirectory.DirectoryPath, "abc-00000-00000000.era1");
+        string badFilePath = Path.Join(tempDirectory, "abc-00000-00000000.era1");
         FileSystemStream stream = fileSystem.File.Create(badFilePath);
         await stream.WriteAsync(new byte[] { 0, 0 });
         stream.Close();
 
         IEraImporter sut = testContext.Resolve<IEraImporter>();
-        Assert.That(() => sut.Import(tempDirectory.DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
+        Assert.That(() => sut.Import(tempDirectory, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
     }
 
     [Test]
@@ -59,7 +60,7 @@ public class EraImporterTest
             .Build();
 
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        Assert.That(() => sut.Import(testCtx.Resolve<TmpDirectory>().DirectoryPath, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+        Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
     }
 
     [Test]
@@ -68,8 +69,7 @@ public class EraImporterTest
         const int ChainLength = 128;
         await using IContainer fromCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
 
-        TmpDirectory tmpDirectory = fromCtx.Resolve<TmpDirectory>();
-        string destinationPath = tmpDirectory.DirectoryPath;
+        string destinationPath = fromCtx.ResolveTempDirPath();
 
         BlockTree inTree = Build.A.BlockTree()
             .WithBlocks(fromCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
@@ -87,7 +87,7 @@ public class EraImporterTest
     {
         using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
         IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
-        string destinationPath = outputCtx.Resolve<TmpDirectory>().DirectoryPath;
+        string destinationPath = outputCtx.ResolveTempDirPath();
 
         string accumulatorPath = Path.Combine(destinationPath, EraExporter.AccumulatorFileName);
         var accumulators = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(accumulatorPath).Select(s => Bytes.FromHexString(s)).ToArray();
@@ -112,7 +112,7 @@ public class EraImporterTest
     {
         using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
         IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
-        string destinationPath = outputCtx.Resolve<TmpDirectory>().DirectoryPath;
+        string destinationPath = outputCtx.ResolveTempDirPath();
 
         string checksumPath = Path.Combine(destinationPath, EraExporter.ChecksumsFileName);
         var checksums = outputCtx.Resolve<IFileSystem>().File.ReadAllLines(checksumPath).Select(s => Bytes.FromHexString(s)).ToArray();

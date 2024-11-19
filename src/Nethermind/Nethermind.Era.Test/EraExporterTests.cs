@@ -25,11 +25,11 @@ public class EraExporterTests
             .AddSingleton<IEraConfig>(new EraConfig() { MaxEra1Size = size })
             .Build();
 
-        TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
+        string tmpDirectory = container.ResolveTempDirPath();
         IEraExporter sut = container.Resolve<IEraExporter>();
-        await sut.Export(tmpDirectory.DirectoryPath, start, end);
+        await sut.Export(tmpDirectory, start, end);
 
-        int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory.DirectoryPath).Length;
+        int fileCount = container.Resolve<IFileSystem>().Directory.GetFiles(tmpDirectory).Length;
         int metaFile = 2;
         Assert.That(fileCount, Is.EqualTo(expectedNumberOfFiles + metaFile));
     }
@@ -44,9 +44,9 @@ public class EraExporterTests
             .Build();
 
         IEraExporter sut = container.Resolve<IEraExporter>();
-        TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
+        string tmpDirectory = container.ResolveTempDirPath();
 
-        Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, to), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0, to), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -55,11 +55,11 @@ public class EraExporterTests
         using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(10)
             .Build();
 
-        TmpDirectory tmpDirectory = container.Resolve<TmpDirectory>();
+        string tmpDirectory = container.ResolveTempDirPath();
         container.Resolve<IReceiptStorage>().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).ReturnsNull();
 
         IEraExporter sut = container.Resolve<IEraExporter>();
 
-        Assert.That(() => sut.Export(tmpDirectory.DirectoryPath, 0, 1), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export(tmpDirectory, 0, 1), Throws.TypeOf<EraException>());
     }
 }

@@ -7,7 +7,7 @@ namespace Nethermind.Era1;
 
 public class EraConfig : IEraConfig
 {
-    public string? ImportDirectory { get; set; } = null;
+    public string? ImportDirectory { get; set; }
     public string? ExportDirectory { get; set; }
     public long From { get; set; }
     public long To { get; set; }

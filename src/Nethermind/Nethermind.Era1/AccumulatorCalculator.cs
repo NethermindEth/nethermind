@@ -8,7 +8,8 @@ using Nethermind.Int256;
 using Nethermind.Merkleization;
 
 namespace Nethermind.Era1;
-//See https://github.com/ethereum/portal-network-specs/blob/master/history-network.md#algorithms
+
+// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
 internal class AccumulatorCalculator : IDisposable
 {
     ArrayPoolList<ReadOnlyMemory<byte>> _roots;
@@ -19,13 +20,11 @@ internal class AccumulatorCalculator : IDisposable
         _roots = new(EraWriter.MaxEra1Size);
     }
 
-    public void Add(Hash256? headerHash, UInt256 td)
+    public void Add(Hash256 headerHash, UInt256 td)
     {
-        if (headerHash is null) throw new ArgumentNullException(nameof(headerHash));
-
         Merkleizer merkleizer = new Merkleizer((int)Merkle.NextPowerOfTwoExponent(2));
         merkleizer.Feed(headerHash.Bytes);
-        merkleizer.Feed(td.ToLittleEndian());
+        merkleizer.Feed(td);
         _roots.Add(merkleizer.CalculateRoot().ToLittleEndian());
     }
 

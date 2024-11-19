@@ -44,7 +44,7 @@ public class E2StoreReader : IDisposable
         try
         {
             ReadToByteBuffer(buffer, position + HeaderSize, (int)entry.Length);
-            return (decoder(buffer), entry.Length + HeaderSize);
+            return (decoder(buffer), (long)(entry.Length + HeaderSize));
         }
         finally
         {
@@ -59,7 +59,7 @@ public class E2StoreReader : IDisposable
         IByteBuffer buffer = await ReadEntryValueAsSnappy(position + HeaderSize, entry.Length, token);
         try
         {
-            return (decoder.Invoke(buffer), entry.Length + HeaderSize);
+            return ((T, long))(decoder.Invoke(buffer), entry.Length + HeaderSize);
         }
         finally
         {
@@ -75,7 +75,7 @@ public class E2StoreReader : IDisposable
 
         Entry entry = new Entry(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
-        if (entry.Length + position > _fileLength)
+        if (entry.Length + (ulong)position > (ulong)_fileLength)
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
         if (entry.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {entry.Length}.");
@@ -84,7 +84,7 @@ public class E2StoreReader : IDisposable
         return entry;
     }
 
-    private async Task<IByteBuffer> ReadEntryValueAsSnappy(long offset, long length, CancellationToken cancellation = default)
+    private async Task<IByteBuffer> ReadEntryValueAsSnappy(long offset, ulong length, CancellationToken cancellation = default)
     {
         IByteBuffer buffer = _bufferAllocator.Buffer((int)(length * 2));
         buffer.EnsureWritable((int)length * 2, true);

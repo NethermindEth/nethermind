@@ -11,6 +11,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
 using NSubstitute;
@@ -36,7 +37,7 @@ public class EraTestModule : Module
     public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, int start = 0, int end = 0)
     {
         IContainer testCtx = BuildContainerBuilderWithBlockTreeOfLength(chainLength).Build();
-        await testCtx.Resolve<IEraExporter>().Export(testCtx.Resolve<TmpDirectory>().DirectoryPath, start, end);
+        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), start, end);
         return testCtx;
     }
 
@@ -53,7 +54,6 @@ public class EraTestModule : Module
             .AddSingleton<ISyncConfig>(new SyncConfig()
             {
             })
-            .AddSingleton<TmpDirectory>()
             .AddKeyedSingleton<ITunableDb>(DbNames.Receipts, Substitute.For<ITunableDb>())
             .AddKeyedSingleton<ITunableDb>(DbNames.Blocks, Substitute.For<ITunableDb>())
             .AddSingleton<IFileSystem>(new FileSystem())
@@ -64,5 +64,16 @@ public class EraTestModule : Module
             })
             .AddSingleton<IBlockTree>(Build.A.BlockTree().TestObject)
             .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>());
+
+
+        builder
+            .Register(ctx => TempPath.GetTempFile())
+            .SingleInstance()
+            .Named<TempPath>("file");
+
+        builder
+            .Register(ctx => TempPath.GetTempDirectory())
+            .SingleInstance()
+            .Named<TempPath>("directory");
     }
 }

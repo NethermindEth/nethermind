@@ -8,11 +8,9 @@ namespace Nethermind.Era1;
 public readonly struct Entry
 {
     public ushort Type { get; }
-    public long Length { get; }
-    public Entry(ushort type, long length)
+    public ulong Length { get; }
+    public Entry(ushort type, ulong length)
     {
-        if (length < 0)
-            throw new ArgumentOutOfRangeException(nameof(length), "Cannot be negativrae.");
         Length = length;
         Type = type;
     }

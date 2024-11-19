@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using DotNetty.Buffers;
+using Microsoft.IO;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -21,7 +22,7 @@ public class E2StoreWriter : IDisposable
 
     private readonly Stream _stream;
     private bool _disposedValue;
-    private MemoryStream? _compressedData;
+    private RecyclableMemoryStreamManager _memoryStreamManager = new();
     private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
     public long Position => _stream.Position;
@@ -43,18 +44,16 @@ public class E2StoreWriter : IDisposable
     private async Task<int> WriteEntry(UInt16 type, Memory<byte> bytes, bool asSnappy, CancellationToken cancellation = default)
     {
         using ArrayPoolList<byte> headerBuffer = new(HeaderSize);
-        //See https://github.com/google/snappy/blob/main/framing_format.txt
+        // See https://github.com/google/snappy/blob/main/framing_format.txt
         if (asSnappy && bytes.Length > 0)
         {
-            //TODO find a way to write directly to file, and still return the number of bytes written
-            EnsureCompressedStream(bytes.Length);
-
-            using SnappyStream compressor = new(_compressedData!, CompressionMode.Compress, true);
+            using RecyclableMemoryStream bufferedStream = new RecyclableMemoryStream(_memoryStreamManager);
+            using SnappyStream compressor = new(bufferedStream!, CompressionMode.Compress, true);
 
             await compressor!.WriteAsync(bytes, cancellation);
             await compressor.FlushAsync();
 
-            bool canGetBuffer = _compressedData!.TryGetBuffer(out ArraySegment<byte> arraySegment);
+            bool canGetBuffer = bufferedStream!.TryGetBuffer(out ArraySegment<byte> arraySegment);
             Debug.Assert(canGetBuffer);
 
             bytes = arraySegment;
@@ -80,14 +79,6 @@ public class E2StoreWriter : IDisposable
         return length + HeaderSize;
     }
 
-    private void EnsureCompressedStream(int minLength)
-    {
-        if (_compressedData == null)
-            _compressedData = new MemoryStream(minLength);
-        else
-            _compressedData.SetLength(0);
-    }
-
     public Task Flush(CancellationToken cancellation = default)
     {
         return _stream.FlushAsync(cancellation);
@@ -100,7 +91,6 @@ public class E2StoreWriter : IDisposable
             if (disposing)
             {
                 _stream?.Dispose();
-                _compressedData?.Dispose();
             }
             _disposedValue = true;
         }

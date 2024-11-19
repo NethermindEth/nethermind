@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -25,14 +26,14 @@ internal class EraReaderTests
 {
     private class PopulatedTestFile : IDisposable
     {
-        private TmpFile _tmpFile;
-        public string FilePath => _tmpFile.FilePath;
+        private TempPath _tmpFile;
+        public string FilePath => _tmpFile.Path;
         public List<(Block, TxReceipt[])> AddedContents { get; }
 
         public static async Task<PopulatedTestFile> Create()
         {
-            TmpFile tmpFile = new TmpFile();
-            EraWriter builder = new EraWriter(tmpFile.FilePath, Substitute.For<ISpecProvider>());
+            TempPath tmpFile = TempPath.GetTempFile();
+            EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
             List<(Block, TxReceipt[])> addedContents = new List<(Block, TxReceipt[])>();
             HeaderDecoder headerDecoder = new HeaderDecoder();
 
@@ -68,7 +69,7 @@ internal class EraReaderTests
             return new PopulatedTestFile(tmpFile, addedContents);
         }
 
-        private PopulatedTestFile(TmpFile tmpFile, List<(Block, TxReceipt[] e)> addedContents)
+        private PopulatedTestFile(TempPath tmpFile, List<(Block, TxReceipt[] e)> addedContents)
         {
             _tmpFile = tmpFile;
             AddedContents = addedContents;

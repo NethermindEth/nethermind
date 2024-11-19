@@ -3,6 +3,7 @@
 
 using Autofac;
 using FluentAssertions;
+using Nethermind.Core.Test.IO;
 
 namespace Nethermind.Era1.Test;
 
@@ -14,9 +15,9 @@ public class EraStoreTests
     public async Task SmallestAndLowestBlock_ShouldBeCorrect(int chainLength, int start, int end)
     {
         await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(chainLength, start, end);
-        TmpDirectory tmpDirectory = ctx.Resolve<TmpDirectory>();
+        string tmpDirectory = ctx.ResolveTempDirPath();
 
-        IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory.DirectoryPath, null);
+        IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
 
         eraStore.FirstBlock.Should().Be(start);
         eraStore.LastBlock.Should().Be(end);
