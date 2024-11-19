@@ -213,15 +213,15 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
             // quick tx fail (before execution)
             _trace.Action ??= new ParityTraceAction
-                {
-                    From = _tx!.SenderAddress,
-                    To = _tx.To,
-                    Value = _tx.Value,
-                    Input = _tx.Data.AsArray(),
-                    Gas = _tx.GasLimit,
-                    CallType = _tx.IsMessageCall ? "call" : "init",
-                    Error = error
-                };
+            {
+                From = _tx!.SenderAddress,
+                To = _tx.To,
+                Value = _tx.Value,
+                Input = _tx.Data.AsArray(),
+                Gas = _tx.GasLimit,
+                CallType = _tx.IsMessageCall ? "call" : "init",
+                Error = error
+            };
         }
 
         public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
