@@ -4,8 +4,9 @@
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <LangVersion>latest</LangVersion>
+    <NuGetAuditMode>direct</NuGetAuditMode>
     <TargetFramework>net9.0</TargetFramework>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
