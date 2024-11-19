@@ -25,4 +25,4 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build ${{ matrix.solution }}.sln
-        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }} -a x64
+        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
