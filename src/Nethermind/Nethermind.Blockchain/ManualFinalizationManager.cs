@@ -19,9 +19,12 @@ namespace Nethermind.Blockchain
 
         public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
         {
-            LastFinalizedHash = finalizedBlock.Hash!;
-            LastFinalizedBlockLevel = Math.Max(LastFinalizedBlockLevel, finalizedBlock.Number);
-            BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlock));
+            if (finalizedBlock?.Hash is not null)
+            {
+                LastFinalizedHash = finalizedBlock.Hash;
+                LastFinalizedBlockLevel = Math.Max(LastFinalizedBlockLevel, finalizedBlock.Number);
+                BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlock));
+            }
         }
 
         public void Dispose() { }

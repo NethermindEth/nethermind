@@ -217,17 +217,17 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_logger.IsDebug) _logger.Debug($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
 
-        if (finalizationErrorMsg is not null)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
-        }
+        //if (finalizationErrorMsg is not null)
+        //{
+        //    if (_logger.IsWarn) _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}.");
+        //    return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
+        //}
 
-        if (safeBlockErrorMsg is not null)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
-        }
+        //if (safeBlockErrorMsg is not null)
+        //{
+        //    if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
+        //    return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
+        //}
 
         if ((newHeadBlock.TotalDifficulty ?? 0) != 0 && (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header)))
         {
@@ -257,19 +257,19 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
 
-        if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
-        {
-            string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
-            if (_logger.IsWarn) _logger.Warn(errorMsg);
-            return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-        }
+        //if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
+        //{
+        //    string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
+        //    if (_logger.IsWarn) _logger.Warn(errorMsg);
+        //    return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+        //}
 
-        if (IsInconsistent(forkchoiceState.SafeBlockHash))
-        {
-            string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
-            if (_logger.IsWarn) _logger.Warn(errorMsg);
-            return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-        }
+        //if (IsInconsistent(forkchoiceState.SafeBlockHash))
+        //{
+        //    string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
+        //    if (_logger.IsWarn) _logger.Warn(errorMsg);
+        //    return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+        //}
 
         bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
