@@ -8,8 +8,11 @@ using Nethermind.Int256;
 using Org.BouncyCastle.Tls;
 using Sigil;
 using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -75,7 +78,7 @@ static class EmitExtensions
         return getSetter ? propInfo.GetSetMethod() : propInfo.GetGetMethod();
     }
 
-    public static void DebugPrint<T>(this Emit<T> il, Local local)
+    public static void Print<T>(this Emit<T> il, Local local)
     {
         if (local.LocalType.IsValueType)
         {
@@ -87,21 +90,41 @@ static class EmitExtensions
             il.LoadLocal(local);
             il.CallVirtual(local.LocalType.GetMethod("ToString", []));
         }
+#if DEBUG
         il.Call(typeof(Debug).GetMethod(nameof(Debug.WriteLine), [typeof(string)]));
+#endif
+        il.Call(typeof(Console).GetMethod(nameof(Console.WriteLine), [typeof(string)]));
     }
-    public static void Load<T, U>(this Emit<T> il, Local local, Local idx)
+
+
+    public static void PrintString<T>(this Emit<T> il, string msg)
+    {
+        using Local local = il.DeclareLocal<string>();
+
+        il.LoadConstant(msg);
+        il.StoreLocal(local);
+        il.Print(local);
+    }
+
+    public static void LoadWord<T, U>(this Emit<T> il, Local local, Local idx)
     {
         il.LoadLocalAddress(local);
         il.LoadLocal(idx);
         il.Call(typeof(Span<U>).GetMethod("get_Item"));
     }
 
-    public static void Load<T>(this Emit<T> il, Local local, Local idx, FieldInfo wordField)
+    public static void LoadWord<T>(this Emit<T> il, Local local, Local idx, FieldInfo wordField)
     {
         il.LoadLocalAddress(local);
         il.LoadLocal(idx);
         il.Call(typeof(Span<Word>).GetMethod("get_Item"));
         il.LoadField(wordField);
+    }
+    public static void CleanAndSet<T>(this Emit<T> il, Local local, Local idx, Action<Emit<T>> SetAction)
+    {
+        il.Duplicate();
+        il.InitializeObject(typeof(Word));
+        SetAction(il);
     }
 
     public static void CleanWord<T>(this Emit<T> il, Local local, Local idx)
@@ -124,12 +147,6 @@ static class EmitExtensions
         il.InitializeObject(typeof(Word));
     }
 
-    public static void ZeroWord<T>(this Emit<T> il, Local local, Local idx)
-    {
-        il.Load<T, Word>(local, idx);
-        il.Call(typeof(Word).GetMethod(nameof(Word.SetToZero)));
-    }
-
     /// <summary>
     /// Advances the stack one word up.
     /// </summary>
@@ -144,6 +161,78 @@ static class EmitExtensions
     public static MethodInfo MethodInfo<T>(string name, Type returnType, Type[] argTypes, BindingFlags flags = BindingFlags.Public)
     {
         return typeof(T).GetMethods().First(m => m.Name == name && m.ReturnType == returnType && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(argTypes));
+    }
+
+    public static void FindCorrectBranchAndJump<T>(this Emit<T> il, Local jmpDestination, Dictionary<int, Sigil.Label> jumpDestinations, Dictionary<EvmExceptionType, Sigil.Label> evmExceptionLabels)
+    {
+        int numberOfBitsSet = BitOperations.Log2((uint)jumpDestinations.Count) + 1;
+
+        int length = 1 << numberOfBitsSet;
+        int bitMask = length - 1;
+        Sigil.Label[] jumps = new Sigil.Label[length];
+        for (int i = 0; i < length; i++)
+        {
+            jumps[i] = il.DefineLabel();
+        }
+
+        il.LoadLocal(jmpDestination);
+        il.LoadConstant(bitMask);
+        il.And();
+
+
+        il.Switch(jumps);
+
+        for (int i = 0; i < length; i++)
+        {
+            il.MarkLabel(jumps[i]);
+            // for each destination matching the bit mask emit check for the equality
+            foreach (ushort dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
+            {
+                il.LoadLocal(jmpDestination);
+                il.LoadConstant(dest);
+                il.BranchIfEqual(jumpDestinations[dest]);
+            }
+            // each bucket ends with a jump to invalid access to do not fall through to another one
+            il.Branch(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
+        }
+    }
+
+    // requires a zeroed WORD on the stack
+    public static void SpecialPushOpcode<T>(this Emit<T> il, OpcodeInfo op, byte[][] data)
+    {
+        uint count = op.Operation - Instruction.PUSH0;
+        uint argSize = BitOperations.RoundUpToPowerOf2(count);
+
+        int argIndex = op.Arguments.Value;
+        byte[] zpbytes = data[argIndex].AsSpan().SliceWithZeroPadding(0, (int)argSize, PadDirection.Left).ToArray();
+        if(BitConverter.IsLittleEndian)
+        {
+            Array.Reverse(zpbytes);
+        }
+        
+        switch (op.Operation)
+        {
+            case Instruction.PUSH1:
+                il.LoadConstant(zpbytes[0]);
+                il.Call(Word.SetByte0);
+                break;
+            case Instruction.PUSH2:
+                il.LoadConstant(BinaryPrimitives.ReadUInt16LittleEndian(zpbytes));
+                il.Call(Word.SetUInt0);
+                break;
+            case Instruction.PUSH3:
+            case Instruction.PUSH4:
+                il.LoadConstant(BinaryPrimitives.ReadUInt32LittleEndian(zpbytes));
+                il.Call(Word.SetUInt0);
+                break;
+            case Instruction.PUSH5:
+            case Instruction.PUSH6:
+            case Instruction.PUSH7:
+            case Instruction.PUSH8:
+                il.LoadConstant(BinaryPrimitives.ReadUInt64LittleEndian(zpbytes));
+                il.Call(Word.SetULong0);
+                break;
+        }
     }
 
     /// <summary>

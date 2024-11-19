@@ -82,7 +82,7 @@ public partial class EngineModuleTests
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
-        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block);
+        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block, o => o.IgnoringCyclicReferences());
         sentItem.Profit.Should().Be(0);
     }
 

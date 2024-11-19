@@ -35,12 +35,12 @@ internal class MethodSelector : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<T, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         byte value = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1];
         byte location = vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3];
-        VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32);
+        VirtualMachine<T, VirtualMachine.NotOptimizing>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32);
         vmState.Memory.SaveByte(location, value);
         stack.PushUInt256(vmState.Env.Value);
         stack.PushUInt256(vmState.Env.Value);
@@ -69,12 +69,12 @@ internal class IsContractCheck : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         Address address = stack.PopAddress();
 
-        if (!VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, worldState, spec, NullTxTracer.Instance, true))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas(ref gasAvailable, vmState, address, false, worldState, spec, NullTxTracer.Instance, true))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         int contractCodeSize = codeInfoRepository.GetCachedCodeInfo(worldState, address, spec).MachineCode.Length;
@@ -112,7 +112,7 @@ internal class EmulatedStaticJump : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         int jumpdestionation = (vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << 8) | vmState.Env.CodeInfo.MachineCode.Span[programCounter + 2];
@@ -147,7 +147,7 @@ internal class EmulatedStaticCJump : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.PopUInt256(out UInt256 condition);
@@ -189,7 +189,7 @@ internal class PP : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.Head -= 2;
@@ -219,7 +219,7 @@ internal class P01P01SHL : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.PushUInt256((UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1] << (int)((UInt256)vmState.Env.CodeInfo.MachineCode.Span[programCounter + 3]).u0);
@@ -248,7 +248,7 @@ internal class PJ : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         //stack.Head--;
@@ -287,7 +287,7 @@ internal class S02P : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.Swap(3);
@@ -316,7 +316,7 @@ internal class S01P : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.Swap(2);
@@ -345,7 +345,7 @@ internal class P01SHL : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.PopUInt256(out UInt256 value);
@@ -375,7 +375,7 @@ internal class P01D02 : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1]);
@@ -405,7 +405,7 @@ internal class P01D03 : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.PushUInt256(vmState.Env.CodeInfo.MachineCode.Span[programCounter + 1]);
@@ -435,7 +435,7 @@ internal class S02S01 : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         stack.Swap(3);
@@ -465,7 +465,7 @@ internal class D01P04EQ : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
 
@@ -509,7 +509,7 @@ internal class D01P04GT : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         ReadOnlySpan<byte> fourByteSpan = vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 2, 4);
@@ -550,14 +550,14 @@ internal class D02MST : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
 
         stack.Dup(2);
         stack.PopUInt256(out UInt256 location);
         var bytes = stack.PopWord256();
-        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, in location, (UInt256)32))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost(vmState, ref gasAvailable, in location, (UInt256)32))
             result.ExceptionType = EvmExceptionType.OutOfGas;
         vmState.Memory.SaveWord(in location, bytes);
         stack.PushUInt256(location);
@@ -586,7 +586,7 @@ internal class P01ADDS01D02MST : InstructionChunk
     {
         CallCount++;
 
-        if (!VirtualMachine<T>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateGas(GasCost(vmState, spec), ref gasAvailable))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
 
@@ -595,7 +595,7 @@ internal class P01ADDS01D02MST : InstructionChunk
 
         location = location + (new UInt256(vmState.Env.CodeInfo.MachineCode.Span.Slice(programCounter + 3, 1)));
 
-        if (!VirtualMachine<T>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32))
+        if (!VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost(vmState, ref gasAvailable, location, 32))
             result.ExceptionType = EvmExceptionType.OutOfGas;
 
         vmState.Memory.SaveWord(location, stack.PopWord256());

@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm
 {
@@ -373,12 +374,14 @@ namespace Nethermind.Evm
     }
     public struct OpcodeInfo(int pc, Instruction instruction, int? argumentIndex)
     {
-        public OpcodeMetadata Metadata => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
-        public Instruction Operation => instruction;
+        public readonly OpcodeMetadata Metadata => OpcodeMetadata.Operations.GetValueOrDefault(instruction, OpcodeMetadata.Operations[Instruction.INVALID]);
+        public readonly Instruction Operation => instruction;
         public int ProgramCounter => pc;
         public int? Arguments { get; set; } = argumentIndex;
-        public bool IsTerminating => instruction.IsTerminating();
-        public bool IsStateful => instruction.IsStateful();
+        public readonly bool IsTerminating => instruction.IsTerminating();
+        public readonly bool IsStateful => instruction.IsStateful();
+        public readonly bool IsInvalid => instruction.IsInvalid();
+        public readonly bool IsJump => instruction.IsJump();
     }
 
     public static class InstructionExtensions
@@ -405,6 +408,12 @@ namespace Nethermind.Evm
             Instruction.JUMPI => true,
             _ => false
         };
+
+        public static bool RequiresAvailabilityCheck(this Instruction instruction)
+            => !Frontier.Instance.IsEnabled(instruction);
+
+        public static bool IsInvalid(this Instruction instruction)
+            => !Enum.IsDefined<Instruction>(instruction) || instruction is Instruction.INVALID;
 
         public static bool IsEnabled(this IReleaseSpec? spec, Instruction instruction) => instruction switch
         {

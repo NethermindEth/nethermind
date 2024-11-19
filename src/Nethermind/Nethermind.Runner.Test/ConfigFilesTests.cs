@@ -162,7 +162,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
         Test<IMetricsConfig, bool>(configWildcard, c => c.Enabled, false);
         Test<IMetricsConfig, string>(configWildcard, c => c.NodeName.ToUpperInvariant(), (cf, p) => cf.Replace("_", " ").Replace(".json", "").ToUpperInvariant().Replace("POACORE", "POA CORE"));
         Test<IMetricsConfig, int>(configWildcard, c => c.IntervalSeconds, 5);
-        Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
+        Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, (string)null);
     }
 
     [TestCase("^spaceneth ^volta", 50)]

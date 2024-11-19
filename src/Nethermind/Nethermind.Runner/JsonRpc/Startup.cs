@@ -56,9 +56,10 @@ public class Startup
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);
 
-        string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
-        services.AddCors(c => c.AddPolicy("Cors",
-            p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(builder => builder
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithOrigins(jsonRpcConfig.CorsOrigins)));
 
         services.AddResponseCompression(options =>
         {
@@ -78,8 +79,8 @@ public class Startup
             app.UseDeveloperExceptionPage();
         }
 
-        app.UseCors("Cors");
         app.UseRouting();
+        app.UseCors();
         app.UseResponseCompression();
 
         IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();

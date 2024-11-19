@@ -15,6 +15,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.IL.EmitExtensions;
@@ -33,24 +34,29 @@ internal class ILCompiler
     private const int TXTRACER_INDEX = 5;
     private const int IMMEDIATES_DATA_INDEX = 6;
 
-    public class SegmentExecutionCtx
+    public class PrecompiledChunk
     {
         public string Name => PrecompiledSegment.Method.Name;
-        public ExecuteSegment PrecompiledSegment;
-        public byte[][] Data;
-        public int[] JumpDestinations;
+        internal ExecuteSegment PrecompiledSegment;
+        internal byte[][] Data;
+        internal int[] JumpDestinations;
+
+        public void Invoke(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace)
+        {
+            PrecompiledSegment(ref vmstate, blockhashProvider, worldState, codeInfoRepository, spec, trace, Data);
+        }
     }
-    public static SegmentExecutionCtx CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
+    public static PrecompiledChunk CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
         // Note(Ayman) : verify all endianness arguments and bytes
 
-        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: false, strictBranchVerification: false);
+        Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
-        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, config.BakeInTracingInJitMode);
+        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
-        return new SegmentExecutionCtx
+        return new PrecompiledChunk
         {
             PrecompiledSegment = dynEmitedDelegate,
             Data = data,
@@ -58,7 +64,7 @@ internal class ILCompiler
         };
     }
 
-    private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, bool bakeInTracerCalls)
+    private static int[] EmitSegmentBody(Emit<ExecuteSegment> method, CodeInfo codeinfo, OpcodeInfo[] code, byte[][] data, bool bakeInTracerCalls)
     {
         using Local jmpDestination = method.DeclareLocal(typeof(int));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
@@ -66,6 +72,9 @@ internal class ILCompiler
         using Local address = method.DeclareLocal(typeof(Address));
 
         using Local hash256 = method.DeclareLocal(typeof(Hash256));
+
+        using Local wordRef256A = method.DeclareLocal(typeof(Word).MakeByRefType());
+        using Local wordRef256B = method.DeclareLocal(typeof(Word).MakeByRefType());
 
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
@@ -133,24 +142,29 @@ internal class ILCompiler
         // if last ilvmstate was a jump
         method.LoadLocal(programCounter);
         method.LoadConstant(code[0].ProgramCounter);
-        method.CompareEqual();
-        method.BranchIfFalse(isContinuation);
+        method.BranchIfGreater(isContinuation);
 
         Dictionary<int, Label> jumpDestinations = new();
 
         var costs = BuildStaticCostLookup(code);
-
-        bool hasJump = false;
+        var stacks = AnalyseStackBehavior(code);
+        var segments = CheckUnreachableCode(code);
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
         for (int i = 0; i < code.Length; i++)
         {
             OpcodeInfo op = code[i];
+
+            if (segments.TryGetValue(op.ProgramCounter, out var metadata) && !metadata.IsReachable)
+            {
+                i = metadata.EndOfSegment;
+                continue;
+            }
+
             if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
-                jumpDestinations[op.ProgramCounter] = method.DefineLabel();
-                method.MarkLabel(jumpDestinations[op.ProgramCounter]);
+                method.MarkLabel(jumpDestinations[op.ProgramCounter] = method.DefineLabel());
                 method.LoadConstant(op.ProgramCounter);
                 method.StoreLocal(programCounter);
             }
@@ -162,21 +176,35 @@ internal class ILCompiler
             }
 
             // check if opcode is activated in current spec
-            method.LoadArgument(SPEC_INDEX);
-            method.LoadConstant((byte)op.Operation);
-            method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
-            method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+            if(op.Operation.RequiresAvailabilityCheck())
+            {
+                method.LoadArgument(SPEC_INDEX);
+                method.LoadConstant((byte)op.Operation);
+                method.Call(typeof(InstructionExtensions).GetMethod(nameof(InstructionExtensions.IsEnabled)));
+                method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+            }
 
-            if (costs.ContainsKey(op.ProgramCounter) && costs[op.ProgramCounter] > 0)
+            if (!bakeInTracerCalls) {
+                if (costs.TryGetValue(op.ProgramCounter, out long gasCost) && gasCost > 0)
+                {
+                    method.LoadLocal(gasAvailable);
+                    method.LoadConstant(gasCost);
+                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
+
+                    method.LoadLocal(gasAvailable);
+                    method.LoadConstant(gasCost);
+                    method.Subtract();
+                    method.StoreLocal(gasAvailable);
+                }
+            } else
             {
                 method.LoadLocal(gasAvailable);
-                method.LoadConstant(costs[op.ProgramCounter]);
-                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
-
-                method.LoadLocal(gasAvailable);
-                method.LoadConstant(costs[op.ProgramCounter]);
+                method.LoadConstant(op.Metadata.GasCost);
                 method.Subtract();
+                method.Duplicate();
                 method.StoreLocal(gasAvailable);
+                method.LoadConstant((long)0);
+                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.OutOfGas]);
             }
 
             if (i == code.Length - 1)
@@ -185,22 +213,26 @@ internal class ILCompiler
                 method.StoreLocal(programCounter);
             }
 
-            if (op.Metadata.StackBehaviorPop > 0)
+            if (stacks.TryGetValue(op.ProgramCounter, out (int required, int max, int leftOut) stackMetadata))
             {
-                method.LoadLocal(head);
-                method.LoadConstant(op.Metadata.StackBehaviorPop);
-                method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                if(stackMetadata.required != 0)
+                {
+                    method.LoadLocal(head);
+                    method.LoadConstant(stackMetadata.required);
+                    method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
+                }
+
+                if (stackMetadata.max != 0)
+                {
+                    method.LoadLocal(head);
+                    method.LoadConstant(stackMetadata.max);
+                    method.Add();
+                    method.LoadConstant(EvmStack.MaxStackSize);
+                    method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
+                }
+
             }
 
-            if (op.Metadata.StackBehaviorPush > 0)
-            {
-                int delta = op.Metadata.StackBehaviorPush - op.Metadata.StackBehaviorPop;
-                method.LoadLocal(head);
-                method.LoadConstant(delta);
-                method.Add();
-                method.LoadConstant(EvmStack.MaxStackSize);
-                method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
-            }
 #if DEBUG
             if(bakeInTracerCalls)
             {
@@ -255,7 +287,6 @@ internal class ILCompiler
                             EmitCallToEndInstructionTrace(method, gasAvailable);
                         }
                         method.FakeBranch(jumpTable);
-                        hasJump = true;
                     }
                     break;
                 case Instruction.JUMPI:
@@ -280,7 +311,6 @@ internal class ILCompiler
 
                         method.MarkLabel(noJump);
                         method.StackPop(head, 2);
-                        hasJump = true;
                     }
                     break;
                 case Instruction.PUSH0:
@@ -297,6 +327,12 @@ internal class ILCompiler
                 case Instruction.PUSH6:
                 case Instruction.PUSH7:
                 case Instruction.PUSH8:
+                    {
+                        method.CleanAndLoadWord(stack, head);
+                        method.SpecialPushOpcode(op, data);
+                        method.StackPush(head);
+                    }
+                    break;
                 case Instruction.PUSH9:
                 case Instruction.PUSH10:
                 case Instruction.PUSH11:
@@ -333,13 +369,184 @@ internal class ILCompiler
                     }
                     break;
                 case Instruction.ADD:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    {
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint32);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint32);
+                        method.And();
+                        method.BranchIfFalse(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Add();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.SUB:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    {
+                        Label pushNegItemB = method.DefineLabel();
+                        Label pushItemA = method.DefineLabel();
+                        // b - a a::b
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
+
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushItemA);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushNegItemB);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint32);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint32);
+                        method.And();
+                        method.BranchIfFalse(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetUInt0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetUInt0);
+                        method.BranchIfLess(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Subtract();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushItemA);
+                        method.LoadWord<ExecuteSegment, Word>(stack, head);
+                        method.LoadLocal(wordRef256A);
+                        method.LoadObject(typeof(Word));
+                        method.StoreObject(typeof(Word));
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushNegItemB);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.ToNegative);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.MUL:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                    {
+                        Label push0Zero = method.DefineLabel();
+                        Label pushItemA = method.DefineLabel();
+                        Label pushItemB = method.DefineLabel();
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(push0Zero);
+
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushItemB);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsOne);
+                        method.BranchIfTrue(pushItemB);
+
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsOne);
+                        method.BranchIfTrue(pushItemA);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint16);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint16);
+                        method.And();
+                        method.BranchIfFalse(fallbackToUInt256Call);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Multiply ();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(push0Zero);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushItemA);
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(wordRef256A);
+                        method.LoadObject(typeof(Word));
+                        method.StoreObject(typeof(Word));
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushItemB);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.MOD:
                     EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
@@ -619,7 +826,7 @@ internal class ILCompiler
                 case Instruction.DUP16:
                     {
                         int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
-                        method.Load<ExecuteSegment, Word>(stack, head);
+                        method.LoadWord<ExecuteSegment, Word>(stack, head);
                         method.StackLoadPrevious(stack, head, count);
                         method.LoadObject(typeof(Word));
                         method.StoreObject(typeof(Word));
@@ -663,7 +870,6 @@ internal class ILCompiler
                     break;
                 case Instruction.CODESIZE:
                     {
-                        var lastOpcode = code[^1];
                         method.CleanAndLoadWord(stack, head);
                         method.LoadConstant(codeinfo.MachineCode.Length);
                         method.Call(Word.SetInt0);
@@ -808,7 +1014,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
@@ -892,7 +1098,7 @@ internal class ILCompiler
                         method.Call(ConvertionExplicit<UInt256, int>());
                         method.StoreLocal(uint256C);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -923,7 +1129,7 @@ internal class ILCompiler
                         method.Call(ConvertionExplicit<UInt256, int>());
                         method.StoreLocal(uint256C);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -946,7 +1152,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadFieldAddress(GetFieldInfo(typeof(VirtualMachine), nameof(VirtualMachine.BigInt32)));
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1001,7 +1207,7 @@ internal class ILCompiler
                         method.StoreLocal(uint256R);
                         method.LoadLocalAddress(uint256R);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1043,7 +1249,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
 
@@ -1140,7 +1346,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1236,7 +1442,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1273,7 +1479,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256B);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(VMSTATE_INDEX);
@@ -1465,7 +1671,7 @@ internal class ILCompiler
                         method.Subtract();
                         method.StoreLocal(uint32A);
 
-                        method.Load<ExecuteSegment, byte>(wordSpan, uint32A);
+                        method.LoadWord<ExecuteSegment, byte>(wordSpan, uint32A);
                         method.LoadIndirect<byte>();
                         method.Convert<sbyte>();
                         method.LoadConstant((sbyte)0);
@@ -1584,12 +1790,12 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
 
-                        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing>)
-                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                        MethodInfo nonTracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
                                     .MakeGenericMethod(typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing), typeof(VirtualMachine.NotTracing));
 
-                        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing>)
-                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
+                        MethodInfo tracingSStoreMethod = typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>)
+                                    .GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.InstructionSStore), BindingFlags.Static | BindingFlags.NonPublic)
                                     .MakeGenericMethod(typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing), typeof(VirtualMachine.IsTracing));
 
                         if(!bakeInTracerCalls)
@@ -1654,10 +1860,10 @@ internal class ILCompiler
                         method.LoadArgument(VMSTATE_INDEX);
                         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmState)));
                         method.LoadLocalAddress(storageCell);
-                        method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing>.StorageAccessType.SLOAD);
+                        method.LoadConstant((int)VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.StorageAccessType.SLOAD);
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeStorageAccessGas), BindingFlags.Static | BindingFlags.NonPublic));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(WORLD_STATE_INDEX);
@@ -1696,7 +1902,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.CleanAndLoadWord(stack, head);
@@ -1758,7 +1964,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadLocalAddress(uint256C);
@@ -1770,7 +1976,7 @@ internal class ILCompiler
                         method.LoadLocalAddress(gasAvailable);
                         method.LoadLocalAddress(uint256A);
                         method.LoadLocalAddress(uint256C);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.LoadArgument(CODE_INFO_REPOSITORY_INDEX);
@@ -1824,7 +2030,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         Label pushZeroLabel = method.DefineLabel();
@@ -1914,7 +2120,7 @@ internal class ILCompiler
                         method.LoadArgument(SPEC_INDEX);
                         method.LoadArgument(TXTRACER_INDEX);
                         method.LoadConstant(true);
-                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing>.ChargeAccountAccessGas)));
+                        method.Call(typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.ChargeAccountAccessGas)));
                         method.BranchIfFalse(evmExceptionLabels[EvmExceptionType.OutOfGas]);
 
                         method.CleanAndLoadWord(stack, head);
@@ -1936,15 +2142,12 @@ internal class ILCompiler
             {
                 EmitCallToEndInstructionTrace(method, gasAvailable);
             }
-
-            if(!hasJump && op.IsTerminating)
-            {
-                break;
-            }
         }
 
-        Label skipProgramCounterSetting = method.DefineLabel();
+        Label jumpIsLocal = method.DefineLabel();
+        Label jumpIsNotLocal = method.DefineLabel();
         Local isEphemeralJump = method.DeclareLocal<bool>();
+        Label skipProgramCounterSetting = method.DefineLabel();
         // prepare ILEvmState
         // check if returnState is null
         method.MarkLabel(ret);
@@ -1976,17 +2179,9 @@ internal class ILCompiler
 
         method.MarkLabel(skipProgramCounterSetting);
 
-
-        // set exception
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadConstant((int)EvmExceptionType.None);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
-
-        // go to return
-        method.Branch(exit);
-
-        Label jumpIsLocal = method.DefineLabel();
-        Label jumpIsNotLocal = method.DefineLabel();
+        // return
+        method.MarkLabel(exit);
+        method.Return();
 
         // isContinuation
         method.MarkLabel(isContinuation);
@@ -2040,46 +2235,18 @@ internal class ILCompiler
 
         method.MarkLabel(jumpIsLocal);
 
-
-        // if (jumpDest > uint.MaxValue)
-        method.LoadConstant(uint.MaxValue);
-        method.LoadLocal(jmpDestination);
-        // goto invalid address
-        method.BranchIfGreater(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
-        // else
-
-        const int length = 1 << 8;
-        const int bitMask = length - 1; // 128
-        Label[] jumps = new Label[length];
-        for (int i = 0; i < length; i++)
+        if(jumpDestinations.Count < 64)
         {
-            jumps[i] = method.DefineLabel();
-        }
-
-        // we get first Word.Size bits of the jump destination since it is less than int.MaxValue
-
-        method.LoadLocal(jmpDestination);
-        method.LoadConstant(bitMask);
-        method.And();
-
-
-        // switch on the first 7 bits
-        method.Switch(jumps);
-
-        for (int i = 0; i < length; i++)
-        {
-            method.MarkLabel(jumps[i]);
-            // for each destination matching the bit mask emit check for the equality
-            foreach (ushort dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
+            foreach (var jumpdest in jumpDestinations)
             {
                 method.LoadLocal(jmpDestination);
-                method.LoadConstant(dest);
-                method.Duplicate();
-                method.StoreLocal(uint32A);
-                method.BranchIfEqual(jumpDestinations[dest]);
+                method.LoadConstant(jumpdest.Key);
+                method.BranchIfEqual(jumpdest.Value);
             }
-            // each bucket ends with a jump to invalid access to do not fall through to another one
             method.Branch(evmExceptionLabels[EvmExceptionType.InvalidJumpDestination]);
+        } else
+        {
+            method.FindCorrectBranchAndJump(jmpDestination, jumpDestinations, evmExceptionLabels);
         }
 
         foreach (var kvp in evmExceptionLabels)
@@ -2093,15 +2260,8 @@ internal class ILCompiler
             method.LoadArgument(VMSTATE_INDEX);
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
-            method.LoadArgument(VMSTATE_INDEX);
-            method.LoadLocal(gasAvailable);
-            method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
             method.Branch(exit);
         }
-
-        // return
-        method.MarkLabel(exit);
-        method.Return();
 
         return jumpDestinations.Keys.ToArray();
     }
@@ -2156,8 +2316,8 @@ internal class ILCompiler
 
         method.ForBranch(head, (il, idx) =>
         {
-            il.Load<ExecuteSegment, Word>(newStack, idx);
-            il.Load<ExecuteSegment, Word>(stack, idx);
+            il.LoadWord<ExecuteSegment, Word>(newStack, idx);
+            il.LoadWord<ExecuteSegment, Word>(stack, idx);
             il.LoadObject(typeof(Word));
             il.StoreObject(typeof(Word));
         });
@@ -2180,7 +2340,7 @@ internal class ILCompiler
         method.LoadArgument(TXTRACER_INDEX);
         method.LoadLocal(gasAvailable);
         method.LoadConstant((int)kvp.Key);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.EndInstructionTraceError), BindingFlags.Static | BindingFlags.NonPublic));
 
         method.MarkLabel(skipTracing);
     }
@@ -2196,7 +2356,7 @@ internal class ILCompiler
         method.LoadArgument(VMSTATE_INDEX);
         method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Memory)));
         method.Call(GetPropertyInfo<EvmPooledMemory>(nameof(EvmPooledMemory.Size), false, out _));
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.EndInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
 
         method.MarkLabel(skipTracing);
     }
@@ -2214,7 +2374,7 @@ internal class ILCompiler
         method.LoadLocal(gasAvailable);
         method.LoadConstant(op.ProgramCounter);
         method.LoadLocal(head);
-        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
+        method.Call(typeof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>).GetMethod(nameof(VirtualMachine<VirtualMachine.IsTracing, VirtualMachine.NotOptimizing>.StartInstructionTrace), BindingFlags.Static | BindingFlags.NonPublic));
 
         method.MarkLabel(skipTracing);
     }
@@ -2429,8 +2589,6 @@ internal class ILCompiler
     private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, (Local span, Local idx) stack, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, Dictionary<EvmExceptionType, Label> exceptions, params Local[] locals)
     {
         Label label = il.DefineLabel();
-
-        // we the two uint256 from the stack
         il.StackLoadPrevious(stack.span, stack.idx, 1);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[0]);
@@ -2551,8 +2709,8 @@ internal class ILCompiler
         il.LoadLocalAddress(uint256Position); // position
         il.LoadLocalAddress(uint256Length); // length
         il.Call(
-            typeof(VirtualMachine<VirtualMachine.NotTracing>).GetMethod(
-                nameof(VirtualMachine<VirtualMachine.NotTracing>.UpdateMemoryCost)
+            typeof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>).GetMethod(
+                nameof(VirtualMachine<VirtualMachine.NotTracing, VirtualMachine.NotOptimizing>.UpdateMemoryCost)
             )
         );
         il.BranchIfFalse(exceptions[EvmExceptionType.OutOfGas]);
@@ -2637,6 +2795,107 @@ internal class ILCompiler
         il.BranchIfLess(outOfGasLabel);
     }
 
+    private static Dictionary<int, (bool IsReachable, int EndOfSegment)> CheckUnreachableCode(ReadOnlySpan<OpcodeInfo> code)
+    {
+        // a valid recheable segment is any segment starting with a JUMPDEST and ending with a terminating opcode or a JUMP or normal opcode
+        // first segment is assumed to have a JUMPDEST cause we can't prove previous segment can\t reach it
+        // every segment after a JUMPI is assumged to have a JUMPDEST
+
+        Dictionary<int, (bool IsReachable, int EndOfSegment)> segments = new();
+
+        bool hasJumpdest = true;
+        int segmentStart = 0;
+        int segmentEnd = default;
+
+        for (int pc = 0; pc < code.Length; pc++)
+        {
+            OpcodeInfo op = code[pc];
+            switch (op.Operation)
+            {
+                case Instruction.JUMPDEST:
+                    segmentEnd = pc - 1;
+                    segments[segmentStart] = (hasJumpdest, segmentEnd);
+                    segmentStart = op.ProgramCounter;
+                    hasJumpdest = true;
+                    break;
+                default:
+                    segmentEnd = pc;
+                    if (op.IsTerminating || op.IsJump)
+                    {
+                        segments[segmentStart] = (hasJumpdest, segmentEnd);
+                        segmentStart = op.ProgramCounter + 1;
+                        hasJumpdest = op.Operation is Instruction.JUMPI;
+                    }
+                    break;
+            }
+        }
+
+        segments[segmentStart] = (hasJumpdest, segmentEnd);
+
+        return segments;
+    }
+    private static Dictionary<int, (int required, int max, int leftOut)> AnalyseStackBehavior(ReadOnlySpan<OpcodeInfo> code)
+    {
+        Dictionary<int, (int required, int max, int leftOut)> stacks = new();
+        int stackStart = code[0].ProgramCounter;
+        (int required, int max, int leftOut) metadata = (code[0].Metadata.StackBehaviorPop, code[0].Metadata.StackBehaviorPush - code[0].Metadata.StackBehaviorPop, code[0].Metadata.StackBehaviorPush);
+
+        int currentStackSize = code[0].Metadata.StackBehaviorPush;
+
+        for (int pc = 0; pc < code.Length; pc++)
+        {
+            OpcodeInfo op = code[pc];
+            switch (op.Operation)
+            {
+                case Instruction.JUMPDEST:
+                    metadata.required = -metadata.required;
+                    stacks[stackStart] = metadata; // remember the stack chain of opcodes
+                    stackStart = op.ProgramCounter;
+                    metadata = (0, 0, 0);
+                    currentStackSize = 0;
+                    break;
+                default:
+                    currentStackSize -= op.Metadata.StackBehaviorPop;
+                    if (currentStackSize < metadata.required)
+                    {
+                        metadata.required = currentStackSize;
+                    }
+
+                    currentStackSize += op.Metadata.StackBehaviorPush;
+                    if (currentStackSize > metadata.max)
+                    {
+                        metadata.max = currentStackSize;
+                    }
+
+                    metadata.leftOut = currentStackSize;
+
+                    switch(op.Operation)
+                    {
+                        case Instruction.RETURN:
+                        case Instruction.REVERT:
+                        case Instruction.STOP:
+                        case Instruction.INVALID:
+                        case Instruction.JUMPI:
+                        case Instruction.JUMP:
+                            metadata.required = -metadata.required;
+                            stacks[stackStart] = metadata; // remember the stack chain of opcodes
+                            stackStart = op.ProgramCounter + 1;             // start with the next again
+                            metadata = (0, 0, 0);
+                            currentStackSize = 0;
+                            break;
+                    }
+
+                    break;
+            }
+        }
+
+        if (metadata != (0,0,0))
+        {
+            metadata.required = -metadata.required;
+            stacks[stackStart] = metadata;
+        }
+        return stacks;
+    }
     private static Dictionary<int, long> BuildStaticCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
         Dictionary<int, long> costs = new();

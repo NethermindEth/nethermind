@@ -8,8 +8,5 @@ public class NoCategoryConfig : INoCategoryConfig
     public string Config { get; set; } = null;
     public string MonitoringJob { get; set; }
     public string MonitoringGroup { get; set; }
-    public string EnodeIpAddress { get; set; }
-    public string Url { get; set; }
-    public string CorsOrigins { get; set; }
     public string CliSwitchLocal { get; set; }
 }

@@ -40,7 +40,7 @@ public static class KzgPolynomialCommitments
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
+        _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
 
         if (_ckzgSetup == IntPtr.Zero)
         {
