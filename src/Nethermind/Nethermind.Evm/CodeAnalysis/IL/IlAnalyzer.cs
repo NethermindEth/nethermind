@@ -50,7 +50,6 @@ public static class IlAnalyzer
         int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
         {
-            if (logger.IsInfo) logger.Info($"Starting IL-EVM analysis of code {worklet.CodeInfo.Address}");
             IlAnalyzer.Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
         }
     }
@@ -214,11 +213,9 @@ public static class IlAnalyzer
         switch (mode)
         {
             case IlInfo.ILMode.PAT_MODE:
-                if (logger.IsInfo) logger.Info($"Analyzing patterns of code {codeInfo.Address}");
                 CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
             case IlInfo.ILMode.JIT_MODE:
-                if (logger.IsInfo) logger.Info($"Precompiling of segments of code {codeInfo.Address}");
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
                 break;
         }
