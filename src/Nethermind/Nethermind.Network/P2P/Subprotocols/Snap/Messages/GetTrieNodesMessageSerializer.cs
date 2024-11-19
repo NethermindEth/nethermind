@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using DotNetty.Buffers;
+
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetTrieNodesMessageSerializer : IZeroMessageSerializer<GetTrieNodesMessage>
     {
-        private static readonly PathGroup _defaultPathGroup = new() { Group = Array.Empty<byte[]>() };
+        private static readonly PathGroup _defaultPathGroup = new() { Group = [] };
 
         public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
         {
@@ -68,7 +68,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathGroup DecodeGroup(RlpStream stream) =>
             new()
             {
-                Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: Array.Empty<byte>())
+                Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: [])
             };
 
         private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)

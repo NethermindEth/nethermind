@@ -97,10 +97,10 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
         {
             builder = builder.ConfigureServices(services =>
             {
-                Action<ListenOptions> configureEndpoint = options =>
+                void configureEndpoint(ListenOptions options)
                 {
                     options.UseHttps(_certificate);
-                };
+                }
 
                 services.Configure<KestrelServerOptions>(options =>
                 {

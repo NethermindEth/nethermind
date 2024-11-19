@@ -162,24 +162,13 @@ public class SyncServerTests
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-
-        StaticSelector staticSelector;
-        switch (syncMode)
+        StaticSelector staticSelector = syncMode switch
         {
-            case SyncMode.SnapSync:
-                staticSelector = StaticSelector.SnapSync;
-                break;
-            case SyncMode.FastSync:
-                staticSelector = StaticSelector.FastSync;
-                break;
-            case SyncMode.StateNodes:
-                staticSelector = StaticSelector.StateNodesWithFastBlocks;
-                break;
-            default:
-                staticSelector = StaticSelector.Full;
-                break;
-        }
-
+            SyncMode.SnapSync => StaticSelector.SnapSync,
+            SyncMode.FastSync => StaticSelector.FastSync,
+            SyncMode.StateNodes => StaticSelector.StateNodesWithFastBlocks,
+            _ => StaticSelector.Full,
+        };
         ctx.SyncServer = new SyncServer(
             new MemDb(),
             new MemDb(),

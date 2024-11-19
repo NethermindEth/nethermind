@@ -25,29 +25,11 @@ namespace Nethermind.Abi
                     $"{nameof(length)} of {nameof(AbiUFixed)} has to be a multiple of 8");
             }
 
-            if (length > MaxLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUFixed)} has to be less or equal to {MaxLength}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinLength);
 
-            if (length <= MinLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUFixed)} has to be greater than {MinLength}");
-            }
-
-            if (precision > MaxPrecision)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(precision)} of {nameof(AbiUFixed)} has to be less or equal to {MaxPrecision}");
-            }
-
-            if (precision <= MinPrecision)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(precision)} of {nameof(AbiUFixed)} has to be greater than {MinPrecision}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(precision, MaxPrecision);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(precision, MinPrecision);
 
             Length = length;
             Precision = precision;

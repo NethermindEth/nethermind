@@ -3,9 +3,10 @@
 
 #nullable disable
 
-using System;
 using System.Linq;
+
 using Autofac;
+
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,8 +18,8 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync
@@ -32,7 +33,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         private StorageTree _inputStorageTree;
         private Hash256 _storage;
 
-        private PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
+        private readonly PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
 
         [OneTimeSetUp]
         public void Setup()

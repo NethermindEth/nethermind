@@ -31,17 +31,8 @@ namespace Nethermind.Abi
                     $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
             }
 
-            if (length > MaxSize)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUInt)} has to be less or equal to {MaxSize}");
-            }
-
-            if (length <= MinSize)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUInt)} has to be greater than {MinSize}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxSize);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinSize);
 
             Length = length;
             Name = $"uint{Length}";
@@ -58,19 +49,14 @@ namespace Nethermind.Abi
         {
             var (value, length) = DecodeUInt(data, position, packed);
 
-            switch (Length)
+            return Length switch
             {
-                case { } n when n <= 8:
-                    return ((byte)value, length);
-                case { } n when n <= 16:
-                    return ((ushort)value, length);
-                case { } n when n <= 32:
-                    return ((uint)value, length);
-                case { } n when n <= 64:
-                    return ((ulong)value, length);
-                default:
-                    return (value, length);
-            }
+                { } n when n <= 8 => ((object, int))((byte)value, length),
+                { } n when n <= 16 => ((object, int))((ushort)value, length),
+                { } n when n <= 32 => ((object, int))((uint)value, length),
+                { } n when n <= 64 => ((object, int))((ulong)value, length),
+                _ => ((object, int))(value, length),
+            };
         }
 
         public (UInt256, int) DecodeUInt(byte[] data, int position, bool packed)
@@ -138,19 +124,14 @@ namespace Nethermind.Abi
 
         private Type GetCSharpType()
         {
-            switch (Length)
+            return Length switch
             {
-                case { } n when n <= 8:
-                    return typeof(byte);
-                case { } n when n <= 16:
-                    return typeof(ushort);
-                case { } n when n <= 32:
-                    return typeof(uint);
-                case { } n when n <= 64:
-                    return typeof(ulong);
-                default:
-                    return typeof(UInt256);
-            }
+                { } n when n <= 8 => typeof(byte),
+                { } n when n <= 16 => typeof(ushort),
+                { } n when n <= 32 => typeof(uint),
+                { } n when n <= 64 => typeof(ulong),
+                _ => typeof(UInt256),
+            };
         }
     }
 }

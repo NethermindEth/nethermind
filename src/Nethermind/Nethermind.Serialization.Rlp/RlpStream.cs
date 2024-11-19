@@ -1464,7 +1464,7 @@ namespace Nethermind.Serialization.Rlp
             int length = ReadSequenceLength();
             if (length is 0)
             {
-                return Array.Empty<byte[]>();
+                return [];
             }
 
             int itemsCount = PeekNumberOfItemsRemaining(Position + length);

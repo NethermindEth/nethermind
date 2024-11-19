@@ -582,12 +582,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (!blocksToProcess[0].IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
-                if (parentOfFirstBlock is null)
-                {
-                    throw new InvalidOperationException("Attempted to process a disconnected blockchain");
-                }
-
+                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");

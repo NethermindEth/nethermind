@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -21,7 +20,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = Array.Empty<byte>(),
+                Input = [],
                 Gas = 10000,
                 TraceAddress = new int[] { 0, 0 }
             };

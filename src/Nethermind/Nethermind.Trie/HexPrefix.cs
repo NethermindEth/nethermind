@@ -49,10 +49,10 @@ namespace Nethermind.Trie
             if (!isEven)
             {
                 span[0] = (byte)(bytes[0] & 0xF);
-                span = span.Slice(1);
+                span = span[1..];
             }
             bool isLeaf = bytes[0] >= 32;
-            bytes = bytes.Slice(1);
+            bytes = bytes[1..];
 
             Span<ushort> nibbles = MemoryMarshal.CreateSpan(
                 ref Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(span)),

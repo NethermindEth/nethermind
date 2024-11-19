@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
+
 using NSubstitute;
+
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;

@@ -43,7 +43,7 @@ public class AbiTests
     {
         AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
         AbiSignature signature = new AbiSignature("abc", type);
-        BigInteger[] data = { };
+        BigInteger[] data = [];
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
         Assert.That(data, Is.EqualTo(arguments[0]));

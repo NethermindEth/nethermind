@@ -311,7 +311,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
                 ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
                 PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
-                Withdrawals = Array.Empty<Withdrawal>(),
+                Withdrawals = [],
                 SuggestedFeeRecipient = Address.Zero
             };
         }
@@ -414,7 +414,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (predecessor is null)
             {
-                blocks = Array.Empty<Block>();
+                blocks = [];
                 return false;
             }
             if (_blockTree.IsMainChain(predecessor.Header)) break;

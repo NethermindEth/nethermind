@@ -280,7 +280,7 @@ public class FilterManagerTests
         _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
         _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
 
-        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
+        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, []));
 
         int index = 1;
         foreach (TxReceipt receipt in receipts)

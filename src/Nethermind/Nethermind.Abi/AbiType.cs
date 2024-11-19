@@ -134,8 +134,8 @@ namespace Nethermind.Blockchain.Contracts.Json
                     return (-1, -1);
                 }
 
-                int length = int.Parse(chars.Slice(0, xPos));
-                int precision = int.Parse(chars.Slice(xPos + 1));
+                int length = int.Parse(chars[..xPos]);
+                int precision = int.Parse(chars[(xPos + 1)..]);
 
                 return (length, precision);
             }

@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
+
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -30,7 +31,7 @@ public class CompressingStoreTests
     {
         Context ctx = new();
 
-        byte[] empty = Array.Empty<byte>();
+        byte[] empty = [];
 
         ctx.Compressed[Key] = empty;
 
