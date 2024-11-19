@@ -138,6 +138,7 @@ jobs:
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
           - Ethereum.Transaction.Test
