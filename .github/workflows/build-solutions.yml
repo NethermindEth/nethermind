@@ -16,6 +16,8 @@ jobs:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
+      - name: Clean up
+        run: sudo rm -rf /usr/local/lib/android
       - name: Check out repository
         uses: actions/checkout@v4
         with:
