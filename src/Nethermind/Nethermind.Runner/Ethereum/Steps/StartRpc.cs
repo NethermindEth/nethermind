@@ -33,15 +33,32 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
+            ILogger logger = _api.LogManager.GetClassLogger();
 
             // Update the JWT secret path based on the data directory.
             if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             {
+                // check if jwt-secret file already exists in previous default directory
+                try {
+                    string defaultPath = "keystore/jwt-secret";
+                    string newPath = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
+                    if(File.exists(defaultPath)) {
+                        logger.Warning();
+                        File.move(defaultPath, newPath);
+                    }
+                    else{
+                        jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
+                    }
+                    jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
+                }
+                catch (IOException ex) {
+
+                }
+            }
+            else {
                 jsonRpcConfig.JwtSecretFile = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
             }
-
-            ILogger logger = _api.LogManager.GetClassLogger();
-
+            
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
