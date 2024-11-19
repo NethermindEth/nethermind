@@ -217,13 +217,13 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
+                    _logger.Warn($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}, address: {pathWithAccount.Path}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                    _logger.Warn($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}, address: {pathWithAccount.Path}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
