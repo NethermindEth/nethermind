@@ -34,14 +34,19 @@ internal class ILCompiler
     private const int TXTRACER_INDEX = 5;
     private const int IMMEDIATES_DATA_INDEX = 6;
 
-    public class SegmentExecutionCtx
+    public class PrecompiledChunk
     {
         public string Name => PrecompiledSegment.Method.Name;
-        public ExecuteSegment PrecompiledSegment;
-        public byte[][] Data;
-        public int[] JumpDestinations;
+        internal ExecuteSegment PrecompiledSegment;
+        internal byte[][] Data;
+        internal int[] JumpDestinations;
+
+        public void Invoke(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace)
+        {
+            PrecompiledSegment(ref vmstate, blockhashProvider, worldState, codeInfoRepository, spec, trace, Data);
+        }
     }
-    public static SegmentExecutionCtx CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
+    public static PrecompiledChunk CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
@@ -51,7 +56,7 @@ internal class ILCompiler
 
         int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
-        return new SegmentExecutionCtx
+        return new PrecompiledChunk
         {
             PrecompiledSegment = dynEmitedDelegate,
             Data = data,
@@ -143,13 +148,19 @@ internal class ILCompiler
 
         var costs = BuildStaticCostLookup(code);
         var stacks = AnalyseStackBehavior(code);
-
-        bool hasJump = false;
+        var segments = CheckUnreachableCode(code);
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
         for (int i = 0; i < code.Length; i++)
         {
             OpcodeInfo op = code[i];
+
+            if (segments.TryGetValue(op.ProgramCounter, out var metadata) && !metadata.IsReachable)
+            {
+                i = metadata.EndOfSegment;
+                continue;
+            }
+
             if (op.Operation is Instruction.JUMPDEST)
             {
                 // mark the jump destination
@@ -202,26 +213,26 @@ internal class ILCompiler
                 method.StoreLocal(programCounter);
             }
 
-            if (stacks.TryGetValue(op.ProgramCounter, out (int required, int max, int leftOut) metadata))
+            if (stacks.TryGetValue(op.ProgramCounter, out (int required, int max, int leftOut) stackMetadata))
             {
-                if(metadata.required != 0)
+                if(stackMetadata.required != 0)
                 {
                     method.LoadLocal(head);
-                    method.LoadConstant(metadata.required);
+                    method.LoadConstant(stackMetadata.required);
                     method.BranchIfLess(evmExceptionLabels[EvmExceptionType.StackUnderflow]);
                 }
 
-                if (metadata.max != 0)
+                if (stackMetadata.max != 0)
                 {
                     method.LoadLocal(head);
-                    method.LoadConstant(metadata.max);
+                    method.LoadConstant(stackMetadata.max);
                     method.Add();
                     method.LoadConstant(EvmStack.MaxStackSize);
                     method.BranchIfGreaterOrEqual(evmExceptionLabels[EvmExceptionType.StackOverflow]);
                 }
 
             }
-            
+
 #if DEBUG
             if(bakeInTracerCalls)
             {
@@ -276,7 +287,6 @@ internal class ILCompiler
                             EmitCallToEndInstructionTrace(method, gasAvailable);
                         }
                         method.FakeBranch(jumpTable);
-                        hasJump = true;
                     }
                     break;
                 case Instruction.JUMPI:
@@ -301,7 +311,6 @@ internal class ILCompiler
 
                         method.MarkLabel(noJump);
                         method.StackPop(head, 2);
-                        hasJump = true;
                     }
                     break;
                 case Instruction.PUSH0:
@@ -2133,15 +2142,12 @@ internal class ILCompiler
             {
                 EmitCallToEndInstructionTrace(method, gasAvailable);
             }
-
-            if(!hasJump && op.IsTerminating)
-            {
-                break;
-            }
         }
 
-        Label skipProgramCounterSetting = method.DefineLabel();
+        Label jumpIsLocal = method.DefineLabel();
+        Label jumpIsNotLocal = method.DefineLabel();
         Local isEphemeralJump = method.DeclareLocal<bool>();
+        Label skipProgramCounterSetting = method.DefineLabel();
         // prepare ILEvmState
         // check if returnState is null
         method.MarkLabel(ret);
@@ -2173,17 +2179,9 @@ internal class ILCompiler
 
         method.MarkLabel(skipProgramCounterSetting);
 
-
-        // set exception
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadConstant((int)EvmExceptionType.None);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
-
-        // go to return
-        method.Branch(exit);
-
-        Label jumpIsLocal = method.DefineLabel();
-        Label jumpIsNotLocal = method.DefineLabel();
+        // return
+        method.MarkLabel(exit);
+        method.Return();
 
         // isContinuation
         method.MarkLabel(isContinuation);
@@ -2251,7 +2249,6 @@ internal class ILCompiler
             method.FindCorrectBranchAndJump(jmpDestination, jumpDestinations, evmExceptionLabels);
         }
 
-
         foreach (var kvp in evmExceptionLabels)
         {
             method.MarkLabel(kvp.Value);
@@ -2265,10 +2262,6 @@ internal class ILCompiler
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
             method.Branch(exit);
         }
-
-        // return
-        method.MarkLabel(exit);
-        method.Return();
 
         return jumpDestinations.Keys.ToArray();
     }
@@ -2802,6 +2795,45 @@ internal class ILCompiler
         il.BranchIfLess(outOfGasLabel);
     }
 
+    private static Dictionary<int, (bool IsReachable, int EndOfSegment)> CheckUnreachableCode(ReadOnlySpan<OpcodeInfo> code)
+    {
+        // a valid recheable segment is any segment starting with a JUMPDEST and ending with a terminating opcode or a JUMP or normal opcode
+        // first segment is assumed to have a JUMPDEST cause we can't prove previous segment can\t reach it
+        // every segment after a JUMPI is assumged to have a JUMPDEST
+
+        Dictionary<int, (bool IsReachable, int EndOfSegment)> segments = new();
+
+        bool hasJumpdest = true;
+        int segmentStart = 0;
+        int segmentEnd = default;
+
+        for (int pc = 0; pc < code.Length; pc++)
+        {
+            OpcodeInfo op = code[pc];
+            switch (op.Operation)
+            {
+                case Instruction.JUMPDEST:
+                    segmentEnd = pc - 1;
+                    segments[segmentStart] = (hasJumpdest, segmentEnd);
+                    segmentStart = op.ProgramCounter;
+                    hasJumpdest = true;
+                    break;
+                default:
+                    segmentEnd = pc;
+                    if (op.IsTerminating || op.IsJump)
+                    {
+                        segments[segmentStart] = (hasJumpdest, segmentEnd);
+                        segmentStart = op.ProgramCounter + 1;
+                        hasJumpdest = op.Operation is Instruction.JUMPI;
+                    }
+                    break;
+            }
+        }
+
+        segments[segmentStart] = (hasJumpdest, segmentEnd);
+
+        return segments;
+    }
     private static Dictionary<int, (int required, int max, int leftOut)> AnalyseStackBehavior(ReadOnlySpan<OpcodeInfo> code)
     {
         Dictionary<int, (int required, int max, int leftOut)> stacks = new();

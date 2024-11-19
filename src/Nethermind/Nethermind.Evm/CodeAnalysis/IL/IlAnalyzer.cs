@@ -120,7 +120,7 @@ public static class IlAnalyzer
 
         static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
         {
-            Dictionary<int, SegmentExecutionCtx> segmentMap = new();
+            Dictionary<int, PrecompiledChunk> segmentMap = new();
 
             if (codeData.Item1.Length == 0)
             {

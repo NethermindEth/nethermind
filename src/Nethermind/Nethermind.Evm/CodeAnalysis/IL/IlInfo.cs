@@ -74,7 +74,7 @@ internal class IlInfo
         Segments = default;
     }
 
-    public IlInfo(FrozenDictionary<int, InstructionChunk> mappedOpcodes, FrozenDictionary<int, SegmentExecutionCtx> segments)
+    public IlInfo(FrozenDictionary<int, InstructionChunk> mappedOpcodes, FrozenDictionary<int, PrecompiledChunk> segments)
     {
         Chunks = mappedOpcodes;
         Segments = segments;
@@ -82,7 +82,7 @@ internal class IlInfo
 
     // assumes small number of ILed
     public FrozenDictionary<int, InstructionChunk>? Chunks { get; set; }
-    public FrozenDictionary<int, SegmentExecutionCtx>? Segments { get; set; }
+    public FrozenDictionary<int, PrecompiledChunk>? Segments { get; set; }
 
     public bool TryExecute<TTracingInstructions>(ILogger logger, EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
@@ -91,16 +91,16 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue || this.IsEmpty)
             return false;
 
-        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue(programCounter, out SegmentExecutionCtx ctx))
+        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue(programCounter, out PrecompiledChunk aotChunk))
         {
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, ctx);
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, aotChunk);
 
             vmState.DataStackHead = stack.Head;
             var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, programCounter, gasAvailable, ref outputBuffer);
 
-            ctx.PrecompiledSegment.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer, ctx.Data);
+            aotChunk.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer);
 
             gasAvailable = ilvmState.GasAvailable;
             programCounter = ilvmState.ProgramCounter;
@@ -112,15 +112,15 @@ internal class IlInfo
             return true;
         }
 
-        if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue(programCounter, out InstructionChunk chunk))
+        if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue(programCounter, out InstructionChunk patChunk))
         {
             var executionResult = new ILChunkExecutionResult();
             Metrics.IlvmPredefinedPatternsExecutions++;
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, chunk);
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, patChunk);
 
-            chunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
+            patChunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 tracer.ReportOperationRemainingGas(gasAvailable);
@@ -134,7 +134,7 @@ internal class IlInfo
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
-        if (chunk is SegmentExecutionCtx segment)
+        if (chunk is PrecompiledChunk segment)
         {
             tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, segment.Name, vmState.Env);
         }
