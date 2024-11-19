@@ -32,7 +32,7 @@ jobs:
         uses: actions/setup-dotnet@6bd8b7f7774af54e05809fcc5431931b3eb1ddee #v4.0.1
       - name: Build Nethermind
         working-directory: src/Nethermind
-        run: dotnet build Nethermind.sln -c release
+        run: dotnet build Nethermind.sln -c release -p:CI=true
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@5618c9fc1e675841ca52c1c6b1304f5255a905a0 #v2.19.0
         with:
