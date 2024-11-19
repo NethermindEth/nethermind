@@ -31,6 +31,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Synchronization;
+using Nethermind.Optimism.ProtocolVersion;
 
 namespace Nethermind.Optimism;
 
@@ -271,7 +272,11 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager);
 
-        IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule);
+        IOptimismSignalSuperchainV1Handler signalHandler = new LoggingOptimismSignalSuperchainV1Handler(
+            OptimismConstants.CurrentProtocolVersion,
+            _api.LogManager);
+
+        IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule, signalHandler);
 
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
