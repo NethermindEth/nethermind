@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -22,6 +23,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State;
 
 using Nethermind.Core.Cpu;
+
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
@@ -266,8 +268,10 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         void UpdateRootHashesMultiThread()
         {
             // We can recalculate the roots in parallel as they are all independent tries
-            Parallel.ForEach(_storages, RuntimeInformation.ParallelOptionsLogicalCores, kvp =>
+            var storages = _storages.ToArray();
+            ParallelUnbalancedWork.For(0, storages.Length, RuntimeInformation.ParallelOptionsLogicalCores, i =>
             {
+                ref var kvp = ref storages[i];
                 if (!_toUpdateRoots.Contains(kvp.Key))
                 {
                     // Wasn't updated don't recalculate
@@ -278,8 +282,9 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             });
 
             // Update the storage roots in the main thread non in parallel
-            foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
+            for (int i = 0; i < storages.Length; i++)
             {
+                ref var kvp = ref storages[i];
                 if (!_toUpdateRoots.Contains(kvp.Key))
                 {
                     continue;
@@ -288,7 +293,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 // Update the storage root for the Account
                 _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
             }
-
         }
     }
 

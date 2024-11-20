@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -48,7 +49,7 @@ namespace Nethermind.Consensus.Processing
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
-            Parallel.For(0, txs.Length, i =>
+            ParallelUnbalancedWork.For(0, txs.Length, i =>
             {
                 Transaction tx = txs[i];
                 if (!tx.IsHashCalculated)
@@ -111,7 +112,7 @@ namespace Nethermind.Consensus.Processing
             if (recoverFromEcdsa > 3)
             {
                 // Recover ecdsa in Parallel
-                Parallel.For(0, txs.Length, i =>
+                ParallelUnbalancedWork.For(0, txs.Length, i =>
                 {
                     Transaction tx = txs[i];
                     if (!ShouldRecoverSignatures(tx)) return;

@@ -7,10 +7,10 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -175,9 +175,9 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchNonRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool bufferPool)
             {
                 int totalLength = 0;
-                Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     () => 0,
-                    (i, _, local) =>
+                    (i, local) =>
                     {
                         object? data = item._data[i];
                         if (ReferenceEquals(data, _nullNode) || data is null)
@@ -236,9 +236,9 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
             {
                 int totalLength = 0;
-                Parallel.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
+                ParallelUnbalancedWork.For(0, BranchesCount, RuntimeInformation.ParallelOptionsLogicalCores,
                     () => 0,
-                    (i, _, local) =>
+                    (i, local) =>
                     {
                         ValueRlpStream rlpStream = item.RlpStream;
                         item.SeekChild(ref rlpStream, i);

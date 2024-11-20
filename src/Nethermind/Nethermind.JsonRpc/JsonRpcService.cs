@@ -9,14 +9,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
@@ -357,7 +356,7 @@ public class JsonRpcService : IJsonRpcService
             }
             else if (providedParametersLength > parallelThreshold)
             {
-                Parallel.For(0, providedParametersLength, (int i) =>
+                ParallelUnbalancedWork.For(0, providedParametersLength, (int i) =>
                 {
                     JsonElement providedParameter = providedParameters[i];
                     ExpectedParameter expectedParameter = expectedParameters[i];

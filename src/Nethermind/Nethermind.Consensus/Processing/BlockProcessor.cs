@@ -19,6 +19,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -333,10 +334,8 @@ public partial class BlockProcessor(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
-        int index = 0;
-        Parallel.For(0, receipts.Length, _ =>
+        ParallelUnbalancedWork.For(0, receipts.Length, i =>
         {
-            int i = Interlocked.Increment(ref index) - 1;
             receipts[i].CalculateBloom();
         });
     }

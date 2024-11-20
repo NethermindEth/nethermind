@@ -98,18 +98,13 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                int progress = 0;
-                Parallel.For(0, block.Withdrawals.Length, parallelOptions,
-                    _ =>
+                ParallelUnbalancedWork.For(0, block.Withdrawals.Length, parallelOptions,
+                    i =>
                     {
                         IReadOnlyTxProcessorSource env = _envPool.Get();
-                        int i = 0;
                         try
                         {
                             using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-                            // Process withdrawals in sequential order, rather than partitioning scheme from Parallel.For
-                            // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
-                            i = Interlocked.Increment(ref progress) - 1;
                             scope.WorldState.WarmUp(block.Withdrawals[i].Address);
                         }
                         finally
@@ -135,8 +130,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
         try
         {
-            int progress = 0;
-            Parallel.For(0, block.Transactions.Length, parallelOptions, _ =>
+            ParallelUnbalancedWork.For(0, block.Transactions.Length, parallelOptions, i =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 IReadOnlyTxProcessorSource env = _envPool.Get();
@@ -144,9 +138,6 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 Transaction? tx = null;
                 try
                 {
-                    // Process transactions in sequential order, rather than partitioning scheme from Parallel.For
-                    // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
-                    int i = Interlocked.Increment(ref progress) - 1;
                     // If the transaction has already been processed or being processed, exit early
                     if (block.TransactionProcessed > i) return;
 
@@ -273,14 +264,9 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     }
                 }
 
-                int progress = 0;
-                Parallel.For(0, block.Transactions.Length, parallelOptions,
-                _ =>
+                ParallelUnbalancedWork.For(0, block.Transactions.Length, parallelOptions,
+                i =>
                 {
-                    int i = 0;
-                    // Process addresses in sequential order, rather than partitioning scheme from Parallel.For
-                    // Interlocked.Increment returns the incremented value, so subtract 1 to start at 0
-                    i = Interlocked.Increment(ref progress) - 1;
                     Transaction tx = block.Transactions[i];
                     Address? sender = tx.SenderAddress;
 
