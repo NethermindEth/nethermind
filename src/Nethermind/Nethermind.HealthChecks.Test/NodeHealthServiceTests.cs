@@ -52,7 +52,7 @@ public class NodeHealthServiceTests
         drive.TotalSize.Returns((long)(_freeSpaceBytes * 100.0 / test.AvailableDiskSpacePercent));
         drive.RootDirectory.FullName.Returns("C:/");
 
-        BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
+        static BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
         blockFinder.Head.Returns(new Block(GetBlockHeader(4).TestObject));
         if (test.IsSyncing)
         {
@@ -116,7 +116,7 @@ public class NodeHealthServiceTests
         api.SpecProvider = Substitute.For<ISpecProvider>();
         api.SpecProvider.TerminalTotalDifficulty.Returns(UInt256.Zero);
 
-        BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
+        static BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
 
         blockFinder.Head.Returns(new Block(GetBlockHeader(4).WithDifficulty(0).TestObject));
         if (test.IsSyncing)
@@ -165,9 +165,9 @@ public class NodeHealthServiceTests
         public string ExpectedMessage { get; set; }
         public string ExpectedLongMessage { get; set; }
         public int[] EnabledCapabilitiesUpdatedCalls { get; set; }
-        public int[] DisabledCapabilitiesUpdatedCalls { get; set; } = Array.Empty<int>();
+        public int[] DisabledCapabilitiesUpdatedCalls { get; set; } = [];
         public string[] EnabledCapabilities { get; set; }
-        public string[] DisabledCapabilities { get; set; } = Array.Empty<string>();
+        public string[] DisabledCapabilities { get; set; } = [];
         public string[] ExpectedErrors { get; set; }
         public SyncMode SyncMode { get; set; }
         public int TimeSpanSeconds { get; set; }
@@ -336,7 +336,7 @@ public class NodeHealthServiceTests
                 ExpectedHealthy = true,
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 TimeSpanSeconds = 15,
-                ExpectedErrors = Array.Empty<string>(),
+                ExpectedErrors = [],
                 EnabledCapabilities = new[] { "A", "B", "C" },
                 EnabledCapabilitiesUpdatedCalls = new[] { 0, 0, 0 },
                 ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -349,7 +349,7 @@ public class NodeHealthServiceTests
                 ExpectedHealthy = true,
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 TimeSpanSeconds = 301,
-                ExpectedErrors = Array.Empty<string>(),
+                ExpectedErrors = [],
                 EnabledCapabilities = new[] { "A", "B", "C" },
                 EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                 ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -362,7 +362,7 @@ public class NodeHealthServiceTests
                 ExpectedHealthy = true,
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 TimeSpanSeconds = 15,
-                ExpectedErrors = Array.Empty<string>(),
+                ExpectedErrors = [],
                 EnabledCapabilities = new[] { "A", "B", "C" },
                 EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                 ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
@@ -390,7 +390,7 @@ public class NodeHealthServiceTests
                 ExpectedHealthy = true,
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 TimeSpanSeconds = 301,
-                ExpectedErrors = Array.Empty<string>(),
+                ExpectedErrors = [],
                 EnabledCapabilities = new[] { "A", "B", "C" },
                 EnabledCapabilitiesUpdatedCalls = new[] { 0, 1, 0 },
                 DisabledCapabilities = new[] { "X", "Y", "Z" },
@@ -405,7 +405,7 @@ public class NodeHealthServiceTests
                 ExpectedHealthy = true,
                 ExpectedMessage = "Still syncing. Peers: 10.",
                 TimeSpanSeconds = 301,
-                ExpectedErrors = Array.Empty<string>(),
+                ExpectedErrors = [],
                 EnabledCapabilities = new[] { "A", "B", "C" },
                 EnabledCapabilitiesUpdatedCalls = new[] { 1, 1, 1 },
                 ExpectedLongMessage = "The node is still syncing, CurrentBlock: 4, HighestBlock: 15. Peers: 10."
@@ -418,7 +418,7 @@ public class NodeHealthServiceTests
                 ExpectedHealthy = true,
                 ExpectedMessage = "Fully synced. Peers: 10.",
                 TimeSpanSeconds = 301,
-                ExpectedErrors = Array.Empty<string>(),
+                ExpectedErrors = [],
                 EnabledCapabilities = new[] { "engine_forkchoiceUpdatedV999", "engine_newPayloadV999" },
                 EnabledCapabilitiesUpdatedCalls = new[] { 1, 1 },
                 ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."

@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Json
             {
                 Span<char> withZero = new(new char[s.Length - 1]);
                 withZero[0] = '0';
-                s.AsSpan(2).CopyTo(withZero.Slice(1));
+                s.AsSpan(2).CopyTo(withZero[1..]);
                 return long.Parse(withZero, NumberStyles.AllowHexSpecifier);
             }
 
@@ -64,7 +64,7 @@ namespace Nethermind.Serialization.Json
             long value;
             if (s.StartsWith("0x"u8))
             {
-                s = s.Slice(2);
+                s = s[2..];
                 if (Utf8Parser.TryParse(s, out value, out _, 'x'))
                 {
                     return value;

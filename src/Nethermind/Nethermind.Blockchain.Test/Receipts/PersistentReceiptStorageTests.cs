@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 [TestFixture(false)]
 public class PersistentReceiptStorageTests
 {
-    private TestSpecProvider _specProvider = new TestSpecProvider(Byzantium.Instance);
+    private readonly TestSpecProvider _specProvider = new TestSpecProvider(Byzantium.Instance);
     private TestMemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
     private ReceiptsRecovery _receiptsRecovery = null!;
     private IBlockTree _blockTree = null!;
@@ -206,7 +206,7 @@ public class PersistentReceiptStorageTests
             .WithReceiptsRoot(TestItem.KeccakA)
             .TestObject;
 
-        TxReceipt[] emptyReceipts = Array.Empty<TxReceipt>();
+        TxReceipt[] emptyReceipts = [];
         _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
         // can be from cache:
         _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
@@ -224,7 +224,7 @@ public class PersistentReceiptStorageTests
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
         receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
         receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-        iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -238,7 +238,7 @@ public class PersistentReceiptStorageTests
         receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
         receiptStructRef.Logs.Should().BeNullOrEmpty();
 
-        iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -252,7 +252,7 @@ public class PersistentReceiptStorageTests
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
         receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
         receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
-        iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
+        iterator.TryGetNext(out _).Should().BeFalse();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -389,7 +389,7 @@ public class PersistentReceiptStorageTests
     {
         _receiptConfig.CompactTxIndex = _useCompactReceipts;
         CreateStorage();
-        (Block block, TxReceipt[] receipts) = InsertBlock();
+        (Block block, _) = InsertBlock();
         Block block2 = Build.A.Block
             .WithParent(block)
             .WithNumber(2)

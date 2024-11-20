@@ -14,7 +14,7 @@ public class InvalidBlockInterceptor(
     ILogManager logManager)
     : IBlockValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger(typeof(InvalidBlockInterceptor));
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidBlockInterceptor>();
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => headerValidator.ValidateOrphanedBlock(block, out error);
 

@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
     public class ContractDataStoreWithLocalData<T> : ContractDataStore<T>
     {
         private readonly ILocalDataSource<IEnumerable<T>> _localDataSource;
-        private T[] _localData = Array.Empty<T>();
+        private T[] _localData = [];
 
         public ContractDataStoreWithLocalData(
             IContractDataStoreCollection<T> collection,
@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             TraceDataChanged("local data start");
             Collection.Remove(_localData);
             TraceDataChanged("local data removed");
-            _localData = _localDataSource.Data?.ToArray() ?? Array.Empty<T>();
+            _localData = _localDataSource.Data?.ToArray() ?? [];
             Collection.Insert(_localData, true);
             TraceDataChanged("local data inserted");
         }

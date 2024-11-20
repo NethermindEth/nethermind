@@ -144,14 +144,14 @@ public static class TypeDiscovery
     private static IEnumerable<Type> FindNethermindBasedTypes(Assembly assembly, Type baseType) =>
         GetExportedTypes(assembly).Where(t => baseType.IsAssignableFrom(t) && baseType != t);
 
-    private static IEnumerable<Type> GetExportedTypes(Assembly? a)
-        => a is null || a.IsDynamic ? Array.Empty<Type>() : a.GetExportedTypes();
+    private static Type[] GetExportedTypes(Assembly? a)
+        => a is null || a.IsDynamic ? [] : a.GetExportedTypes();
 
     public static IEnumerable<Type> FindNethermindBasedTypes(string typeName)
     {
         Initialize();
 
-        Func<Assembly, IEnumerable<Type>> assembliesSelector = a => GetExportedTypes(a)
+        IEnumerable<Type> assembliesSelector(Assembly a) => GetExportedTypes(a)
             .Where(t => t.Name == typeName);
 
         return _assembliesWithNethermindTypes.SelectMany(assembliesSelector);

@@ -273,13 +273,8 @@ public partial class BlockTree
         long? blockNumber = BinarySearchBlockNumber(left, right, isBlockFound, direction);
         if (blockNumber.HasValue)
         {
-            ChainLevelInfo? level = LoadLevel(blockNumber.Value);
-            if (level is null)
-            {
-                throw new InvalidDataException(
+            ChainLevelInfo? level = LoadLevel(blockNumber.Value) ?? throw new InvalidDataException(
                     $"Missing chain level at number {blockNumber.Value}");
-            }
-
             BlockInfo blockInfo = level.BlockInfos[0];
             return FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
         }
@@ -369,13 +364,8 @@ public partial class BlockTree
 
     private void SetHeadBlock(Hash256 headHash)
     {
-        Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None);
-        if (headBlock is null)
-        {
-            throw new InvalidOperationException(
+        Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException(
                 "An attempt to set a head block that has not been stored in the DB.");
-        }
-
         ChainLevelInfo? level = LoadLevel(headBlock.Number);
         int? index = level?.FindIndex(headHash);
         if (!index.HasValue)

@@ -11,5 +11,5 @@ public static class Eip7702Constants
     private static readonly int HeaderLength = DelegationHeader.Length;
     public static bool IsDelegatedCode(ReadOnlySpan<byte> code) =>
         code.Length == HeaderLength + Address.Size
-        && DelegationHeader.SequenceEqual(code.Slice(0, DelegationHeader.Length));
+        && DelegationHeader.SequenceEqual(code[..DelegationHeader.Length]);
 }

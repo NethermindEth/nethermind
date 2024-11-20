@@ -43,7 +43,6 @@ public static class ExecutionRequestExtensions
             throw new ArgumentException("Flat encoded requests must be an array of 3 elements");
         }
 
-        using SHA256 sha256 = SHA256.Create();
         byte[] concatenatedHashes = new byte[Hash256.Size * RequestPartsCount];
         int currentPosition = 0;
         byte type = 0;
@@ -54,13 +53,13 @@ public static class ExecutionRequestExtensions
         {
             requestBuffer[0] = type;
             requests.CopyTo(requestBuffer.Slice(1, requests.Length));
-            sha256.ComputeHash(requestBuffer.Slice(0, requests.Length + 1).ToArray()).CopyTo(concatenatedHashes.AsSpan(currentPosition, Hash256.Size));
+            SHA256.HashData(requestBuffer[..(requests.Length + 1)]).CopyTo(concatenatedHashes.AsSpan(currentPosition, Hash256.Size));
             currentPosition += Hash256.Size;
             type++;
         }
 
         // Compute sha256 of the concatenated hashes
-        return new Hash256(sha256.ComputeHash(concatenatedHashes.ToArray()));
+        return new Hash256(SHA256.HashData(concatenatedHashes));
     }
 
 

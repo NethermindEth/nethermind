@@ -17,7 +17,7 @@ public class NettyBufferMemoryOwnerTests
     {
         IByteBuffer buffer = Unpooled.Buffer(10);
         buffer.SetWriterIndex(buffer.WriterIndex + 10);
-        buffer.AsSpan().Fill(0);
+        buffer.AsSpan().Clear();
         NettyBufferMemoryOwner memoryOwner = new NettyBufferMemoryOwner(buffer);
         memoryOwner.Memory.Length.Should().Be(10);
         memoryOwner.Memory.Span.Fill(1);
