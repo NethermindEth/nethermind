@@ -34,7 +34,7 @@ internal static class ProcCpuInfoProvider
         var output = ProcessHelper.RunAndReadOutput("/bin/bash", "-c \"lscpu | grep MHz\"")?
                                   .Split('\n')
                                   .SelectMany(x => x.Split(':'))
-                                  .ToArray() ?? Array.Empty<string>();
+                                  .ToArray() ?? [];
 
         return ParseCpuFrequencies(output) ?? "";
     }

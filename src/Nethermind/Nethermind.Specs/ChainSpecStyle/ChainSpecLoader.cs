@@ -274,7 +274,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
-        byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
+        byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
         UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
@@ -374,7 +374,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
     {
         if (chainSpecJson.Nodes is null)
         {
-            chainSpec.Bootnodes = Array.Empty<NetworkNode>();
+            chainSpec.Bootnodes = [];
             return;
         }
 

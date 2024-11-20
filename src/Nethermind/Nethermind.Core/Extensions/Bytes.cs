@@ -129,7 +129,7 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Empty = Array.Empty<byte>();
+        public static readonly byte[] Empty = [];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
@@ -194,7 +194,7 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
         {
-            if (bytes is null || bytes.Length == 0) return Array.Empty<byte>();
+            if (bytes is null || bytes.Length == 0) return [];
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
@@ -1023,7 +1023,7 @@ namespace Nethermind.Core.Extensions
         {
             if (hexString.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
@@ -1070,11 +1070,11 @@ namespace Nethermind.Core.Extensions
         public static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
         {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.Slice(start);
+            ReadOnlySpan<char> chars = hexString[start..];
 
             if (chars.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
@@ -1105,11 +1105,11 @@ namespace Nethermind.Core.Extensions
         private static byte[] FromHexString(ReadOnlySpan<char> hexString)
         {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.Slice(start);
+            ReadOnlySpan<char> chars = hexString[start..];
 
             if (chars.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             int oddMod = hexString.Length % 2;
@@ -1168,7 +1168,7 @@ namespace Nethermind.Core.Extensions
 
             while (index < bytes.Length)
             {
-                ReadOnlySpan<byte> span = bytes.Slice(index);
+                ReadOnlySpan<byte> span = bytes[index..];
 
                 OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
                 if (status == OperationStatus.Done)
@@ -1187,7 +1187,7 @@ namespace Nethermind.Core.Extensions
                             // Expand output buffer
                             int newSize = outputBuffer.Length * 2;
                             char[] newBuffer = ArrayPool<char>.Shared.Rent(newSize);
-                            outputBuffer.Slice(0, outputPos).CopyTo(newBuffer);
+                            outputBuffer[..outputPos].CopyTo(newBuffer);
                             outputBuffer = newBuffer;
                             if (charsArray is not null)
                             {
@@ -1196,7 +1196,7 @@ namespace Nethermind.Core.Extensions
                             charsArray = newBuffer;
                         }
 
-                        rune.EncodeToUtf16(outputBuffer.Slice(outputPos));
+                        rune.EncodeToUtf16(outputBuffer[outputPos..]);
                         outputPos += charsNeeded;
                         hasValidContent = true;
                     }

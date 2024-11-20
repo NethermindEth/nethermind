@@ -47,7 +47,7 @@ namespace Nethermind.Core.Extensions
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             byte[] slice = new byte[length];
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Extensions
             int copiedFragmentLength = Math.Min(bytes.Length - startIndex, length);
             if (copiedFragmentLength <= 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             byte[] slice = new byte[length];

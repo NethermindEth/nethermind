@@ -126,7 +126,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         Span<byte> output = hex[start..end];
 
-        ReadOnlySpan<byte> input = bytes.Slice(leadingNibbleZeros / 2);
+        ReadOnlySpan<byte> input = bytes[(leadingNibbleZeros / 2)..];
         input.OutputBytesToByteHex(output, extraNibble: (leadingNibbleZeros & 1) != 0);
         writeAction(writer, hex);
 

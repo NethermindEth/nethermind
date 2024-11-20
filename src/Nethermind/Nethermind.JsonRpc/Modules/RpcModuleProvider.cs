@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc.Modules
                         ThrowNotJsonRpc();
                     }
 
-                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke(Span<object>.Empty));
+                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke([]));
 
                     [DoesNotReturn]
                     [StackTraceHidden]
@@ -216,7 +216,7 @@ namespace Nethermind.JsonRpc.Modules
 
             public ResolvedMethodInfo()
             {
-                ExpectedParameters = Array.Empty<ExpectedParameter>();
+                ExpectedParameters = [];
             }
 
             public ResolvedMethodInfo(
@@ -237,7 +237,7 @@ namespace Nethermind.JsonRpc.Modules
                     ParameterDetails details = ParameterDetails.None;
                     if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
-                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Array.Empty<Type>()));
+                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, []));
                     }
 
                     if (IsNullableParameter(parameter))

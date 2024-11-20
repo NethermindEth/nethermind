@@ -68,7 +68,7 @@ namespace Nethermind.State.Proofs
         /// </summary>
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[] keccakStorageKeys)
         {
-            keccakStorageKeys ??= Array.Empty<ValueHash256>();
+            keccakStorageKeys ??= [];
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
@@ -96,7 +96,7 @@ namespace Nethermind.State.Proofs
 
         public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, params byte[][] storageKeys)
         {
-            storageKeys ??= Array.Empty<byte[]>();
+            storageKeys ??= [];
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
             Hash256[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
@@ -262,13 +262,13 @@ namespace Nethermind.State.Proofs
                 {
                     foreach (int storageIndex in value.StorageIndices)
                     {
-                        _storageProofItems[storageIndex].Add(Array.Empty<byte>());
+                        _storageProofItems[storageIndex].Add([]);
                     }
                 }
             }
             else
             {
-                _accountProofItems.Add(Array.Empty<byte>());
+                _accountProofItems.Add([]);
             }
         }
 

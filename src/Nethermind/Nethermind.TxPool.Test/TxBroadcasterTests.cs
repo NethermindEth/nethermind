@@ -216,7 +216,7 @@ public class TxBroadcasterTests
             transactions[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithData(isLarge ? new byte[4 * 1024] : Array.Empty<byte>()) //some part of txs (10%) is large (>4KB)
+                .WithData(isLarge ? new byte[4 * 1024] : []) //some part of txs (10%) is large (>4KB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 

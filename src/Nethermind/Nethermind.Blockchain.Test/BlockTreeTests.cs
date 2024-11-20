@@ -1869,7 +1869,7 @@ public class BlockTreeTests
                 number: 0,
                 gasLimit: 25000000,
                 timestamp: 1695902100,
-                extraData: Array.Empty<byte>())
+                extraData: [])
             {
                 Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
                 Bloom = Core.Bloom.Empty
@@ -1884,7 +1884,7 @@ public class BlockTreeTests
                 number: genesis.Header.Number + 1,
                 gasLimit: 25000000,
                 timestamp: genesis.Header.Timestamp + 100,
-                extraData: Array.Empty<byte>())
+                extraData: [])
             {
                 Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
                 Bloom = Core.Bloom.Empty,
@@ -1900,7 +1900,7 @@ public class BlockTreeTests
                 number: second.Header.Number + 1,
                 gasLimit: 25000000,
                 timestamp: second.Header.Timestamp + 100,
-                extraData: Array.Empty<byte>())
+                extraData: [])
             {
                 Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
                 Bloom = Core.Bloom.Empty,

@@ -147,17 +147,15 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit = 0;
 
-            using (ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags))
+            using ICommitter committer = TrieStore.BeginCommit(RootRef, writeFlags);
+            if (RootRef is not null && RootRef.IsDirty)
             {
-                if (RootRef is not null && RootRef.IsDirty)
-                {
-                    TreePath path = TreePath.Empty;
-                    Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
+                TreePath path = TreePath.Empty;
+                Commit(committer, ref path, new NodeCommitInfo(RootRef), skipSelf: skipRoot, maxLevelForConcurrentCommit: maxLevelForConcurrentCommit);
 
-                    // reset objects
-                    RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
-                    SetRootHash(RootRef.Keccak!, true);
-                }
+                // reset objects
+                RootRef!.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
+                SetRootHash(RootRef.Keccak!, true);
             }
         }
 
@@ -354,7 +352,7 @@ namespace Nethermind.Trie
                 TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
                 CappedArray<byte> result = Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
-                return result.ToArray() ?? Array.Empty<byte>();
+                return result.ToArray() ?? [];
             }
             catch (TrieException e)
             {
@@ -379,7 +377,7 @@ namespace Nethermind.Trie
                 CappedArray<byte> result = Run(ref updatePathTreePath, in CappedArray<byte>.Empty, nibbles, false, startRootHash: rootHash,
                     isNodeRead: true);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
-                return result.ToArray() ?? Array.Empty<byte>();
+                return result.ToArray() ?? [];
             }
             catch (TrieException e)
             {
@@ -693,7 +691,7 @@ namespace Nethermind.Trie
                             // this only happens when we have branches with values
                             // which is not possible in the Ethereum protocol where keys are of equal lengths
                             // (it is possible in the more general trie definition)
-                            TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf(Array.Empty<byte>(), node.Value);
+                            TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf([], node.Value);
                             if (_logger.IsTrace) _logger.Trace($"Converting {node} into {leafFromBranch}");
                             nextNode = leafFromBranch;
                         }
@@ -1024,12 +1022,12 @@ namespace Nethermind.Trie
             }
             else
             {
-                ReadOnlySpan<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
+                ReadOnlySpan<byte> shortLeafPath = shorterPath[(extensionLength + 1)..];
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(shortLeafPath.ToArray(), shorterPathValue);
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
-            ReadOnlySpan<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
+            ReadOnlySpan<byte> leafPath = longerPath[(extensionLength + 1)..];
             TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
                 leafPath.ToArray(), longerPathValue);
 
@@ -1102,7 +1100,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                byte[] remainingPath = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
+                byte[] remainingPath = remaining[(extensionLength + 1)..].ToArray();
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath, in traverseContext.UpdateValue);
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }

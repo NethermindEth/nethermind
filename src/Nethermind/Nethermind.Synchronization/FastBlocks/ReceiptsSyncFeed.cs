@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 BlockInfo? blockInfo = blockInfos[i];
                 TxReceipt[]? receipts = (batch.Response?.Count ?? 0) <= i
                     ? null
-                    : (batch.Response![i] ?? Array.Empty<TxReceipt>());
+                    : (batch.Response![i] ?? []);
 
                 if (receipts is not null)
                 {

@@ -44,14 +44,11 @@ public class AuRaParameters
 
         public Address GetContractAddress()
         {
-            switch (ValidatorType)
+            return ValidatorType switch
             {
-                case ValidatorType.Contract:
-                case ValidatorType.ReportingContract:
-                    return Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses));
-                default:
-                    throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address.");
-            }
+                ValidatorType.Contract or ValidatorType.ReportingContract => Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses)),
+                _ => throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address."),
+            };
         }
     }
 }
