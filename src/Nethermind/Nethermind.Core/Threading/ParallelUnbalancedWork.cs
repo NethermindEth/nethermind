@@ -127,9 +127,11 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         while (i < _data.ToExclusive)
         {
             _data.Action(i);
+            // Get the next index
             i = _data.Index.GetNext();
         }
 
+        // Signal that this thread has completed its work
         _data.MarkThreadCompleted();
     }
 
@@ -179,6 +181,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             {
                 lock (this)
                 {
+                    // Notify any waiting threads that all work is complete
                     Monitor.Pulse(this);
                 }
             }
@@ -226,24 +229,31 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Func<int, TLocal, TLocal> action,
             Action<TLocal>? @finally = null)
         {
-            var threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+            // Determine the number of threads to use
+            var threads = parallelOptions.MaxDegreeOfParallelism > 0
+                ? parallelOptions.MaxDegreeOfParallelism
+                : Environment.ProcessorCount;
 
+            // Create shared data with thread-local initializers and finalizers
             var data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally);
 
+            // Queue work items to the thread pool for all threads except the current one
             for (int i = 0; i < threads - 1; i++)
             {
                 ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
             }
 
+            // Execute work on the current thread
             new InitProcessor<TLocal>(data).Execute();
 
+            // If there are still active threads, wait for them to complete
             if (data.ActiveThreads > 0)
             {
                 lock (data)
                 {
                     if (data.ActiveThreads > 0)
                     {
-                        // Wait for remaining to complete
+                        // Wait for the remaining threads to complete
                         Monitor.Wait(data);
                     }
                 }
