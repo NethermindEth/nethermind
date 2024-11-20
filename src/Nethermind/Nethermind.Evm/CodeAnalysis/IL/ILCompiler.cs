@@ -2830,7 +2830,10 @@ internal class ILCompiler
             }
         }
 
-        segments[segmentStart] = (hasJumpdest, segmentEnd);
+        if (segmentStart <= code[^1].ProgramCounter)
+        {
+            segments[segmentStart] = (hasJumpdest, code[^1].ProgramCounter + code[^1].Metadata.AdditionalBytes);
+        }
 
         return segments;
     }
@@ -2868,23 +2871,13 @@ internal class ILCompiler
                     }
 
                     metadata.leftOut = currentStackSize;
-
-                    switch(op.Operation)
-                    {
-                        case Instruction.RETURN:
-                        case Instruction.REVERT:
-                        case Instruction.STOP:
-                        case Instruction.INVALID:
-                        case Instruction.JUMPI:
-                        case Instruction.JUMP:
+                    if (op.IsTerminating || op.IsJump) {
                             metadata.required = -metadata.required;
                             stacks[stackStart] = metadata; // remember the stack chain of opcodes
                             stackStart = op.ProgramCounter + 1;             // start with the next again
                             metadata = (0, 0, 0);
                             currentStackSize = 0;
-                            break;
                     }
-
                     break;
             }
         }
@@ -2912,20 +2905,14 @@ internal class ILCompiler
                     costStart = op.ProgramCounter;
                     coststack = op.Metadata.GasCost;
                     break;
-                case Instruction.RETURN:
-                case Instruction.REVERT:
-                case Instruction.STOP:
-                case Instruction.GAS:
-                case Instruction.INVALID:
-                case Instruction.JUMPI:
-                case Instruction.JUMP:
-                    coststack += op.Metadata.GasCost;
-                    costs[costStart] = coststack; // remember the stack chain of opcodes
-                    costStart = op.ProgramCounter + 1;             // start with the next again
-                    coststack = 0;
-                    break;
                 default:
                     coststack += op.Metadata.GasCost;
+                    if (op.IsTerminating || op.IsJump || op.Operation is Instruction.GAS)
+                    {
+                        costs[costStart] = coststack; // remember the stack chain of opcodes
+                        costStart = op.ProgramCounter + 1;             // start with the next again
+                        coststack = 0;
+                    }
                     break;
             }
         }
