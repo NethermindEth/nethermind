@@ -24,12 +24,12 @@ public sealed class OptimismBaseFeeCalculator(
             // NOTE: This operation should never fail since headers should be valid at this point
             EIP1559Parameters eip1559Params = parent.DecodeEIP1559Parameters();
             spec = eip1559Params.IsZero()
-                ? new Eip1559Spec(specFor1559)
+                ? new OverridableEip1559Spec(specFor1559)
                 {
                     ElasticityMultiplier = Eip1559Constants.DefaultElasticityMultiplier,
                     BaseFeeMaxChangeDenominator = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator
                 }
-                : new Eip1559Spec(specFor1559)
+                : new OverridableEip1559Spec(specFor1559)
                 {
                     ElasticityMultiplier = eip1559Params.Elasticity,
                     BaseFeeMaxChangeDenominator = eip1559Params.Denominator

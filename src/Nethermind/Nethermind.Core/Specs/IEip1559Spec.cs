@@ -23,7 +23,7 @@ namespace Nethermind.Core.Specs
         public long ElasticityMultiplier { get; }
     }
 
-    public sealed class Eip1559Spec : IEip1559Spec
+    public sealed class OverridableEip1559Spec : IEip1559Spec
     {
         public bool IsEip1559Enabled { get; init; }
         public long Eip1559TransitionBlock { get; init; }
@@ -33,7 +33,7 @@ namespace Nethermind.Core.Specs
         public UInt256 BaseFeeMaxChangeDenominator { get; init; }
         public long ElasticityMultiplier { get; init; }
 
-        public Eip1559Spec(IEip1559Spec spec)
+        public OverridableEip1559Spec(IEip1559Spec spec)
         {
             IsEip1559Enabled = spec.IsEip1559Enabled;
             Eip1559TransitionBlock = spec.Eip1559TransitionBlock;
