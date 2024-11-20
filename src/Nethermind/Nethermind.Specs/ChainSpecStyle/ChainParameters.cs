@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -10,17 +12,28 @@ namespace Nethermind.Specs.ChainSpecStyle;
 public class ChainParameters
 {
 
-    private ulong? _dencunTransitionTimestamp;
-    private ulong? _cancunTransitionTimestamp;
+    private static readonly Dictionary<string, Func<ChainParameters, ulong?>> HardforkToEips = new()
+    {
+        { "Dencun", cp => cp.Eip4844TransitionTimestamp },
+        { "Cancun", cp => cp.Eip4788TransitionTimestamp },
+        { "EIP-1153", cp => cp.Eip1153TransitionTimestamp },
+        { "EIP-5656", cp => cp.Eip5656TransitionTimestamp },
+        { "EIP-6780", cp => cp.Eip6780TransitionTimestamp }
+    };
+
+
+    public static Func<ChainParameters, ulong?>? GetHardforkMapping(string hardfork)
+    {
+        return HardforkToEips.TryGetValue(hardfork, out var mapping) ? mapping : null;
+    }
 
     public ulong? DencunTransitionTimestamp
     {
         get
         {
-            if (Eip4844TransitionTimestamp == Eip4788TransitionTimestamp &&
-                Eip4788TransitionTimestamp == Eip1153TransitionTimestamp &&
-                Eip1153TransitionTimestamp == Eip5656TransitionTimestamp &&
-                Eip5656TransitionTimestamp == Eip6780TransitionTimestamp)
+            if (AreHardforkTimestampsEqual(
+                "Dencun", "Cancun", "EIP-1153",
+                "EIP-5656", "EIP-6780"))
             {
                 return Eip4844TransitionTimestamp;
             }
@@ -29,7 +42,6 @@ public class ChainParameters
         }
         set
         {
-            _dencunTransitionTimestamp = value;
             Eip4844TransitionTimestamp = value;
             Eip4788TransitionTimestamp = value;
             Eip1153TransitionTimestamp = value;
@@ -37,21 +49,22 @@ public class ChainParameters
             Eip6780TransitionTimestamp = value;
         }
     }
+
+
     public ulong? CancunTransitionTimestamp
     {
         get
         {
-            return (Eip4844TransitionTimestamp == _cancunTransitionTimestamp &&
-                    Eip4788TransitionTimestamp == _cancunTransitionTimestamp &&
-                    Eip1153TransitionTimestamp == _cancunTransitionTimestamp &&
-                    Eip5656TransitionTimestamp == _cancunTransitionTimestamp &&
-                    Eip6780TransitionTimestamp == _cancunTransitionTimestamp)
-                ? _cancunTransitionTimestamp
-                : null;
+            if (AreHardforkTimestampsEqual(
+                "Dencun", "Cancun", "EIP-1153",
+                "EIP-5656", "EIP-6780"))
+            {
+                return Eip4844TransitionTimestamp;
+            }
+            return null;
         }
         set
         {
-            _cancunTransitionTimestamp = value;
             Eip4844TransitionTimestamp = value;
             Eip4788TransitionTimestamp = value;
             Eip1153TransitionTimestamp = value;
@@ -60,24 +73,21 @@ public class ChainParameters
         }
     }
 
-    public bool ValidateNoTimestampConflicts()
+    public bool AreHardforkTimestampsEqual(params string[] hardforks)
     {
-        bool dencunConflicts = DencunTransitionTimestamp == null ||
-                            (Eip4844TransitionTimestamp == DencunTransitionTimestamp &&
-                                Eip4788TransitionTimestamp == DencunTransitionTimestamp &&
-                                Eip1153TransitionTimestamp == DencunTransitionTimestamp &&
-                                Eip5656TransitionTimestamp == DencunTransitionTimestamp &&
-                                Eip6780TransitionTimestamp == DencunTransitionTimestamp);
-
-        bool cancunConflicts = CancunTransitionTimestamp == null ||
-                            (Eip4844TransitionTimestamp == CancunTransitionTimestamp &&
-                                Eip4788TransitionTimestamp == CancunTransitionTimestamp &&
-                                Eip1153TransitionTimestamp == CancunTransitionTimestamp &&
-                                Eip5656TransitionTimestamp == CancunTransitionTimestamp &&
-                                Eip6780TransitionTimestamp == CancunTransitionTimestamp);
-
-        return dencunConflicts && cancunConflicts;
+        if (hardforks.Length == 0) return false;
+        ulong? firstTimestamp = HardforkToEips[hardforks[0]](this);
+        foreach (var hardfork in hardforks)
+        {
+            if (HardforkToEips[hardfork](this) != firstTimestamp)
+            {
+                return false;
+            }
+        }
+        return true;
     }
+
+
 
     public long? MaxCodeSize { get; set; }
     public long? MaxCodeSizeTransition { get; set; }
