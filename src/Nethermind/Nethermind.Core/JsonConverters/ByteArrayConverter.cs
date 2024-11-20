@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Extensions;
 using System;
 using System.Buffers;
 using System.Diagnostics;
@@ -9,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -29,23 +29,19 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
-        {
             return null;
-        }
         else if (tokenType != JsonTokenType.String)
         {
             ThrowInvalidOperationException();
         }
 
-        int length = reader.ValueSpan.Length;
+        var length = reader.ValueSpan.Length;
         byte[]? bytes = null;
         if (length == 0)
         {
             length = checked((int)reader.ValueSequence.Length);
             if (length == 0)
-            {
                 return null;
-            }
 
             bytes = ArrayPool<byte>.Shared.Rent(length);
             reader.ValueSequence.CopyTo(bytes);
@@ -53,15 +49,11 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         ReadOnlySpan<byte> hex = bytes is null ? reader.ValueSpan : bytes.AsSpan(0, length);
         if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
-        {
             hex = hex[2..];
-        }
 
-        byte[] returnVal = Bytes.FromUtf8HexString(hex);
+        var returnVal = Bytes.FromUtf8HexString(hex);
         if (bytes is not null)
-        {
             ArrayPool<byte>.Shared.Return(bytes);
-        }
 
         return returnVal;
     }
@@ -102,17 +94,23 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         const int maxStackLength = 128;
         const int stackLength = 256;
 
-        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
-        int length = bytes.Length * 2 - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
+        var leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
+        var nibblesCount = bytes.Length * 2;
+
+        if (skipLeadingZeros && nibblesCount is not 0 && leadingNibbleZeros == nibblesCount)
+        {
+            writer.WriteStringValue(Bytes.ZeroHexValue);
+            return;
+        }
+
+        var length = nibblesCount - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
         if (length > maxStackLength)
-        {
             array = ArrayPool<byte>.Shared.Rent(length);
-        }
 
         Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
-        int start = 0;
+        var start = 0;
         Index end = ^0;
         if (addQuotations)
         {
@@ -131,8 +129,6 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         writeAction(writer, hex);
 
         if (array is not null)
-        {
             ArrayPool<byte>.Shared.Return(array);
-        }
     }
 }

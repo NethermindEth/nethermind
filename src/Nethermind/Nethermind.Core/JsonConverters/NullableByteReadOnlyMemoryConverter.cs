@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json;
 
-public class NullableByteReadOnlyMemoryConverter : JsonConverter<ReadOnlyMemory<byte>?>
+public class NullableByteReadOnlyMemoryConverter(bool skipLeadingZeros = false) : JsonConverter<ReadOnlyMemory<byte>?>
 {
     public override ReadOnlyMemory<byte>? Read(
         ref Utf8JsonReader reader,
@@ -19,5 +19,5 @@ public class NullableByteReadOnlyMemoryConverter : JsonConverter<ReadOnlyMemory<
         Utf8JsonWriter writer,
         ReadOnlyMemory<byte>? bytes,
         JsonSerializerOptions options) =>
-        ByteArrayConverter.Convert(writer, bytes is null ? [] : bytes.Value.Span, skipLeadingZeros: false);
+        ByteArrayConverter.Convert(writer, bytes is null ? [] : bytes.Value.Span, skipLeadingZeros: skipLeadingZeros);
 }

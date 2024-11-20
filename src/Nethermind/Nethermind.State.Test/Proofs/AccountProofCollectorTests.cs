@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -462,8 +462,8 @@ namespace Nethermind.Store.Test.Proofs
             Assert.That(proof.StorageProofs?[3].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0x00"));
             Assert.That(proof.StorageProofs?[4].Value?.Span.ToHexString(true) ?? "0x", Is.EqualTo("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000"));
 
-            proof.StorageProofs?[1].Proof.Should().HaveCount(3);
-            proof.StorageProofs?[3].Proof.Should().HaveCount(2);
+            proof.StorageProofs?[1].Proof.Should().HaveCount(2);
+            proof.StorageProofs?[3].Proof.Should().HaveCount(1);
         }
 
         [Test]
