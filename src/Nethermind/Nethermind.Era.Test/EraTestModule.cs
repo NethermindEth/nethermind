@@ -4,6 +4,7 @@
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -12,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using NSubstitute;
@@ -29,9 +31,17 @@ public class EraTestModule : Module
 
     public static ContainerBuilder BuildContainerBuilderWithBlockTreeOfLength(int length)
     {
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree();
+
         return new ContainerBuilder()
             .AddModule(new EraTestModule())
-            .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(length).TestObject);
+            .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
+            .OnBuild((ctx) =>
+            {
+                blockTreeBuilder
+                    .WithTransactions(ctx.Resolve<IReceiptStorage>())
+                    .OfChainLength(length);
+            });
     }
 
     public static async Task<IContainer> CreateExportedEraEnv(int chainLength = 512, int start = 0, int end = 0)
@@ -54,8 +64,6 @@ public class EraTestModule : Module
             .AddSingleton<ISyncConfig>(new SyncConfig()
             {
             })
-            .AddKeyedSingleton<ITunableDb>(DbNames.Receipts, Substitute.For<ITunableDb>())
-            .AddKeyedSingleton<ITunableDb>(DbNames.Blocks, Substitute.For<ITunableDb>())
             .AddSingleton<IFileSystem>(new FileSystem())
             .AddSingleton<IEraConfig>(new EraConfig()
             {
@@ -63,7 +71,17 @@ public class EraTestModule : Module
                 NetworkName = TestNetwork,
             })
             .AddSingleton<IBlockTree>(Build.A.BlockTree().TestObject)
-            .AddSingleton<IReceiptStorage>(Substitute.For<IReceiptStorage>());
+
+            // Need to be real because during import the receipts does not have txhash but the ensure canonical
+            // assumed that the txhash is not null which would have been populated by receipt recovery but InMemoryReceiptStorage
+            // does not do receipt recovery.
+            .AddModule(new DbModule())
+            .AddSingleton<IReceiptConfig>(new ReceiptConfig())
+            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
+            .AddSingleton<IBlockStore, BlockStore>()
+            .AddSingleton<IEthereumEcdsa, EthereumEcdsa>()
+            .AddSingleton<IReceiptsRecovery, ReceiptsRecovery>()
+            .AddSingleton<IReceiptStorage, PersistentReceiptStorage>();
 
 
         builder

@@ -144,6 +144,13 @@ public static class ContainerBuilderExtensions
 
         return builder;
     }
+
+    public static ContainerBuilder OnBuild(this ContainerBuilder builder, Action<ILifetimeScope> action)
+    {
+        builder.RegisterBuildCallback(action);
+
+        return builder;
+    }
 }
 
 /// <summary>

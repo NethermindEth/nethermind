@@ -136,7 +136,7 @@ public class EraImporter : IEraImporter
         // This set BestSuggestedHeader so that the receipt insert does not create tx index unnecessarily
         {
             (Block? b, TxReceipt[]? _) = (await eraStore.FindBlockAndReceipts(eraStore.LastBlock, cancellation: cancellation))!;
-            _blockTree.Insert(b!.Header);
+            if (b?.IsGenesis == false) _blockTree.Insert(b!.Header);
         }
 
         // I wish I could say that EraStore can be run used in parallel in any way you like but I could not make it so.

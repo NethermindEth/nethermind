@@ -137,9 +137,9 @@ public class EraExporter : IEraExporter
                 }
 
                 TxReceipt[]? receipts = _receiptStorage.Get(block, true, false);
-                if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length != 0))
+                if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
                 {
-                    throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
+                    throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)} {_receiptStorage.GetHashCode()}");
                 }
 
                 if (block.TotalDifficulty is null)
