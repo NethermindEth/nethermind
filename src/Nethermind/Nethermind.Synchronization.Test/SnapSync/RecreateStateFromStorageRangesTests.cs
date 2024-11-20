@@ -4,9 +4,7 @@
 #nullable disable
 
 using System.Linq;
-
 using Autofac;
-
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,7 +17,6 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
-
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync

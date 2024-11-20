@@ -6,11 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Autofac;
-
 using FluentAssertions;
-
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
@@ -33,9 +30,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-
 using NSubstitute;
-
 using NUnit.Framework;
 
 using BlockTree = Nethermind.Blockchain.BlockTree;
