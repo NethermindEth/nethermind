@@ -23,11 +23,17 @@ public sealed class OptimismBaseFeeCalculator(
         {
             // NOTE: This operation should never fail since headers should be valid at this point
             EIP1559Parameters eip1559Params = parent.DecodeEIP1559Parameters();
-            spec = new Eip1559Spec(specFor1559)
-            {
-                ElasticityMultiplier = eip1559Params.IsZero() ? Eip1559Constants.DefaultElasticityMultiplier : eip1559Params.Elasticity,
-                BaseFeeMaxChangeDenominator = eip1559Params.IsZero() ? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator : eip1559Params.Denominator
-            };
+            spec = eip1559Params.IsZero()
+                ? new Eip1559Spec(specFor1559)
+                {
+                    ElasticityMultiplier = Eip1559Constants.DefaultElasticityMultiplier,
+                    BaseFeeMaxChangeDenominator = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator
+                }
+                : new Eip1559Spec(specFor1559)
+                {
+                    ElasticityMultiplier = eip1559Params.Elasticity,
+                    BaseFeeMaxChangeDenominator = eip1559Params.Denominator
+                };
         }
 
         return baseFeeCalculator.Calculate(parent, spec);
