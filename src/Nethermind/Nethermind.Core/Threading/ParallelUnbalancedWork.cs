@@ -49,17 +49,8 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
         new ParallelUnbalancedWork(data).Execute();
 
-        if (data.ActiveThreads > 0)
-        {
-            lock (data)
-            {
-                if (data.ActiveThreads > 0)
-                {
-                    // Wait for remaining to complete
-                    Monitor.Wait(data);
-                }
-            }
-        }
+        // If there are still active threads, wait for them to complete
+        data.Event.Wait();
     }
 
     /// <summary>
@@ -158,6 +149,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Gets the shared counter for indices.
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
+        public ManualResetEventSlim Event { get; } = new();
 
         /// <summary>
         /// Gets the exclusive upper bound of the range.
@@ -179,11 +171,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
             if (remaining == 0)
             {
-                lock (this)
-                {
-                    // Notify any waiting threads that all work is complete
-                    Monitor.Pulse(this);
-                }
+                Event.Set();
             }
 
             return remaining;
@@ -247,17 +235,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             new InitProcessor<TLocal>(data).Execute();
 
             // If there are still active threads, wait for them to complete
-            if (data.ActiveThreads > 0)
-            {
-                lock (data)
-                {
-                    if (data.ActiveThreads > 0)
-                    {
-                        // Wait for the remaining threads to complete
-                        Monitor.Wait(data);
-                    }
-                }
-            }
+            data.Event.Wait();
         }
 
         /// <summary>
