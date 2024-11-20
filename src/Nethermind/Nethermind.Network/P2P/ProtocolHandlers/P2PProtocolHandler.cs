@@ -127,13 +127,13 @@ public class P2PProtocolHandler(
                     ReportIn(disconnectMessage, size);
 
                     EthDisconnectReason disconnectReason =
-                        FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                        FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
                             ? (EthDisconnectReason)disconnectMessage.Reason
                             : EthDisconnectReason.Other;
 
                     if (Logger.IsTrace)
                     {
-                        Logger.Trace(!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                        Logger.Trace(!FastEnum.IsDefined((EthDisconnectReason)disconnectMessage.Reason)
                             ? $"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}"
                             : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
                     }

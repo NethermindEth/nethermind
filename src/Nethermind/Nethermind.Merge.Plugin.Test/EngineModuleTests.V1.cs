@@ -174,7 +174,7 @@ public partial class EngineModuleTests
         expected.PrevRandao = random;
         expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");
 
-        executionPayloadV1.Should().BeEquivalentTo(expected);
+        executionPayloadV1.Should().BeEquivalentTo(expected, o => o.IgnoringCyclicReferences());
         Hash256 actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(expected.BlockHash);
         actualHead.Should().Be(startingHead);
@@ -849,7 +849,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = ExecutionPayload.Create(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
+        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
     [Test]
@@ -905,7 +905,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload);
+        ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
     [Test]
