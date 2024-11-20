@@ -11,6 +11,26 @@ namespace Nethermind.Specs.Test;
 
 public class ChainParametersTests
 {
+
+    [Test]
+    public void ChainParameters_should_have_same_properties_as_chainSpecParamsJson()
+    {
+        string[] chainParametersExceptions = {
+            "Registrar"
+        };
+        string[] chainSpecParamsJsonExceptions = {
+            "ChainId", "EnsRegistrar", "NetworkId"
+        };
+        IEnumerable<string> chainParametersProperties = typeof(ChainParameters).GetProperties()
+            .Where(x => !chainParametersExceptions.Contains(x.Name))
+            .Select(x => x.Name);
+        IEnumerable<string> chainSpecParamsJsonProperties = typeof(ChainSpecParamsJson).GetProperties()
+            .Where(x => !chainSpecParamsJsonExceptions.Contains(x.Name)).
+            Select(x => x.Name);
+
+        Assert.That(chainParametersProperties, Is.EquivalentTo(chainSpecParamsJsonProperties));
+    }
+
     [Test]
     public void SettingDencunTransitionTimestamp_SetsAllEipTimestamps()
     {
