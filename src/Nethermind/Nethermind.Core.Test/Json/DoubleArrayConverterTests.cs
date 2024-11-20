@@ -19,6 +19,6 @@ public class DoubleArrayConverterTests : ConverterTestBase<double[]>
         TestConverter(new double[] { -0.5, 0.5, 1.0, 1.5, 2.0, 2.5 }, (a, b) => a.AsSpan().SequenceEqual(b), converter);
         TestConverter(new double[] { 1, 1, 1, 1 }, (a, b) => a.AsSpan().SequenceEqual(b), converter);
         TestConverter(new double[] { 0, 0, 0, 0 }, (a, b) => a.AsSpan().SequenceEqual(b), converter);
-        TestConverter(Array.Empty<double>(), (a, b) => a.AsSpan().SequenceEqual(b), converter);
+        TestConverter([], (a, b) => a.AsSpan().SequenceEqual(b), converter);
     }
 }

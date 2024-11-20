@@ -47,7 +47,7 @@ public abstract class ConfigFileTestsBase
 
     [ConfigFileGroup("fast")]
     protected IEnumerable<string> FastSyncConfigs
-        => Configs.Where(config => !config.Contains("_") && !config.Contains("spaceneth"));
+        => Configs.Where(config => !config.Contains('_') && !config.Contains("spaceneth"));
 
     [ConfigFileGroup("archive")]
     protected IEnumerable<string> ArchiveConfigs

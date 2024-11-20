@@ -18,7 +18,7 @@ public class TaikoTransactionProcessor(
     IWorldState worldState,
     IVirtualMachine virtualMachine,
     ICodeInfoRepository? codeInfoRepository,
-    ILogManager logManager
+    ILogManager? logManager
     ) : TransactionProcessorBase(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
 {
     protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,

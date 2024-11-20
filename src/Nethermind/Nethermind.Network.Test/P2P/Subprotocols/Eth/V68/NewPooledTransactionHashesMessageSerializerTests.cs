@@ -34,9 +34,9 @@ public class NewPooledTransactionHashesMessageSerializerTests
     [Test]
     public void Empty_serialization()
     {
-        TxType[] types = { };
-        int[] sizes = { };
-        Hash256[] hashes = { };
+        TxType[] types = [];
+        int[] sizes = [];
+        Hash256[] hashes = [];
         Test(types, sizes, hashes, "c380c0c0");
     }
 
@@ -45,7 +45,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.EIP1559 };
         int[] sizes = { 10 };
-        Hash256[] hashes = { };
+        Hash256[] hashes = [];
         Test(types, sizes, hashes, "c402c10ac0");
     }
 

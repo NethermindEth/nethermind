@@ -26,7 +26,7 @@ public class DnsClient : IDnsClient
     {
         if (_client.NameServers.Count == 0)
         {
-            return Enumerable.Empty<string>();
+            return [];
         }
 
         string queryString = $"{(string.IsNullOrWhiteSpace(query) ? string.Empty : (query + "."))}{_domain}";

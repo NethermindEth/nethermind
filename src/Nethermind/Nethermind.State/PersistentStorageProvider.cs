@@ -347,7 +347,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
-        Task.WaitAll(commitTask);
+        Task.WaitAll(commitTask.AsSpan());
 
         _toUpdateRoots.Clear();
         // only needed here as there is no control over cached storage size otherwise

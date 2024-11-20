@@ -114,7 +114,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 if (blockSearch.IsError)
                 {
                     error = blockSearch;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
 
                 Block block = blockSearch.Object!;
@@ -125,7 +125,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
                 else
                 {
                     missingTraces = true;
-                    return Enumerable.Empty<ParityTxTraceFromStore>();
+                    return [];
                 }
             });
 

@@ -35,7 +35,6 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -228,7 +227,7 @@ public class SynchronizerTests
             {
                 block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
                     .WithTotalDifficulty(block.TotalDifficulty + 1000000)
-                    .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
+                    .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
                 Blocks.Add(block);
             }
 
@@ -242,7 +241,7 @@ public class SynchronizerTests
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)
-                    .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] { branchIndex }).TestObject;
+                    .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
                 Blocks.Add(block);
             }
 

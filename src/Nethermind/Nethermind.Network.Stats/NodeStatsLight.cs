@@ -34,7 +34,7 @@ public class NodeStatsLight : INodeStats
     private decimal? _averageLatency;
 
     private readonly int[] _statCountersArray;
-    private readonly object _speedLock = new();
+    private readonly Lock _speedLock = new();
 
     private DisconnectReason? _lastLocalDisconnect;
     private DisconnectReason? _lastRemoteDisconnect;

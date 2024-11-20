@@ -140,7 +140,7 @@ public partial class EngineModuleTests
                 ExtraData = Bytes.FromHexString(expected_extraData),
                 BaseFeePerGas = expected_baseFeePerGas,
                 BlockHash = new(expected_blockHash),
-                Transactions = Array.Empty<byte[]>()
+                Transactions = []
             },
             Profit = UInt256.Parse(expected_profit.AsSpan(2), NumberStyles.HexNumber)
         };

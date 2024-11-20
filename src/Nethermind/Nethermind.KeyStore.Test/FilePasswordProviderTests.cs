@@ -23,13 +23,13 @@ public class FilePasswordProviderTests
     [SetUp]
     public void SetUp()
     {
-        foreach (var file in _files)
+        foreach (var (Name, Content) in _files)
         {
-            var filePath = Path.Combine(TestDir, file.Name);
+            var filePath = Path.Combine(TestDir, Name);
             if (!File.Exists(filePath))
             {
                 File.Create(filePath).Close();
-                File.WriteAllText(filePath, file.Content);
+                File.WriteAllText(filePath, Content);
             }
         }
     }
@@ -37,9 +37,9 @@ public class FilePasswordProviderTests
     [TearDown]
     public void TearDown()
     {
-        foreach (var file in _files)
+        foreach (var (Name, _) in _files)
         {
-            var filePath = Path.Combine(TestDir, file.Name);
+            var filePath = Path.Combine(TestDir, Name);
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);

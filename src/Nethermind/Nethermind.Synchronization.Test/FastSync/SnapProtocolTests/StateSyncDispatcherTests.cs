@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -72,7 +71,7 @@ public class StateSyncDispatcherTests
         using StateSyncBatch batch = new(
             Keccak.OfAnEmptyString,
             NodeDataType.State,
-            new[] { new StateSyncItem(Keccak.EmptyTreeHash, Array.Empty<byte>(), Array.Empty<byte>(), NodeDataType.State) });
+            new[] { new StateSyncItem(Keccak.EmptyTreeHash, [], [], NodeDataType.State) });
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
