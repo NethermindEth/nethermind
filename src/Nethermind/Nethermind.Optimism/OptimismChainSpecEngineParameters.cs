@@ -60,9 +60,12 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
+        ArgumentNullException.ThrowIfNull(HoloceneTimestamp);
+
         if (CanyonTimestamp <= startTimestamp)
         {
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
+        spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
     }
 }

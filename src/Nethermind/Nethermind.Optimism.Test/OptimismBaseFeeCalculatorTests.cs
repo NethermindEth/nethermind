@@ -8,7 +8,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -26,10 +25,13 @@ public class OptimismBaseFeeCalculatorTests
     [TestCase(30_000_000, 55_000_000, 2u, 10u)] // Above
     public void CalculatesBaseFee_AfterHolocene_UsingExtraDataParameters(long gasUsed, long expectedBaseFee, UInt32 denominator, UInt32 elasticity)
     {
+        const ulong HoloceneTimestamp = 10_000_000;
+
         IReleaseSpec releaseSpec = new ReleaseSpec
         {
             IsEip1559Enabled = true,
-            IsOpHoloceneEnabled = true
+            IsOpHoloceneEnabled = true,
+            BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, new DefaultBaseFeeCalculator())
         };
 
         var extraData = new byte[EIP1559Parameters.ByteLength];
@@ -39,16 +41,12 @@ public class OptimismBaseFeeCalculatorTests
         BlockHeader blockHeader = Build.A.BlockHeader
             .WithGasLimit(30_000_000)
             .WithBaseFee(10_000_000)
+            .WithTimestamp(HoloceneTimestamp)
             .WithGasUsed(gasUsed)
             .WithExtraData(extraData)
             .TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(blockHeader).Returns(releaseSpec);
-
-        BaseFeeCalculator.Override(new OptimismBaseFeeCalculator(new DefaultBaseFeeCalculator(), specProvider));
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
-        BaseFeeCalculator.Reset();
 
         actualBaseFee.Should().Be((UInt256)expectedBaseFee);
     }

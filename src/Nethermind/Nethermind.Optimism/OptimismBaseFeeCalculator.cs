@@ -12,15 +12,15 @@ namespace Nethermind.Optimism;
 /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#base-fee-computation"/>
 /// </remarks>
 public sealed class OptimismBaseFeeCalculator(
-    IBaseFeeCalculator baseFeeCalculator,
-    ISpecProvider specProvider) : IBaseFeeCalculator
+    ulong holoceneTimestamp,
+    IBaseFeeCalculator baseFeeCalculator
+) : IBaseFeeCalculator
 {
     public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
     {
         var spec = specFor1559;
 
-        var releaseSpec = specProvider.GetSpec(parent);
-        if (releaseSpec.IsOpHoloceneEnabled)
+        if (parent.Timestamp >= holoceneTimestamp)
         {
             // NOTE: This operation should never fail since headers should be valid at this point.
             if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out _))
