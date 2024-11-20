@@ -55,7 +55,7 @@ namespace Nethermind.Network
                     LoadFromDb();
                 }
 
-                return _nodesDict.Count == 0 ? Array.Empty<NetworkNode>() : CopyDictToArray();
+                return _nodesDict.Count == 0 ? [] : CopyDictToArray();
             }
         }
 

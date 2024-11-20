@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.Clique
         public static byte[] SliceExtraSealFromExtraData(byte[] extraData)
         {
             if (extraData.Length < Clique.ExtraSealLength)
-                new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
+                throw new ArgumentException($"Cannot be less than extra seal length ({Clique.ExtraSealLength}).", nameof(extraData));
             return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 

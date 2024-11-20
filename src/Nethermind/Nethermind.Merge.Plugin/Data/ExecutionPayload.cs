@@ -32,7 +32,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     public long BlockNumber { get; set; }
 
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
 
     public Address FeeRecipient { get; set; } = Address.Zero;
 

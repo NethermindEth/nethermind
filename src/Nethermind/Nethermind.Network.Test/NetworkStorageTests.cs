@@ -24,7 +24,7 @@ public class NetworkStorageTests
     {
         NetworkNodeDecoder.Init();
         ILogManager logManager = LimboLogs.Instance;
-        ConfigProvider configSource = new();
+        _ = new ConfigProvider();
         _tempDir = TempPath.GetTempDirectory();
 
         var db = new SimpleFilePublicKeyDb("Test", _tempDir.Path, logManager);

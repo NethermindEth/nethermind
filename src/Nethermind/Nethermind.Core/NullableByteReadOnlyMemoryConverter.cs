@@ -19,5 +19,5 @@ public class NullableByteReadOnlyMemoryConverter : JsonConverter<ReadOnlyMemory<
         Utf8JsonWriter writer,
         ReadOnlyMemory<byte>? bytes,
         JsonSerializerOptions options) =>
-        ByteArrayConverter.Convert(writer, bytes is null ? ReadOnlySpan<byte>.Empty : bytes.Value.Span, skipLeadingZeros: false);
+        ByteArrayConverter.Convert(writer, bytes is null ? [] : bytes.Value.Span, skipLeadingZeros: false);
 }

@@ -16,9 +16,9 @@ public class EnrLeaf : EnrTreeNode
         return $"enr:{NodeRecord}";
     }
 
-    public override string[] Links => Array.Empty<string>();
+    public override string[] Links => [];
 
-    public override string[] Refs => Array.Empty<string>();
+    public override string[] Refs => [];
 
     public override string[] Records => new[] { NodeRecord };
 }

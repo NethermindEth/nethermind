@@ -427,7 +427,7 @@ public class FullPrunerTests
 
     class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContextWithStorage>
     {
-        private INodeStorage _nodeStorageToCompareTo;
+        private readonly INodeStorage _nodeStorageToCompareTo;
 
         public TrieCopiedNodeVisitor(INodeStorage nodeStorage)
         {

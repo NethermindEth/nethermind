@@ -649,13 +649,7 @@ namespace Nethermind.Core.Collections
                 Initialize(hashsize);
 
                 KeyValuePair<TKey[], TValue>[]? array = (KeyValuePair<TKey[], TValue>[]?)
-                    siInfo.GetValue(KeyValuePairsName, typeof(KeyValuePair<TKey[], TValue>[]));
-
-                if (array is null)
-                {
-                    throw new SerializationException("The Keys for this Hashtable are missing.");
-                }
-
+                    siInfo.GetValue(KeyValuePairsName, typeof(KeyValuePair<TKey[], TValue>[])) ?? throw new SerializationException("The Keys for this Hashtable are missing.");
                 for (int i = 0; i < array.Length; i++)
                 {
                     if (array[i].Key is null)

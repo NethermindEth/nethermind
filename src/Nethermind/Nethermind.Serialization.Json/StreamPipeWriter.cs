@@ -115,7 +115,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         _tailBytesBuffered += bytes;
         _bytesBuffered += bytes;
-        _tailMemory = _tailMemory.Slice(bytes);
+        _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
 
         if (_bytesBuffered > _minimumBufferSize)

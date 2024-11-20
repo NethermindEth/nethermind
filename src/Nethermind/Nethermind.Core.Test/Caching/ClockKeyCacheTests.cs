@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test.Caching
         [Test]
         public void Beyond_capacity_lru_check()
         {
-            Random random = new();
+            _ = new Random();
             ClockKeyCache<AddressAsKey> cache = new(Capacity);
             for (var iter = 0; iter < Capacity; iter++)
             {

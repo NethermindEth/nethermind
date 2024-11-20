@@ -156,7 +156,7 @@ public struct EvmPooledMemory : IEvmMemory
     {
         if (length.IsZero)
         {
-            return Array.Empty<byte>();
+            return [];
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newLength);

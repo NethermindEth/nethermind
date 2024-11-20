@@ -19,17 +19,8 @@ namespace Nethermind.Abi
 
         public AbiBytes(int length)
         {
-            if (length > MaxLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be less or equal to {MaxLength}");
-            }
-
-            if (length <= MinLength)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiBytes)} has to be greater than {MinLength}");
-            }
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinLength);
 
             Length = length;
             Name = $"bytes{Length}";

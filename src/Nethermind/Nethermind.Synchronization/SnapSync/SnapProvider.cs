@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 StateTree tree = new(store.GetTrieStore(null), _logManager);
 
-                ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
+                ValueHash256 effectiveHashLimit = hashLimit ?? ValueKeccak.MaxValue;
 
                 (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
                     SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);

@@ -33,13 +33,7 @@ namespace Nethermind.Core.Extensions
             var memberExpression = expression.GetMemberInfo();
             if (memberExpression.Member is PropertyInfo property)
             {
-                var setMethod = property.GetSetMethod();
-
-                if (setMethod is null)
-                {
-                    throw new NotSupportedException($"Property {typeof(T).Name}{memberExpression.Member.Name} doesn't have a setter.");
-                }
-
+                var setMethod = property.GetSetMethod() ?? throw new NotSupportedException($"Property {typeof(T).Name}{memberExpression.Member.Name} doesn't have a setter.");
                 var parameterT = Expression.Parameter(typeof(T), "x");
                 var parameterTProperty = Expression.Parameter(typeof(TProperty), "y");
 
