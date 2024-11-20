@@ -54,13 +54,13 @@ namespace Nethermind.Abi.Test.Json
 
                 yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(),
                     new { name = "c", type = "int32" }));
-                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentOutOfRangeException()));
                 yield return new TestCaseData(GetTestDataWithException("int3000", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("fixed80", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentOutOfRangeException()));
+                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentOutOfRangeException()));
             }
         }
 

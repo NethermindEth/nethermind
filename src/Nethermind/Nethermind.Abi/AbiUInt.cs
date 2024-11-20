@@ -25,11 +25,7 @@ namespace Nethermind.Abi
 
         public AbiUInt(int length)
         {
-            if (length % 8 != 0)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
-            }
+            ThrowIfNotMultipleOf8(length);
 
             ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxSize);
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinSize);

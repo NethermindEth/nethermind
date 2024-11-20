@@ -19,11 +19,7 @@ namespace Nethermind.Abi
 
         public AbiUFixed(int length, int precision)
         {
-            if (length % 8 != 0)
-            {
-                throw new ArgumentException(nameof(length),
-                    $"{nameof(length)} of {nameof(AbiUFixed)} has to be a multiple of 8");
-            }
+            ThrowIfNotMultipleOf8(length);
 
             ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxLength);
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(length, MinLength);

@@ -5,6 +5,8 @@ using System;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using Nethermind.Blockchain.Contracts.Json;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 
 namespace Nethermind.Abi
 {
@@ -49,6 +51,21 @@ namespace Nethermind.Abi
         protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by {GetType().Name}";
 
         public abstract Type CSharpType { get; }
+
+        protected void ThrowIfNotMultipleOf8(int length)
+        {
+            if (length % 8 != 0)
+            {
+                Throw();
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void Throw()
+            {
+                throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
+            }
+        }
     }
 }
 
