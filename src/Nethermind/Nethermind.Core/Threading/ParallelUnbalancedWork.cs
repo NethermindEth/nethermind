@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core.Threading;
 
+/// <summary>
+/// Provides methods to execute parallel loops efficiently for unbalanced workloads.
+/// </summary>
 public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
     private static readonly ParallelOptions s_parallelOptions = new()
@@ -17,9 +20,22 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
     private readonly Data _data;
 
+    /// <summary>
+    /// Executes a parallel for loop over a range of integers.
+    /// </summary>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, Action<int> action)
         => For(fromInclusive, toExclusive, s_parallelOptions, action);
 
+    /// <summary>
+    /// Executes a parallel for loop over a range of integers, with the specified options.
+    /// </summary>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
+    /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
     {
         int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
@@ -46,6 +62,16 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         }
     }
 
+    /// <summary>
+    /// Executes a parallel for loop over a range of integers, with thread-local data, initialization, and finalization functions.
+    /// </summary>
+    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
+    /// <param name="init">The function to initialize the local data for each thread.</param>
+    /// <param name="action">The delegate that is invoked once per iteration.</param>
+    /// <param name="finally">The function to finalize the local data for each thread.</param>
     public static void For<TLocal>(
         int fromInclusive,
         int toExclusive,
@@ -55,9 +81,26 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         Action<TLocal> @finally)
         => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, init, default, action, @finally);
 
+    /// <summary>
+    /// Executes a parallel for loop over a range of integers, with thread-local data.
+    /// </summary>
+    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="state">The initial state of the thread-local data.</param>
+    /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For<TLocal>(int fromInclusive, int toExclusive, TLocal state, Func<int, TLocal, TLocal> action)
         => For(fromInclusive, toExclusive, s_parallelOptions, state, action);
 
+    /// <summary>
+    /// Executes a parallel for loop over a range of integers, with thread-local data and specified options.
+    /// </summary>
+    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
+    /// <param name="state">The initial state of the thread-local data.</param>
+    /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For<TLocal>(
         int fromInclusive,
         int toExclusive,
@@ -66,11 +109,18 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         Func<int, TLocal, TLocal> action)
         => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, state, action);
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
+    /// </summary>
+    /// <param name="data">The shared data for the parallel work.</param>
     private ParallelUnbalancedWork(Data data)
     {
         _data = data;
     }
 
+    /// <summary>
+    /// Executes the parallel work item.
+    /// </summary>
     public void Execute()
     {
         int i = _data.Index.GetNext();
@@ -83,18 +133,44 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         _data.MarkThreadCompleted();
     }
 
+    /// <summary>
+    /// Provides a thread-safe counter for sharing indices among threads.
+    /// </summary>
     private class SharedCounter(int fromInclusive)
     {
         private int _index = fromInclusive;
+
+        /// <summary>
+        /// Gets the next index in a thread-safe manner.
+        /// </summary>
+        /// <returns>The next index.</returns>
         public int GetNext() => Interlocked.Increment(ref _index) - 1;
     }
 
+    /// <summary>
+    /// Represents the base data shared among threads during parallel execution.
+    /// </summary>
     private class BaseData(int threads, int fromInclusive, int toExclusive)
     {
+        /// <summary>
+        /// Gets the shared counter for indices.
+        /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
+
+        /// <summary>
+        /// Gets the exclusive upper bound of the range.
+        /// </summary>
         public int ToExclusive => toExclusive;
+
+        /// <summary>
+        /// Gets the number of active threads.
+        /// </summary>
         public int ActiveThreads => Volatile.Read(ref threads);
 
+        /// <summary>
+        /// Marks a thread as completed.
+        /// </summary>
+        /// <returns>The number of remaining active threads.</returns>
         public int MarkThreadCompleted()
         {
             var remaining = Interlocked.Decrement(ref threads);
@@ -111,16 +187,36 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         }
     }
 
+    /// <summary>
+    /// Represents the data shared among threads for the parallel action.
+    /// </summary>
     private class Data(int threads, int fromInclusive, int toExclusive, Action<int> action) :
         BaseData(threads, fromInclusive, toExclusive)
     {
+        /// <summary>
+        /// Gets the action to be executed for each iteration.
+        /// </summary>
         public Action<int> Action => action;
     }
 
+    /// <summary>
+    /// Provides methods to execute parallel loops with thread-local data initialization and finalization.
+    /// </summary>
+    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
     private class InitProcessor<TLocal> : IThreadPoolWorkItem
     {
         private readonly Data<TLocal> _data;
 
+        /// <summary>
+        /// Executes a parallel for loop over a range of integers, with thread-local data initialization and finalization.
+        /// </summary>
+        /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+        /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+        /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
+        /// <param name="init">The function to initialize the local data for each thread.</param>
+        /// <param name="initValue">The initial value of the local data.</param>
+        /// <param name="action">The delegate that is invoked once per iteration.</param>
+        /// <param name="finally">The function to finalize the local data for each thread.</param>
         public static void For(
             int fromInclusive,
             int toExclusive,
@@ -154,8 +250,15 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             }
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="InitProcessor{TLocal}"/> class.
+        /// </summary>
+        /// <param name="data">The shared data for the parallel work.</param>
         private InitProcessor(Data<TLocal> data) => _data = data;
 
+        /// <summary>
+        /// Executes the parallel work item with thread-local data.
+        /// </summary>
         public void Execute()
         {
             TLocal? value = _data.Init();
@@ -171,6 +274,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             _data.MarkThreadCompleted();
         }
 
+        /// <summary>
+        /// Represents the data shared among threads for the parallel action with thread-local data.
+        /// </summary>
+        /// <typeparam name="TValue">The type of the thread-local data.</typeparam>
         private class Data<TValue>(int threads,
             int fromInclusive,
             int toExclusive,
@@ -179,10 +286,21 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             TValue? initValue = default,
             Action<TValue>? @finally = null) : BaseData(threads, fromInclusive, toExclusive)
         {
+            /// <summary>
+            /// Gets the action to be executed for each iteration.
+            /// </summary>
             public Func<int, TLocal, TLocal> Action => action;
 
+            /// <summary>
+            /// Initializes the thread-local data.
+            /// </summary>
+            /// <returns>The initialized thread-local data.</returns>
             public TValue Init() => initValue ?? (init is not null ? init.Invoke() : default)!;
 
+            /// <summary>
+            /// Finalizes the thread-local data.
+            /// </summary>
+            /// <param name="value">The thread-local data to finalize.</param>
             public void Finally(TValue value)
             {
                 @finally?.Invoke(value);
