@@ -178,10 +178,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        int revertedPrefixLength = TransactionSubstate.RevertedErrorMessagePrefix.Length;
-        if (errorType == EvmExceptionType.Revert && error.Length > revertedPrefixLength)
+        if (errorType == EvmExceptionType.Revert && error.Length > 0)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error[revertedPrefixLength..]);
+            firstCallFrame.RevertReason = ValidateRevertReason(error);
         }
 
         if (_config.WithLog)
