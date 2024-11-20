@@ -13,7 +13,7 @@ namespace Nethermind.Core;
 public static class TypeDiscovery
 {
     private static readonly HashSet<Assembly> _assembliesWithNethermindTypes = new();
-    private static readonly object _lock = new();
+    private static readonly Lock _lock = new();
     private static int _allLoaded;
     private static Type? _pluginType;
 

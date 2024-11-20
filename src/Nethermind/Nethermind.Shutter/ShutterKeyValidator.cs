@@ -11,6 +11,7 @@ using Nethermind.Logging;
 using Google.Protobuf;
 using Nethermind.Core.Collections;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Nethermind.Shutter;
 
@@ -26,7 +27,7 @@ public class ShutterKeyValidator(
     private ulong? _highestValidatedSlot;
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
-    private readonly object _lockObject = new();
+    private readonly Lock _lockObject = new();
 
     public IShutterKeyValidator.ValidatedKeys? ValidateKeys(Dto.DecryptionKeys decryptionKeys)
     {

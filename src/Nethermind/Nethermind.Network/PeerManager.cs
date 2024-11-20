@@ -37,6 +37,7 @@ namespace Nethermind.Network
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
+        private readonly Lock _lock = new();
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
 
@@ -101,7 +102,7 @@ namespace Nethermind.Network
         {
             Peer peer = nodeEventArgs.Peer;
 
-            lock (_peerPool)
+            lock (_lock)
             {
                 int newPeerPoolLength = _peerPool.PeerCount;
                 _lastPeerPoolLength = newPeerPoolLength;

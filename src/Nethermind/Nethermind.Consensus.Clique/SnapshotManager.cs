@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -89,7 +90,7 @@ namespace Nethermind.Consensus.Clique
             return extraData.Slice(0, extraData.Length - Clique.ExtraSealLength);
         }
 
-        private readonly object _snapshotCreationLock = new();
+        private readonly Lock _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 

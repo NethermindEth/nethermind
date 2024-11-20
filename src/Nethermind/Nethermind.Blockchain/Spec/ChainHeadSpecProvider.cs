@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,7 +16,7 @@ namespace Nethermind.Blockchain.Spec
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private long _lastHeader = -1;
         private IReleaseSpec? _headerSpec;
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
