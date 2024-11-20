@@ -658,7 +658,7 @@ namespace Nethermind.Core.Extensions
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                return withZeroX ? ZeroHexValue : "0";
+                return withZeroX ? ZeroHexValue : ZeroValue;
             }
 
             State stateToPass = new(bytes, leadingZerosFirstCheck, withZeroX);
