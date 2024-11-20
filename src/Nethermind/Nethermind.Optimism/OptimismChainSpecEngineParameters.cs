@@ -47,25 +47,25 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
         ArgumentNullException.ThrowIfNull(EcotoneTimestamp);
         ArgumentNullException.ThrowIfNull(FjordTimestamp);
         ArgumentNullException.ThrowIfNull(GraniteTimestamp);
-        ArgumentNullException.ThrowIfNull(HoloceneTimestamp);
         blockNumbers.Add(BedrockBlockNumber.Value);
         timestamps.Add(RegolithTimestamp.Value);
         timestamps.Add(CanyonTimestamp.Value);
         timestamps.Add(EcotoneTimestamp.Value);
         timestamps.Add(FjordTimestamp.Value);
         timestamps.Add(GraniteTimestamp.Value);
-        timestamps.Add(HoloceneTimestamp.Value);
     }
 
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
-        ArgumentNullException.ThrowIfNull(HoloceneTimestamp);
-
         if (CanyonTimestamp <= startTimestamp)
         {
             spec.BaseFeeMaxChangeDenominator = CanyonBaseFeeChangeDenominator.Value;
         }
-        spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
+
+        if (HoloceneTimestamp is not null)
+        {
+            spec.BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp.Value, new DefaultBaseFeeCalculator());
+        }
     }
 }
