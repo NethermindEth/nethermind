@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Sepolia`** **`Holesky`** **`Gnosis`** **`Chiado`** **`OP Mainnet`** **`OP Sepolia`** **`Base Mainnet`** **`Base Sepolia`** **`Energy Web`** **`Volta`**
+**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **Energy Web**
 
 ## Download and run
 
@@ -109,7 +109,7 @@ dotnet test EthereumTests.sln -c release
 
 BEFORE you start work on a feature or fix, please read and follow our [contribution guide](https://github.com/nethermindeth/nethermind/blob/master/CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
 
-## Security 
+## Security
 
 If you believe you have found a security vulnerability in our code, please report it to us as described in our [security policy](SECURITY.md).
 
