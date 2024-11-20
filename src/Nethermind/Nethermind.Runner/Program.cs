@@ -403,6 +403,15 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
                 }
             }
         }
+        // For backward compatibility. To be removed in the future.
+        else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
+        {
+            var name = Path.GetFileNameWithoutExtension(configFile)!;
+
+            configFile = $"{configFile[..^4]}.json";
+
+            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
+        }
     }
     else
     {
