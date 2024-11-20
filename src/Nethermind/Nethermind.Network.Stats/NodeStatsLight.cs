@@ -46,7 +46,7 @@ public class NodeStatsLight : INodeStats
 
     private static readonly Random Random = new();
 
-    private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Length;
+    private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
 
     public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
     {
