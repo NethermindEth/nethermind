@@ -34,7 +34,7 @@ namespace Nethermind.Crypto
             _chainIdValue = chainId;
         }
 
-        public EthereumEcdsa(ISpecProvider specProvider): this(specProvider.ChainId)
+        public EthereumEcdsa(ISpecProvider specProvider) : this(specProvider.ChainId)
         {
         }
 
