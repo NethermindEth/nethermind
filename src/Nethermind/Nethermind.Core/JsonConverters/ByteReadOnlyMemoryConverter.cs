@@ -5,7 +5,7 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.Core.JsonConverters;
+namespace Nethermind.Serialization.Json;
 
 public class ByteReadOnlyMemoryConverter : JsonConverter<ReadOnlyMemory<byte>>
 {

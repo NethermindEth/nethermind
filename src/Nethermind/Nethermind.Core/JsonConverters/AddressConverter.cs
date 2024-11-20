@@ -5,9 +5,10 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.JsonConverters;
+namespace Nethermind.Serialization.Json;
 
 public class AddressConverter : JsonConverter<Address>
 {

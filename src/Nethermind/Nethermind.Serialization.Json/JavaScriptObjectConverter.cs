@@ -10,7 +10,6 @@ using System.Text.Json.Serialization;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.JsonConverters;
 
 #nullable enable
 

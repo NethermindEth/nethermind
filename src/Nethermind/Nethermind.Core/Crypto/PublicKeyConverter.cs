@@ -6,7 +6,6 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.JsonConverters;
 
 namespace Nethermind.Serialization.Json;
 

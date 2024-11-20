@@ -13,7 +13,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core.Extensions;
-using Nethermind.Core.JsonConverters;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;

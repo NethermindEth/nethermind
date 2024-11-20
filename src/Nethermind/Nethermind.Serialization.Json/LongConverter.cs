@@ -7,7 +7,6 @@ using System.Globalization;
 namespace Nethermind.Serialization.Json
 {
     using Nethermind.Core.Extensions;
-    using Nethermind.Core.JsonConverters;
     using System.Buffers;
     using System.Buffers.Binary;
     using System.Buffers.Text;

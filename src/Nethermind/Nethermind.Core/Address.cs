@@ -12,8 +12,8 @@ using System.Text.Json.Serialization;
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.JsonConverters;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core
 {
