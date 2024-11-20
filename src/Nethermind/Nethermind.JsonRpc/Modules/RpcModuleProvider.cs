@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using System.Threading;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -31,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
-        private readonly object _updateRegistrationsLock = new();
+        private readonly Lock _updateRegistrationsLock = new();
 
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {

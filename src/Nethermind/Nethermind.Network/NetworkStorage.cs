@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,7 +17,7 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
