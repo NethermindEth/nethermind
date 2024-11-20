@@ -729,7 +729,7 @@ namespace Nethermind.Core.Extensions
                 ulong shift = 18428868213665201664UL << (int)i;
                 ulong mask = i - 64;
 
-                return (long)(shift & mask) < 0 ? true : false;
+                return (long)(shift & mask) < 0;
             }
 
             return FromChar(c) != 0xFF;

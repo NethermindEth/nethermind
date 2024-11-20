@@ -168,7 +168,7 @@ namespace Nethermind.TxPool.Test.Collections
             protected override int GetKey(WithFinalizer value) => value.Index;
         }
 
-        IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
+        readonly IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
         {
             int t1Oddity = t1.Index % 2;
             int t2Oddity = t2.Index % 2;

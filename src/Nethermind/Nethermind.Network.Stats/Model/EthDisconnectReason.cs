@@ -27,35 +27,22 @@ namespace Nethermind.Stats.Model
     {
         public static DisconnectReason ToDisconnectReason(this EthDisconnectReason reason)
         {
-            switch (reason)
+            return reason switch
             {
-                case EthDisconnectReason.DisconnectRequested:
-                    return DisconnectReason.EthDisconnectRequested;
-                case EthDisconnectReason.TcpSubSystemError:
-                    return DisconnectReason.TcpSubSystemError;
-                case EthDisconnectReason.BreachOfProtocol:
-                    return DisconnectReason.BreachOfProtocol;
-                case EthDisconnectReason.UselessPeer:
-                    return DisconnectReason.UselessPeer;
-                case EthDisconnectReason.TooManyPeers:
-                    return DisconnectReason.TooManyPeers;
-                case EthDisconnectReason.AlreadyConnected:
-                    return DisconnectReason.AlreadyConnected;
-                case EthDisconnectReason.IncompatibleP2PVersion:
-                    return DisconnectReason.IncompatibleP2PVersion;
-                case EthDisconnectReason.NullNodeIdentityReceived:
-                    return DisconnectReason.NullNodeIdentityReceived;
-                case EthDisconnectReason.ClientQuitting:
-                    return DisconnectReason.ClientQuitting;
-                case EthDisconnectReason.UnexpectedIdentity:
-                    return DisconnectReason.UnexpectedIdentity;
-                case EthDisconnectReason.IdentitySameAsSelf:
-                    return DisconnectReason.IdentitySameAsSelf;
-                case EthDisconnectReason.ReceiveMessageTimeout:
-                    return DisconnectReason.ReceiveMessageTimeout;
-                default:
-                    return DisconnectReason.Other;
-            }
+                EthDisconnectReason.DisconnectRequested => DisconnectReason.EthDisconnectRequested,
+                EthDisconnectReason.TcpSubSystemError => DisconnectReason.TcpSubSystemError,
+                EthDisconnectReason.BreachOfProtocol => DisconnectReason.BreachOfProtocol,
+                EthDisconnectReason.UselessPeer => DisconnectReason.UselessPeer,
+                EthDisconnectReason.TooManyPeers => DisconnectReason.TooManyPeers,
+                EthDisconnectReason.AlreadyConnected => DisconnectReason.AlreadyConnected,
+                EthDisconnectReason.IncompatibleP2PVersion => DisconnectReason.IncompatibleP2PVersion,
+                EthDisconnectReason.NullNodeIdentityReceived => DisconnectReason.NullNodeIdentityReceived,
+                EthDisconnectReason.ClientQuitting => DisconnectReason.ClientQuitting,
+                EthDisconnectReason.UnexpectedIdentity => DisconnectReason.UnexpectedIdentity,
+                EthDisconnectReason.IdentitySameAsSelf => DisconnectReason.IdentitySameAsSelf,
+                EthDisconnectReason.ReceiveMessageTimeout => DisconnectReason.ReceiveMessageTimeout,
+                _ => DisconnectReason.Other,
+            };
         }
     }
 }

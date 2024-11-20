@@ -143,7 +143,7 @@ public class KeyStoreTests
 
             (IReadOnlyCollection<Address> addresses, Result getAllResult) = test.Store.GetKeyAddresses();
             Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
-            Assert.That(addresses.Count() >= 2, Is.True);
+            Assert.That(addresses.Count >= 2, Is.True);
             Assert.That(addresses.FirstOrDefault(x => x.Equals(key1.Address)), Is.Not.Null, "key 1 not null");
             Assert.That(addresses.FirstOrDefault(x => x.Equals(key2.Address)), Is.Not.Null, "key 2 not null");
 

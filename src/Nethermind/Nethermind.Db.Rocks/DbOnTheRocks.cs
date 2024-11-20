@@ -1023,10 +1023,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
 
         Iterator iterator = CreateIterator(ordered);
         return GetAllKeysCore(iterator);
@@ -1778,11 +1775,8 @@ public class DbOnTheRocks : IDb, ITunableDb
             holder.Usage++;
 
             Iterator? oldIterator = Interlocked.Exchange(ref holder.Iterator, iterator);
-            if (oldIterator is not null)
-            {
-                // Well... this is weird. I'll just dispose it.
-                oldIterator.Dispose();
-            }
+            // Well... this is weird. I'll just dispose it.
+            oldIterator?.Dispose();
         }
 
         public readonly struct RentWrapper(Iterator iterator, ReadFlags flags, IteratorManager manager) : IDisposable

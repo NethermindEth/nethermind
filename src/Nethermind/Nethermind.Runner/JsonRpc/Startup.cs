@@ -41,12 +41,7 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         ServiceProvider sp = Build(services);
-        IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
-        if (configProvider is null)
-        {
-            throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
-        }
-
+        IConfigProvider? configProvider = sp.GetService<IConfigProvider>() ?? throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
         services.Configure<KestrelServerOptions>(options =>
