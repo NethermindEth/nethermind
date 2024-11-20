@@ -59,6 +59,7 @@ public class OptimismCLP2P
             //         l.TimestampFormat = "[HH:mm:ss.FFF]";
             //     })
             // )
+            .AddSingleton<PeerStore>()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
@@ -73,22 +74,24 @@ public class OptimismCLP2P
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
         ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/3030");
-        if (_logger.IsInfo) _logger.Info($"Started P2P: {peer.Address}");
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
 
-        ITopic topic = _router.Subscribe("/optimism/11155420/2/blocks");
+        ITopic topic = _router.GetTopic("/optimism/11155420/2/blocks");
         topic.OnMessage += OnMessage;
 
-        MyProto proto = new();
         _cancellationTokenSource = new();
-        _ = _router.RunAsync(peer, proto, new Settings
+        _ = _router.RunAsync(peer, new Settings
         {
             DefaultSignaturePolicy = Settings.SignaturePolicy.StrictNoSign,
             GetMessageId = (message => CalculateMessageId(message))
         }, token: _cancellationTokenSource.Token);
-        proto.OnAddPeer?.Invoke(["/ip4/5.9.87.214/tcp/9222/p2p/16Uiu2HAm39UNArTiqPNakHqA58Rss4Fz8f41otDj4sWKbaA7BazG"]);
-        proto.OnAddPeer?.Invoke(["/ip4/217.22.153.164/tcp/31660/p2p/16Uiu2HAmG5hBYavoanawCzz1cu5H7XNNSaA7BYNvwa7DNmojei6g"]);
+
+        PeerStore peerStore = _serviceProvider.GetService<PeerStore>()!;
+        peerStore.Discover(["/ip4/5.9.87.214/tcp/9222/p2p/16Uiu2HAm39UNArTiqPNakHqA58Rss4Fz8f41otDj4sWKbaA7BazG"]);
+        peerStore.Discover(["/ip4/217.22.153.164/tcp/31660/p2p/16Uiu2HAmG5hBYavoanawCzz1cu5H7XNNSaA7BYNvwa7DNmojei6g"]);
+
+        if (_logger.IsInfo) _logger.Info($"Started P2P: {peer.Address}");
     }
 
     async void OnMessage(byte[] msg)
