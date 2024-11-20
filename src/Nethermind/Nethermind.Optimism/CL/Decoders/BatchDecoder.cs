@@ -234,8 +234,9 @@ public class BatchDecoder : IRlpValueDecoder<BatchV0>, IRlpStreamDecoder<BatchV0
         // }
 
         // prefix
-        int n = 0;
-        (ulong relTimestamp, int n1) = DecodeULong(data);
+        // TODO: what is these first 4 bytes?
+        int n = 4;
+        (ulong relTimestamp, int n1) = DecodeULong(data[n..]);
         n += n1;
         (ulong l1OriginNum, int n2) = DecodeULong(data[n..]);
         n += n2;

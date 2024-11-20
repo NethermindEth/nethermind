@@ -15,7 +15,7 @@ namespace Nethermind.Optimism.CL;
 
 public class ChannelDecoder
 {
-    public static (BatchV1[], byte[]) DecodeChannel(Frame frame)
+    public static (BatchV1, byte[]) DecodeChannel(Frame frame)
     {
         // TODO: avoid allocation
         var memoryStream = new MemoryStream();
@@ -38,14 +38,8 @@ public class ChannelDecoder
 
         byte[] decompressed = memoryStream.ToArray();
 
-        RlpStream rlpStream = new RlpStream(decompressed);
-        List<BatchV1> batches = new();
-        // while (rlpStream.Position < rlpStream.Length)
-        // {
-            BatchV1 batch = BatchDecoder.Instance.DecodeSpanBatch(rlpStream, RlpBehaviors.AllowExtraBytes);
-            batches.Add(batch);
-        // }
-        return (batches.ToArray(), decompressed);
+        BatchV1 batch = BatchDecoder.Instance.DecodeSpanBinary(decompressed);
+        return (batch, decompressed);
     }
 }
 
