@@ -75,9 +75,6 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     public void Dispose()
     {
         List<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
-        if (list is not null)
-        {
-            list.ForEach(e => e.Dispose());
-        }
+        list?.ForEach(e => e.Dispose());
     }
 }

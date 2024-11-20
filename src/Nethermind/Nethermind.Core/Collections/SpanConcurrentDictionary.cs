@@ -67,27 +67,14 @@ namespace Nethermind.Core.Collections
                 return true;
             }
 
-            switch (Type.GetTypeCode(typeof(TValue)))
+            return Type.GetTypeCode(typeof(TValue)) switch
             {
-                case TypeCode.Boolean:
-                case TypeCode.Byte:
-                case TypeCode.Char:
-                case TypeCode.Int16:
-                case TypeCode.Int32:
-                case TypeCode.SByte:
-                case TypeCode.Single:
-                case TypeCode.UInt16:
-                case TypeCode.UInt32:
-                    return true;
-
-                case TypeCode.Double:
-                case TypeCode.Int64:
-                case TypeCode.UInt64:
-                    return IntPtr.Size == 8;
-
-                default:
-                    return false;
-            }
+                TypeCode.Boolean or TypeCode.Byte or TypeCode.Char or
+                TypeCode.Int16 or TypeCode.Int32 or TypeCode.SByte or
+                TypeCode.Single or TypeCode.UInt16 or TypeCode.UInt32 => true,
+                TypeCode.Double or TypeCode.Int64 or TypeCode.UInt64 => IntPtr.Size == 8,
+                _ => false,
+            };
         }
 
         /// <summary>
@@ -640,7 +627,7 @@ namespace Nethermind.Core.Collections
 
                 if (count == 0)
                 {
-                    return Array.Empty<KeyValuePair<TKey[], TValue>>();
+                    return [];
                 }
 
                 var array = new KeyValuePair<TKey[], TValue>[count];

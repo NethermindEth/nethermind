@@ -31,7 +31,7 @@ public static partial class Merkle
     static Merkle()
     {
         BuildZeroHashes();
-        RootOfNull = new UInt256(new Root(SHA256.HashData(Array.Empty<byte>())).AsSpan().ToArray());
+        RootOfNull = new UInt256(new Root(SHA256.HashData([])).AsSpan().ToArray());
     }
 
     public static ulong NextPowerOfTwo(uint v)

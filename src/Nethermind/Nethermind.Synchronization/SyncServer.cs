@@ -354,7 +354,7 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Hash256? blockHash)
         {
-            return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
+            return blockHash is not null ? _receiptFinder.Get(blockHash) : [];
         }
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)

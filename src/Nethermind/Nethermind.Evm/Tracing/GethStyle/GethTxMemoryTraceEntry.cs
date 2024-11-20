@@ -12,7 +12,7 @@ public class GethTxMemoryTraceEntry : GethTxTraceEntry
         base.UpdateMemorySize(size);
 
         // Geth's approach to memory trace is to show empty memory spaces on entry for the values that are being set by the operation
-        Memory ??= Array.Empty<string>();
+        Memory ??= [];
 
         int missingChunks = (int)((size - (ulong)Memory.Length * EvmPooledMemory.WordSize) / EvmPooledMemory.WordSize);
 
