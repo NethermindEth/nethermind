@@ -123,6 +123,8 @@ async Task<int> ConfigureAsync(string[] args)
     );
     pluginLoader.Load();
 
+    CheckForDeprecatedOptions(parseResult);
+
     // leaving here as an example of adding Debug plugin
     // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
     // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
@@ -268,6 +270,27 @@ void AddConfigurationOptions(CliCommand command)
 
             if (configItemAttribute?.IsPortOption == true)
                 ConfigExtensions.AddPortOptionName(configType, propertyInfo.Name);
+        }
+    }
+}
+
+void CheckForDeprecatedOptions(ParseResult parseResult)
+{
+    CliOption<string>[] deprecatedOptions =
+    [
+        BasicOptions.ConfigurationDirectory,
+        BasicOptions.DatabasePath,
+        BasicOptions.DataDirectory,
+        BasicOptions.LoggerConfigurationSource,
+        BasicOptions.PluginsDirectory
+    ];
+
+    foreach (CliToken token in parseResult.Tokens)
+    {
+        foreach (CliOption option in deprecatedOptions)
+        {
+            if (option.Aliases.Contains(token.Value, StringComparison.Ordinal))
+                logger.Warn($"{token} option is deprecated. Use {option.Name} instead.");
         }
     }
 }
