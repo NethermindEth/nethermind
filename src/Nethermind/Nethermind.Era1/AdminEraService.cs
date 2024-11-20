@@ -83,7 +83,7 @@ public class AdminEraService : IAdminEraService
         }
         catch (EraException e)
         {
-            _logger.Error("Import error", e);
+            _logger.Error("Export error", e);
         }
         catch (Exception e)
         {

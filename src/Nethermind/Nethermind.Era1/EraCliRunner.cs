@@ -47,7 +47,7 @@ public class EraCliRunner(
         }
         catch (Exception e)
         {
-            _logger.Error("Import error", e);
+            _logger.Error("Export error", e);
             throw;
         }
     }
