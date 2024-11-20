@@ -30,6 +30,7 @@ namespace Nethermind.Db.Test
     public class DbOnTheRocksTests
     {
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+        public static Random Random { get; } = new();
 
         [SetUp]
         public void Setup()
@@ -181,6 +182,34 @@ namespace Nethermind.Db.Test
 
             native.Received().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
             file.Received().Delete(markerFile);
+        }
+
+        [Test]
+        public void RangeIteratorTest()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new("testRangeIterator1", GetRocksDbSettings("testRangeIterator1", "TestRangeIterator1"),
+                config, LimboLogs.Instance);
+
+            byte[] key = new byte[32];
+            byte[] value = new byte[32];
+
+            Random.NextBytes(key);
+            Random.NextBytes(value);
+
+            for (int i = 0; i < 10000; i++)
+            {
+                Random.NextBytes(key);
+                Random.NextBytes(value);
+                db.Set(key, value.AsSpan().ToArray());
+            }
+
+            IEnumerable<KeyValuePair<byte[], byte[]?>>? xx = db.GetIterator();
+
+            foreach (KeyValuePair<byte[], byte[]> x in xx)
+            {
+                Console.WriteLine($"Key:{x.Key.ToHexString()} Value:{x.Value.ToHexString()}");
+            }
         }
 
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName)

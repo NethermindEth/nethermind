@@ -45,6 +45,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly bool _processStateless;
 
     public NewPayloadHandler(
         IBlockValidator blockValidator,
@@ -60,7 +61,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         ILogManager logManager,
         TimeSpan? timeout = null,
         bool storeReceipts = true,
-        int cacheSize = 50)
+        int cacheSize = 50,
+        bool processStateless = false)
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
@@ -74,6 +76,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+        _processStateless = processStateless;
+        if (_processStateless) _defaultProcessingOptions |= ProcessingOptions.StatelessProcessing;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
@@ -144,6 +148,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
             return NewPayloadV1Result.Syncing;
         }
+
+        // parent is not null - here we can start processing blocks stateless
+        if (_processStateless) block.Header.MaybeParent = new WeakReference<BlockHeader>(parentHeader);
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
@@ -244,7 +251,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         processingOptions = _defaultProcessingOptions;
 
         BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
-        bool parentProcessed = parentBlockInfo is { WasProcessed: true };
+
+        // when stateless processing enabled we dont need processed parent
+        bool parentProcessed = parentBlockInfo is { WasProcessed: true } || _processStateless;
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
         // We want to force process the whole branch then, but not longer than few blocks.
@@ -340,10 +349,13 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
         try
         {
-            Task timeoutTask = Task.Delay(_timeout);
+            var timeoutTask = Task.Delay(_timeout);
 
+            BlockTreeSuggestOptions suggestion = BlockTreeSuggestOptions.ForceDontSetAsMain;
+            if (_processStateless)
+                suggestion |= BlockTreeSuggestOptions.ShouldProcessStateless | BlockTreeSuggestOptions.ShouldProcess;
             AddBlockResult addResult = await _blockTree
-                .SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+                .SuggestBlockAsync(block, suggestion)
                 .AsTask().TimeoutOn(timeoutTask);
 
             result = addResult switch

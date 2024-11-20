@@ -169,6 +169,23 @@ namespace Nethermind.Db
                 if (_wrapped is ITunableDb tunable)
                     tunable.Tune(type);
             }
+
+            public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator()
+            {
+                return _wrapped.GetIterator();
+            }
+
+            public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start)
+            {
+                return _wrapped.GetIterator(start);
+            }
+
+            public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start, byte[] end)
+            {
+                return _wrapped.GetIterator(start, end);
+            }
+
+
         }
     }
 }

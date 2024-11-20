@@ -31,7 +31,8 @@ namespace Nethermind.Stats
         Headers,
         Bodies,
         Receipts,
-        SnapRanges
+        SnapRanges,
+        VerkleSyncRanges
     }
 
     public static class NodeStatsManagerExtension

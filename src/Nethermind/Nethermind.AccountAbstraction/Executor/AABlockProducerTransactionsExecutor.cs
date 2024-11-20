@@ -44,7 +44,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public override TxReceipt[] ProcessTransactions(
             Block block,
             ProcessingOptions processingOptions,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer executionTracer,
             IReleaseSpec spec)
         {
             IEnumerable<Transaction> transactions = GetTransactions(block);
@@ -56,20 +56,20 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 if (IsAccountAbstractionTransaction(transaction))
                 {
-                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
                 else
                 {
-                    BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, transaction, i++, executionTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
             }
 
-            _stateProvider.Commit(spec, receiptsTracer);
+            _stateProvider.Commit(spec, executionTracer);
 
             SetTransactions(block, transactionsInBlock);
-            return receiptsTracer.TxReceipts.ToArray();
+            return executionTracer.TxReceipts.ToArray();
         }
 
         private bool IsAccountAbstractionTransaction(Transaction transaction)
@@ -84,28 +84,28 @@ namespace Nethermind.AccountAbstraction.Executor
             in BlockExecutionContext blkCtx,
             Transaction currentTx,
             int index,
-            BlockReceiptsTracer receiptsTracer,
+            BlockExecutionTracer executionTracer,
             ProcessingOptions processingOptions,
             LinkedHashSet<Transaction> transactionsInBlock)
         {
-            int snapshot = receiptsTracer.TakeSnapshot();
+            int snapshot = executionTracer.TakeSnapshot();
 
-            BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
+            BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, executionTracer, processingOptions, transactionsInBlock, false);
             if (action != BlockProcessor.TxAction.Add)
             {
                 return action;
             }
 
-            string? error = receiptsTracer.LastReceipt.Error;
+            string? error = executionTracer.LastReceipt.Error;
             bool transactionSucceeded = string.IsNullOrEmpty(error);
             if (!transactionSucceeded)
             {
-                receiptsTracer.Restore(snapshot);
+                executionTracer.Restore(snapshot);
                 return BlockProcessor.TxAction.Skip;
             }
 
             transactionsInBlock.Add(currentTx);
-            _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+            _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, executionTracer.TxReceipts[index]));
             return BlockProcessor.TxAction.Add;
         }
 

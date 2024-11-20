@@ -4,6 +4,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Witness;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -12,41 +15,46 @@ namespace Nethermind.Consensus.Withdrawals;
 public class WithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly ILogger _logger;
-    private readonly IWorldState _stateProvider;
 
-    public WithdrawalProcessor(IWorldState stateProvider, ILogManager logManager)
+    public WithdrawalProcessor(ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
         _logger = logManager.GetClassLogger();
-        _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec, IWorldState worldState)
     {
         if (!spec.WithdrawalsEnabled)
             return;
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
+        IExecutionWitness witness = blockTracer.IsTracingAccessWitness
+            ? new VerkleExecWitness(NullLogManager.Instance, worldState as VerkleWorldState)
+            : new NoExecWitness();
+
         if (block.Withdrawals is not null)
         {
-            foreach (var withdrawal in block.Withdrawals)
+            foreach (Withdrawal? withdrawal in block.Withdrawals)
             {
                 if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
+                witness.AccessAccountForWithdrawal(withdrawal.Address);
+
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
-                if (_stateProvider.AccountExists(withdrawal.Address))
+                if (worldState.AccountExists(withdrawal.Address))
                 {
-                    _stateProvider.AddToBalance(withdrawal.Address, withdrawal.AmountInWei, spec);
+                    worldState.AddToBalance(withdrawal.Address, withdrawal.AmountInWei, spec);
                 }
                 else
                 {
-                    _stateProvider.CreateAccount(withdrawal.Address, withdrawal.AmountInWei);
+                    worldState.CreateAccount(withdrawal.Address, withdrawal.AmountInWei);
                 }
             }
         }
-
         if (_logger.IsTrace) _logger.Trace($"Withdrawals applied for block {block}");
+        if (blockTracer.IsTracingAccessWitness) blockTracer.ReportAccessWitness(witness!);
+
     }
 }

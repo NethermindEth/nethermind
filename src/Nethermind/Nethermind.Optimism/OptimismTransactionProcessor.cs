@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -150,13 +151,13 @@ public class OptimismTransactionProcessor : TransactionProcessor
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, IExecutionWitness execWitness,
         in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
     {
         if (!tx.IsDeposit())
         {
             // Skip coinbase payments for deposit tx in Regolith
-            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
+            base.PayFees(tx, header, spec, tracer, execWitness, substate, spentGas, premiumPerGas, statusCode);
 
             if (_opConfigHelper.IsBedrock(header))
             {

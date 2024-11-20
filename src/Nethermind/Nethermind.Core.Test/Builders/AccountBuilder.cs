@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test.Builders
 
         public AccountBuilder WithCode(byte[] code)
         {
-            TestObjectInternal = TestObjectInternal.WithChangedCodeHash(Keccak.Compute(code));
+            TestObjectInternal = TestObjectInternal.WithChangedCodeHash(Keccak.Compute(code), code);
             return this;
         }
 

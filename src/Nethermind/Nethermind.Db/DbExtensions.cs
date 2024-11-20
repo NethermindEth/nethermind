@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -19,6 +20,13 @@ namespace Nethermind.Db
             var k = keys.Select(k => k.Bytes.ToArray()).ToArray();
             return db[k];
         }
+
+        public static void Set(this IDb db, long key, byte[] value)
+        {
+            db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
+        }
+
+        public static byte[]? Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
 
     }
 }

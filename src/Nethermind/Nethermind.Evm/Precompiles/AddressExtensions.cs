@@ -39,4 +39,10 @@ public static class AddressExtensions
                 _ => false
             };
     }
+
+    public static bool IsSystemContract(this Address address, IReleaseSpec releaseSpec)
+    {
+        return (address == Eip2935Constants.BlockHashHistoryAddress && releaseSpec.IsEip2935Enabled)
+               || address == Eip4788Constants.BeaconRootsAddress && releaseSpec.IsEip4788Enabled;
+    }
 }

@@ -116,7 +116,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using SnapProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
@@ -140,7 +140,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
@@ -157,7 +157,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using SnapProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
@@ -175,7 +175,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using SnapProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
@@ -225,7 +225,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using SnapProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
@@ -277,7 +277,7 @@ namespace Nethermind.Store.Test
             dbProvider.RegisterDb(DbNames.Code, codeDb);
 
             BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
-            using ProgressTracker progressTracker = new(tree, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance,
+            using SnapProgressTracker progressTracker = new(tree, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance,
                 accountRangePartitionCount: 1);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
@@ -316,7 +316,7 @@ namespace Nethermind.Store.Test
             nextRequest.CodesRequest.Count.Should().Be(3);
         }
 
-        private SnapProvider CreateSnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider)
+        private SnapProvider CreateSnapProvider(SnapProgressTracker progressTracker, IDbProvider dbProvider)
         {
             try
             {

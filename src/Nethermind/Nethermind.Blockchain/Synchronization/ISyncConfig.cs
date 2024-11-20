@@ -141,9 +141,15 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "false", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
 
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "[EXPERIMENTAL] Enables Verkle Sync protocol.", DefaultValue = "false")]
+    public bool VerkleSync { get; set; }
+
+    [ConfigItem(Description = "Number of account range partition to create. Increase verkle sync request concurrency. Value must be between 1 to 256 (inclusive).", DefaultValue = "8")]
+    public int VerkleSyncAccountRangePartitionCount { get; set; }
 }
