@@ -21,6 +21,7 @@ namespace Nethermind.Core.Specs
         public UInt256 ForkBaseFee { get; }
         public UInt256 BaseFeeMaxChangeDenominator { get; }
         public long ElasticityMultiplier { get; }
+        public IBaseFeeCalculator BaseFeeCalculator { get; }
     }
 
     public sealed class OverridableEip1559Spec : IEip1559Spec
@@ -32,6 +33,7 @@ namespace Nethermind.Core.Specs
         public UInt256 ForkBaseFee { get; init; }
         public UInt256 BaseFeeMaxChangeDenominator { get; init; }
         public long ElasticityMultiplier { get; init; }
+        public IBaseFeeCalculator BaseFeeCalculator { get; init; }
 
         public OverridableEip1559Spec(IEip1559Spec spec)
         {
@@ -42,6 +44,7 @@ namespace Nethermind.Core.Specs
             ForkBaseFee = spec.ForkBaseFee;
             BaseFeeMaxChangeDenominator = spec.BaseFeeMaxChangeDenominator;
             ElasticityMultiplier = spec.ElasticityMultiplier;
+            BaseFeeCalculator = spec.BaseFeeCalculator;
         }
     }
 }

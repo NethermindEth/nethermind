@@ -12,6 +12,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual UInt256 ForkBaseFee => spec.ForkBaseFee;
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
     public virtual long ElasticityMultiplier => spec.ElasticityMultiplier;
+    public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     public virtual bool IsEip658Enabled => spec.IsEip658Enabled;
     public virtual string Name => spec.Name;
     public virtual long MaximumExtraDataSize => spec.MaximumExtraDataSize;

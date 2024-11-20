@@ -75,6 +75,7 @@ namespace Nethermind.Specs
         public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
+        public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();
         public bool IsEip1153Enabled { get; set; }
         public bool IsEip3651Enabled { get; set; }
         public bool IsEip3855Enabled { get; set; }
