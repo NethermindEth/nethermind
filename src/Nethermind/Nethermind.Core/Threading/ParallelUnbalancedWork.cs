@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -50,7 +51,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         new ParallelUnbalancedWork(data).Execute();
 
         // If there are still active threads, wait for them to complete
-        data.Event.Wait();
+        if (data.ActiveThreads > 0)
+        {
+            data.Event.Wait();
+        }
     }
 
     /// <summary>
@@ -131,13 +135,20 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// </summary>
     private class SharedCounter(int fromInclusive)
     {
-        private int _index = fromInclusive;
+        private PaddedValue _index = new(fromInclusive);
 
         /// <summary>
         /// Gets the next index in a thread-safe manner.
         /// </summary>
         /// <returns>The next index.</returns>
-        public int GetNext() => Interlocked.Increment(ref _index) - 1;
+        public int GetNext() => Interlocked.Increment(ref _index.Value) - 1;
+
+        [StructLayout(LayoutKind.Explicit, Size = 128)]
+        private struct PaddedValue(int value)
+        {
+            [FieldOffset(64)]
+            public int Value = value;
+        }
     }
 
     /// <summary>
@@ -149,7 +160,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Gets the shared counter for indices.
         /// </summary>
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
-        public ManualResetEventSlim Event { get; } = new();
+        public SemaphoreSlim Event { get; } = new(initialCount: 0);
 
         /// <summary>
         /// Gets the exclusive upper bound of the range.
@@ -171,7 +182,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
 
             if (remaining == 0)
             {
-                Event.Set();
+                Event.Release();
             }
 
             return remaining;
@@ -235,7 +246,10 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             new InitProcessor<TLocal>(data).Execute();
 
             // If there are still active threads, wait for them to complete
-            data.Event.Wait();
+            if (data.ActiveThreads > 0)
+            {
+                data.Event.Wait();
+            }
         }
 
         /// <summary>
