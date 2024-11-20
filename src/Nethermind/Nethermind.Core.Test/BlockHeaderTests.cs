@@ -4,18 +4,14 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-
 using FluentAssertions;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-
 using NSubstitute;
-
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;

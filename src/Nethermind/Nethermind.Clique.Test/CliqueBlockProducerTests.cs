@@ -521,10 +521,8 @@ public class CliqueBlockProducerTests
 
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
-            _ = new Transaction();
-
             // gas limit too high
-            var transaction = new Transaction();
+            Transaction transaction = new Transaction();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;

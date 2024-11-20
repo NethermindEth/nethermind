@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-
 using NSubstitute;
-
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing

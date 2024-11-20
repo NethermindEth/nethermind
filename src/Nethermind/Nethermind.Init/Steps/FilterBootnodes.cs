@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-
 using Nethermind.Api;
 
 namespace Nethermind.Init.Steps

@@ -11,11 +11,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-
 using NSubstitute;
-
 using NUnit.Framework;
-
 using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Test.Validators;
