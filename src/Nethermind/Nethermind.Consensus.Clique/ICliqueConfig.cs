@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Consensus.Clique
 {
-    public interface ICliqueConfig: IConfig
+    public interface ICliqueConfig : IConfig
     {
         ulong BlockPeriod { get; set; }
 
