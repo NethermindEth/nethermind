@@ -63,19 +63,8 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
     }
 }
 
-/// <remarks>
-/// This class is a hack to support custom base fee calculations while still using a Singleton
-/// Due to the extensive use of `BaseFeeCalculator.Calculate` in the codebase, it is not feasible to pass the calculator as a parameter.
-/// Thus, for now we will use a Singleton pattern to allow for custom base fee calculations.
-///
-/// When required, plugins can call <see cref="Override"/> to modify the global <see cref="IBaseFeeCalculator"/>
-/// </remarks>
 public static class BaseFeeCalculator
 {
-    private static IBaseFeeCalculator _instance = new DefaultBaseFeeCalculator();
-
-    public static void Override(IBaseFeeCalculator calculator) => _instance = calculator;
-    public static void Reset() => _instance = new DefaultBaseFeeCalculator();
-
-    public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559) => _instance!.Calculate(parent, specFor1559);
+    public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559) =>
+        specFor1559.BaseFeeCalculator.Calculate(parent, specFor1559);
 }
