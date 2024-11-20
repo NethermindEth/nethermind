@@ -85,6 +85,7 @@ public class OptimismPayloadPreparationServiceTests
         var currentBestBlock = context?.CurrentBestBlock!;
 
         currentBestBlock.Should().Be(block);
-        currentBestBlock.Header.DecodeEIP1559Parameters().Should().BeEquivalentTo(new EIP1559Parameters(0, denominator, elasticity));
+        currentBestBlock.Header.TryDecodeEIP1559Parameters(out var parameters, out _).Should().BeTrue();
+        parameters.Should().BeEquivalentTo(new EIP1559Parameters(0, denominator, elasticity));
     }
 }

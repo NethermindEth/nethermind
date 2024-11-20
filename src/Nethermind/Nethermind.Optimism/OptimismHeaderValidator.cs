@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -42,14 +41,9 @@ public class OptimismHeaderValidator(
         IReleaseSpec spec = _specProvider.GetSpec(header);
         if (spec.IsOpHoloceneEnabled)
         {
-            try
+            if (!header.TryDecodeEIP1559Parameters(out _, out var decodeError))
             {
-                // TODO: We might want to avoid using exceptions here
-                _ = header.DecodeEIP1559Parameters();
-            }
-            catch (ArgumentException e)
-            {
-                error = e.Message;
+                error = decodeError;
                 return false;
             }
         }

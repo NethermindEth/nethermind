@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -21,8 +22,12 @@ public sealed class OptimismBaseFeeCalculator(
         var releaseSpec = specProvider.GetSpec(parent);
         if (releaseSpec.IsOpHoloceneEnabled)
         {
-            // NOTE: This operation should never fail since headers should be valid at this point
-            EIP1559Parameters eip1559Params = parent.DecodeEIP1559Parameters();
+            // NOTE: This operation should never fail since headers should be valid at this point.
+            if (!parent.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Params, out _))
+            {
+                throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: missing {nameof(EIP1559Parameters)}");
+            }
+
             spec = eip1559Params.IsZero()
                 ? new OverridableEip1559Spec(specFor1559)
                 {

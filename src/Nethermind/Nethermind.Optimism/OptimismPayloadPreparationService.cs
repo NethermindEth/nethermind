@@ -61,7 +61,11 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
                 var spec = _specProvider.GetSpec(currentBestBlock.Header);
                 if (spec.IsOpHoloceneEnabled)
                 {
-                    EIP1559Parameters eip1559Parameters = optimismPayload.DecodeEIP1559Parameters();
+                    if (!optimismPayload.TryDecodeEIP1559Parameters(out EIP1559Parameters eip1559Parameters, out var error))
+                    {
+                        throw new InvalidOperationException($"{nameof(OptimismPayloadAttributes)} was not properly validated: invalid {nameof(OptimismPayloadAttributes.EIP1559Params)}");
+                    }
+
                     currentBestBlock.Header.ExtraData = new byte[EIP1559Parameters.ByteLength];
                     eip1559Parameters.WriteTo(currentBestBlock.Header.ExtraData);
                 }
