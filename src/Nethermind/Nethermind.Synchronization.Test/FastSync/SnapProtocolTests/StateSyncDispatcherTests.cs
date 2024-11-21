@@ -71,7 +71,7 @@ public class StateSyncDispatcherTests
         using StateSyncBatch batch = new(
             Keccak.OfAnEmptyString,
             NodeDataType.State,
-            new[] { new StateSyncItem(Keccak.EmptyTreeHash, [], [], NodeDataType.State) });
+            new[] { new StateSyncItem(Keccak.EmptyTreeHash, null, [], NodeDataType.State) });
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
@@ -96,11 +96,11 @@ public class StateSyncDispatcherTests
         _pool.AddPeer(peer);
 
         StateSyncItem item01 = new(Keccak.EmptyTreeHash, null, new byte[] { 3 }, NodeDataType.State);
-        StateSyncItem item02 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 2 }, NodeDataType.State);
+        StateSyncItem item02 = new(Keccak.EmptyTreeHash, TestItem.KeccakA, new byte[] { 2 }, NodeDataType.State);
         StateSyncItem item03 = new(Keccak.EmptyTreeHash, null, new byte[] { 1 }, NodeDataType.State);
-        StateSyncItem item04 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 21 }, NodeDataType.State);
-        StateSyncItem item05 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 1 }, NodeDataType.State);
-        StateSyncItem item06 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 22 }, NodeDataType.State);
+        StateSyncItem item04 = new(Keccak.EmptyTreeHash, TestItem.KeccakB, new byte[] { 21 }, NodeDataType.State);
+        StateSyncItem item05 = new(Keccak.EmptyTreeHash, TestItem.KeccakA, new byte[] { 1 }, NodeDataType.State);
+        StateSyncItem item06 = new(Keccak.EmptyTreeHash, TestItem.KeccakB, new byte[] { 22 }, NodeDataType.State);
 
         using StateSyncBatch batch = new(
             Keccak.OfAnEmptyString,

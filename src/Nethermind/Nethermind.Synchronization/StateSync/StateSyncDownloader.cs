@@ -95,17 +95,17 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<byte[], List<(byte[] path, StateSyncItem syncItem)>> itemsGroupedByAccount = new(Bytes.EqualityComparer);
+            Dictionary<Hash256?, List<(byte[] path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
             List<(byte[] path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
-                if (item.AccountPathNibbles?.Length > 0)
+                if (item.Address is not null)
                 {
-                    if (!itemsGroupedByAccount.TryGetValue(item.AccountPathNibbles, out var storagePaths))
+                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out var storagePaths))
                     {
                         storagePaths = new List<(byte[], StateSyncItem)>();
-                        itemsGroupedByAccount[item.AccountPathNibbles] = storagePaths;
+                        itemsGroupedByAccount[item.Address] = storagePaths;
                     }
 
                     storagePaths.Add((item.PathNibbles, item));
@@ -137,7 +137,8 @@ namespace Nethermind.Synchronization.StateSync
             foreach (var kvp in itemsGroupedByAccount)
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
-                group[0] = Nibbles.EncodePath(kvp.Key);
+                // TODO: Whats the key encoding? Anyone remember Hash256->compact?
+                group[0] = Nibbles.EncodePath(Nibbles.BytesToNibbleBytes(kvp.Key.Bytes));
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {

@@ -785,7 +785,7 @@ namespace Nethermind.Synchronization.FastSync
                             branchChildPath[currentStateSyncItem.PathNibbles.Length] = (byte)childIndex;
 
                             AddNodeResult addChildResult = AddNodeToPending(
-                                new StateSyncItem(childHash, currentStateSyncItem.AccountPathNibbles, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex))
+                                new StateSyncItem(childHash, currentStateSyncItem.Address, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex))
                                 {
                                     BranchChildIndex = (short)childIndex,
                                     ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex
@@ -829,7 +829,7 @@ namespace Nethermind.Synchronization.FastSync
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
                                 next,
-                                currentStateSyncItem.AccountPathNibbles,
+                                currentStateSyncItem.Address,
                                 childPath.ToArray(),
                                 nodeDataType,
                                 currentStateSyncItem.Level + trieNode.Key!.Length,
@@ -875,7 +875,11 @@ namespace Nethermind.Synchronization.FastSync
                             currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
                             trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
 
-                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            Debug.Assert(childPath.Length == 64);
+
+                            Hash256 address = new Hash256(Nibbles.ToBytes(childPath));
+
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
                                 dependentItem.Counter--;
