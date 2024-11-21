@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -48,6 +49,11 @@ public class Startup
         {
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
+            options.ConfigureEndpointDefaults(listenOptions =>
+            {
+                listenOptions.Protocols = HttpProtocols.Http1;
+                listenOptions.DisableAltSvcHeader = true;
+            });
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);
 
