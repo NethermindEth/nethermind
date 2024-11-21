@@ -40,6 +40,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Trie;
+using Autofac.Core;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -273,7 +274,7 @@ public class SynchronizerTests
         public SyncingContext Syncing => new(_synchronizerType);
     }
 
-    public class SyncingContext
+    public class SyncingContext : IAsyncDisposable
     {
         private bool _wasStopped = false;
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
@@ -513,6 +514,11 @@ public class SynchronizerTests
             _wasStopped = true;
             await Container.DisposeAsync();
         }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopAsync();
+        }
     }
 
     [OneTimeSetUp]
@@ -708,13 +714,12 @@ public class SynchronizerTests
         SyncPeerMock peerB = new("B");
         peerB.AddBlocksUpTo(2, 0, 1);
 
-        await When.Syncing
+        await using SyncingContext syncingContext = When.Syncing
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .BestSuggestedBlockHasNumber(2)
             .AfterPeerIsAdded(peerB)
-            .WaitUntilInitialized()
-            .StopAsync();
+            .WaitUntilInitialized();
 
         Assert.That(peerA.HeadBlock.Hash, Is.Not.EqualTo(peerB.HeadBlock.Hash));
 
@@ -726,7 +731,6 @@ public class SynchronizerTests
         }, Is.True.After(WaitTime, 1));
 
         Assert.That(peerA.HeadBlock.Hash, Is.EqualTo(peerBNewBlock?.Header.Hash!));
-
     }
 
     [Test]
