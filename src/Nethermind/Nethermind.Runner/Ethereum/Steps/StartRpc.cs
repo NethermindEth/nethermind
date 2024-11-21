@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Warn($"jwt-secret already exists at {defaultPath}. Moving it to {newPath} as data directory has been updated");
                         File.Move(defaultPath, newPath);
                     }
-                    logger.Warn($"jwt-secret file did not exit at {defaultPath}. Directly setting it to new path: {newPath}");
+                    logger.Warn($"jwt-secret file does not exist at {defaultPath}. Directly setting it to new path: {newPath}");
                     jsonRpcConfig.JwtSecretFile = newPath;
                 }
             }
@@ -132,7 +132,5 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
             }
         }
-
-
     }
 }
