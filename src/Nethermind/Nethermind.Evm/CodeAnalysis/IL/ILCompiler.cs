@@ -513,9 +513,9 @@ internal class ILCompiler
                         method.BranchIfTrue(pushItemA);
 
                         method.LoadLocal(wordRef256A);
-                        method.Call(Word.GetIsUint16);
+                        method.Call(Word.GetIsUint32);
                         method.LoadLocal(wordRef256B);
-                        method.Call(Word.GetIsUint16);
+                        method.Call(Word.GetIsUint32);
                         method.And();
                         method.BranchIfFalse(fallbackToUInt256Call);
 
