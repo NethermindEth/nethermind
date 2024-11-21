@@ -32,7 +32,7 @@ namespace Nethermind.Clique.Test
             });
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(snapshot);
-            WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager, 400);
+            WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).TestObject;
             for (int i = 0; i < 5; i++)
