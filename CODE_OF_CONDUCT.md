@@ -3,7 +3,7 @@
 ## Preamble
 
 The Nethermind Community was created to foster an open, innovative and inclusive community around open source development.
-To clarify expected behaviour in our communities we have adopted the Contributor Covenant. This code of conduct
+To clarify expected behavior in our communities we have adopted the Contributor Covenant. This code of conduct
 has been adopted by many other open source communities and we feel it expresses our values well. 
 
 ## Our Pledge
@@ -69,7 +69,7 @@ Read carefully our Contributing Guidelines to know how to contribute properly in
 project. Members and maintainers must adhere to some rules regarding to pull requests
 reviews and creation of issues and pull requests:
 
-* During code reviews do not comment on coding standards and styles -focus on algorithmical,
+* During code reviews do not comment on coding standards and styles -focus on algorithmic,
 structural or naming issues-, help to solve problem.
 * When creating an issue or a pull request, follow the templates provided by the repository and
 fill in the indicated items correctly. If you do not want to use a template, open a blank issue/PR
