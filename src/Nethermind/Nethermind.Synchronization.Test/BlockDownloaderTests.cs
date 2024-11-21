@@ -45,17 +45,15 @@ namespace Nethermind.Synchronization.Test;
 public partial class BlockDownloaderTests
 {
     [TestCase(1L, DownloaderOptions.Full, 0)]
-    [TestCase(32L, DownloaderOptions.Full, 0)]
-    [TestCase(32L, DownloaderOptions.Fast, 0)]
     [TestCase(1L, DownloaderOptions.Fast, 0)]
     [TestCase(2L, DownloaderOptions.Fast, 0)]
     [TestCase(3L, DownloaderOptions.Fast, 0)]
+    [TestCase(32L, DownloaderOptions.Full, 0)]
     [TestCase(32L, DownloaderOptions.Fast, 0)]
     [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Fast, 0)]
     [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Full, 0)]
     [TestCase(1L, DownloaderOptions.Full, 32)]
     [TestCase(32L, DownloaderOptions.Full, 32)]
-    [TestCase(32L, DownloaderOptions.Fast, 32)]
     [TestCase(1L, DownloaderOptions.Fast, 32)]
     [TestCase(2L, DownloaderOptions.Fast, 32)]
     [TestCase(3L, DownloaderOptions.Fast, 32)]
@@ -1273,8 +1271,7 @@ public partial class BlockDownloaderTests
                 return blockBuilder.TestObject;
             }
 
-            Block newBlock = BuildBlockForHeader(startHeader, 0);
-            blockBodies[0] = newBlock.Body;
+            blockBodies[0] = BuildBlockForHeader(startHeader, 0).Body;
             blockHeaders[0] = startHeader;
 
             _bodies[startHeader.Hash!] = blockBodies[0];
