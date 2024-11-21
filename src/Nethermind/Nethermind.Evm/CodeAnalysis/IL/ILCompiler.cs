@@ -155,10 +155,19 @@ internal class ILCompiler
         {
             OpcodeInfo op = code[i];
 
-            if (segments.TryGetValue(op.ProgramCounter, out var metadata) && !metadata.IsReachable)
+            if (segments.TryGetValue(op.ProgramCounter, out var metadata))
             {
-                i = metadata.EndOfSegment;
-                continue;
+                if (!metadata.IsReachable)
+                {
+                    i = metadata.EndOfSegment;
+                    continue;
+                }
+                if (metadata.WillFail)
+                {
+                    method.Branch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
+                    i = metadata.EndOfSegment;
+                    continue;
+                }
             }
 
             if (op.Operation is Instruction.JUMPDEST)
@@ -2795,15 +2804,16 @@ internal class ILCompiler
         il.BranchIfLess(outOfGasLabel);
     }
 
-    private static Dictionary<int, (bool IsReachable, int EndOfSegment)> CheckUnreachableCode(ReadOnlySpan<OpcodeInfo> code)
+    private static Dictionary<int, (bool IsReachable, bool WillFail, int EndOfSegment)> CheckUnreachableCode(ReadOnlySpan<OpcodeInfo> code)
     {
         // a valid recheable segment is any segment starting with a JUMPDEST and ending with a terminating opcode or a JUMP or normal opcode
         // first segment is assumed to have a JUMPDEST cause we can't prove previous segment can\t reach it
         // every segment after a JUMPI is assumged to have a JUMPDEST
 
-        Dictionary<int, (bool IsReachable, int EndOfSegment)> segments = new();
+        Dictionary<int, (bool IsReachable, bool WillFail, int EndOfSegment)> segments = new();
 
         bool hasJumpdest = true;
+        bool hasInvalidOpcode = false;
         int segmentStart = 0;
         int segmentEnd = default;
 
@@ -2814,17 +2824,20 @@ internal class ILCompiler
             {
                 case Instruction.JUMPDEST:
                     segmentEnd = pc - 1;
-                    segments[segmentStart] = (hasJumpdest, segmentEnd);
+                    segments[segmentStart] = (hasJumpdest, hasInvalidOpcode, segmentEnd);
                     segmentStart = op.ProgramCounter;
                     hasJumpdest = true;
+                    hasInvalidOpcode = false;
                     break;
                 default:
                     segmentEnd = pc;
+                    hasInvalidOpcode = op.IsInvalid;
                     if (op.IsTerminating || op.IsJump)
                     {
-                        segments[segmentStart] = (hasJumpdest, segmentEnd);
+                        segments[segmentStart] = (hasJumpdest, hasInvalidOpcode, segmentEnd);
                         segmentStart = op.ProgramCounter + 1;
                         hasJumpdest = op.Operation is Instruction.JUMPI;
+                        hasInvalidOpcode = false;
                     }
                     break;
             }
@@ -2832,7 +2845,7 @@ internal class ILCompiler
 
         if (segmentStart <= code[^1].ProgramCounter)
         {
-            segments[segmentStart] = (hasJumpdest, code[^1].ProgramCounter + code[^1].Metadata.AdditionalBytes);
+            segments[segmentStart] = (hasJumpdest, hasInvalidOpcode, code[^1].ProgramCounter + code[^1].Metadata.AdditionalBytes);
         }
 
         return segments;
