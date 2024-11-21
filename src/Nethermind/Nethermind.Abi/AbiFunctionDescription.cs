@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 
 namespace Nethermind.Abi
@@ -9,7 +8,7 @@ namespace Nethermind.Abi
     public class AbiFunctionDescription : AbiBaseDescription<AbiParameter>
     {
         private AbiSignature? _returnSignature;
-        public AbiParameter[] Outputs { get; set; } = Array.Empty<AbiParameter>();
+        public AbiParameter[] Outputs { get; set; } = [];
 
         public StateMutability StateMutability { get; set; } = StateMutability.View;
 

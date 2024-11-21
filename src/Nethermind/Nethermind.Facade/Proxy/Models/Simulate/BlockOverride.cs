@@ -48,7 +48,7 @@ public class BlockOverride
             newBlockNumber,
             newGasLimit,
             newTime,
-            Array.Empty<byte>())
+            [])
         {
             BaseFeePerGas = BaseFeePerGas ?? BaseFeeCalculator.Calculate(parent, spec),
             MixHash = PrevRandao,

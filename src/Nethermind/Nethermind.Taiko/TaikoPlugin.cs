@@ -11,8 +11,6 @@ using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain;
 using Nethermind.Taiko.Rpc;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc;
 using Nethermind.HealthChecks;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -34,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
+using Nethermind.State;
 using Autofac;
 using Nethermind.Synchronization;
 using System.Linq;
@@ -95,10 +94,21 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        if (ShouldRunSteps(api))
-        {
-            Rlp.RegisterDecoder(typeof(L1Origin), new L1OriginDecoder());
-        }
+        if (!ShouldRunSteps(api))
+            return;
+
+        _api = (TaikoNethermindApi)api;
+
+        ArgumentNullException.ThrowIfNull(_api.DbProvider);
+        ArgumentNullException.ThrowIfNull(_api.DbFactory);
+
+        IRlpStreamDecoder<L1Origin> r1OriginDecoder = new L1OriginDecoder();
+        Rlp.RegisterDecoder(typeof(L1Origin), r1OriginDecoder);
+
+
+        IDb db = _api.DbFactory.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
+        _api.DbProvider!.RegisterDb(L1OriginDbName, db);
+        _api.L1OriginStore = new(_api.DbProvider.GetDb<IDb>(L1OriginDbName), r1OriginDecoder);
     }
 
     public async Task InitRpcModules()
@@ -107,6 +117,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
+        ArgumentNullException.ThrowIfNull(_api.L1OriginStore);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
         ArgumentNullException.ThrowIfNull(_api.SyncModeSelector);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -139,15 +150,15 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             await Task.Delay(100);
         await Task.Delay(5000);
 
-        IDb db = _api.DbFactory!.CreateDb(new DbSettings(L1OriginDbName, L1OriginDbName.ToLower()));
-        _api.DbProvider!.RegisterDb(L1OriginDbName, db);
-        L1OriginStore l1OriginStore = new(db, Rlp.GetStreamDecoder<L1Origin>() ?? throw new ArgumentNullException(nameof(IRlpStreamDecoder<L1Origin>)));
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
         ReadOnlyBlockTree readonlyBlockTree = _api.BlockTree.AsReadOnly();
+
+        OverridableWorldStateManager overridableWorldStateManager = new(_api.DbProvider!, _api.WorldStateManager!.TrieStore, _api.LogManager);
+
         TaikoReadOnlyTxProcessingEnv txProcessingEnv =
-            new(_api.WorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
+            new(overridableWorldStateManager, readonlyBlockTree, _api.SpecProvider, _api.LogManager);
 
         IReadOnlyTxProcessingScope scope = txProcessingEnv.Build(Keccak.EmptyTreeHash);
 
@@ -182,7 +193,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         TaikoPayloadPreparationService payloadPreparationService = new(
             chainProcessor,
             scope.WorldState,
-            l1OriginStore,
+            _api.L1OriginStore,
             _api.LogManager,
             txDecoder);
 
@@ -237,36 +248,12 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
                     : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager,
             _api.TxPool,
-            _api.BlockTree.AsReadOnly(),
+            readonlyBlockTree,
             readonlyTxProcessingEnvFactory,
             txDecoder
         );
 
         _api.RpcModuleProvider.RegisterSingle(engine);
-
-        FeeHistoryOracle feeHistoryOracle = new(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
-        _api.DisposeStack.Push(feeHistoryOracle);
-
-        ITaikoRpcModule taikoRpcModule = new TaikoRpcModule(
-        _api.Config<IJsonRpcConfig>(),
-            _api.CreateBlockchainBridge(),
-            _api.BlockTree.AsReadOnly(),
-            _api.ReceiptStorage,
-            _api.StateReader,
-            _api.TxPool,
-            _api.TxSender,
-            _api.Wallet,
-            _api.LogManager,
-            _api.SpecProvider,
-            _api.GasPriceOracle,
-            _api.EthSyncingInfo,
-            feeHistoryOracle,
-            _api.Config<IBlocksConfig>().SecondsPerSlot,
-            _api.Config<ISyncConfig>(),
-            l1OriginStore
-            );
-
-        _api.RpcModuleProvider.RegisterSingle(taikoRpcModule);
 
         if (_logger.IsInfo) _logger.Info("Taiko Engine Module has been enabled");
     }
@@ -284,8 +271,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.PeerDifficultyRefreshPool);
-        ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
         ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
 
@@ -293,9 +278,6 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         ArgumentNullException.ThrowIfNull(_api.InvalidChainTracker);
 
         _api.InvalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
-
-        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
-        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
 
         _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
@@ -318,10 +300,13 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
         _api.ApiWithNetworkServiceContainer = container;
         _api.DisposeStack.Append(container);
 
-        PivotUpdator pivotUpdator = new(
+        _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
+        _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
+        _ = new
+        PivotUpdator(
             _api.BlockTree,
             _api.SyncModeSelector,
-            _api.SyncPeerPool,
+            _api.SyncPeerPool!,
             _syncConfig,
             _blockCacheService,
             _beaconSync,

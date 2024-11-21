@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Json
                 reader.Read();
             }
 
-            return value?.ToArray() ?? Array.Empty<UInt256>();
+            return value?.ToArray() ?? [];
         }
 
         [SkipLocalsInit]

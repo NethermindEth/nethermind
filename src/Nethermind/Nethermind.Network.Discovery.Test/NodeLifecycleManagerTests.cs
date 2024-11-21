@@ -30,8 +30,8 @@ namespace Nethermind.Network.Discovery.Test;
 [Parallelizable(ParallelScope.Self)]
 public class NodeLifecycleManagerTests
 {
-    private Signature[] _signatureMocks = Array.Empty<Signature>();
-    private PublicKey[] _nodeIds = Array.Empty<PublicKey>();
+    private Signature[] _signatureMocks = [];
+    private PublicKey[] _nodeIds = [];
     private INodeStats _nodeStatsMock = null!;
 
     private readonly INetworkConfig _networkConfig = new NetworkConfig();
@@ -167,7 +167,7 @@ public class NodeLifecycleManagerTests
             .Received(0)
             .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
 
-        await nodeManager.SendFindNode(Array.Empty<byte>());
+        await nodeManager.SendFindNode([]);
 
         Node[] firstNodes = TestItem.PublicKeys
             .Take(12)
@@ -239,12 +239,7 @@ public class NodeLifecycleManagerTests
         {
             string host = "192.168.1." + i;
             Node node = new(_nodeIds[i], host, _port);
-            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager is null)
-            {
-                throw new Exception("Manager is null");
-            }
-
+            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node) ?? throw new Exception("Manager is null");
             managers.Add(manager);
             Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 
@@ -310,12 +305,7 @@ public class NodeLifecycleManagerTests
         {
             string host = "192.168.1." + i;
             Node node = new(_nodeIds[i], host, _port);
-            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            if (manager is null)
-            {
-                throw new Exception("Manager is null");
-            }
-
+            INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node) ?? throw new Exception("Manager is null");
             managers.Add(manager);
             Assert.That(manager.State, Is.EqualTo(NodeLifecycleState.New));
 

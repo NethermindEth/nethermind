@@ -38,10 +38,10 @@ public class MergeSynchronizer(
         WireMultiSyncModeSelector();
     }
 
-    public Task StopAsync()
+    public ValueTask DisposeAsync()
     {
         _syncCancellation?.Cancel();
-        return baseSynchronizer.StopAsync();
+        return baseSynchronizer.DisposeAsync();
     }
 
     private void StartBeaconHeadersComponents()
@@ -62,11 +62,6 @@ public class MergeSynchronizer(
     private void WireMultiSyncModeSelector()
     {
         baseSynchronizer.WireFeedWithModeSelector(beaconHeaderComponent.Feed);
-    }
-
-    public void Dispose()
-    {
-        baseSynchronizer.Dispose();
     }
 
     // May crash `dotnet format` if declared before any other use of `baseSynchronizer`.

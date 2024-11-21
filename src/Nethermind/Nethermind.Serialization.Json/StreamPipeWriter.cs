@@ -69,7 +69,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
     private CancellationTokenSource? _internalTokenSource;
     private bool _isCompleted;
-    private readonly object _lockObject = new object();
+    private readonly Lock _lockObject = new Lock();
 
     private BufferSegmentStack _bufferSegmentPool;
     private readonly bool _leaveOpen;
@@ -115,7 +115,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
 
         _tailBytesBuffered += bytes;
         _bytesBuffered += bytes;
-        _tailMemory = _tailMemory.Slice(bytes);
+        _tailMemory = _tailMemory[bytes..];
         WrittenCount += bytes;
 
         if (_bytesBuffered > _minimumBufferSize)

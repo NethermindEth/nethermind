@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -41,24 +42,25 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         ServiceProvider sp = Build(services);
-        IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
-        if (configProvider is null)
-        {
-            throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
-        }
-
+        IConfigProvider? configProvider = sp.GetService<IConfigProvider>() ?? throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
         services.Configure<KestrelServerOptions>(options =>
         {
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
+            options.ConfigureEndpointDefaults(listenOptions =>
+            {
+                listenOptions.Protocols = HttpProtocols.Http1;
+                listenOptions.DisableAltSvcHeader = true;
+            });
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);
 
-        string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
-        services.AddCors(c => c.AddPolicy("Cors",
-            p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(builder => builder
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithOrigins(jsonRpcConfig.CorsOrigins)));
 
         services.AddResponseCompression(options =>
         {
@@ -78,8 +80,8 @@ public class Startup
             app.UseDeveloperExceptionPage();
         }
 
-        app.UseCors("Cors");
         app.UseRouting();
+        app.UseCors();
         app.UseResponseCompression();
 
         IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();

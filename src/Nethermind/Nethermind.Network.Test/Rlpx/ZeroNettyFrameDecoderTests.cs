@@ -30,10 +30,10 @@ public class ZeroNettyFrameDecoderTests
     [SetUp]
     public void Setup()
     {
-        var secrets = NetTestVectors.GetSecretsPair();
+        var (_, B) = NetTestVectors.GetSecretsPair();
 
-        _frameCipher = new FrameCipher(secrets.B.AesSecret);
-        _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.B);
+        _frameCipher = new FrameCipher(B.AesSecret);
+        _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
 
         _frame = new byte[16 + 16 + LongFrameSize + 16]; //  header | header MAC | packet type | data | padding | frame MAC
         _frame[2] = LongFrameSize - 15; // size (total - padding)

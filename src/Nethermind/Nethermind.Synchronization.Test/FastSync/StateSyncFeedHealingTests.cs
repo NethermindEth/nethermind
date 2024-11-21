@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -30,7 +31,8 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
-        SafeContext ctx = PrepareDownloader(dbContext);
+        await using IContainer container = PrepareDownloader(dbContext);
+        SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, dbContext, 1024);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
@@ -136,7 +138,8 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
-        SafeContext ctx = PrepareDownloader(dbContext);
+        await using IContainer container = PrepareDownloader(dbContext, syncDispatcherAllocateTimeoutMs: 1000);
+        SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, dbContext, 9, timeout: 20000);
 
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();

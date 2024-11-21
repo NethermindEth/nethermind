@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -33,7 +34,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private readonly object _writeLock = new();
+        private readonly Lock _writeLock = new();
 
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers
             .OrderByDescending(p => p.SyncPeer?.HeadNumber)

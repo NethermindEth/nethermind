@@ -60,19 +60,15 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly Pivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, [KeyFilter(DbNames.State)] IDb db, ILogManager logManager, ISyncConfig syncConfig)
-            : this(blockTree, db, logManager, syncConfig.SnapSyncAccountRangePartitionCount)
-        {
-        }
-
-        public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
+        public ProgressTracker(IBlockTree blockTree, [KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
-            _pivot = new Pivot(blockTree, logManager);
+            _pivot = new Pivot(blockTree, syncConfig, logManager);
 
-            if (accountRangePartitionCount < 1 || accountRangePartitionCount > int.MaxValue)
+            int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
+            if (accountRangePartitionCount < 1)
                 throw new ArgumentException($"Account range partition must be between 1 to {int.MaxValue}.");
 
             _accountRangePartitionCount = accountRangePartitionCount;

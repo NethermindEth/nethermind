@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
-            PivotUpdator pivotUpdator = new(
+            _ = new PivotUpdator(
                 _blockTree!,
                 _syncModeSelector!,
                 _syncPeerPool!,
@@ -100,7 +100,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void TrySetFreshPivot_for_unsafe_updator_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
-            UnsafePivotUpdator unsafePivotUpdator = new(
+            _ = new UnsafePivotUpdator(
                 _blockTree!,
                 _syncModeSelector!,
                 _syncPeerPool!,
