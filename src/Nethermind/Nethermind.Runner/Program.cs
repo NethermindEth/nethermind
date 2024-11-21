@@ -123,6 +123,8 @@ async Task<int> ConfigureAsync(string[] args)
     );
     pluginLoader.Load();
 
+    CheckForDeprecatedOptions(parseResult);
+
     // leaving here as an example of adding Debug plugin
     // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
     // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
@@ -272,6 +274,27 @@ void AddConfigurationOptions(CliCommand command)
     }
 }
 
+void CheckForDeprecatedOptions(ParseResult parseResult)
+{
+    CliOption<string>[] deprecatedOptions =
+    [
+        BasicOptions.ConfigurationDirectory,
+        BasicOptions.DatabasePath,
+        BasicOptions.DataDirectory,
+        BasicOptions.LoggerConfigurationSource,
+        BasicOptions.PluginsDirectory
+    ];
+
+    foreach (CliToken token in parseResult.Tokens)
+    {
+        foreach (CliOption option in deprecatedOptions)
+        {
+            if (option.Aliases.Contains(token.Value, StringComparison.Ordinal))
+                logger.Warn($"{token} option is deprecated. Use {option.Name} instead.");
+        }
+    }
+}
+
 CliConfiguration ConfigureCli()
 {
     CliRootCommand rootCommand =
@@ -402,6 +425,15 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
                     break;
                 }
             }
+        }
+        // For backward compatibility. To be removed in the future.
+        else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
+        {
+            var name = Path.GetFileNameWithoutExtension(configFile)!;
+
+            configFile = $"{configFile[..^4]}.json";
+
+            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
         }
     }
     else
