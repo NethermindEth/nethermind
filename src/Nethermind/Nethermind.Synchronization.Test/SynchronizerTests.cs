@@ -40,7 +40,6 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Trie;
-using Autofac.Core;
 
 namespace Nethermind.Synchronization.Test;
 
