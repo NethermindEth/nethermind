@@ -420,10 +420,10 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    var incorrectSettings = configProvider.FindIncorrectSettings();
+    var (ErrorMsg, Errors) = configProvider.FindIncorrectSettings();
 
-    if (incorrectSettings.Errors.Any())
-        logger.Warn($"Invalid configuration settings:\n{incorrectSettings.ErrorMsg}");
+    if (Errors.Any())
+        logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
     return configProvider;
 }

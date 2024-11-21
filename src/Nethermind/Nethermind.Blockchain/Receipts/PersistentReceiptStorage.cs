@@ -141,13 +141,13 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
-                return Array.Empty<TxReceipt>();
+                return [];
             }
 
             Hash256 blockHash = block.Hash;
             if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
             {
-                return receipts ?? Array.Empty<TxReceipt>();
+                return receipts ?? [];
             }
 
             Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (receiptsData.IsNullOrEmpty())
                 {
-                    return Array.Empty<TxReceipt>();
+                    return [];
                 }
                 else
                 {
@@ -222,7 +222,7 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             Block? block = _blockTree.FindBlock(blockHash);
-            if (block is null) return Array.Empty<TxReceipt>();
+            if (block is null) return [];
             return Get(block, recover, false);
         }
 
@@ -265,7 +265,7 @@ namespace Nethermind.Blockchain.Receipts
         [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None)
         {
-            txReceipts ??= Array.Empty<TxReceipt>();
+            txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
 
             if (block.Transactions.Length != txReceiptsLength)

@@ -153,7 +153,7 @@ public class SnapServer : ISnapServer
 
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
-                response.Add(Array.Empty<byte>());
+                response.Add([]);
                 currentByteCount += 1;
                 continue;
             }

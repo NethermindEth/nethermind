@@ -90,7 +90,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        TransactionResult result = Execute(tx, block, tracer);
+        _ = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {

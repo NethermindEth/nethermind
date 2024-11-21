@@ -16,10 +16,10 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            var secrets = NetTestVectors.GetSecretsPair();
+            var (A, _) = NetTestVectors.GetSecretsPair();
 
-            _frameCipher = new FrameCipher(secrets.A.AesSecret);
-            _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
+            _frameCipher = new FrameCipher(A.AesSecret);
+            _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
         }
 
         [TearDown]

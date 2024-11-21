@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -266,7 +265,7 @@ public class AddressFilterTests
 
     private static Core.Bloom BloomFromAddress(Address address)
     {
-        LogEntry entry = new LogEntry(address, new byte[] { }, new Hash256[] { });
+        LogEntry entry = new LogEntry(address, [], []);
         Core.Bloom bloom = new Core.Bloom(new[] { entry });
 
         return bloom;

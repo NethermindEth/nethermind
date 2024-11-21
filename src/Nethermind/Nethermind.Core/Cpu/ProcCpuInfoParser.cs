@@ -63,11 +63,10 @@ internal static partial class ProcCpuInfoParser
 
     internal static Frequency ParseFrequencyFromBrandString(string brandString)
     {
-        const string pattern = "(\\d.\\d+)GHz";
         var matches = MatchRegex().Matches(brandString);
         if (matches.Count > 0 && matches[0].Groups.Count > 1)
         {
-            string match = Regex.Matches(brandString, pattern, RegexOptions.IgnoreCase)[0].Groups[1].ToString();
+            string match = GHzRegex().Matches(brandString)[0].Groups[1].ToString();
             return Frequency.TryParseGHz(match, out var result) ? result : Frequency.Zero;
         }
 
@@ -76,4 +75,6 @@ internal static partial class ProcCpuInfoParser
 
     [GeneratedRegex("(\\d.\\d+)GHz", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex MatchRegex();
+    [GeneratedRegex(@"(\d.\d+)GHz", RegexOptions.IgnoreCase, "en-GB")]
+    private static partial Regex GHzRegex();
 }

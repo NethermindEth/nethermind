@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Threading;
@@ -36,7 +35,7 @@ namespace Nethermind.AuRa.Test
         {
             _blockTree = Substitute.For<IBlockTree>();
             _headStep = 10;
-            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Array.Empty<byte>()).TestObject).TestObject);
+            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, []).TestObject).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();

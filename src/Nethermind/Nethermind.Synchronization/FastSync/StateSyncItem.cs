@@ -17,8 +17,8 @@ namespace Nethermind.Synchronization.FastSync
         public StateSyncItem(Hash256 hash, byte[]? accountPathNibbles, byte[]? pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
-            AccountPathNibbles = accountPathNibbles ?? Array.Empty<byte>();
-            PathNibbles = pathNibbles ?? Array.Empty<byte>();
+            AccountPathNibbles = accountPathNibbles ?? [];
+            PathNibbles = pathNibbles ?? [];
             NodeDataType = nodeType;
             Level = (byte)level;
             Rightness = rightness;
@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization.FastSync
                 => Address == other.Address && Path == other.Path && Hash == other.Hash;
 
             public override bool Equals(object obj)
-                => obj is NodeKey && Equals((NodeKey)obj);
+                => obj is NodeKey key && Equals(key);
 
             public override int GetHashCode()
             {

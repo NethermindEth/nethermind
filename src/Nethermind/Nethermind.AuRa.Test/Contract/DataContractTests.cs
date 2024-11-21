@@ -18,7 +18,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             DataContract<int> dataContract = new(GetAll, GetFromReceipts);
             dataContract.IncrementalChanges.Should().BeTrue();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeTrue();
+            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items).Should().BeTrue();
             items.Should().BeEquivalentTo(new[] { 1, 5 });
         }
 
@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsTrue);
             dataContract.IncrementalChanges.Should().BeFalse();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeTrue();
+            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items).Should().BeTrue();
             items.Should().BeEquivalentTo(new[] { 1, 5 });
         }
 
@@ -36,7 +36,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsFalse);
             dataContract.IncrementalChanges.Should().BeFalse();
-            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, Array.Empty<TxReceipt>(), out IEnumerable<int> items).Should().BeFalse();
+            dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items).Should().BeFalse();
             items.Should().BeEmpty();
         }
 

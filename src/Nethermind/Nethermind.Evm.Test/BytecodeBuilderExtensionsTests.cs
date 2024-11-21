@@ -67,7 +67,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
             {
                 if (hasDigit)
                 {
-                    return method.Name.StartsWith(opcodeStr.Substring(0, prefixLen));
+                    return method.Name.StartsWith(opcodeStr[..prefixLen]);
                 }
                 else
                 {

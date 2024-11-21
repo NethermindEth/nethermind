@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            _ = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
             BlockHeader? block4 = blockTree.FindHeader(4, BlockTreeLookupOptions.All);
@@ -78,7 +78,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty)
                 .WithTotalDifficulty(genesisDifficulty).TestObject;
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+            _ = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             Assert.That(genesisBlock.IsTerminalBlock(specProvider), Is.EqualTo(expectedResult));
         }

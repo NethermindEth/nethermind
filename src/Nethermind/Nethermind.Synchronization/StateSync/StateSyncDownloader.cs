@@ -125,11 +125,11 @@ namespace Nethermind.Synchronization.StateSync
             int accountPathIndex = 0;
             for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
             {
-                (byte[] path, StateSyncItem syncItem) accountPath = accountTreePaths[accountPathIndex];
-                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(accountPath.path) } };
+                (byte[] path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
+                accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
-                batch.RequestedNodes[requestedNodeIndex] = accountPath.syncItem;
+                batch.RequestedNodes[requestedNodeIndex] = syncItem;
 
                 requestedNodeIndex++;
             }
@@ -141,11 +141,11 @@ namespace Nethermind.Synchronization.StateSync
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {
-                    (byte[] path, StateSyncItem syncItem) storagePath = kvp.Value[groupIndex - 1];
-                    group[groupIndex] = Nibbles.EncodePath(storagePath.path);
+                    (byte[] path, StateSyncItem syncItem) = kvp.Value[groupIndex - 1];
+                    group[groupIndex] = Nibbles.EncodePath(path);
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes
-                    batch.RequestedNodes[requestedNodeIndex] = storagePath.syncItem;
+                    batch.RequestedNodes[requestedNodeIndex] = syncItem;
 
                     requestedNodeIndex++;
                 }
