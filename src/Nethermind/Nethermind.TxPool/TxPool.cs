@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -9,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -51,6 +53,8 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly ConcurrentDictionary<AddressAsKey, DelegationCount> _pendingDelegations = new();
+
 
         private readonly ILogger _logger;
 
@@ -120,7 +124,8 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            if (_blobTransactions.Count > 0)
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;
 
@@ -145,7 +150,9 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
-                new RecoverAuthorityFilter(ecdsa)
+                new RecoverAuthorityFilter(ecdsa),
+                new OnlyOneTxPerDelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, chainHeadInfoProvider.CodeInfoRepository ),
+                new DelegatedAccountFilter(_specProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilter is not null)
@@ -405,7 +412,6 @@ namespace Nethermind.TxPool
                 if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
             }
         }
-
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             Metrics.PendingTransactionsReceived++;
@@ -437,6 +443,13 @@ namespace Nethermind.TxPool
                 accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
+                    if (tx.HasAuthorizationList)
+                    {
+                        foreach (var auth in tx.AuthorizationList)
+                        {
+                            IncrementDelegationCount(auth.Authority!, true);
+                        }
+                    }
                     // Clear proper snapshot
                     if (tx.SupportsBlobs)
                         _blobTransactionSnapshot = null;
@@ -672,6 +685,14 @@ namespace Nethermind.TxPool
             if (hasBeenRemoved)
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+
+                if (transaction.HasAuthorizationList)
+                {
+                    foreach (var auth in transaction.AuthorizationList)
+                    {
+                        IncrementDelegationCount(auth.Authority!, false);
+                    }
+                }
             }
 
             _broadcaster.StopBroadcast(hash);
@@ -790,6 +811,21 @@ namespace Nethermind.TxPool
             using ArrayPoolList<AddressAsKey> arrayPoolList = new(1);
             arrayPoolList.Add(address);
             _accountCache.RemoveAccounts(arrayPoolList);
+        }
+
+        private void IncrementDelegationCount(AddressAsKey key, bool increment)
+        {
+            int value = increment ? 1 : -1;
+            var lastCount = _pendingDelegations.AddOrUpdate(key,
+                (k) => 1,
+                (k, c) => c + value);
+
+            if (lastCount == 0)
+            {
+                //Remove() is threadsafe and only removes if the count is the same as the updated one
+                ((ICollection<KeyValuePair<AddressAsKey, int>>)_pendingDelegations).Remove(
+                    new KeyValuePair<AddressAsKey, int>(key, lastCount));
+            }
         }
 
         private sealed class AccountCache : IAccountStateProvider
@@ -929,3 +965,4 @@ Db usage:
         }
     }
 }
+
