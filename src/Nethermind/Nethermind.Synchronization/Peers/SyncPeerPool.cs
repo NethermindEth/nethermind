@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly int _allocationsUpgradeIntervalInMs;
 
         private bool _isStarted;
-        private readonly object _isAllocatedChecks = new();
+        private readonly Lock _isAllocatedChecks = new();
 
         private DateTime _lastUselessPeersDropTime = DateTime.UtcNow;
 

@@ -281,7 +281,7 @@ public partial class BlockDownloaderTests
 
                 if (blockHashes.Count == 0)
                 {
-                    return new OwnedBlockBodies(Array.Empty<BlockBody>());
+                    return new OwnedBlockBodies([]);
                 }
 
                 BlockBody?[] response = ctx.ResponseBuilder
@@ -630,7 +630,7 @@ public partial class BlockDownloaderTests
         BlockDownloader downloader = ctx.BlockDownloader;
 
         using IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
-        BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? Array.Empty<BlockHeader>();
+        BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? [];
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())

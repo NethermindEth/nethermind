@@ -767,20 +767,20 @@ namespace Nethermind.Synchronization.ParallelSync
             List<string> matched = new();
             List<string> failed = new();
 
-            foreach ((string Name, bool IsSatisfied) check in checks)
+            foreach ((string Name, bool IsSatisfied) in checks)
             {
-                if (check.IsSatisfied)
+                if (IsSatisfied)
                 {
-                    matched.Add(check.Name);
+                    matched.Add(Name);
                 }
                 else
                 {
-                    failed.Add(check.Name);
+                    failed.Add(Name);
                 }
             }
 
             bool result = checks.All(c => c.IsSatisfied);
-            string text = $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
+            string text = $"{(result ? " * " : "   ")}{syncType,-20}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
             _logger.Trace(text);
         }
 

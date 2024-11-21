@@ -549,7 +549,7 @@ public class TraceRpcModuleTests
         UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         byte[] deployedCode = new byte[3];
-        byte[] initCode = Prepare.EvmCode
+        _ = Prepare.EvmCode
             .ForInitOf(deployedCode)
             .Done;
 

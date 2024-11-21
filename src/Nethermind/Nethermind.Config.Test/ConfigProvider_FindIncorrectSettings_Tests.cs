@@ -31,11 +31,9 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         configProvider.AddSource(argsSource);
 
         configProvider.Initialize();
+        (_, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
-
-        Assert.That(res.Errors.Count, Is.EqualTo(0));
+        Assert.That(Errors.Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -55,11 +53,11 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(res.Errors.Count, Is.EqualTo(1));
-        Assert.That(res.Errors[0].Name, Is.EqualTo("XYZ"));
-        Assert.That(res.ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ"));
+        Assert.That(Errors.Count, Is.EqualTo(1));
+        Assert.That(Errors[0].Name, Is.EqualTo("XYZ"));
+        Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:XYZ"));
 
     }
 
@@ -80,13 +78,13 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(res.Errors.Count, Is.EqualTo(3));
-        Assert.That(res.Errors[0].Name, Is.EqualTo("Concurrenc"));
-        Assert.That(res.Errors[1].Category, Is.EqualTo("BlomConfig"));
-        Assert.That(res.Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
-        Assert.That(res.ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BlomConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
+        Assert.That(Errors.Count, Is.EqualTo(3));
+        Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
+        Assert.That(Errors[1].Category, Is.EqualTo("BlomConfig"));
+        Assert.That(Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
+        Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BlomConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
     }
 
     [Test]
@@ -103,11 +101,11 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(res.Errors.Count, Is.EqualTo(1));
-        Assert.That(res.Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
-        Assert.That(res.ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
+        Assert.That(Errors.Count, Is.EqualTo(1));
+        Assert.That(Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
+        Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:|Name:NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));
     }
 
 }

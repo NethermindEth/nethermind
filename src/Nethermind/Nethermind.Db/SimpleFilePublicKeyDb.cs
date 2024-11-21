@@ -161,7 +161,7 @@ namespace Nethermind.Db
 
                 try
                 {
-                    BackupPath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
+                    BackupPath = $"{_dbPath}_{Guid.NewGuid()}";
 
                     if (File.Exists(_dbPath))
                     {

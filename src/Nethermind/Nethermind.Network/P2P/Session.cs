@@ -372,26 +372,12 @@ namespace Nethermind.Network.P2P
 
             bool ShouldDisconnectStaticNode()
             {
-                switch (ethDisconnectReason)
+                return ethDisconnectReason switch
                 {
-                    case EthDisconnectReason.DisconnectRequested:
-                    case EthDisconnectReason.TcpSubSystemError:
-                    case EthDisconnectReason.UselessPeer:
-                    case EthDisconnectReason.TooManyPeers:
-                    case EthDisconnectReason.Other:
-                        return false;
-                    case EthDisconnectReason.ReceiveMessageTimeout:
-                    case EthDisconnectReason.BreachOfProtocol:
-                    case EthDisconnectReason.AlreadyConnected:
-                    case EthDisconnectReason.IncompatibleP2PVersion:
-                    case EthDisconnectReason.NullNodeIdentityReceived:
-                    case EthDisconnectReason.ClientQuitting:
-                    case EthDisconnectReason.UnexpectedIdentity:
-                    case EthDisconnectReason.IdentitySameAsSelf:
-                        return true;
-                    default:
-                        return true;
-                }
+                    EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
+                    EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
+                    _ => true,
+                };
             }
 
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
@@ -441,7 +427,7 @@ namespace Nethermind.Network.P2P
             MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
-        private readonly object _sessionStateLock = new();
+        private readonly Lock _sessionStateLock = new();
         public byte P2PVersion { get; private set; }
 
         private SessionState _state;

@@ -265,7 +265,7 @@ public partial class EngineModuleTests
 
         protected IBlockValidator CreateBlockValidator()
         {
-            IBlockCacheService blockCacheService = new BlockCacheService();
+            _ = new BlockCacheService();
             PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject }, LogManager);
             SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
             HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);

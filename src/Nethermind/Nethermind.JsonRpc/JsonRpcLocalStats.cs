@@ -179,10 +179,10 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
     [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>
         $"{key,-40}| " +
-        $"{methodStats.Successes.ToString(),9} | " +
+        $"{methodStats.Successes,9} | " +
         $"{((double)methodStats.AvgTimeOfSuccesses / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
         $"{((double)methodStats.MaxTimeOfSuccess / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
-        $"{methodStats.Errors.ToString(),9} | " +
+        $"{methodStats.Errors,9} | " +
         $"{((double)methodStats.AvgTimeOfErrors / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
         $"{((double)methodStats.MaxTimeOfError / 1000.0).ToString("0.000", CultureInfo.InvariantCulture),10} | " +
         $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture),10} | " +

@@ -14,7 +14,7 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
     {
         writer.WriteStartObject();
         writer.WritePropertyName("code"u8);
-        JsonSerializer.Serialize(writer, value.Code ?? Array.Empty<byte>(), options);
+        JsonSerializer.Serialize(writer, value.Code ?? [], options);
         writer.WritePropertyName("ops"u8);
         JsonSerializer.Serialize(writer, value.Operations, options);
         writer.WriteEndObject();

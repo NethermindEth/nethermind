@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -802,11 +803,11 @@ public class TrieStore : ITrieStore, IPruningTrieStore
             });
         }
 
-        Task.WaitAll(parallelStartNodes.Select(entry => Task.Run(() =>
-        {
-            (TrieNode trieNode, Hash256? address2, TreePath path2) = entry;
-            PersistNodeStartingFrom(trieNode, address2, path2, persistedNodeRecorder, writeFlags, disposeQueue);
-        })));
+        using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+            entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, persistedNodeRecorder, writeFlags, disposeQueue)))
+            .ToPooledList(parallelStartNodes.Count);
+
+        Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
 
         disposeQueue.CompleteAdding();
         Task.WaitAll(_disposeTasks);
