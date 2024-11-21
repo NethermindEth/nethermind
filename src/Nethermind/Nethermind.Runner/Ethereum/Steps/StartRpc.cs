@@ -37,7 +37,26 @@ namespace Nethermind.Runner.Ethereum.Steps
 
 
             // Update the JWT secret path based on the data directory.
-            SetJwtSecretFilePath(jsonRpcConfig, keyStoreConfig, logger);
+            try
+            {
+                string defaultPath = "keystore/jwt-secret";
+                string newPath = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
+                if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
+                {
+                    // check if jwt-secret file already exists in previous default directory
+                    if (File.Exists(defaultPath))
+                    {
+                        // move the jwt-secret file
+                        logger.Warn($"jwt-secret already exists at {defaultPath}. Moving it to {newPath} as data directory has been updated");
+                        File.Move(defaultPath, newPath);
+                    }
+                    jsonRpcConfig.JwtSecretFile = newPath;
+                }
+            }
+            catch (IOException ex)
+            {
+                logger.Error("IO error while setting jwt-secret file path: ", ex);
+            }
 
             if (jsonRpcConfig.Enabled)
             {
@@ -112,33 +131,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private void SetJwtSecretFilePath(IJsonRpcConfig jsonRpcConfig, IKeyStoreConfig keyStoreConfig, ILogger logger)
-        {
-            try
-            {
-                string defaultPath = "keystore/jwt-secret";
-                string newPath = Path.Combine(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-                if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
-                {
-                    // check if jwt-secret file already exists in previous default directory
-                    if (File.Exists(defaultPath))
-                    {
-                        // move the jwt-secret file
-                        logger.Warn("jwt-secret already exists at the default path. Moving it to the data directory.");
-                        File.Move(defaultPath, newPath);
-                    }
-                    jsonRpcConfig.JwtSecretFile = newPath;
-                }
-                else
-                {
-                    // default path is not null
-                    jsonRpcConfig.JwtSecretFile = newPath;
-                }
-            }
-            catch (IOException ex)
-            {
-                logger.Error("IO error while setting jwt-secret file path: ", ex);
-            }
-        }
+
     }
 }
