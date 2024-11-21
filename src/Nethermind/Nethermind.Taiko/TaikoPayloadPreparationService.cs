@@ -140,7 +140,7 @@ public class TaikoPayloadPreparationService(
         BlockHeader header = BuildHeader(parentHeader, payloadAttributes);
         Transaction[] transactions = BuildTransactions(payloadAttributes);
 
-        return new Block(header, transactions, [], payloadAttributes.Withdrawals);
+        return new BlockToProduce(header, transactions, [], payloadAttributes.Withdrawals);
     }
 
     public ValueTask<IBlockProductionContext?> GetPayload(string payloadId)
