@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Net;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,7 +83,6 @@ public class Startup
 
         app.UseRouting();
         app.UseCors();
-        app.UseResponseCompression();
 
         IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
         IRpcAuthentication? rpcAuthentication = app.ApplicationServices.GetService<IRpcAuthentication>();
@@ -98,6 +98,12 @@ public class Startup
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
         IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
+
+        // If request is local, don't use response compression,
+        // as it allocates a lot, but doesn't improve much for loopback
+        app.UseWhen(ctx =>
+            !IsLocalhost(ctx.Connection.RemoteIpAddress),
+            builder => builder.UseResponseCompression());
 
         if (initConfig.WebSocketsEnabled)
         {
@@ -284,6 +290,13 @@ public class Startup
             }
         });
     }
+
+    /// <summary>
+    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1) 
+    /// </summary>
+    /// <param name="remoteIp">Request source</param>
+    private static bool IsLocalhost(IPAddress remoteIp)
+        => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
     private static int GetStatusCode(JsonRpcResult result)
     {
