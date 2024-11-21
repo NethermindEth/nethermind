@@ -123,7 +123,7 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                Set(rawKey, Array.Empty<byte>());
+                Set(rawKey, []);
             }
             else
             {

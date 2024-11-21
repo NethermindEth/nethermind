@@ -161,7 +161,7 @@ public class MergePluginTests
         await _plugin.Init(_context);
 
         jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo(new string[] { });
+        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
         jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
         {
             "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"

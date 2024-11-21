@@ -78,7 +78,7 @@ public class SyncPeerPoolTests
 
         public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
-            return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
+            return Task.FromResult(new OwnedBlockBodies([]));
         }
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)

@@ -122,7 +122,7 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
-            IDriveInfo[] drives = Array.Empty<IDriveInfo>();
+            IDriveInfo[] drives = [];
 
             if (_healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || _healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
             {

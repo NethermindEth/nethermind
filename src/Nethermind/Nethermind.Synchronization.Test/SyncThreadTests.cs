@@ -32,7 +32,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;

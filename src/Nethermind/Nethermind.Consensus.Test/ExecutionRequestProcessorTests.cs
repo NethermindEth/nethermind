@@ -106,7 +106,7 @@ public class ExecutionProcessorTests
                 }
                 else
                 {
-                    tracer.ReturnValue = Array.Empty<byte>();
+                    tracer.ReturnValue = [];
                 }
                 return new TransactionResult();
             });
