@@ -30,7 +30,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-        private readonly ISyncReport _syncReport;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
 
@@ -55,48 +54,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _chainLevelHelper = chainLevelHelper ?? throw new ArgumentNullException(nameof(chainLevelHelper));
             _poSSwitcher = posSwitcher ?? throw new ArgumentNullException(nameof(posSwitcher));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _beaconPivot = beaconPivot;
             _logger = logManager.GetClassLogger();
         }
 
-        public override async Task Dispatch(PeerInfo bestPeer, BlocksRequest? blocksRequest, CancellationToken cancellation)
-        {
-            if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
-            {
-                if (_logger.IsDebug)
-                    _logger.Debug("Using pre merge dispatcher");
-                await base.Dispatch(bestPeer, blocksRequest, cancellation);
-                return;
-            }
-
-            if (blocksRequest is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
-                return;
-            }
-
-            if (!_blockTree.CanAcceptNewBlocks) return;
-
-            if (_previousBestPeer != bestPeer)
-            {
-                _syncBatchSize.Reset();
-            }
-            _previousBestPeer = bestPeer;
-
-            try
-            {
-                InvokeEvent(new SyncEventArgs(bestPeer.SyncPeer, Nethermind.Synchronization.SyncEvent.Started));
-                await DownloadBlocks(bestPeer, blocksRequest, cancellation)
-                        .ContinueWith(t => HandleSyncRequestResult(t, bestPeer), cancellation);
-            }
-            finally
-            {
-                _allocationWithCancellation.Dispose();
-            }
-        }
-
-        IReadOnlyList<BlockHeader>? HasMoreToSync(PeerInfo bestPeer, BlocksRequest blocksRequest, long currentNumber, CancellationToken cancellation)
+        private IReadOnlyList<BlockHeader>? HasMoreToSync(PeerInfo bestPeer, BlocksRequest blocksRequest, long currentNumber, CancellationToken cancellation)
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -164,68 +126,43 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 headers.TryDispose();
                 if (cancellation.IsCancellationRequested) break; // check before every heavy operation
 
-                Block[]? blocks = context.Blocks; ;
-                TxReceipt[]?[]? receipts = context.ReceiptsForBlocks; ;
-
-                if (!(blocks?.Length > 0))
-                {
-                    if (_logger.IsTrace) _logger.Trace("Break early due to no blocks.");
-                    break;
-                }
-
-                for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
-                {
-                    if (cancellation.IsCancellationRequested)
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
-                        break;
-                    }
-
-                    Block currentBlock = blocks[blockIndex];
-                    ValidateBlock(bestPeer, currentBlock);
-                    (shouldProcess, downloadReceipts, receipts) = await HandleReceiptEdgeCase(bestPeer, cancellation, currentBlock, bestProcessedBlock, context, shouldProcess, downloadReceipts, receipts);
-                    ValidateReceiptExistance(bestPeer, downloadReceipts, context, blockIndex, currentBlock);
-
-                    BlockTreeSuggestOptions suggestOptions =
-                        shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-
-                    bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
-                    if (isKnownBeaconBlock)
-                    {
-                        suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
-                    }
-
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
-
-                    AddBlockResult addResult = AddBlock(bestPeer, currentBlock, suggestOptions, blockIndex, downloadReceipts, receipts, ref bestProcessedBlock, ref blocksSynced);
-
-                    currentNumber += 1;
-
-                    if (addResult == AddBlockResult.Added)
-                    {
-                        if ((_beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
-                        {
-                            // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
-                            // already processed header starting from `ProcessDestination`.
-                            _beaconPivot.ProcessDestination = currentBlock.Header;
-                        }
-                    }
-                }
-
-                if (blocksSynced > 0)
-                {
-                    _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-                    _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
-                }
-                else
-                {
-                    break;
-                }
+                (blocksSynced, currentNumber) = await HandleBlockBatch(bestPeer, cancellation, context, shouldProcess, downloadReceipts, bestProcessedBlock, blocksSynced, currentNumber);
             }
 
             return blocksSynced;
+        }
+
+        protected override AddBlockResult AddBlock(PeerInfo bestPeer, Block currentBlock,
+            BlockTreeSuggestOptions suggestOptions,
+            int blockIndex, bool downloadReceipts, TxReceipt[]?[]? receipts,
+            ref long bestProcessedBlock, ref int blocksSynced)
+        {
+
+            bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
+            if (isKnownBeaconBlock)
+            {
+                suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
+            }
+
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {(suggestOptions & BlockTreeSuggestOptions.ShouldProcess) != 0}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
+
+            AddBlockResult addResult = base.AddBlock(bestPeer, currentBlock, suggestOptions,
+                blockIndex, downloadReceipts, receipts,
+                ref bestProcessedBlock, ref blocksSynced);
+
+            if (addResult == AddBlockResult.Added)
+            {
+                if ((_beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+                {
+                    // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
+                    // already processed header starting from `ProcessDestination`.
+                    _beaconPivot.ProcessDestination = currentBlock.Header;
+                }
+            }
+
+            return addResult;
         }
 
         protected override async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
