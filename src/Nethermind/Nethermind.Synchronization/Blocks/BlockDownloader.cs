@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             DownloaderOptions options = blocksRequest.Options;
-            bool shouldProcess = (options & DownloaderOptions.Full) == DownloaderOptions.Full;
+            bool shouldProcess = options == DownloaderOptions.Full;
 
             int blocksSynced = 0;
 

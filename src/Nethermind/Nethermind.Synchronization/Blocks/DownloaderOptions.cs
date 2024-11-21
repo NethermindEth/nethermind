@@ -5,7 +5,6 @@ using System;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    [Flags]
     public enum DownloaderOptions
     {
         Fast,
