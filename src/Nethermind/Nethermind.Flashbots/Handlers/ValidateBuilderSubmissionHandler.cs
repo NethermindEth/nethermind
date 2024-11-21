@@ -269,11 +269,11 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        // if (!_blockTree.IsBetterThanHead(block.Header))
-        // {
-        //     error = $"Block {block.Header.Hash} is not better than head";
-        //     return false;
-        // }
+        if (!_blockTree.IsBetterThanHead(block.Header))
+        {
+            error = $"Block {block.Header.Hash} is not better than head";
+            return false;
+        }
 
         long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit);
 

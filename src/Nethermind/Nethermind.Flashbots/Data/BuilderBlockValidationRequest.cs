@@ -3,7 +3,6 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
 
 namespace Nethermind.Flashbots.Data;
 
