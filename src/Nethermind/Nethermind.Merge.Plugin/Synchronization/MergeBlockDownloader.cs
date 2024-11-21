@@ -155,7 +155,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             long bestProcessedBlock = 0;
-            while (HasMoreToSync(bestPeer, blocksRequest, currentNumber, cancellation) is {} headers)
+            while (HasMoreToSync(bestPeer, blocksRequest, currentNumber, cancellation) is { } headers)
             {
                 if (cancellation.IsCancellationRequested) break; // check before every heavy operation
 
@@ -164,8 +164,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 headers.TryDispose();
                 if (cancellation.IsCancellationRequested) break; // check before every heavy operation
 
-                Block[]? blocks = context.Blocks;;
-                TxReceipt[]?[]? receipts = context.ReceiptsForBlocks;;
+                Block[]? blocks = context.Blocks; ;
+                TxReceipt[]?[]? receipts = context.ReceiptsForBlocks; ;
 
                 if (!(blocks?.Length > 0))
                 {

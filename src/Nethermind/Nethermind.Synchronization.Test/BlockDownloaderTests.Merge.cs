@@ -408,7 +408,7 @@ public partial class BlockDownloaderTests
             .AddModule(new MergeSynchronizerModule())
             .AddSingleton<IMergeConfig>(
                 new MergeConfig
-                    { TerminalTotalDifficulty = "58750000000000000000000" } // Main block downloader test assume pre-merge
+                { TerminalTotalDifficulty = "58750000000000000000000" } // Main block downloader test assume pre-merge
             )
             .Add<PostMergeContext>()
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()

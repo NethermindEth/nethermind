@@ -965,11 +965,11 @@ public partial class BlockDownloaderTests
 
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestSynchronizerModule(new SyncConfig()
-                {
-                    MaxProcessingThreads = 0,
-                    SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs = 1
-                }
+            {
+                MaxProcessingThreads = 0,
+                SyncDispatcherEmptyRequestDelayMs = 1,
+                SyncDispatcherAllocateTimeoutMs = 1
+            }
             ))
             .AddSingleton(testHeaderMapping)
             .AddSingleton<ResponseBuilder>()
@@ -978,8 +978,8 @@ public partial class BlockDownloaderTests
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
             .AddSingleton<IPivot, Pivot>() // TODO: Check if can move to DI
-            // Need actual blocktree
-            // Lazily in case tests need to override
+                                           // Need actual blocktree
+                                           // Lazily in case tests need to override
             .AddSingleton<IBlockTree>(ctx => Build.A.BlockTree()
                 .WithoutSettingHead
                 .WithSpecProvider(ctx.Resolve<ISpecProvider>())
