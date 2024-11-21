@@ -168,7 +168,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
@@ -178,7 +178,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        if (errorType == EvmExceptionType.Revert && error.Length > 0)
+        if (errorType == EvmExceptionType.Revert && error is not null)
         {
             firstCallFrame.RevertReason = ValidateRevertReason(error);
         }
