@@ -25,6 +25,8 @@ public class VerifyStateOnStateSyncFinished(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<VerifyStateOnStateSyncFinished>();
 
+    bool _wasRun = false;
+
     public void Start()
     {
         treeSync.SyncCompleted += TreeSyncOnOnVerifyPostSyncCleanup;
@@ -32,6 +34,9 @@ public class VerifyStateOnStateSyncFinished(
 
     private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.SyncCompletedEventArgs evt)
     {
+        if (_wasRun) return;
+        _wasRun = true;
+
         ManualResetEvent processingBlocker = new ManualResetEvent(false);
 
         processingQueue.BlockRemoved += ProcessingQueueOnBlockRemoved;
