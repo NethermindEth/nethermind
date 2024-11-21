@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -61,6 +63,21 @@ public class AdminModuleTests
             chainSpec.Parameters);
 
         _serializer = new EthereumJsonSerializer();
+    }
+
+    [Test]
+    public async Task Test_peers()
+    {
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        var peerInfoList = ((JsonElement)response.Result!).Deserialize<List<PeerInfo>>(EthereumJsonSerializer.JsonOptions)!;
+        peerInfoList.Count.Should().Be(1);
+        PeerInfo peerInfo = peerInfoList[0];
+        peerInfo.Host.Should().Be("127.0.0.1");
+        peerInfo.Port.Should().Be(30303);
+        peerInfo.Inbound.Should().BeFalse();
+        peerInfo.IsStatic.Should().BeTrue();
+        peerInfo.Id.Should().NotBeEmpty();
     }
 
     [Test]
