@@ -977,9 +977,9 @@ public partial class BlockDownloaderTests
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
-            .AddSingleton<IPivot, Pivot>() // TODO: Check if can move to DI
-                                           // Need actual blocktree
-                                           // Lazily in case tests need to override
+            .AddSingleton<IPivot, Pivot>()
+
+            // Lazily in case tests need to override blocktree
             .AddSingleton<IBlockTree>(ctx => Build.A.BlockTree()
                 .WithoutSettingHead
                 .WithSpecProvider(ctx.Resolve<ISpecProvider>())
