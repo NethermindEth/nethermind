@@ -10,11 +10,6 @@
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
-  "Sync": {
-    "NetworkingEnabled": false,
-    "AncientBodiesBarrier": 105235063,
-    "AncientReceiptsBarrier": 105235063
-  },
   "Pruning": {
     "Mode": "None"
   },
