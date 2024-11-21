@@ -95,8 +95,8 @@ namespace Nethermind.Synchronization.StateSync
         {
             GetTrieNodesRequest request = new() { RootHash = batch.StateRoot };
 
-            Dictionary<Hash256?, List<(byte[] path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
-            List<(byte[] path, StateSyncItem syncItem)> accountTreePaths = new();
+            Dictionary<Hash256?, List<(TreePath path, StateSyncItem syncItem)>> itemsGroupedByAccount = new();
+            List<(TreePath path, StateSyncItem syncItem)> accountTreePaths = new();
 
             foreach (StateSyncItem? item in batch.RequestedNodes)
             {
@@ -104,15 +104,15 @@ namespace Nethermind.Synchronization.StateSync
                 {
                     if (!itemsGroupedByAccount.TryGetValue(item.Address, out var storagePaths))
                     {
-                        storagePaths = new List<(byte[], StateSyncItem)>();
+                        storagePaths = new List<(TreePath, StateSyncItem)>();
                         itemsGroupedByAccount[item.Address] = storagePaths;
                     }
 
-                    storagePaths.Add((item.PathNibbles, item));
+                    storagePaths.Add((item.Path, item));
                 }
                 else
                 {
-                    accountTreePaths.Add((item.PathNibbles, item));
+                    accountTreePaths.Add((item.Path, item));
                 }
             }
 
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.StateSync
             int accountPathIndex = 0;
             for (; accountPathIndex < accountTreePaths.Count; accountPathIndex++)
             {
-                (byte[] path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
+                (TreePath path, StateSyncItem syncItem) = accountTreePaths[accountPathIndex];
                 accountAndStoragePath[accountPathIndex] = new PathGroup() { Group = new[] { Nibbles.EncodePath(path) } };
 
                 // We validate the order of the response later and it has to be the same as RequestedNodes
@@ -138,11 +138,11 @@ namespace Nethermind.Synchronization.StateSync
             {
                 byte[][] group = new byte[kvp.Value.Count + 1][];
                 // TODO: Whats the key encoding? Anyone remember Hash256->compact?
-                group[0] = Nibbles.EncodePath(Nibbles.BytesToNibbleBytes(kvp.Key.Bytes));
+                group[0] = kvp.Key.Bytes.ToArray();
 
                 for (int groupIndex = 1; groupIndex < group.Length; groupIndex++)
                 {
-                    (byte[] path, StateSyncItem syncItem) = kvp.Value[groupIndex - 1];
+                    (TreePath path, StateSyncItem syncItem) = kvp.Value[groupIndex - 1];
                     group[groupIndex] = Nibbles.EncodePath(path);
 
                     // We validate the order of the response later and it has to be the same as RequestedNodes

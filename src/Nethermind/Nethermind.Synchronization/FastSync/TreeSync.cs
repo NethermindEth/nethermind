@@ -473,7 +473,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (!hasOnlyRootNode)
                     {
-                        AddNodeToPending(new StateSyncItem(_rootNode, null, null, NodeDataType.State), null, "initial");
+                        AddNodeToPending(new StateSyncItem(_rootNode, null, TreePath.Empty, NodeDataType.State), null, "initial");
                     }
                 }
             }
@@ -773,8 +773,7 @@ namespace Nethermind.Synchronization.FastSync
                     // than the node is downloaded during the loop which may trigger a save on this node.
                     DependentItem dependentBranch = new(currentStateSyncItem, currentResponseItem, 16);
 
-                    Span<byte> branchChildPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + 1];
-                    currentStateSyncItem.PathNibbles.CopyTo(branchChildPath[..currentStateSyncItem.PathNibbles.Length]);
+                    TreePath parentPath = currentStateSyncItem.Path;
 
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
@@ -782,10 +781,10 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (childHash is not null)
                         {
-                            branchChildPath[currentStateSyncItem.PathNibbles.Length] = (byte)childIndex;
+                            TreePath childPath = parentPath.Append(childIndex);
 
                             AddNodeResult addChildResult = AddNodeToPending(
-                                new StateSyncItem(childHash, currentStateSyncItem.Address, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex))
+                                new StateSyncItem(childHash, currentStateSyncItem.Address, childPath, nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex))
                                 {
                                     BranchChildIndex = (short)childIndex,
                                     ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex
@@ -822,15 +821,13 @@ namespace Nethermind.Synchronization.FastSync
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
 
                         // Add nibbles to StateSyncItem.PathNibbles
-                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
-                        currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
-                        trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
+                        TreePath childPath = currentStateSyncItem.Path.Append(trieNode.Key);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
                                 next,
                                 currentStateSyncItem.Address,
-                                childPath.ToArray(),
+                                childPath,
                                 nodeDataType,
                                 currentStateSyncItem.Level + trieNode.Key!.Length,
                                 CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
@@ -859,7 +856,7 @@ namespace Nethermind.Synchronization.FastSync
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(trieNode.Value.AsRlpStream());
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
-                            AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, null, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
+                            AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, TreePath.Empty, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                             if (addCodeResult == AddNodeResult.AlreadySaved) dependentItem.Counter--;
                         }
                         else
@@ -871,15 +868,12 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)
-                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
-                            currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
-                            trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
+                            TreePath finalStorageRoot = currentStateSyncItem.Path.Append(trieNode.Key);
+                            Debug.Assert(finalStorageRoot.Length == 64);
 
-                            Debug.Assert(childPath.Length == 64);
+                            Hash256 address = finalStorageRoot.Path;
 
-                            Hash256 address = new Hash256(Nibbles.ToBytes(childPath));
-
-                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
                                 dependentItem.Counter--;

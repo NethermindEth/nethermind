@@ -200,5 +200,35 @@ namespace Nethermind.Trie
         }
 
         public static byte[] EncodePath(ReadOnlySpan<byte> input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
+
+        public static byte[] ToCompactHexEncoding(TreePath nibbles)
+        {
+            int oddity = nibbles.Length % 2;
+            byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            for (int i = 0; i < bytes.Length - 1; i++)
+            {
+                bytes[i + 1] = ToByte((byte)nibbles[2 * i + oddity], (byte)nibbles[2 * i + 1 + oddity]);
+            }
+
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(1, (byte)nibbles[0]);
+            }
+
+            return bytes;
+        }
+
+        public static byte[] EncodePath(TreePath input) => input.Length == 64 ? ToBytes(input) : ToCompactHexEncoding(input);
+
+        public static byte[] ToBytes(TreePath nibbles)
+        {
+            byte[] bytes = new byte[nibbles.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = ToByte((byte)nibbles[2 * i], (byte)nibbles[2 * i + 1]);
+            }
+
+            return bytes;
+        }
     }
 }

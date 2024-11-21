@@ -14,11 +14,11 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Hash256 hash, Hash256? address, byte[]? pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
+        public StateSyncItem(Hash256 hash, Hash256? address, TreePath path, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
             Address = address;
-            PathNibbles = pathNibbles ?? [];
+            Path = path;
             NodeDataType = nodeType;
             Level = (byte)level;
             Rightness = rightness;
@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.FastSync
         /// Nibbles of item path in the Account tree or a Storage tree.
         /// If item is an Account tree node then <see cref="Address"/> is null.
         /// </summary>
-        public byte[] PathNibbles { get; }
+        public TreePath Path { get; }
 
         public NodeDataType NodeDataType { get; }
 
@@ -49,9 +49,6 @@ namespace Nethermind.Synchronization.FastSync
         public uint Rightness { get; }
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
-
-        private TreePath? _treePath = null;
-        public TreePath Path => _treePath ??= TreePath.FromNibble(PathNibbles);
 
         private NodeKey? _key = null;
         public NodeKey Key => _key ??= new(Address, Path, Hash);
