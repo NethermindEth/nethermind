@@ -51,7 +51,7 @@ Branch names must follow the `kebab-case` or `snake_case` pattern and be all low
 
 - `feature/1234-issue-title`
 - `shanghai/feature/1234-issue-title`
-- `fix/1234-bug-decription`
+- `fix/1234-bug-description`
 - `shanghai/refactor/title`
 
 ### File headers
