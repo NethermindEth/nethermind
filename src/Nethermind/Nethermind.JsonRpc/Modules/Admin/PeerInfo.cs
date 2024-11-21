@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
             Name = peer.Node.ClientId;
             Id = peer.Node.Id.Hash.ToString(false);
-            Host = IPAddress.Parse(peer.Node.Host!).MapToIPv4().ToString();
+            Host = peer.Node.Host is null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
