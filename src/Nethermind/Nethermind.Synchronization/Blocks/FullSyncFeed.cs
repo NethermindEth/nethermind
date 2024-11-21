@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.Blocks
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full;
 
-        private static DownloaderOptions BuildOptions() => DownloaderOptions.Process;
+        private static DownloaderOptions BuildOptions() => DownloaderOptions.Full;
 
         // ReSharper disable once RedundantTypeArgumentsOfMethod
         public override Task<BlocksRequest?> PrepareRequest(CancellationToken token = default) => Task.FromResult<BlocksRequest?>(_blocksRequest);

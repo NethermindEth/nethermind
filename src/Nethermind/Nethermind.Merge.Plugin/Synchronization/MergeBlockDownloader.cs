@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
-            ISyncPeerPool? syncPeerPool,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
             ISealValidator? sealValidator,
@@ -54,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IFullStateFinder fullStateFinder,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
-            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
+            : base(feed, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, betterPeerStrategy, logManager, syncBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -124,9 +123,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
 
             DownloaderOptions options = blocksRequest.Options;
-            bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
-            bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
-            bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
+            bool shouldProcess = (options & DownloaderOptions.Full) == DownloaderOptions.Full;
+            bool downloadReceipts = !shouldProcess;
+            bool shouldMoveToMain = !shouldProcess;
 
             int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;

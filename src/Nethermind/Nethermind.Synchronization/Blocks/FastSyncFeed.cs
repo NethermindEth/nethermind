@@ -25,13 +25,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private DownloaderOptions BuildOptions()
         {
-            DownloaderOptions options = DownloaderOptions.MoveToMain;
-            if (_syncConfig.DownloadReceiptsInFastSync)
-            {
-                options |= DownloaderOptions.WithReceipts;
-            }
-
-            return options;
+            return DownloaderOptions.Fast;
         }
 
         public override Task<BlocksRequest> PrepareRequest(CancellationToken token = default) => Task.FromResult(_blocksRequest);

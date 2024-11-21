@@ -43,7 +43,6 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISpecProvider _specProvider;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogger _logger;
-        private readonly ISyncPeerPool _syncPeerPool;
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
         private readonly Random _rnd = new();
 
@@ -52,12 +51,10 @@ namespace Nethermind.Synchronization.Blocks
         protected bool HasBetterPeer => _allocationWithCancellation.IsCancellationRequested;
 
         protected SyncBatchSize _syncBatchSize;
-        protected int _sinceLastTimeout;
         private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
 
         public BlockDownloader(
             ISyncFeed<BlocksRequest?>? feed,
-            ISyncPeerPool? syncPeerPool,
             IBlockTree? blockTree,
             IBlockValidator? blockValidator,
             ISealValidator? sealValidator,
@@ -69,7 +66,6 @@ namespace Nethermind.Synchronization.Blocks
             SyncBatchSize? syncBatchSize = null)
         {
             _feed = feed;
-            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
@@ -138,9 +134,9 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             DownloaderOptions options = blocksRequest.Options;
-            bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
-            bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
-            bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
+            bool shouldProcess = (options & DownloaderOptions.Full) == DownloaderOptions.Full;
+            bool downloadReceipts = !shouldProcess;
+            bool shouldMoveToMain = !shouldProcess;
 
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
@@ -292,34 +288,29 @@ namespace Nethermind.Synchronization.Blocks
             return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
         }
 
-        private ValueTask DownloadFailHandler<T>(Task<T> downloadTask, string entities)
+        private async Task<T> DownloadFailHandler<T>(string entities, Func<Task<T>> downloadTask)
         {
-            if (downloadTask.IsFaulted)
+            try
             {
-                if (downloadTask.HasTimeoutException())
-                {
-                    if (_logger.IsDebug) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
-                    _syncBatchSize.Shrink();
-                }
-
-                if (downloadTask.Exception is not null)
-                {
-                    _ = downloadTask.GetAwaiter().GetResult(); // trying to throw with stack trace
-                }
+                return await downloadTask();
             }
+            catch (TimeoutException ex)
+            {
+                if (_logger.IsDebug) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", ex);
+                _syncBatchSize.Shrink();
 
-            return default;
+                throw;
+            }
         }
 
         protected virtual async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
-            Task<IOwnedReadOnlyList<BlockHeader>> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
-            await headersRequest.ContinueWith(t => DownloadFailHandler(t, "headers"), cancellation);
+            IOwnedReadOnlyList<BlockHeader> headers = await DownloadFailHandler("headers", () =>
+                peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation));
 
             cancellation.ThrowIfCancellationRequested();
 
-            IOwnedReadOnlyList<BlockHeader> headers = headersRequest.Result;
             ValidateSeals(headers, cancellation);
 
             cancellation.ThrowIfCancellationRequested();
@@ -334,10 +325,8 @@ namespace Nethermind.Synchronization.Blocks
             while (offset != context.NonEmptyBlockHashes.Count)
             {
                 IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
-                Task<OwnedBlockBodies> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
-                await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
+                using OwnedBlockBodies ownedBlockBodies = await DownloadFailHandler("bodies", () => peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation));
 
-                using OwnedBlockBodies ownedBlockBodies = getBodiesRequest.Result;
                 ownedBlockBodies.Disown();
                 BlockBody?[] result = ownedBlockBodies.Bodies;
 
@@ -368,10 +357,7 @@ namespace Nethermind.Synchronization.Blocks
             while (offset != context.NonEmptyBlockHashes.Count)
             {
                 IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
-                Task<IOwnedReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
-                await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
-
-                using IOwnedReadOnlyList<TxReceipt[]> result = request.Result;
+                using IOwnedReadOnlyList<TxReceipt[]> result = await DownloadFailHandler("receipts", () => peer.SyncPeer.GetReceipts(hashesToRequest, cancellation));
 
                 for (int i = 0; i < result.Count; i++)
                 {
