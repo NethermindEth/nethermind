@@ -313,6 +313,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash)
         {
+            _pivot.UpdatedStorages.Add(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
 

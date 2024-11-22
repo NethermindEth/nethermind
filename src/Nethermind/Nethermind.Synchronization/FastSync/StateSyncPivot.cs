@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using ConcurrentCollections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastSync
@@ -72,5 +75,7 @@ namespace Nethermind.Synchronization.FastSync
                 _bestHeader = bestHeader;
             }
         }
+
+        public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new ConcurrentHashSet<Hash256>();
     }
 }
