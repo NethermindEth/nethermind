@@ -109,7 +109,6 @@ public class BlockHeaderTests
     public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed, long? minimalBaseFee = null)
     {
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
-        releaseSpec.BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
         releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);

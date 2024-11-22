@@ -36,20 +36,5 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
-    public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
-    {
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        if (spec.IsOpHoloceneEnabled)
-        {
-            if (!header.TryDecodeEIP1559Parameters(out _, out var decodeError))
-            {
-                error = decodeError;
-                return false;
-            }
-        }
-
-        return base.Validate(header, parent, isUncle, out error);
-    }
-
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

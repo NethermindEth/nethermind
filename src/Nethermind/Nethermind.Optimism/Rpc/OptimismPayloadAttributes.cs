@@ -30,13 +30,6 @@ public class OptimismPayloadAttributes : PayloadAttributes
     public bool NoTxPool { get; set; }
     public long GasLimit { get; set; }
     public override long? GetGasLimit() => GasLimit;
-
-    /// <remarks>
-    /// See <see href="https://specs.optimism.io/protocol/holocene/exec-engine.html#eip-1559-parameters-in-payloadattributesv3"/>
-    /// </remarks>
-    public byte[]? EIP1559Params { get; set; }
-    private const int EIP1559ParamsLength = 8;
-
     private int TransactionsLength => Transactions?.Length ?? 0;
 
     private Transaction[]? _transactions;
@@ -71,11 +64,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
     }
 
     protected override int ComputePayloadIdMembersSize() =>
-        base.ComputePayloadIdMembersSize()
-        + sizeof(bool) // noTxPool
-        + (Keccak.Size * TransactionsLength) // Txs
-        + sizeof(long) // gasLimit
-        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
+        // Add NoTxPool + Txs + GasLimit
+        base.ComputePayloadIdMembersSize() + sizeof(bool) + Keccak.Size * TransactionsLength + sizeof(long);
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
@@ -97,12 +87,6 @@ public class OptimismPayloadAttributes : PayloadAttributes
         BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(offset, sizeof(long)), GasLimit);
         offset += sizeof(long);
 
-        if (EIP1559Params is not null)
-        {
-            EIP1559Params.CopyTo(inputSpan.Slice(offset));
-            offset += EIP1559Params.Length;
-        }
-
         return offset;
     }
 
@@ -112,18 +96,6 @@ public class OptimismPayloadAttributes : PayloadAttributes
         if (GasLimit == 0)
         {
             error = "Gas Limit should not be zero";
-            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-
-        IReleaseSpec releaseSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
-        if (!releaseSpec.IsOpHoloceneEnabled && EIP1559Params is not null)
-        {
-            error = $"{nameof(EIP1559Params)} should be null before Holocene";
-            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-        if (releaseSpec.IsOpHoloceneEnabled && EIP1559Params?.Length != EIP1559ParamsLength)
-        {
-            error = $"{nameof(EIP1559Params)} should be {EIP1559ParamsLength} bytes long";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
@@ -147,7 +119,6 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
-            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)
