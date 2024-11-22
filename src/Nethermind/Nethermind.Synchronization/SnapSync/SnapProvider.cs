@@ -198,12 +198,15 @@ namespace Nethermind.Synchronization.SnapSync
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
+            bool canRemoveFurtherLock = false;
+            ProgressTracker.IStorageRangeLock? rangeLock = null;
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+                (AddRangeResult result, bool moreChildrenToRight, rangeLock) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, hashLimit, pathWithAccount.Path, _progressTracker, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
+                    canRemoveFurtherLock = (moreChildrenToRight && slots[^1].Path > hashLimit) || !moreChildrenToRight;
                     if (moreChildrenToRight)
                     {
                         _progressTracker.EnqueueStorageRange(pathWithAccount, startingHash, slots[^1].Path, hashLimit);
@@ -226,6 +229,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
+                rangeLock?.Decrement(pathWithAccount.Path, canRemoveFurtherLock);
                 _trieStorePool.Return(store);
             }
         }

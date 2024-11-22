@@ -108,12 +108,15 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
+        public static (AddRangeResult result, bool moreChildrenToRight, ProgressTracker.IStorageRangeLock? storageLock) AddStorageRange(
             StorageTree tree,
             long blockNumber,
             in ValueHash256? startingHash,
             IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256 expectedRootHash,
+            in ValueHash256? limitHash,
+            ValueHash256 accountHash,
+            ProgressTracker progressTracker,
             IReadOnlyList<byte[]>? proofs = null
         )
         {
@@ -122,11 +125,11 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 lastHash = slots[^1].Path;
 
             (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, ValueKeccak.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, lastHash, limitHash ?? Keccak.MaxValue, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
-                return (result, true);
+                return (result, true, null);
             }
 
             for (var index = 0; index < slots.Count; index++)
@@ -140,14 +143,17 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                return (AddRangeResult.DifferentRootHash, true);
+                return (AddRangeResult.DifferentRootHash, true, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            var storageLock = progressTracker.GetLockObjectForPath(accountHash);
+            storageLock.ExecuteSafe(() =>
+            {
+                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+                tree.Commit(writeFlags: WriteFlags.DisableWAL);
+            });
 
-            tree.Commit(writeFlags: WriteFlags.DisableWAL);
-
-            return (AddRangeResult.OK, moreChildrenToRight);
+            return (AddRangeResult.OK, moreChildrenToRight, storageLock);
         }
 
         [SkipLocalsInit]
