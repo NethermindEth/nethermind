@@ -38,7 +38,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction gas limit exceeds the block gas limit.
         /// </summary>
-        public static readonly AcceptTxResult GasLimitExceeded = new(5, nameof(GasLimitExceeded));
+        public static readonly AcceptTxResult GasLimitExceeded = new(5, "gas limit reached");
 
         /// <summary>
         /// Sender account has not enough balance to execute this transaction.
@@ -73,7 +73,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transaction sender has code hash that is not null.
         /// </summary>
-        public static readonly AcceptTxResult SenderIsContract = new(12, nameof(SenderIsContract));
+        public static readonly AcceptTxResult SenderIsContract = new(12, "sender not an eoa");
 
         /// <summary>
         /// The nonce is too far in the future.
