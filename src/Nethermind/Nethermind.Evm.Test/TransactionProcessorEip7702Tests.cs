@@ -782,6 +782,53 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Execute_EXTCODESIZEOnDelegatedThatTriggersOptimization_ReturnsZeroIfDelegated(bool isDelegated)
+    {
+        PrivateKey signer = TestItem.PrivateKeyA;
+        PrivateKey sender = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether());
+
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .PushData(signer.Address)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(Instruction.EQ)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        DeployCode(codeSource, code);
+
+        if (isDelegated)
+        {
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. codeSource.Bytes];
+            DeployCode(signer.Address, delegation);
+        }
+
+        _stateProvider.Commit(Prague.Instance, true);
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(codeSource)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10000000).TestObject;
+        CallOutputTracer tracer = new();
+        _ = _transactionProcessor.Execute(tx, block.Header, tracer);
+
+        Assert.That(tracer.ReturnValue, Is.EquivalentTo(new byte[] { Convert.ToByte(!isDelegated) }));
+    }
+
     private void DeployCode(Address codeSource, byte[] code)
     {
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);
