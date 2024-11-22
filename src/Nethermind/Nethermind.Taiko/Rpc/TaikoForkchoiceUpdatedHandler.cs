@@ -6,6 +6,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -69,5 +70,23 @@ class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
 
         errorResult = null;
         return true;
+    }
+
+    protected override BlockHeader? ValidateCheckpointBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
+    {
+        errorMessage = null;
+        if (skipZeroHash && blockHash == Keccak.Zero)
+        {
+            return null;
+        }
+
+        BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (blockHeader is null)
+        {
+            blockHash = Keccak.Zero;
+            return null;
+        }
+
+        return blockHeader;
     }
 }

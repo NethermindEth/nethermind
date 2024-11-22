@@ -36,7 +36,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 {
-    private readonly IBlockTree _blockTree;
+    protected readonly IBlockTree _blockTree;
     private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IPayloadPreparationService _payloadPreparationService;
@@ -150,9 +150,14 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
+        Hash256 safeBlockHash = forkchoiceState.SafeBlockHash;
+        Hash256 finalizedBlockHash = forkchoiceState.FinalizedBlockHash;
+
         BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock!.Number, newHeadBlock.GetOrCalculateHash()).Info;
-        BlockHeader? safeBlockHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
-        BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
+
+        BlockHeader? safeBlockHeader = ValidateCheckpointBlockHash(ref safeBlockHash, out string? safeBlockErrorMsg);
+        BlockHeader? finalizedHeader = ValidateCheckpointBlockHash(ref finalizedBlockHash, out string? finalizationErrorMsg);
+
         string requestStr = forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number);
 
         if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
@@ -165,16 +170,15 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (!blockInfo.WasProcessed)
         {
-            if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+            if (!IsNewHeadAlignedWithChain(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
-                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
-                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+                return errorResult;
             }
 
             BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
             if (blockParent is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
+                if (_logger.IsInfo) _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header sync.");
 
                 StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
 
@@ -198,8 +202,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             int processingQueueCount = _processingQueue.Count;
             if (processingQueueCount == 0)
             {
-                _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
-                _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                _peerRefresher.RefreshPeers(newHeadBlock!.Hash!, newHeadBlock.ParentHash!, finalizedBlockHash);
+                _blockCacheService.FinalizedHash = finalizedBlockHash;
                 _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
@@ -225,7 +229,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (safeBlockErrorMsg is not null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {safeBlockErrorMsg}. Request: {requestStr}.");
             return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
@@ -257,21 +261,21 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             _blockTree.UpdateMainChain(blocks!, true, true);
         }
 
-        if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
+        if (IsInconsistent(finalizedBlockHash))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        if (IsInconsistent(forkchoiceState.SafeBlockHash))
+        if (IsInconsistent(safeBlockHash))
         {
             string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
+        bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -279,7 +283,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (shouldUpdateHead)
         {
-            _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
+            _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, finalizedBlockHash);
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
@@ -387,7 +391,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return branchOfBlocks;
     }
 
-    private BlockHeader? ValidateBlockHash(Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
+    protected virtual BlockHeader? ValidateCheckpointBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
         if (skipZeroHash && blockHash == Keccak.Zero)
