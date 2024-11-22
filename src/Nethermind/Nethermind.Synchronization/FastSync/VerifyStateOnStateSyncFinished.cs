@@ -32,6 +32,8 @@ public class VerifyStateOnStateSyncFinished(
 
     private void TreeSyncOnOnVerifyPostSyncCleanup(object? sender, ITreeSync.SyncCompletedEventArgs evt)
     {
+        treeSync.SyncCompleted -= TreeSyncOnOnVerifyPostSyncCleanup;
+
         ManualResetEvent processingBlocker = new ManualResetEvent(false);
 
         processingQueue.BlockRemoved += ProcessingQueueOnBlockRemoved;

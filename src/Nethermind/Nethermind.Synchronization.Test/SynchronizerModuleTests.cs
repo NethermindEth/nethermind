@@ -51,9 +51,10 @@ public class SynchronizerModuleTests
         IStateReader stateReader = ctx.Resolve<IStateReader>();
 
         treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
+        treeSync.SyncCompleted += Raise.EventWith(null, new ITreeSync.SyncCompletedEventArgs(TestItem.KeccakA));
 
         stateReader
-            .Received()
+            .Received(1)
             .RunTreeVisitor(Arg.Any<TrieStatsCollector>(), Arg.Is(TestItem.KeccakA), Arg.Any<VisitingOptions>());
     }
 
