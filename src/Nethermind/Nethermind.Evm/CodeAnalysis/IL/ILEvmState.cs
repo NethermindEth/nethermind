@@ -1,15 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Int256;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using static Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript.Log;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal ref struct ILEvmState
@@ -27,9 +19,6 @@ internal ref struct ILEvmState
     public ref readonly BlockExecutionContext BlkCtx;
     // in case of exceptions
     public EvmExceptionType EvmException;
-    // in case of jumps crossing section boundaries
-    public int ProgramCounter;
-    public long GasAvailable;
     // in case STOP is executed
     public bool ShouldStop;
     public bool ShouldRevert;
@@ -48,7 +37,7 @@ internal ref struct ILEvmState
     public ref ReadOnlyMemory<byte> ReturnBuffer;
 
 
-    public ILEvmState(ulong chainId, EvmState evmState, EvmExceptionType evmException, int programCounter, long gasAvailable, ref ReadOnlyMemory<byte> returnBuffer)
+    public ILEvmState(ulong chainId, EvmState evmState, EvmExceptionType evmException, ref ReadOnlyMemory<byte> returnBuffer)
     {
         ChainId = chainId;
         // locals for ease of access
@@ -62,8 +51,6 @@ internal ref struct ILEvmState
         Memory = ref evmState.Memory;
 
         EvmException = evmException;
-        ProgramCounter = programCounter;
-        GasAvailable = gasAvailable;
 
         InputBuffer = ref evmState.Env.InputData;
         ReturnBuffer = ref returnBuffer;

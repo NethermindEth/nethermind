@@ -1,23 +1,17 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.Config;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
-using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
-using static Org.BouncyCastle.Crypto.Engines.SM2Engine;
 using ILMode = int;
 
 [assembly : InternalsVisibleTo("Nethermind.Evm.Tests")]
@@ -50,19 +44,28 @@ public static class IlAnalyzer
         int itemsLeft = _queue.Count;
         while (itemsLeft-- > 0 && _queue.TryDequeue(out AnalysisWork worklet))
         {
-            IlAnalyzer.Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
+            if (worklet.CodeInfo.IlInfo.IsBeingProcessed)
+            {
+                _queue.Enqueue(worklet);
+            }
+            else
+            {
+                worklet.CodeInfo.IlInfo.IsBeingProcessed = true;
+                IlAnalyzer.Analyse(worklet.CodeInfo, worklet.Mode, config, logger);
+                worklet.CodeInfo.IlInfo.IsBeingProcessed = false;
+            }
         }
     }
 
-    private static Dictionary<Type, InstructionChunk> _patterns = new Dictionary<Type, InstructionChunk>();
-    internal static void AddPattern(InstructionChunk handler)
+    private static Dictionary<Type, IPatternChunk> _patterns = new Dictionary<Type, IPatternChunk>();
+    internal static void AddPattern(IPatternChunk handler)
     {
         lock (_patterns)
         {
             _patterns[handler.GetType()] = handler;
         }
     }
-    internal static void AddPattern<T>() where T : InstructionChunk
+    internal static void AddPattern<T>() where T : IPatternChunk
     {
         var handler = Activator.CreateInstance<T>();
         lock (_patterns)
@@ -70,7 +73,7 @@ public static class IlAnalyzer
             _patterns[typeof(T)] = handler;
         }
     }
-    internal static T GetPatternHandler<T>() where T : InstructionChunk
+    internal static T GetPatternHandler<T>() where T : IPatternChunk
     {
         lock (_patterns)
         {
@@ -80,10 +83,10 @@ public static class IlAnalyzer
 
     public static void Initialize()
     {
-        Type[] InstructionChunks = typeof(InstructionChunk).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(InstructionChunk))).ToArray();
+        Type[] InstructionChunks = typeof(IPatternChunk).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(InstructionChunk))).ToArray();
         foreach (var chunkType in InstructionChunks)
         {
-            _patterns[chunkType] = (InstructionChunk)Activator.CreateInstance(chunkType);
+            _patterns[chunkType] = (IPatternChunk)Activator.CreateInstance(chunkType);
         }
     }
 
@@ -119,8 +122,8 @@ public static class IlAnalyzer
 
         static void SegmentCode(CodeInfo codeInfo, (OpcodeInfo[], byte[][]) codeData, IlInfo ilinfo, IVMConfig vmConfig)
         {
-            Dictionary<int, PrecompiledChunk> segmentMap = new();
-
+            List<InstructionChunk> segmentsFound = new();
+            int offset = ilinfo.IlevmChunks?.Length ?? 0;   
             if (codeData.Item1.Length == 0)
             {
                 return;
@@ -166,29 +169,43 @@ public static class IlAnalyzer
                 }
 
                 var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig);
+                ilinfo.AddMapping(segment[0].ProgramCounter, segmentsFound.Count + offset, IlInfo.ILMode.JIT_MODE);
                 if (vmConfig.AggressiveJitMode)
                 {
-                    segmentMap.Add(segment[0].ProgramCounter, segmentExecutionCtx);
                     for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
                     {
-                        segmentMap.TryAdd(segmentExecutionCtx.JumpDestinations[k], segmentExecutionCtx);
+                        ilinfo.AddMapping(segmentExecutionCtx.JumpDestinations[k], segmentsFound.Count + offset, IlInfo.ILMode.JIT_MODE);
                     }
                 }
-                else
-                {
-                    segmentMap.Add(segment[0].ProgramCounter, segmentExecutionCtx);
-                }
+                segmentsFound.Add(segmentExecutionCtx);
             }
 
-            ilinfo.Segments = segmentMap.ToFrozenDictionary();
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
+            if(segmentsFound.Count == 0)
+            {
+                return;
+            }
+
+            if (ilinfo.IlevmChunks is null)
+            {
+                ilinfo.IlevmChunks = segmentsFound.ToArray();
+            }
+            else
+            {
+                List<InstructionChunk> combined = [
+                    ..ilinfo.IlevmChunks,
+                    ..segmentsFound
+                ];
+                ilinfo.IlevmChunks = combined.ToArray();
+            }
         }
 
         static void CheckPatterns(ReadOnlyMemory<byte> machineCode, IlInfo ilinfo)
         {
-            Dictionary<int, InstructionChunk> chunkMap = new();
+            List<InstructionChunk> patternsFound = new();
+            int offset = ilinfo.IlevmChunks?.Length ?? 0;   
             var (strippedBytecode, data) = StripByteCode(machineCode.Span);
-            foreach ((Type _, InstructionChunk chunkHandler) in _patterns)
+            foreach ((Type _, IPatternChunk chunkHandler) in _patterns)
             {
                 for (int i = 0; i < strippedBytecode.Length - chunkHandler.Pattern.Length + 1; i++)
                 {
@@ -200,14 +217,31 @@ public static class IlAnalyzer
 
                     if (found)
                     {
-                        chunkMap.Add((ushort)strippedBytecode[i].ProgramCounter, chunkHandler);
+                        ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, patternsFound.Count + offset, IlInfo.ILMode.PAT_MODE);
+                        patternsFound.Add(chunkHandler);
                         i += chunkHandler.Pattern.Length - 1;
                     }
                 }
             }
 
-            ilinfo.Chunks = chunkMap.ToFrozenDictionary();
             Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.PAT_MODE);
+            if (patternsFound.Count == 0)
+            {
+                return;
+            }
+
+            if (ilinfo.IlevmChunks is null) {
+                ilinfo.IlevmChunks = patternsFound.ToArray();
+            }
+            else
+            {
+                List<InstructionChunk> combined = [
+                    ..ilinfo.IlevmChunks,
+                    ..patternsFound
+                ];
+
+                ilinfo.IlevmChunks = combined.ToArray();
+            }
         }
 
         switch (mode)

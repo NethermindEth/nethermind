@@ -27,8 +27,7 @@ public abstract class TxTracer : ITxTracer
                     || IsTracingAccess
                     || IsTracingFees
                     || IsTracingLogs
-                    || IsTracingPredefinedPatterns
-                    || IsTracingCompiledSegments;
+                    || IsTracingIlEvmCalls;
     }
     public bool IsTracing { get; protected set; }
     public virtual bool IsTracingState { get; protected set; }
@@ -45,8 +44,7 @@ public abstract class TxTracer : ITxTracer
     public virtual bool IsTracingFees { get; protected set; }
     public virtual bool IsTracingStorage { get; protected set; }
     public virtual bool IsTracingLogs { get; protected set; }
-    public virtual bool IsTracingPredefinedPatterns { get; protected set; }
-    public virtual bool IsTracingCompiledSegments { get; protected set; }
+    public virtual bool IsTracingIlEvmCalls { get; protected set; }
 
     public virtual void ReportBalanceChange(Address address, UInt256? before, UInt256? after) { }
     public virtual void ReportCodeChange(Address address, byte[]? before, byte[]? after) { }
@@ -81,7 +79,6 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
-    public virtual void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env) { }
-    public virtual void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) { }
+    public virtual void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) { }
     public virtual void Dispose() { }
 }

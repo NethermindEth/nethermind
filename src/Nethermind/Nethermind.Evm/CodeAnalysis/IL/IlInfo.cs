@@ -1,17 +1,10 @@
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
-using Microsoft.IdentityModel.Tokens;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using NonBlocking;
-using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static Nethermind.Evm.VirtualMachine;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Tests")]
@@ -34,6 +27,10 @@ internal class IlInfo
         public EvmExceptionType ExceptionType;
 
 
+        public static ILChunkExecutionResult Empty = new();
+        public static void Reset() => Empty = new();
+
+
         public static explicit operator ILChunkExecutionResult(ILEvmState state)
         {
             return new ILChunkExecutionResult
@@ -50,82 +47,64 @@ internal class IlInfo
 
     public static class ILMode
     {
-        public const int NO_ILVM = 0;
-        public const int PAT_MODE = 1;
-        public const int JIT_MODE = 2;
+        public const int NO_ILVM  = 0b00000000;
+        public const int PAT_MODE = 0b10000000;
+        public const int JIT_MODE = 0b01000000;
     }
 
     /// <summary>
     /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.
     /// </summary>
-    public static IlInfo Empty => new();
+    public static IlInfo Empty(int size) => new(size);
 
     /// <summary>
     /// Represents what mode of IL-EVM is used. 0 is the default. [0 = No ILVM optimizations, 1 = Pattern matching, 2 = subsegments compiling]
     /// </summary>
     public int Mode = ILMode.NO_ILVM;
-    public bool IsEmpty => Chunks is null && Segments is null && Mode == ILMode.NO_ILVM;
+    public bool IsEmpty => IlevmChunks is null && Mode == ILMode.NO_ILVM;
+    public bool IsBeingProcessed = false;
     /// <summary>
     /// No overrides.
     /// </summary>
-    private IlInfo()
+    private IlInfo(int bytecodeSize)
     {
-        Chunks = default;
-        Segments = default;
-    }
-
-    public IlInfo(FrozenDictionary<int, InstructionChunk> mappedOpcodes, FrozenDictionary<int, PrecompiledChunk> segments)
-    {
-        Chunks = mappedOpcodes;
-        Segments = segments;
+        IlevmChunks = default;
+        _Mapping = new byte[bytecodeSize];
     }
 
     // assumes small number of ILed
-    public FrozenDictionary<int, InstructionChunk>? Chunks { get; set; }
-    public FrozenDictionary<int, PrecompiledChunk>? Segments { get; set; }
+    public InstructionChunk[]? IlevmChunks { get; set; }
+
+    private byte[] _Mapping = null;
+
+    public void AddMapping(int index, int chunkIdx, int mode)
+    {
+        // in this code ILMODE is used to mark pc if it points to compiled or pattern chunk
+        // NO_ILVM is used to mark pc if it points to non-compiled chunk
+        _Mapping[index] = (byte)(chunkIdx | mode);
+    }
 
     public bool TryExecute<TTracingInstructions>(ILogger logger, EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer, IWorldState worldState, IBlockhashProvider blockHashProvider, ICodeInfoRepository codeinfoRepository, IReleaseSpec spec, ITxTracer tracer, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out ILChunkExecutionResult? result)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
         result = null;
+
         if (programCounter > ushort.MaxValue || this.IsEmpty)
             return false;
 
-        if (Mode.HasFlag(ILMode.JIT_MODE) && Segments.TryGetValue(programCounter, out PrecompiledChunk aotChunk))
+        var executionResult = new ILChunkExecutionResult();
+        if (Mode != ILMode.NO_ILVM && _Mapping[programCounter] != ILMode.NO_ILVM)
         {
+            var bytecodeChunkHandler = IlevmChunks[_Mapping[programCounter] & 0x3F];
             Metrics.IlvmPrecompiledSegmentsExecutions++;
             if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, aotChunk);
+                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, bytecodeChunkHandler);
 
-            vmState.DataStackHead = stack.Head;
-            var ilvmState = new ILEvmState(chainId, vmState, EvmExceptionType.None, programCounter, gasAvailable, ref outputBuffer);
-
-            aotChunk.Invoke(ref ilvmState, blockHashProvider, worldState, codeinfoRepository, spec, tracer);
-
-            gasAvailable = ilvmState.GasAvailable;
-            programCounter = ilvmState.ProgramCounter;
-            result = (ILChunkExecutionResult)ilvmState;
-            stack.Head = ilvmState.StackHead;
-
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                tracer.ReportOperationRemainingGas(gasAvailable);
-            return true;
-        }
-
-        if (Mode.HasFlag(ILMode.PAT_MODE) && Chunks.TryGetValue(programCounter, out InstructionChunk patChunk))
-        {
-            var executionResult = new ILChunkExecutionResult();
-            Metrics.IlvmPredefinedPatternsExecutions++;
-
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                StartTracingSegment(in vmState, in stack, tracer, programCounter, gasAvailable, patChunk);
-
-            patChunk.Invoke(vmState, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, ref executionResult);
-
-            if (typeof(TTracingInstructions) == typeof(IsTracing))
-                tracer.ReportOperationRemainingGas(gasAvailable);
+            bytecodeChunkHandler.Invoke(vmState, chainId, ref outputBuffer, blockHashProvider, worldState, codeinfoRepository, spec, ref programCounter, ref gasAvailable, ref stack, tracer, ref executionResult);
 
             result = executionResult;
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                tracer.ReportOperationRemainingGas(gasAvailable);
             return true;
         }
         return false;
@@ -133,15 +112,9 @@ internal class IlInfo
 
     private static void StartTracingSegment<T, TTracingInstructions>(in EvmState vmState, in EvmStack<TTracingInstructions> stack, ITxTracer tracer, int programCounter, long gasAvailable, T chunk)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
+        where T : InstructionChunk
     {
-        if (chunk is PrecompiledChunk segment)
-        {
-            tracer.ReportCompiledSegmentExecution(gasAvailable, programCounter, segment.Name, vmState.Env);
-        }
-        else if (chunk is InstructionChunk patternHandler)
-        {
-            tracer.ReportPredefinedPatternExecution(gasAvailable, programCounter, patternHandler.Name, vmState.Env);
-        }
+        tracer.ReportIlEvmChunkExecution(gasAvailable, programCounter, chunk.Name, vmState.Env);
 
         if (tracer.IsTracingMemory)
         {

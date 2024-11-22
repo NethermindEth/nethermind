@@ -53,8 +53,7 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
     public bool IsTracingLogs { get; }
-    public bool IsTracingPredefinedPatterns { get; }
-    public bool IsTracingCompiledSegments { get; }
+    public bool IsTracingIlEvmCalls { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -519,26 +518,14 @@ public class CompositeTxTracer : ITxTracer
             _txTracers[index].Dispose();
         }
     }
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingPredefinedPatterns)
+            if (innerTracer.IsTracingIlEvmCalls)
             {
-                innerTracer.ReportPredefinedPatternExecution(gas, pc, segmentID, in env);
-            }
-        }
-    }
-
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingCompiledSegments)
-            {
-                innerTracer.ReportCompiledSegmentExecution(gas, pc, segmentId, in env);
+                innerTracer.ReportIlEvmChunkExecution(gas, pc, segmentId, in env);
             }
         }
     }

@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Config;
 using Nethermind.Evm.IL;
@@ -12,10 +11,8 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Sigil;
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Reflection;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.IL.EmitExtensions;
@@ -24,7 +21,7 @@ using Label = Sigil.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace, ref int programCounter, ref long gasAvailable, byte[][] immediatesData);
 
     private const int VMSTATE_INDEX = 0;
     private const int BLOCKHASH_PROVIDER_INDEX = 1;
@@ -32,20 +29,10 @@ internal class ILCompiler
     private const int CODE_INFO_REPOSITORY_INDEX = 3;
     private const int SPEC_INDEX = 4;
     private const int TXTRACER_INDEX = 5;
-    private const int IMMEDIATES_DATA_INDEX = 6;
+    private const int PROGRAM_COUNTER_INDEX = 6;
+    private const int GAS_AVAILABLE_INDEX = 7;
+    private const int IMMEDIATES_DATA_INDEX = 8;
 
-    public class PrecompiledChunk
-    {
-        public string Name => PrecompiledSegment.Method.Name;
-        internal ExecuteSegment PrecompiledSegment;
-        internal byte[][] Data;
-        internal int[] JumpDestinations;
-
-        public void Invoke(ref ILEvmState vmstate, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec, ITxTracer trace)
-        {
-            PrecompiledSegment(ref vmstate, blockhashProvider, worldState, codeInfoRepository, spec, trace, Data);
-        }
-    }
     public static PrecompiledChunk CompileSegment(string segmentName, CodeInfo codeInfo, OpcodeInfo[] code, byte[][] data, IVMConfig config)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
@@ -129,14 +116,13 @@ internal class ILCompiler
         method.StoreLocal(head);
 
         // set gas to local
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
-        method.Convert<long>();
+        method.LoadArgument(GAS_AVAILABLE_INDEX);
+        method.LoadIndirect<long>();
         method.StoreLocal(gasAvailable);
 
         // set pc to local
-        method.LoadArgument(VMSTATE_INDEX);
-        method.LoadField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
+        method.LoadArgument(PROGRAM_COUNTER_INDEX);
+        method.LoadIndirect<int>();
         method.StoreLocal(programCounter);
 
         // if last ilvmstate was a jump
@@ -164,6 +150,10 @@ internal class ILCompiler
                 }
                 if (metadata.WillFail)
                 {
+                    if (bakeInTracerCalls)
+                    {
+                        EmitCallToStartInstructionTrace(method, gasAvailable, head, op);
+                    }
                     method.Branch(evmExceptionLabels[EvmExceptionType.BadInstruction]);
                     i = metadata.EndOfSegment;
                     continue;
@@ -1834,9 +1824,9 @@ internal class ILCompiler
                         method.LoadLocal(uint32A);
                         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
 
-                        method.LoadArgument(VMSTATE_INDEX);
+                        method.LoadArgument(GAS_AVAILABLE_INDEX);
                         method.LoadLocal(gasAvailable);
-                        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
+                        method.StoreIndirect<long>();
                         method.Branch(exit);
 
                         method.MarkLabel(endOfOpcode);
@@ -2172,19 +2162,19 @@ internal class ILCompiler
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Stack)));
 
         // set gas available
-        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadArgument(GAS_AVAILABLE_INDEX);
         method.LoadLocal(gasAvailable);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
+        method.StoreIndirect<long>();
 
         // set program counter
         method.LoadLocal(isEphemeralJump);
         method.BranchIfTrue(skipProgramCounterSetting);
 
-        method.LoadArgument(VMSTATE_INDEX);
+        method.LoadArgument(PROGRAM_COUNTER_INDEX);
         method.LoadLocal(programCounter);
         method.LoadConstant(1);
         method.Add();
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
+        method.StoreIndirect<int>();
 
         method.MarkLabel(skipProgramCounterSetting);
 
@@ -2233,13 +2223,13 @@ internal class ILCompiler
 
         method.MarkLabel(jumpIsNotLocal);
         method.LoadArgument(VMSTATE_INDEX);
-        method.Duplicate();
         method.LoadConstant(true);
         method.StoreLocal(isEphemeralJump);
         method.LoadConstant(true);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ShouldJump)));
+        method.LoadArgument(PROGRAM_COUNTER_INDEX);
         method.LoadLocal(jmpDestination);
-        method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
+        method.StoreIndirect<int>();
         method.Branch(ret);
 
         method.MarkLabel(jumpIsLocal);

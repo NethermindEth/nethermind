@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.State;
+using System;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
-using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -15,12 +16,16 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 internal interface InstructionChunk
 {
     string Name { get; }
-    byte[] Pattern { get; }
-    void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+    void Invoke<T>(EvmState vmState,
+            ulong chainId,
+            ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider,
+            IWorldState worldState,
+            ICodeInfoRepository codeInfoRepository,
+            IReleaseSpec spec,
             ref int programCounter,
             ref long gasAvailable,
             ref EvmStack<T> stack,
+            ITxTracer trace,
             ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing;
-
-    long GasCost(EvmState vmState, IReleaseSpec spec);
 }

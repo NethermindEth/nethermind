@@ -42,8 +42,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
     public bool IsTracingLogs => true;
-    public bool IsTracingPredefinedPatterns => true;
-    public bool IsTracingCompiledSegments => true;
+    public bool IsTracingIlEvmCalls => true;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -107,7 +106,5 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportChunkExecutionEnd(long gas, int pc, Type segmentID) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
-
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env) => throw new OperationCanceledException(ErrorMessage);
 }

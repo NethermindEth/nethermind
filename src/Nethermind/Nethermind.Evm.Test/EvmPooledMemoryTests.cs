@@ -232,9 +232,7 @@ public class MyTracer : ITxTracer, IDisposable
                              || IsTracingFees
                              || IsTracingLogs;
 
-    bool IILVMTracer.IsTracingPredefinedPatterns => true;
-
-    bool IILVMTracer.IsTracingCompiledSegments => true;
+    bool IILVMTracer.IsTracingIlEvmCalls => true;
 
     public string lastmemline;
 
@@ -394,11 +392,8 @@ public class MyTracer : ITxTracer, IDisposable
 
     public void Dispose() { }
 
-    public void ReportPredefinedPatternExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
+    public void ReportIlEvmChunkExecution(long gas, int pc, string segmentID, in ExecutionEnvironment env)
     {
-    }
-
-    public void ReportCompiledSegmentExecution(long gas, int pc, string segmentId, in ExecutionEnvironment env)
-    {
+        throw new NotImplementedException();
     }
 }

@@ -24,7 +24,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public byte[][] Push { get; set; }
         public ParityStorageChangeTrace Store { get; set; }
         public long Used { get; set; }
-        public bool IsPrecompiledSegment { get; set; }
         public string? SegmentId { get; set; }
         public int Pc { get; set; }
         public ParityVmTrace Sub { get; set; }

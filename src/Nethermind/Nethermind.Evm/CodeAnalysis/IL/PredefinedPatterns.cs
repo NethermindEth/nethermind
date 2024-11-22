@@ -6,16 +6,13 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.State;
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.CodeAnalysis.IL.Patterns;
 
-internal class MethodSelector : InstructionChunk
+internal class MethodSelector : IPatternChunk
 {
     public string Name => nameof(MethodSelector);
     public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.MSTORE, (byte)Instruction.CALLVALUE, (byte)Instruction.DUP1];
@@ -27,11 +24,13 @@ internal class MethodSelector : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -49,7 +48,7 @@ internal class MethodSelector : InstructionChunk
     }
 }
 
-internal class IsContractCheck : InstructionChunk
+internal class IsContractCheck : IPatternChunk
 {
     public string Name => nameof(IsContractCheck);
     public byte[] Pattern => [(byte)Instruction.EXTCODESIZE, (byte)Instruction.DUP1, (byte)Instruction.ISZERO];
@@ -61,11 +60,13 @@ internal class IsContractCheck : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -92,7 +93,7 @@ internal class IsContractCheck : InstructionChunk
     }
 
 }
-internal class EmulatedStaticJump : InstructionChunk
+internal class EmulatedStaticJump : IPatternChunk
 {
     public string Name => nameof(EmulatedStaticJump);
     public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMP];
@@ -104,11 +105,13 @@ internal class EmulatedStaticJump : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -127,7 +130,7 @@ internal class EmulatedStaticJump : InstructionChunk
     }
 
 }
-internal class EmulatedStaticCJump : InstructionChunk
+internal class EmulatedStaticCJump : IPatternChunk
 {
     public string Name => nameof(EmulatedStaticCJump);
     public byte[] Pattern => [(byte)Instruction.PUSH2, (byte)Instruction.JUMPI];
@@ -139,11 +142,13 @@ internal class EmulatedStaticCJump : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -169,7 +174,7 @@ internal class EmulatedStaticCJump : InstructionChunk
         }
     }
 }
-internal class PP : InstructionChunk
+internal class PP : IPatternChunk
 {
     public string Name => nameof(PP);
     public byte[] Pattern => [(byte)Instruction.POP, (byte)Instruction.POP];
@@ -181,11 +186,13 @@ internal class PP : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -199,7 +206,7 @@ internal class PP : InstructionChunk
         programCounter += 2;
     }
 }
-internal class P01P01SHL : InstructionChunk
+internal class P01P01SHL : IPatternChunk
 {
     public string Name => nameof(P01P01SHL);
     public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.PUSH1, (byte)Instruction.SHL];
@@ -211,11 +218,13 @@ internal class P01P01SHL : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -228,7 +237,7 @@ internal class P01P01SHL : InstructionChunk
 
     }
 }
-internal class PJ : InstructionChunk
+internal class PJ : IPatternChunk
 {
     public string Name => nameof(PJ);
     public byte[] Pattern => [(byte)Instruction.POP, (byte)Instruction.JUMP];
@@ -240,11 +249,13 @@ internal class PJ : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -267,7 +278,7 @@ internal class PJ : InstructionChunk
         }
     }
 }
-internal class S02P : InstructionChunk
+internal class S02P : IPatternChunk
 {
     public string Name => nameof(S02P);
     public byte[] Pattern => [(byte)Instruction.SWAP2, (byte)Instruction.POP];
@@ -279,11 +290,13 @@ internal class S02P : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -296,7 +309,7 @@ internal class S02P : InstructionChunk
         programCounter += 2;
     }
 }
-internal class S01P : InstructionChunk
+internal class S01P : IPatternChunk
 {
     public string Name => nameof(S01P);
     public byte[] Pattern => [(byte)Instruction.SWAP1, (byte)Instruction.POP];
@@ -308,11 +321,13 @@ internal class S01P : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -325,7 +340,7 @@ internal class S01P : InstructionChunk
         programCounter += 2;
     }
 }
-internal class P01SHL : InstructionChunk
+internal class P01SHL : IPatternChunk
 {
     public string Name => nameof(P01SHL);
     public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.SHL];
@@ -337,11 +352,13 @@ internal class P01SHL : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -355,7 +372,7 @@ internal class P01SHL : InstructionChunk
 
     }
 }
-internal class P01D02 : InstructionChunk
+internal class P01D02 : IPatternChunk
 {
     public string Name => nameof(P01D02);
     public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.DUP2];
@@ -367,11 +384,13 @@ internal class P01D02 : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -385,7 +404,7 @@ internal class P01D02 : InstructionChunk
 
     }
 }
-internal class P01D03 : InstructionChunk
+internal class P01D03 : IPatternChunk
 {
     public string Name => nameof(P01D03);
     public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.DUP3];
@@ -397,11 +416,13 @@ internal class P01D03 : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -415,7 +436,7 @@ internal class P01D03 : InstructionChunk
 
     }
 }
-internal class S02S01 : InstructionChunk
+internal class S02S01 : IPatternChunk
 {
     public string Name => nameof(S02S01);
     public byte[] Pattern => [(byte)Instruction.SWAP2, (byte)Instruction.SWAP1];
@@ -427,11 +448,13 @@ internal class S02S01 : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -445,7 +468,7 @@ internal class S02S01 : InstructionChunk
 
     }
 }
-internal class D01P04EQ : InstructionChunk
+internal class D01P04EQ : IPatternChunk
 {
     public string Name => nameof(D01P04EQ);
     public byte[] Pattern => [(byte)Instruction.DUP1, (byte)Instruction.PUSH4, (byte)Instruction.EQ];
@@ -457,11 +480,13 @@ internal class D01P04EQ : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -489,7 +514,7 @@ internal class D01P04EQ : InstructionChunk
 
     }
 }
-internal class D01P04GT : InstructionChunk
+internal class D01P04GT : IPatternChunk
 {
     public string Name => nameof(D01P04GT);
     public byte[] Pattern => [(byte)Instruction.DUP1, (byte)Instruction.PUSH4, (byte)Instruction.GT];
@@ -501,11 +526,13 @@ internal class D01P04GT : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -530,7 +557,7 @@ internal class D01P04GT : InstructionChunk
 
     }
 }
-internal class D02MST : InstructionChunk
+internal class D02MST : IPatternChunk
 {
     public string Name => nameof(D02MST);
     public byte[] Pattern => [(byte)Instruction.DUP2, (byte)Instruction.MSTORE];
@@ -542,11 +569,13 @@ internal class D02MST : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 
@@ -566,7 +595,7 @@ internal class D02MST : InstructionChunk
 
     }
 }
-internal class P01ADDS01D02MST : InstructionChunk
+internal class P01ADDS01D02MST : IPatternChunk
 {
     public string Name => nameof(P01ADDS01D02MST);
     public byte[] Pattern => [(byte)Instruction.PUSH1, (byte)Instruction.ADD, (byte)Instruction.SWAP1, (byte)Instruction.DUP2, (byte)Instruction.MSTORE];
@@ -578,11 +607,13 @@ internal class P01ADDS01D02MST : InstructionChunk
         return gasCost;
     }
 
-    public void Invoke<T>(EvmState vmState, IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
-        ref int programCounter,
-        ref long gasAvailable,
-        ref EvmStack<T> stack,
-        ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
+    public void Invoke<T>(EvmState vmState, ulong chainId, ref ReadOnlyMemory<byte> outputBuffer,
+            IBlockhashProvider blockhashProvider, IWorldState worldState, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec,
+            ref int programCounter,
+            ref long gasAvailable,
+            ref EvmStack<T> stack,
+            ITxTracer txTracer,
+            ref ILChunkExecutionResult result) where T : struct, VirtualMachine.IIsTracing
     {
         CallCount++;
 

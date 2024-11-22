@@ -20,6 +20,8 @@ using System.Runtime.Intrinsics;
 using Nethermind.Evm.CodeAnalysis.IL;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
+using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
+
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -777,7 +779,6 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
         SkipInit(out UInt256 result);
         SkipInit(out StorageCell storageCell);
         object returnData = null;
-        IlInfo.ILChunkExecutionResult? chunkExecutionResult = null;
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
@@ -786,7 +787,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if(typeof(TOptimizing) == typeof(IsOptimizing))
             {
-                while ((ilInfo.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out chunkExecutionResult)))
+                while (ilInfo is not null && (ilInfo.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out IlInfo.ILChunkExecutionResult? chunkExecutionResult)))
                 {
                     if (chunkExecutionResult.Value.ShouldReturn)
                     {
