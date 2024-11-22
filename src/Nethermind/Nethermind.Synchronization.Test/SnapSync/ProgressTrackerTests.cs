@@ -12,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 
@@ -145,7 +146,8 @@ public class ProgressTrackerTests
             .WithStateRoot(Keccak.EmptyTreeHash)
             .TestObject).TestObject;
         TestMemDb memDb = new();
-        using ProgressTracker progressTracker = new(blockTree, memDb, new SyncConfig() { SnapSyncAccountRangePartitionCount = 1 }, LimboLogs.Instance);
+        SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = 1 };
+        using ProgressTracker progressTracker = new(memDb, syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
@@ -162,6 +164,7 @@ public class ProgressTrackerTests
     private ProgressTracker CreateProgressTracker(int accountRangePartition = 1)
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.WithStateRoot(Keccak.EmptyTreeHash).TestObject).TestObject;
-        return new ProgressTracker(blockTree, new MemDb(), new SyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition }, LimboLogs.Instance);
+        SyncConfig syncConfig = new SyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition };
+        return new(new MemDb(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
     }
 }
