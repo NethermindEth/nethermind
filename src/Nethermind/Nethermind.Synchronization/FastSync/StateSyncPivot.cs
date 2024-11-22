@@ -7,9 +7,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Nethermind.Synchronization.SnapSync
+namespace Nethermind.Synchronization.FastSync
 {
-    internal class Pivot
+    public class StateSyncPivot
     {
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public Pivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
         {
             _blockTree = blockTree;
             _syncConfig = syncConfig;

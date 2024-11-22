@@ -61,6 +61,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly INodeStorage _nodeStorage;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
+        private readonly StateSyncPivot _stateSyncPivot;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
@@ -78,13 +79,14 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, StateSyncPivot stateSyncPivot, ILogManager logManager)
         {
             _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig;
+            _stateSyncPivot = stateSyncPivot;
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -351,9 +353,16 @@ namespace Nethermind.Synchronization.FastSync
                 return (false, true);
             }
 
+            if (_stateSyncPivot.GetPivotHeader().StateRoot != _rootNode)
+            {
+                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
+                return (false, true);
+            }
+
             if (_hintsToResetRoot >= 32 && DateTime.UtcNow - _lastResetRoot > _minTimeBetweenReset)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - many missing responses");
+                _stateSyncPivot.UpdateHeaderForcefully();
                 return (false, true);
             }
 
@@ -398,19 +407,14 @@ namespace Nethermind.Synchronization.FastSync
 
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
-            long targetBlockNumber = Math.Max((_blockTree.BestSuggestedHeader?.Number ?? 0) - _syncConfig.StateMinDistanceFromHead, 0);
-            BlockHeader headerForState = _blockTree.FindHeader(targetBlockNumber);
-            if (headerForState is null)
-            {
-                return;
-            }
+            BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
 
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
             ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
         }
 
-        public void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)
+        private void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)
         {
             _syncStateLock.EnterWriteLock();
             try
