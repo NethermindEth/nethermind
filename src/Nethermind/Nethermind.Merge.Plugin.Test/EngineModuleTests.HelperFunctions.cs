@@ -1,29 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
-using NUnit.Framework;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Microsoft.CodeAnalysis;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -86,8 +65,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
-            Block? head = blockTree.Head;
-            if (head is null) throw new NotSupportedException();
+            Block? head = blockTree.Head ?? throw new NotSupportedException();
             return new ExecutionPayload()
             {
                 BlockNumber = head.Number,
@@ -159,7 +137,7 @@ namespace Nethermind.Merge.Plugin.Test
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.ExecutionRequestsProcessor?.ProcessExecutionRequests(block!, chain.State, Array.Empty<TxReceipt>(), chain.SpecProvider.GenesisSpec);
+            chain.ExecutionRequestsProcessor?.ProcessExecutionRequests(block!, chain.State, [], chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
@@ -192,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ParentBeaconBlockRoot = parentBeaconBlockRoot
             };
 
-            blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
+            blockRequest.SetTransactions(transactions ?? []);
             TryCalculateHash(blockRequest, out Hash256? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;

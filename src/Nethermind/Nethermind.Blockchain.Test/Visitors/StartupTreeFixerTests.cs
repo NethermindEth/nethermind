@@ -12,7 +12,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Test.Modules;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;

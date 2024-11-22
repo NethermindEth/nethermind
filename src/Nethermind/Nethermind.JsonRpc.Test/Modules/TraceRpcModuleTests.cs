@@ -29,8 +29,6 @@ using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Specs.Test.ChainSpecStyle;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -551,7 +549,7 @@ public class TraceRpcModuleTests
         UInt256 currentNonceAddressB = blockchain.State.GetNonce(TestItem.AddressB);
         await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
         byte[] deployedCode = new byte[3];
-        byte[] initCode = Prepare.EvmCode
+        _ = Prepare.EvmCode
             .ForInitOf(deployedCode)
             .Done;
 

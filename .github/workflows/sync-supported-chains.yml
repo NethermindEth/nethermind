@@ -149,7 +149,7 @@ jobs:
             fi
 
             if [[ "$network" == base-* ]]; then
-              extra_param="--base"
+              extra_param="--base ${{ secrets.BASE_MAINNET_EXTRA_BOOTNODES }}"
             fi
 
             stripped_network="${network#base-}"

@@ -15,7 +15,6 @@ using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
@@ -162,7 +161,7 @@ public class MergePluginTests
         await _plugin.Init(_context);
 
         jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo(new string[] { });
+        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
         jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
         {
             "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"

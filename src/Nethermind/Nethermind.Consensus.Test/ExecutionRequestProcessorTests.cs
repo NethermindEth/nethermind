@@ -1,28 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using NSubstitute;
-using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
@@ -39,9 +20,9 @@ public class ExecutionProcessorTests
     private static readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private static readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private static readonly ExecutionRequest[] _executionDepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
-    private static readonly ExecutionRequest[] _executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
-    private static readonly ExecutionRequest[] _executionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
+    private static readonly TestExecutionRequest[] _executionDepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
+    private static readonly TestExecutionRequest[] _executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
+    private static readonly TestExecutionRequest[] _executionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
 
     private void FlatEncodeWithoutType(ExecutionRequest[] requests, Span<byte> buffer)
     {
@@ -106,7 +87,7 @@ public class ExecutionProcessorTests
                 }
                 else
                 {
-                    tracer.ReturnValue = Array.Empty<byte>();
+                    tracer.ReturnValue = [];
                 }
                 return new TransactionResult();
             });
@@ -114,12 +95,12 @@ public class ExecutionProcessorTests
 
 
     public static Hash256 CalculateHash(
-        ExecutionRequest[] depositRequests,
-        ExecutionRequest[] withdrawalRequests,
-        ExecutionRequest[] consolidationRequests
+        TestExecutionRequest[] depositRequests,
+        TestExecutionRequest[] withdrawalRequests,
+        TestExecutionRequest[] consolidationRequests
     )
     {
-        using ArrayPoolList<byte[]> requests = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
+        using ArrayPoolList<byte[]> requests = TestExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationRequests);
         return ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requests.ToArray());
     }
 

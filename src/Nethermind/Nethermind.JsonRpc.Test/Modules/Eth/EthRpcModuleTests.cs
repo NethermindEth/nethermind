@@ -32,7 +32,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -556,7 +555,7 @@ public partial class EthRpcModuleTests
                 return GetLogs(c.ArgAt<CancellationToken>(3));
 
                 [DoesNotReturn]
-                IEnumerable<FilterLog> GetLogs(CancellationToken ct)
+                static IEnumerable<FilterLog> GetLogs(CancellationToken ct)
                 {
                     while (true)
                     {

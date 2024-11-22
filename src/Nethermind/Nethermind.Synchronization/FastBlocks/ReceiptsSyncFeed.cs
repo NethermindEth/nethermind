@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -226,7 +225,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 BlockInfo? blockInfo = blockInfos[i];
                 TxReceipt[]? receipts = (batch.Response?.Count ?? 0) <= i
                     ? null
-                    : (batch.Response![i] ?? Array.Empty<TxReceipt>());
+                    : (batch.Response![i] ?? []);
 
                 if (receipts is not null)
                 {

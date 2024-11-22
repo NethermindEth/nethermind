@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
-using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
-using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -13,7 +8,7 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
+    readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
 
     /// <summary>
     /// Method parameter list is extended with <see cref="ExecutionRequets"/> parameter.

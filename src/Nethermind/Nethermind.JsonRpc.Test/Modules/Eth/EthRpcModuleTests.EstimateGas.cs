@@ -16,7 +16,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;

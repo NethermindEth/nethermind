@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -15,7 +13,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -314,7 +311,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
                 ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
                 PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
-                Withdrawals = Array.Empty<Withdrawal>(),
+                Withdrawals = [],
                 SuggestedFeeRecipient = Address.Zero
             };
         }
@@ -417,7 +414,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
             if (predecessor is null)
             {
-                blocks = Array.Empty<Block>();
+                blocks = [];
                 return false;
             }
             if (_blockTree.IsMainChain(predecessor.Header)) break;

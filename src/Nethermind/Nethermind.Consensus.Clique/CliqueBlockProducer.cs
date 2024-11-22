@@ -1,28 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Clique;
 
@@ -74,12 +57,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     public void CastVote(Address signer, bool vote)
     {
-        bool success = _blockProducer.Proposals.TryAdd(signer, vote);
-        if (!success)
-        {
-            throw new InvalidOperationException($"A vote for {signer} has already been cast.");
-        }
-
+        _blockProducer.Proposals.AddOrUpdate(signer, vote, (key, existingValue) => vote);
         if (_logger.IsWarn) _logger.Warn($"Added Clique vote for {signer} - {vote}");
     }
 
@@ -426,7 +404,7 @@ public class CliqueBlockProducer : IBlockProducer
             parentHeader.Number + 1,
             _gasLimitCalculator.GetGasLimit(parentHeader),
             timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
-            Array.Empty<byte>());
+            []);
 
         // If the block isn't a checkpoint, cast a random vote (good enough for now)
         long number = header.Number;
@@ -499,7 +477,7 @@ public class CliqueBlockProducer : IBlockProducer
             header,
             selectedTxs,
             Array.Empty<BlockHeader>(),
-            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            spec.WithdrawalsEnabled ? [] : null
         );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;

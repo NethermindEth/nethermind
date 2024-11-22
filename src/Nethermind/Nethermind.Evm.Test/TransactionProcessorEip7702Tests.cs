@@ -20,7 +20,6 @@ using Nethermind.Core.Crypto;
 using System;
 using System.Linq;
 using Nethermind.Int256;
-using Nethermind.Consensus;
 
 namespace Nethermind.Evm.Test;
 
@@ -562,8 +561,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-
-        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        _ = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
         Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(expectedValue));
     }
 
@@ -639,8 +637,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-
-        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        _ = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
         Assert.That(new UInt256(_stateProvider.Get(new StorageCell(codeSource, 0))), expectZero ? Is.EqualTo((UInt256)0) : Is.Not.EqualTo((UInt256)0));
     }
@@ -739,7 +736,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
+        _ = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
         Assert.That(_stateProvider.GetNonce(authority.Address), Is.EqualTo((UInt256)1));
     }

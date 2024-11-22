@@ -8,7 +8,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -96,14 +95,14 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) res = ss.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, entries[3].Item1, 1.MB(), default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = res.accounts;
-        accountsAndProofs.Proofs = res.proofs;
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
         progressTracker.IsFinished(out batch).Should().Be(false);
@@ -138,14 +137,14 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) res = ss.GetAccountRanges(
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = ss.GetAccountRanges(
             root, Keccak.Zero, Keccak.MaxValue, 1.MB(), default);
 
         progressTracker.IsFinished(out SnapSyncBatch? batch).Should().Be(false);
 
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = res.accounts;
-        accountsAndProofs.Proofs = res.proofs;
+        accountsAndProofs.PathAndAccounts = accounts;
+        accountsAndProofs.Proofs = proofs;
 
         snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs).Should().Be(AddRangeResult.OK);
 

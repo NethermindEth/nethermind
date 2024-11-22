@@ -6,11 +6,13 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Net;
 using System.Security.Authentication;
 using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -22,7 +24,6 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -42,24 +43,25 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         ServiceProvider sp = Build(services);
-        IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
-        if (configProvider is null)
-        {
-            throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
-        }
-
+        IConfigProvider? configProvider = sp.GetService<IConfigProvider>() ?? throw new ApplicationException($"{nameof(IConfigProvider)} could not be resolved");
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
 
         services.Configure<KestrelServerOptions>(options =>
         {
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
+            options.ConfigureEndpointDefaults(listenOptions =>
+            {
+                listenOptions.Protocols = HttpProtocols.Http1;
+                listenOptions.DisableAltSvcHeader = true;
+            });
         });
         Bootstrap.Instance.RegisterJsonRpcServices(services);
 
-        string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
-        services.AddCors(c => c.AddPolicy("Cors",
-            p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(builder => builder
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithOrigins(jsonRpcConfig.CorsOrigins)));
 
         services.AddResponseCompression(options =>
         {
@@ -79,9 +81,8 @@ public class Startup
             app.UseDeveloperExceptionPage();
         }
 
-        app.UseCors("Cors");
         app.UseRouting();
-        app.UseResponseCompression();
+        app.UseCors();
 
         IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
         IRpcAuthentication? rpcAuthentication = app.ApplicationServices.GetService<IRpcAuthentication>();
@@ -97,6 +98,12 @@ public class Startup
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
         IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
+
+        // If request is local, don't use response compression,
+        // as it allocates a lot, but doesn't improve much for loopback
+        app.UseWhen(ctx =>
+            !IsLocalhost(ctx.Connection.RemoteIpAddress),
+            builder => builder.UseResponseCompression());
 
         if (initConfig.WebSocketsEnabled)
         {
@@ -283,6 +290,13 @@ public class Startup
             }
         });
     }
+
+    /// <summary>
+    /// Check for IPv4 localhost (127.0.0.1) and IPv6 localhost (::1) 
+    /// </summary>
+    /// <param name="remoteIp">Request source</param>
+    private static bool IsLocalhost(IPAddress remoteIp)
+        => IPAddress.IsLoopback(remoteIp) || remoteIp.Equals(IPAddress.IPv6Loopback);
 
     private static int GetStatusCode(JsonRpcResult result)
     {

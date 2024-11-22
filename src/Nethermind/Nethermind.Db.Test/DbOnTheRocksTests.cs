@@ -125,7 +125,7 @@ namespace Nethermind.Db.Test
         {
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
-            IWriteBatch writeBatch = db.StartWriteBatch();
+            _ = db.StartWriteBatch();
             db.Dispose();
         }
 

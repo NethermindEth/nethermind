@@ -84,7 +84,7 @@ public partial class BlockProcessor(
     // TODO: move to branch processor
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
-        if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+        if (suggestedBlocks.Count == 0) return [];
 
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));

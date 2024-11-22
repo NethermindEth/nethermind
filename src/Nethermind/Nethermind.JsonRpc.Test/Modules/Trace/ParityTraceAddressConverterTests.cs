@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_do_roundtrip()
         {
-            bool Comparer(int[] a, int[] b)
+            static bool Comparer(int[] a, int[] b)
             {
                 if (a.Length != b.Length)
                 {

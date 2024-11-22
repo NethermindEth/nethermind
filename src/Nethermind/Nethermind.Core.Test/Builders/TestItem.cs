@@ -1,15 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Linq;
-using System.Net;
-using DotNetty.Common.Utilities;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Test.Builders
 {

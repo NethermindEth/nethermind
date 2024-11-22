@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Admin
@@ -17,5 +18,9 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public Hash256 HeadHash { get; set; }
         [JsonPropertyName("network")]
         public ulong NewtorkId { get; set; }
+        [JsonPropertyName("chainId")]
+        public ulong ChainId { get; set; }
+        [JsonPropertyName("config")]
+        public ChainParameters Config { get; set; }
     }
 }

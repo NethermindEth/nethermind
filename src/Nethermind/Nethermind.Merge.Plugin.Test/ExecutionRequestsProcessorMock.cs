@@ -1,35 +1,25 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
-using DotNetty.Common.Utilities;
-using Nethermind.Consensus.ExecutionRequests;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
-using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.State;
-
 namespace Nethermind.Merge.Plugin.Test;
 
 public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
 {
-    public static ExecutionRequest[] depositRequests =
+    public static TestExecutionRequest[] depositRequests =
     [
         TestItem.ExecutionRequestA,
         TestItem.ExecutionRequestB,
         TestItem.ExecutionRequestC
     ];
 
-    public static ExecutionRequest[] withdrawalRequests =
+    public static TestExecutionRequest[] withdrawalRequests =
     [
         TestItem.ExecutionRequestD,
         TestItem.ExecutionRequestE,
         TestItem.ExecutionRequestF
     ];
 
-    public static ExecutionRequest[] consolidationsRequests =
+    public static TestExecutionRequest[] consolidationsRequests =
     [
         TestItem.ExecutionRequestG,
         TestItem.ExecutionRequestH,
@@ -40,7 +30,7 @@ public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor
     {
         get
         {
-            using ArrayPoolList<byte[]> list = ExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationsRequests);
+            using ArrayPoolList<byte[]> list = TestExecutionRequestExtensions.GetFlatEncodedRequests(depositRequests, withdrawalRequests, consolidationsRequests);
             return list.ToArray();
         }
     }

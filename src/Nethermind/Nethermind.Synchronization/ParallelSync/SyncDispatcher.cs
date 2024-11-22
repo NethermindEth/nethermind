@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -15,7 +14,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncDispatcher<T>
     {
-        private readonly object _feedStateManipulation = new();
+        private readonly Lock _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
