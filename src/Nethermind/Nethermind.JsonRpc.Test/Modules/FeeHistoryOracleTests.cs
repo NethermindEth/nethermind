@@ -443,21 +443,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             int? cacheSize = null,
             int? maxDistFromHead = null)
         {
-            ISpecProvider provider;
-            if (specProvider is not null)
-            {
-                provider = specProvider;
-            }
-            else
-            {
-                provider = Substitute.For<ISpecProvider>();
-                provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
-            }
-
             return new(
                 blockTree ?? Substitute.For<IBlockTree>(),
                 receiptStorage ?? Substitute.For<IReceiptStorage>(),
-                provider,
+                specProvider ?? Substitute.For<ISpecProvider>(),
                 maxDistFromHead);
         }
     }
