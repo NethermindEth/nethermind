@@ -25,8 +25,6 @@ public class VerifyStateOnStateSyncFinished(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<VerifyStateOnStateSyncFinished>();
 
-    bool _wasRun = false;
-
     public void Start()
     {
         treeSync.SyncCompleted += TreeSyncOnOnVerifyPostSyncCleanup;
