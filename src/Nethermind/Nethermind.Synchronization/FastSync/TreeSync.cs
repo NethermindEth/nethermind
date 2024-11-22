@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
@@ -335,7 +336,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public (bool continueProcessing, bool finishSyncRound) ValidatePrepareRequest(SyncMode currentSyncMode)
         {
-            if (_rootSaved == 1)
+            if (_rootSaved == 1 && _pendingRequests.Count == 0)
             {
                 if (_logger.IsInfo) _logger.Info("StateNode sync: falling asleep - root saved");
                 VerifyPostSyncCleanUp();
@@ -692,11 +693,51 @@ namespace Nethermind.Synchronization.FastSync
                 _nodeStorage.Flush(onlyWal: false);
                 _codeDb.Flush();
 
+                VerifyStorageUpdated();
+
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
 
             _branchProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
             PossiblySaveDependentNodes(syncItem.Key);
+        }
+
+        private void VerifyStorageUpdated()
+        {
+            StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            stateTree.RootHash = _rootNode;
+            _stateDbLock.EnterReadLock();
+            try
+            {
+                if (_logger.IsWarn) _logger.Warn($"Updated storages count is {_stateSyncPivot.UpdatedStorages.Count}");
+                foreach (Hash256 updatedAddress in _stateSyncPivot.UpdatedStorages)
+                {
+                    Account? account = stateTree.Get(updatedAddress);
+
+                    if (account is not null)
+                    {
+                        if (_nodeStorage.Get(updatedAddress, TreePath.Empty, account.StorageRoot) is null)
+                        {
+                            // if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
+                            if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
+
+                            AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), null, "uncomplete storage", missing: true);
+                        }
+                        else
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} has correct storage root {account.StorageRoot}");
+                        }
+                    }
+                    else
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} has no account");
+                    }
+                }
+            }
+            finally
+            {
+                _stateDbLock.ExitReadLock();
+            }
         }
 
         private void VerifyPostSyncCleanUp()
