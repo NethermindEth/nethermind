@@ -20,6 +20,9 @@ using Nethermind.Core.Crypto;
 using System;
 using System.Linq;
 using Nethermind.Int256;
+using Nethermind.Consensus;
+using Org.BouncyCastle.Asn1.X509;
+using Nethermind.Network;
 
 namespace Nethermind.Evm.Test;
 
@@ -490,32 +493,19 @@ internal class TransactionProcessorEip7702Tests
 
     public static IEnumerable<object[]> OpcodesWithEXT()
     {
-        //EXTCODESIZE should return the size of the delegated code
+        //EXTCODESIZE should return the size of the two bytes of the delegation header
         yield return new object[] {
             Prepare.EvmCode
             .PushData(TestItem.AddressA)
             .Op(Instruction.EXTCODESIZE)
             .Op(Instruction.PUSH0)
-            .Op(Instruction.SSTORE)
-            .Done,
-            new byte[]{ 2 + 22 } };
-        //EXTCODEHASH should return the HASH of the delegated code
-        yield return new object[] {
-            Prepare.EvmCode
-            .PushData(TestItem.AddressA)
-            .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
             .Op(Instruction.PUSH0)
-            .Op(Instruction.SSTORE)
+            .Op(Instruction.RETURN)
             .Done,
-            Keccak.Compute(
-                Prepare.EvmCode
-                .PushData(TestItem.AddressA)
-                .Op(Instruction.EXTCODEHASH)
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SSTORE)
-                .Done).Bytes.ToArray()
-            };
-        //EXTCOPYCODE should copy the delegated code
+            new byte[]{ 2 } };
+        //EXTCOPYCODE should copy only the first two bytes of the delegation header
         byte[] code = Prepare.EvmCode
             .PushData(TestItem.AddressA)
             .Op(Instruction.DUP1)
@@ -524,16 +514,14 @@ internal class TransactionProcessorEip7702Tests
             .Op(Instruction.PUSH0)
             .Op(Instruction.DUP4)
             .Op(Instruction.EXTCODECOPY)
+            .PushData(2)
             .Op(Instruction.PUSH0)
-            .Op(Instruction.MLOAD)
-            .Op(Instruction.PUSH0)
-            .Op(Instruction.SSTORE)
-            .Op(Instruction.STOP)
+            .Op(Instruction.RETURN)
             .Done;
         yield return new object[]
         {
             code,
-            code
+            Eip7702Constants.FirstTwoBytesOfHeader.ToArray()
         };
     }
     [TestCaseSource(nameof(OpcodesWithEXT))]
@@ -561,70 +549,70 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        _ = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EquivalentTo(expectedValue));
+        CallOutputTracer callOutputTracer = new();
+        _ = _transactionProcessor.Execute(tx, block.Header, callOutputTracer);
+
+        Assert.That(callOutputTracer.ReturnValue.ToArray(), Is.EquivalentTo(expectedValue));
     }
 
     public static IEnumerable<object[]> EXTCODEHASHAccountSetup()
     {
         yield return new object[] {
-            (IWorldState state, Address account) =>
+            (IWorldState state, Address account, Address target) =>
             {
                 //Account does not exists
             },
-            Eip7702Constants.HashOfDelegationCode };
+            new byte[] { 0x0 }
+        };
         yield return new object[] {
-            (IWorldState state, Address account) =>
+            (IWorldState state, Address account, Address target) =>
             {
-                //Account is empty
-                state.CreateAccount(account, 0);
+                //Account is delegated
+                byte[] code = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
+                state.CreateAccountIfNotExists(account, 0);
+                state.InsertCode(account, ValueKeccak.Compute(code), code, Prague.Instance);
+
             },
-            Eip7702Constants.HashOfDelegationCode };
+            Eip7702Constants.HashOfDelegationCode.BytesToArray()
+        };
         yield return new object[] {
-            (IWorldState state, Address account) =>
+            (IWorldState state, Address account, Address target) =>
             {
-                //Account has balance
-                state.CreateAccount(account, 1);
+                //Account exists but is not delegated
+                state.CreateAccountIfNotExists(account, 1);
             },
-            Eip7702Constants.HashOfDelegationCode};
+            Keccak.OfAnEmptyString.ValueHash256.ToByteArray()
+        };
         yield return new object[] {
-            (IWorldState state, Address account) =>
+            (IWorldState state, Address account, Address target) =>
             {
-                //Account has nonce
-                state.CreateAccount(account, 0, 1);
+                //Account is dead
+                state.CreateAccountIfNotExists(account, 0);
             },
-            Eip7702Constants.HashOfDelegationCode};
-        yield return new object[] {
-            (IWorldState state, Address account) =>
-            {
-                //Account has code
-                state.CreateAccount(account, 0);
-                state.InsertCode(account, Prepare.EvmCode.RETURN().Done, Prague.Instance);
-            },
-            Eip7702Constants.HashOfDelegationCode };
+            new byte[] { 0x0 }
+        };
     }
 
     [TestCaseSource(nameof(EXTCODEHASHAccountSetup))]
-    public void Execute_CodeSavesEXTCODEHASHWithDifferentAccountSetup_SavesZeroIfAccountDoesNotExistsOrIsEmpty(Action<IWorldState, Address> setupAccount, Hash256 expected)
+    public void Execute_CodeSavesEXTCODEHASHWhenAccountIsDelegatedOrNot_SavesExpectedValue(Action<IWorldState, Address, Address> setupAccount, byte[] expected)
     {
         PrivateKey signer = TestItem.PrivateKeyA;
         PrivateKey sender = TestItem.PrivateKeyB;
         Address codeSource = TestItem.AddressC;
         Address target = TestItem.AddressD;
 
-        setupAccount(_stateProvider, target);
+        setupAccount(_stateProvider, signer.Address, target);
 
         _stateProvider.CreateAccount(sender.Address, 1.Ether());
 
         byte[] code = Prepare.EvmCode
             .PushData(signer.Address)
-            .Op(Instruction.PUSH0)
             .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.PUSH0)
             .Op(Instruction.SSTORE)
             .Done;
 
         DeployCode(codeSource, code);
-        DeployCode(signer.Address, [.. Eip7702Constants.DelegationHeader, .. target.Bytes]);
 
         _stateProvider.Commit(Prague.Instance, true);
 
@@ -640,7 +628,7 @@ internal class TransactionProcessorEip7702Tests
         _ = _transactionProcessor.Execute(tx, block.Header, NullTxTracer.Instance);
 
         ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
-        Assert.That(actual.ToArray(), Is.EquivalentTo(expected.BytesToArray()));
+        Assert.That(actual.ToArray(), Is.EquivalentTo(expected));
     }
 
     public static IEnumerable<object[]> CountsAsAccessedCases()
