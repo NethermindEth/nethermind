@@ -21,6 +21,7 @@ public class TransactionSubstate
     private static readonly List<LogEntry> _emptyLogs = new(0);
 
     private const string SomeError = "error";
+    public const string Revert = "revert";
 
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
@@ -79,6 +80,8 @@ public class TransactionSubstate
             Error = null;
             return;
         }
+
+        Error = Revert;
 
         if (!isTracerConnected)
             return;
