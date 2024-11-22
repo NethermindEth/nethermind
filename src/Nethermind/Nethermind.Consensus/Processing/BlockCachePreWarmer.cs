@@ -98,19 +98,21 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         {
             if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
             {
-                ParallelUnbalancedWork.For(0, block.Withdrawals.Length, parallelOptions,
-                    i =>
+                ParallelUnbalancedWork.For(0, block.Withdrawals.Length, parallelOptions, (preWarmer: this, block, stateRoot),
+                    static (i, state) =>
                     {
-                        IReadOnlyTxProcessorSource env = _envPool.Get();
+                        IReadOnlyTxProcessorSource env = state.preWarmer._envPool.Get();
                         try
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
-                            scope.WorldState.WarmUp(block.Withdrawals[i].Address);
+                            using IReadOnlyTxProcessingScope scope = env.Build(state.stateRoot);
+                            scope.WorldState.WarmUp(state.block.Withdrawals[i].Address);
                         }
                         finally
                         {
-                            _envPool.Return(env);
+                            state.preWarmer._envPool.Return(env);
                         }
+
+                        return state;
                     });
             }
         }
@@ -130,20 +132,19 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
         try
         {
-            ParallelUnbalancedWork.For(0, block.Transactions.Length, parallelOptions, i =>
+            ParallelUnbalancedWork.For(0, block.Transactions.Length, parallelOptions, (preWarmer: this, block, stateRoot, spec), static (i, state) =>
             {
-                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-                IReadOnlyTxProcessorSource env = _envPool.Get();
-                SystemTransaction systemTransaction = _systemTransactionPool.Get();
+                IReadOnlyTxProcessorSource env = state.preWarmer._envPool.Get();
+                SystemTransaction systemTransaction = state.preWarmer._systemTransactionPool.Get();
                 Transaction? tx = null;
                 try
                 {
                     // If the transaction has already been processed or being processed, exit early
-                    if (block.TransactionProcessed > i) return;
+                    if (state.block.TransactionProcessed > i) return state;
 
-                    tx = block.Transactions[i];
+                    tx = state.block.Transactions[i];
                     tx.CopyTo(systemTransaction);
-                    using IReadOnlyTxProcessingScope scope = env.Build(stateRoot);
+                    using IReadOnlyTxProcessingScope scope = env.Build(state.stateRoot);
 
                     Address senderAddress = tx.SenderAddress!;
                     if (!scope.WorldState.AccountExists(senderAddress))
@@ -154,7 +155,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     UInt256 nonceDelta = UInt256.Zero;
                     for (int prev = 0; prev < i; prev++)
                     {
-                        if (senderAddress == block.Transactions[prev].SenderAddress)
+                        if (senderAddress == state.block.Transactions[prev].SenderAddress)
                         {
                             nonceDelta++;
                         }
@@ -165,12 +166,12 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                         scope.WorldState.IncrementNonce(senderAddress, nonceDelta);
                     }
 
-                    if (spec.UseTxAccessLists)
+                    if (state.spec.UseTxAccessLists)
                     {
                         scope.WorldState.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = scope.TransactionProcessor.Warmup(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
-                    if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
+                    TransactionResult result = scope.TransactionProcessor.Warmup(systemTransaction, new BlockExecutionContext(state.block.Header.Clone()), NullTxTracer.Instance);
+                    if (state.preWarmer._logger.IsTrace) state.preWarmer._logger.Trace($"Finished pre-warming cache for tx[{i}] {tx.Hash} with {result}");
                 }
                 catch (Exception ex) when (ex is EvmException or OverflowException)
                 {
@@ -178,13 +179,15 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
+                    if (state.preWarmer._logger.IsDebug) state.preWarmer._logger.Error($"Error pre-warming cache {tx?.Hash}", ex);
                 }
                 finally
                 {
-                    _systemTransactionPool.Return(systemTransaction);
-                    _envPool.Return(env);
+                    state.preWarmer._systemTransactionPool.Return(systemTransaction);
+                    state.preWarmer._envPool.Return(env);
                 }
+
+                return state;
             });
         }
         catch (OperationCanceledException)
@@ -264,16 +267,16 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     }
                 }
 
-                ParallelUnbalancedWork.For(0, block.Transactions.Length, parallelOptions,
-                i =>
+                ParallelUnbalancedWork.For(0, block.Transactions.Length, parallelOptions, (preWarmer: PreWarmer, block, StateRoot),
+                static (i, state) =>
                 {
-                    Transaction tx = block.Transactions[i];
+                    Transaction tx = state.block.Transactions[i];
                     Address? sender = tx.SenderAddress;
 
-                    var env = PreWarmer._envPool.Get();
+                    var env = state.preWarmer._envPool.Get();
                     try
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
+                        using IReadOnlyTxProcessingScope scope = env.Build(state.StateRoot);
                         if (sender is not null)
                         {
                             scope.WorldState.WarmUp(sender);
@@ -286,8 +289,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     }
                     finally
                     {
-                        PreWarmer._envPool.Return(env);
+                        state.preWarmer._envPool.Return(env);
                     }
+
+                    return state;
                 });
             }
             catch (OperationCanceledException)
