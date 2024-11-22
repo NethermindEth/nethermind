@@ -72,10 +72,6 @@ namespace Nethermind.Blockchain
                 long headNumberOrZero = _blockTree.Head?.Number ?? 0;
                 bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + 8;
 
-                if (!isSyncing)
-                {
-                    _hasSynced = true;
-                }
                 return isSyncing;
             }
         }
