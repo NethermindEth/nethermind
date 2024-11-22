@@ -269,16 +269,22 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         {
             // We can recalculate the roots in parallel as they are all independent tries
             var storages = _storages.ToArray();
-            ParallelUnbalancedWork.For(0, storages.Length, RuntimeInformation.ParallelOptionsLogicalCores, i =>
+            ParallelUnbalancedWork.For(
+                0,
+                storages.Length,
+                RuntimeInformation.ParallelOptionsLogicalCores,
+                (storages, toUpdateRoots: _toUpdateRoots),
+                static (i, state) =>
             {
-                ref var kvp = ref storages[i];
-                if (!_toUpdateRoots.Contains(kvp.Key))
+                ref var kvp = ref state.storages[i];
+                if (!state.toUpdateRoots.Contains(kvp.Key))
                 {
                     // Wasn't updated don't recalculate
-                    return;
+                    return state;
                 }
                 StorageTree storageTree = kvp.Value;
                 storageTree.UpdateRootHash(canBeParallel: false);
+                return state;
             });
 
             // Update the storage roots in the main thread non in parallel

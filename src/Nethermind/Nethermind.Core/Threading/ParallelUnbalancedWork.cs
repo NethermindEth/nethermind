@@ -13,7 +13,7 @@ namespace Nethermind.Core.Threading;
 /// </summary>
 public class ParallelUnbalancedWork : IThreadPoolWorkItem
 {
-    private static readonly ParallelOptions s_parallelOptions = new()
+    public static readonly ParallelOptions DefaultOptions = new()
     {
         // default to the number of processors
         MaxDegreeOfParallelism = Environment.ProcessorCount
@@ -28,7 +28,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="toExclusive">The exclusive upper bound of the range.</param>
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, Action<int> action)
-        => For(fromInclusive, toExclusive, s_parallelOptions, action);
+        => For(fromInclusive, toExclusive, DefaultOptions, action);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with the specified options.
@@ -85,7 +85,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="state">The initial state of the thread-local data.</param>
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For<TLocal>(int fromInclusive, int toExclusive, TLocal state, Func<int, TLocal, TLocal> action)
-        => For(fromInclusive, toExclusive, s_parallelOptions, state, action);
+        => For(fromInclusive, toExclusive, DefaultOptions, state, action);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data and specified options.

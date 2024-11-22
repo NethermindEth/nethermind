@@ -334,9 +334,15 @@ public partial class BlockProcessor(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
-        ParallelUnbalancedWork.For(0, receipts.Length, i =>
+        ParallelUnbalancedWork.For(
+            0,
+            receipts.Length,
+            ParallelUnbalancedWork.DefaultOptions,
+            receipts,
+            static (i, receipts) =>
         {
             receipts[i].CalculateBloom();
+            return receipts;
         });
     }
 
