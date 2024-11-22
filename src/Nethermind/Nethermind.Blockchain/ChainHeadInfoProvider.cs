@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain
         {
         }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, ICodeInfoRepository codeInfoRepository, bool forceSynced = false)
         {
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
@@ -38,6 +38,10 @@ namespace Nethermind.Blockchain
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
+            if (forceSynced)
+            {
+                _hasSynced = true;
+            }
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
