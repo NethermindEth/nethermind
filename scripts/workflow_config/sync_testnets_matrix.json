@@ -16,6 +16,14 @@
     "agent": "g6-standard-6"
   },
   {
+    "network": "mekong",
+    "cl": "lighthouse",
+    "cl_image": "docker.ethquokkaops.io/dh/ethpandaops/lighthouse:electra-alpha7-da953b8",
+    "checkpoint-sync-url": "https://checkpoint-sync.mekong.ethpandaops.io",
+    "timeout": 180,
+    "agent": "g6-standard-6"
+  },
+  {
     "network": "sepolia",
     "cl": "prysm",
     "cl_image": "prysmaticlabs/prysm-beacon-chain:stable",
