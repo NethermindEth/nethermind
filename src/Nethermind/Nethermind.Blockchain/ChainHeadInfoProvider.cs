@@ -17,6 +17,8 @@ namespace Nethermind.Blockchain
 {
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
+        private readonly IBlockTree _blockTree;
+
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, ICodeInfoRepository codeInfoRepository)
             : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), codeInfoRepository)
         {
@@ -35,6 +37,7 @@ namespace Nethermind.Blockchain
             CodeInfoRepository = codeInfoRepository;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
+            _blockTree = blockTree;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
@@ -50,6 +53,28 @@ namespace Nethermind.Blockchain
         public UInt256 CurrentBaseFee { get; private set; }
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
+
+        private bool _hasSynced;
+        public bool IsSyncing
+        {
+            get
+            {
+                if (_hasSynced)
+                {
+                    return false;
+                }
+
+                long bestSuggestedNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+                long headNumberOrZero = _blockTree.Head?.Number ?? 0;
+                bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + 8;
+
+                if (!isSyncing)
+                {
+                    _hasSynced = true;
+                }
+                return isSyncing;
+            }
+        }
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
