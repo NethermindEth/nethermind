@@ -77,6 +77,25 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, init, default, action, @finally);
 
     /// <summary>
+    /// Executes a parallel for loop over a range of integers, with thread-local data, initialization, and finalization functions.
+    /// </summary>
+    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
+    /// <param name="value">The initial the local data for each thread.</param>
+    /// <param name="action">The delegate that is invoked once per iteration.</param>
+    /// <param name="finally">The function to finalize the local data for each thread.</param>
+    public static void For<TLocal>(
+        int fromInclusive,
+        int toExclusive,
+        ParallelOptions parallelOptions,
+        TLocal value,
+        Func<int, TLocal, TLocal> action,
+        Action<TLocal> @finally)
+        => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, value, action, @finally);
+
+    /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data.
     /// </summary>
     /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
