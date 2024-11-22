@@ -15,6 +15,7 @@ public interface IOptimismSpecHelper
     bool IsEcotone(BlockHeader header);
     bool IsFjord(BlockHeader header);
     bool IsGranite(BlockHeader header);
+    bool IsHolocene(BlockHeader header);
     Address? Create2DeployerAddress { get; }
     byte[]? Create2DeployerCode { get; }
 }
