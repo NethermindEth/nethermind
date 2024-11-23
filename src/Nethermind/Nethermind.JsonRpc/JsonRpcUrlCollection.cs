@@ -132,13 +132,12 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
     }
     private void LogTable(List<string[]> rows)
     {
-        // Calculate column widths
         string[] headers = ["Additional Url", "Protocols", "Modules"];
         var columnWidths = new int[headers.Length];
 
         for (int i = 0; i < headers.Length; i++)
         {
-            columnWidths[i] = headers[i].Length; // Start with header length
+            columnWidths[i] = headers[i].Length;
             foreach (var row in rows)
             {
                 if (i < row.Length)
@@ -148,15 +147,13 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
             }
         }
 
-        // Generate the separator
         var separator = string.Join("+", columnWidths.Select(width => new string('-', width + 2)));
 
-        // Print header
+
         _logger.Info(separator);
         _logger.Info("| " + string.Join(" | ", headers.Select((h, i) => h.PadRight(columnWidths[i]))) + " |");
         _logger.Info(separator);
 
-        // Print rows
         foreach (var row in rows)
         {
             _logger.Info("| " + string.Join(" | ", row.Select((cell, i) => (cell ?? "").PadRight(columnWidths[i]))) + " |");
