@@ -136,7 +136,7 @@ public partial class BlockProcessor(
                     CacheType result = preWarmer?.ClearCaches() ?? default;
                     if (result != default)
                     {
-                        if (_logger.IsDebug) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
+                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);
