@@ -708,10 +708,54 @@ namespace Nethermind.Synchronization.FastSync
             PossiblySaveDependentNodes(syncItem.Key);
         }
 
+        class OverlayNodeStorage(INodeStorage baseStorage, ValueHash256 rootKeccak, byte[] rootValue): INodeStorage
+        {
+            public INodeStorage.KeyScheme Scheme
+            {
+                get => baseStorage.Scheme;
+                set => baseStorage.Scheme = value;
+            }
+
+            public bool RequirePath => baseStorage.RequirePath;
+
+            public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
+            {
+                if (keccak == rootKeccak) return rootValue;
+                return baseStorage.Get(address, in path, in keccak, readFlags);
+            }
+
+            public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data,
+                WriteFlags writeFlags = WriteFlags.None)
+            {
+                baseStorage.Set(address, in path, in hash, data, writeFlags);
+            }
+
+            public INodeStorage.WriteBatch StartWriteBatch()
+            {
+                return baseStorage.StartWriteBatch();
+            }
+
+            public bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 hash)
+            {
+                if (hash == rootKeccak) return true;
+                return baseStorage.KeyExists(address, in path, in hash);
+            }
+
+            public void Flush(bool onlyWal)
+            {
+                baseStorage.Flush(onlyWal);
+            }
+
+            public void Compact()
+            {
+                baseStorage.Compact();
+            }
+        }
+
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
-            StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            StateTree stateTree = new StateTree(new TrieStore(new OverlayNodeStorage(_nodeStorage, item.Hash, value), LimboLogs.Instance), LimboLogs.Instance);
             stateTree.RootHash = _rootNode;
             _stateDbLock.EnterReadLock();
             try
