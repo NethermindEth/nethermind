@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -133,8 +132,14 @@ namespace Nethermind.Synchronization.FastBlocks
             ReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo?[] infos = new BlockInfo[_requestSize];
-                _syncStatusList.GetInfosForBatch(infos);
+                BlockInfo?[] infos = null;
+                while (!_syncStatusList.TryGetInfosForBatch(_requestSize, (info) => _receiptStorage.HasBlock(info.BlockNumber, info.BlockHash), out infos))
+                {
+                    token.ThrowIfCancellationRequested();
+                    _receiptStorage.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
+                    UpdateSyncReport();
+                }
+
                 if (infos[0] is not null)
                 {
                     batch = new ReceiptsSyncBatch(infos);
@@ -220,7 +225,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 BlockInfo? blockInfo = blockInfos[i];
                 TxReceipt[]? receipts = (batch.Response?.Count ?? 0) <= i
                     ? null
-                    : (batch.Response![i] ?? Array.Empty<TxReceipt>());
+                    : (batch.Response![i] ?? []);
 
                 if (receipts is not null)
                 {
@@ -280,11 +285,9 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
+            UpdateSyncReport();
             AdjustRequestSize(batch, validResponsesCount);
             LogPostProcessingBatchInfo(batch, validResponsesCount);
-
-            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
-            _syncReport.ReceiptsInQueue.Update(_syncStatusList.QueueSize);
             return validResponsesCount;
         }
 
@@ -293,6 +296,12 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_logger.IsDebug)
                 _logger.Debug(
                     $"{nameof(ReceiptsSyncBatch)} back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
+        }
+
+        private void UpdateSyncReport()
+        {
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.ReceiptsInQueue.Update(_syncStatusList.QueueSize);
         }
 
         private void AdjustRequestSize(ReceiptsSyncBatch batch, int validResponsesCount)

@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.BlockProduction;
 
 namespace Nethermind.Merge.Plugin.Test;
 

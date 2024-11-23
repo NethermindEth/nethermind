@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -57,7 +56,7 @@ public sealed class OptimismTransactionProcessor(
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
             blCtx.Header.GasUsed += tx.GasLimit;
-            tracer.MarkAsFailed(tx.To!, tx.GasLimit, Array.Empty<byte>(), $"failed deposit: {result.Error}");
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, [], $"failed deposit: {result.Error}");
             result = TransactionResult.Ok;
         }
 
@@ -147,7 +146,7 @@ public sealed class OptimismTransactionProcessor(
             if (opSpecHelper.IsBedrock(header))
             {
                 UInt256 l1Cost = _currentTxL1Cost ??= l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver, l1Cost, spec);
+                WorldState.AddToBalanceAndCreateIfNotExists(opSpecHelper.L1FeeReceiver!, l1Cost, spec);
             }
         }
     }

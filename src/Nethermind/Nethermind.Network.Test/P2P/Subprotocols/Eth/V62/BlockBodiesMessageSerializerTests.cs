@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
@@ -55,14 +54,14 @@ public class BlockBodiesMessageSerializerTests
         yield return new BlockBody[] { null };
 
         // body with null withdrawals
-        yield return new BlockBody[] { new(new[] { tx }, Array.Empty<BlockHeader>(), null) };
+        yield return new BlockBody[] { new(new[] { tx }, [], null) };
 
         yield return new BlockBody[]
         {
             // body with empty withdrawals
-            new(new[] { tx }, new[] { header }, Array.Empty<Withdrawal>()),
+            new(new[] { tx }, new[] { header }, []),
             // body with a single withdrawals
-            new(new[] { tx }, Array.Empty<BlockHeader>(),
+            new(new[] { tx }, [],
                 new[]
                 {
                     Build.A.Withdrawal

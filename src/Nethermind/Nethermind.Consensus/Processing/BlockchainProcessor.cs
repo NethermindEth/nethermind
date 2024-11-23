@@ -164,7 +164,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _blockQueue.CompleteAdding();
         }
 
-        await Task.WhenAll((_recoveryTask ?? Task.CompletedTask), (_processorTask ?? Task.CompletedTask));
+        await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
         if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
     }
 
@@ -582,12 +582,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (!blocksToProcess[0].IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
-                if (parentOfFirstBlock is null)
-                {
-                    throw new InvalidOperationException("Attempted to process a disconnected blockchain");
-                }
-
+                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
@@ -630,8 +625,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            branchingPoint = options.ContainsFlag(ProcessingOptions.ForceSameBlock)
+                ? toBeProcessed.Header
+                : _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
             if (branchingPoint is null)
             {
                 // genesis block

@@ -31,6 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
+// Tests with mocked IDebugBridge
 [Parallelizable(ParallelScope.Self)]
 public class DebugModuleTests
 {
@@ -45,9 +46,7 @@ public class DebugModuleTests
         byte[] key = new byte[] { 1, 2, 3 };
         byte[] value = new byte[] { 4, 5, 6 };
         debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
-
-
-        IConfigProvider configProvider = Substitute.For<IConfigProvider>();
+        _ = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         using var response =
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key) as JsonRpcSuccessResponse;
@@ -59,8 +58,7 @@ public class DebugModuleTests
     public async Task Get_from_db_null_value()
     {
         debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null!);
-
-        IConfigProvider configProvider = Substitute.For<IConfigProvider>();
+        _ = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         byte[] key = new byte[] { 1, 2, 3 };
         using var response =
@@ -170,7 +168,7 @@ public class DebugModuleTests
     public async Task Get_block_rlp_by_hash_when_missing()
     {
         BlockDecoder decoder = new();
-        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        _ = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
@@ -245,9 +243,7 @@ public class DebugModuleTests
                 "5".PadLeft(64, '0'),
                 "6".PadLeft(64, '0')
             },
-            Stack = new string[]
-            {
-            },
+            Stack = [],
             Opcode = "STOP",
             Gas = 22000,
             GasCost = 1,
@@ -334,7 +330,7 @@ public class DebugModuleTests
             "6".PadLeft(64, '0')
         };
 
-        entry.Stack = new string[] { };
+        entry.Stack = [];
         entry.Opcode = "STOP";
         entry.Gas = 22000;
         entry.GasCost = 1;
@@ -371,7 +367,7 @@ public class DebugModuleTests
                         },
                         Opcode = "STOP",
                         ProgramCounter = 0,
-                        Stack = Array.Empty<string>(),
+                        Stack = [],
                         Storage = new Dictionary<string, string>()
                         {
                             {

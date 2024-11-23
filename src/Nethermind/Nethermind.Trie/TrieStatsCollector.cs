@@ -4,51 +4,60 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie
 {
-    public class TrieStatsCollector : ITreeVisitor
+    public class TrieStatsCollector : ITreeVisitor<TreePathContextWithStorage>
     {
+        private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
-        private int _lastAccountNodeCount = 0;
+        private long _lastAccountNodeCount = 0;
 
         private readonly ILogger _logger;
+        private readonly CancellationToken _cancellationToken;
 
-        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
+        public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, CancellationToken cancellationToken = default)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
             _logger = logManager.GetClassLogger();
+            _cancellationToken = cancellationToken;
         }
 
         public TrieStats Stats { get; } = new();
 
         public bool IsFullDbScan => true;
+        public void VisitTree(in TreePathContextWithStorage nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        {
+        }
 
-        public bool ShouldVisit(Hash256 nextNode)
+        public bool ShouldVisit(in TreePathContextWithStorage nodeContext, Hash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext) { }
-
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePathContextWithStorage nodeContext, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
+                if (_logger.IsWarn) _logger.Warn($"Missing node. Storage: {nodeContext.Storage} Path: {nodeContext.Path} Hash: {nodeHash}");
                 Interlocked.Increment(ref Stats._missingStorage);
             }
             else
             {
+                if (_logger.IsWarn) _logger.Warn($"Missing node. Path: {nodeContext.Path} Hash: {nodeHash}");
                 Interlocked.Increment(ref Stats._missingState);
             }
 
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePathContextWithStorage nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             if (trieVisitContext.IsStorage)
             {
                 Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
@@ -63,7 +72,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in TreePathContextWithStorage nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -79,11 +88,12 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(in TreePathContextWithStorage nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
-            if (Stats.NodesCount - _lastAccountNodeCount > 1_000_000)
+            long lastAccountNodeCount = _lastAccountNodeCount;
+            long currentNodeCount = Stats.NodesCount;
+            if (currentNodeCount - lastAccountNodeCount > 1_000_000 && Interlocked.CompareExchange(ref _lastAccountNodeCount, currentNodeCount, lastAccountNodeCount) == lastAccountNodeCount)
             {
-                _lastAccountNodeCount = Stats.NodesCount;
                 _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
             }
 
@@ -101,16 +111,29 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in TreePathContextWithStorage nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
-            byte[] code = _codeKeyValueStore[codeHash.Bytes];
-            if (code is not null)
+            ValueHash256 key = new ValueHash256(codeHash.Bytes);
+            bool codeExist = _existingCodeHash.TryGet(key, out int codeLength);
+            if (!codeExist)
             {
-                Interlocked.Add(ref Stats._codeSize, code.Length);
+                byte[] code = _codeKeyValueStore[codeHash.Bytes];
+                codeExist = code is not null;
+                if (codeExist)
+                {
+                    codeLength = code.Length;
+                    _existingCodeHash.Set(key, codeLength);
+                }
+            }
+
+            if (codeExist)
+            {
+                Interlocked.Add(ref Stats._codeSize, codeLength);
                 Interlocked.Increment(ref Stats._codeCount);
             }
             else
             {
+                if (_logger.IsWarn) _logger.Warn($"Missing code. Hash: {codeHash}");
                 Interlocked.Increment(ref Stats._missingCode);
             }
 
@@ -119,11 +142,11 @@ namespace Nethermind.Trie
 
         private void IncrementLevel(TrieVisitContext trieVisitContext)
         {
-            int[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;
+            long[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;
             IncrementLevel(trieVisitContext, levels);
         }
 
-        private static void IncrementLevel(TrieVisitContext trieVisitContext, int[] levels)
+        private static void IncrementLevel(TrieVisitContext trieVisitContext, long[] levels)
         {
             Interlocked.Increment(ref levels[trieVisitContext.Level]);
         }

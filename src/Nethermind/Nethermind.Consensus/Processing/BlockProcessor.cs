@@ -12,7 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Requests;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -46,7 +46,7 @@ public partial class BlockProcessor(
     IWithdrawalProcessor? withdrawalProcessor = null,
     IReceiptsRootCalculator? receiptsRootCalculator = null,
     IBlockCachePreWarmer? preWarmer = null,
-    IConsensusRequestsProcessor? consensusRequestsProcessor = null)
+    IExecutionRequestsProcessor? executionRequestsProcessor = null)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -60,8 +60,7 @@ public partial class BlockProcessor(
     private readonly IRewardCalculator _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
     private readonly IBlockhashStore _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
-
-    private readonly IConsensusRequestsProcessor _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor(transactionProcessor);
+    private readonly IExecutionRequestsProcessor _executionRequestsProcessor = executionRequestsProcessor ?? new ExecutionRequestsProcessor(transactionProcessor);
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -84,7 +83,7 @@ public partial class BlockProcessor(
     // TODO: move to branch processor
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
-        if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+        if (suggestedBlocks.Count == 0) return [];
 
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
@@ -276,6 +275,7 @@ public partial class BlockProcessor(
 
         // Block is valid, copy the account changes as we use the suggested block not the processed one
         suggestedBlock.AccountChanges = block.AccountChanges;
+        suggestedBlock.ExecutionRequests = block.ExecutionRequests;
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -308,7 +308,8 @@ public partial class BlockProcessor(
         header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        _consensusRequestsProcessor.ProcessRequests(block, _stateProvider, receipts, spec);
+
+        _executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -390,7 +391,7 @@ public partial class BlockProcessor(
             ReceiptsRoot = bh.ReceiptsRoot,
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsRoot = bh.RequestsRoot,
+            RequestsHash = bh.RequestsHash,
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot
         };

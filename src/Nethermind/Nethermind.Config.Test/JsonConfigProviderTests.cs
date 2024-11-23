@@ -26,12 +26,12 @@ public class JsonConfigProviderTests
     [SuppressMessage("ReSharper", "UnusedVariable")]
     public void Initialize()
     {
-        KeyStoreConfig keystoreConfig = new();
-        NetworkConfig networkConfig = new();
-        JsonRpcConfig jsonRpcConfig = new();
-        StatsParameters statsConfig = StatsParameters.Instance;
+        _ = new KeyStoreConfig();
+        _ = new NetworkConfig();
+        _ = new JsonRpcConfig();
+        _ = StatsParameters.Instance;
 
-        _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
+        _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.json");
     }
 
     [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
@@ -48,7 +48,7 @@ public class JsonConfigProviderTests
     [Test]
     public void Provides_helpful_error_message_when_file_does_not_exist()
     {
-        Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.cfg"));
+        Assert.Throws<IOException>(() => _configProvider = new JsonConfigProvider("SampleJson.json"));
     }
 
     [Test]
@@ -61,7 +61,7 @@ public class JsonConfigProviderTests
         Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
         Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
 
-        Assert.That(jsonRpcConfig.EnabledModules.Count(), Is.EqualTo(2));
+        Assert.That(jsonRpcConfig.EnabledModules.Length, Is.EqualTo(2));
 
         void CheckIfEnabled(string x)
         {

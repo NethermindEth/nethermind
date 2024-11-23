@@ -20,6 +20,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,7 +46,7 @@ public class SyncPeerPoolTests
 
         public async ValueTask DisposeAsync()
         {
-            await Pool.StopAsync();
+            await Pool.DisposeAsync();
         }
     }
 
@@ -77,7 +78,7 @@ public class SyncPeerPoolTests
 
         public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
-            return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
+            return Task.FromResult(new OwnedBlockBodies([]));
         }
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
@@ -285,7 +286,7 @@ public class SyncPeerPoolTests
             ctx.Pool.AddPeer(syncPeers[i]);
         }
 
-        await ctx.Pool.StopAsync();
+        await ctx.Pool.DisposeAsync();
 
         for (int i = 3; i > 0; i--)
         {
@@ -357,7 +358,6 @@ public class SyncPeerPoolTests
     {
         await using Context ctx = new();
         ctx.Pool.Start();
-        await ctx.Pool.StopAsync();
     }
 
     [Test, Retry(3)]
@@ -643,7 +643,8 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        SyncPeerAllocation allocation = await ctx.Pool.Allocate(FirstFree.ReplaceableInstance, timeoutMilliseconds: 1000);
+        Assert.That(allocation.Current, Is.Not.EqualTo(null));
         ctx.Pool.RemovePeer(peer);
 
         Assert.That(allocation.Current, Is.EqualTo(null));

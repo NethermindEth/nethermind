@@ -202,7 +202,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task getPayload_correctlyEncodeTransactions()
     {
-        byte[] payload = new byte[0];
+        byte[] payload = [];
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         Block block = Build.A.Block.WithTransactions(
             Build.A.Transaction.WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,

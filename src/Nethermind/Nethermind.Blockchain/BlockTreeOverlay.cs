@@ -231,6 +231,9 @@ public class BlockTreeOverlay : IBlockTree
     public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
         _overlayTree.FindBlock(blockNumber, options) ?? _baseTree.FindBlock(blockNumber, options);
 
+    public bool HasBlock(long blockNumber, Hash256 blockHash) =>
+        _overlayTree.HasBlock(blockNumber, blockHash) || _baseTree.HasBlock(blockNumber, blockHash);
+
     public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         _overlayTree.FindHeader(blockHash, options, blockNumber) ?? _baseTree.FindHeader(blockHash, options, blockNumber);
 

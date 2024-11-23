@@ -107,6 +107,7 @@ internal static class ConfigGenerator
                   <Tabs groupId="usage">
                   <TabItem value="cli" label="CLI">
                   ```
+                  --{{moduleName.ToLowerInvariant()}}-{{prop.Name.ToLowerInvariant()}} <value>
                   --{{moduleName}}.{{prop.Name}} <value>
                   ```
                   </TabItem>

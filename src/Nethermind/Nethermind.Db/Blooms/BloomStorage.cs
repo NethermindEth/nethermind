@@ -423,8 +423,8 @@ namespace Nethermind.Db.Blooms
                         return null;
                     }
 
-                    var storageLevel = _storageLevels[CurrentLevel];
-                    return storageLevel.Reader.Read(storageLevel.Storage.GetBucket(_currentPosition), _bloom.Bytes) == Bloom.ByteLength ? _bloom : Bloom.Empty;
+                    var (Storage, Reader) = _storageLevels[CurrentLevel];
+                    return Reader.Read(Storage.GetBucket(_currentPosition), _bloom.Bytes) == Bloom.ByteLength ? _bloom : Bloom.Empty;
                 }
             }
 
@@ -452,16 +452,16 @@ namespace Nethermind.Db.Blooms
 
             public void Dispose()
             {
-                foreach (var storageLevel in _storageLevels)
+                foreach (var (_, Reader) in _storageLevels)
                 {
-                    storageLevel.Reader.Dispose();
+                    Reader.Dispose();
                 }
             }
 
             public override string ToString()
             {
-                (long FromBlock, long ToBlock) indices = CurrentIndices;
-                return $"From: {_fromBlock}, To: {_toBlock}, MaxLevel {_maxLevel}, CurrentBloom {indices.FromBlock}...{indices.ToBlock}, CurrentLevelSize {indices.ToBlock - indices.FromBlock + 1} CurrentLevel {CurrentLevel}, LevelRead {_currentLevelRead}";
+                (long FromBlock, long ToBlock) = CurrentIndices;
+                return $"From: {_fromBlock}, To: {_toBlock}, MaxLevel {_maxLevel}, CurrentBloom {FromBlock}...{ToBlock}, CurrentLevelSize {ToBlock - FromBlock + 1} CurrentLevel {CurrentLevel}, LevelRead {_currentLevelRead}";
             }
         }
     }

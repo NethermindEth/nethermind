@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -231,8 +230,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? Array.Empty<byte>()).ToHexString()}");
-            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? Array.Empty<byte>()).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Signature: {(Signature?.Bytes ?? []).ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");

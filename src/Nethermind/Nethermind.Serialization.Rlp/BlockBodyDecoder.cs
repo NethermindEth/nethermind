@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -13,7 +11,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
-    private readonly ConsensusRequestDecoder _requestsDecoder = ConsensusRequestDecoder.Instance;
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
@@ -30,19 +27,17 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
 
     public int GetBodyLength(BlockBody b)
     {
-        (int txs, int uncles, int? withdrawals, int? requests) = GetBodyComponentLength(b);
+        (int txs, int uncles, int? withdrawals) = GetBodyComponentLength(b);
         return Rlp.LengthOfSequence(txs) +
                Rlp.LengthOfSequence(uncles) +
-               (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
-               (requests is not null ? Rlp.LengthOfSequence(requests.Value) : 0);
+               (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0);
     }
 
-    public (int Txs, int Uncles, int? Withdrawals, int? Requests) GetBodyComponentLength(BlockBody b) =>
+    public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
         (
             GetTxLength(b.Transactions),
             GetUnclesLength(b.Uncles),
-            (b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null),
-            (b.Requests is not null ? GetRequestsLength(b.Requests) : null)
+            b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
         );
 
     private int GetTxLength(Transaction[] transactions) => transactions.Sum(t => _txDecoder.GetLength(t, RlpBehaviors.None));
@@ -50,8 +45,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
     private int GetUnclesLength(BlockHeader[] headers) => headers.Sum(t => _headerDecoder.GetLength(t, RlpBehaviors.None));
 
     private int GetWithdrawalsLength(Withdrawal[] withdrawals) => withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
-
-    private int GetRequestsLength(ConsensusRequest[] requests) => requests.Sum(t => _requestsDecoder.GetLength(t, RlpBehaviors.None));
 
     public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -73,18 +66,13 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
         Transaction[] transactions = ctx.DecodeArray(_txDecoder);
         BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
         Withdrawal[]? withdrawals = null;
-        ConsensusRequest[]? requests = null;
+
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
             withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
         }
 
-        if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
-        {
-            requests = ctx.DecodeArray(_requestsDecoder);
-        }
-
-        return new BlockBody(transactions, uncles, withdrawals, requests);
+        return new BlockBody(transactions, uncles, withdrawals);
     }
 
     public void Serialize(RlpStream stream, BlockBody body)
@@ -108,15 +96,6 @@ public class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
             foreach (Withdrawal? withdrawal in body.Withdrawals)
             {
                 stream.Encode(withdrawal);
-            }
-        }
-
-        if (body.Requests is not null)
-        {
-            stream.StartSequence(GetRequestsLength(body.Requests));
-            foreach (ConsensusRequest? request in body.Requests)
-            {
-                stream.Encode(request);
             }
         }
     }

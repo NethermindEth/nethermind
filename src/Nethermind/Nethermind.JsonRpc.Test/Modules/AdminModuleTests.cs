@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -44,6 +45,11 @@ public class AdminModuleTests
 
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         Enode enode = new(_enodeString);
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters()
+        };
+
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
             _networkConfig,
@@ -51,7 +57,8 @@ public class AdminModuleTests
             staticNodesManager,
             enode,
             _exampleDataDir,
-            new ManualPruningTrigger());
+            new ManualPruningTrigger(),
+            chainSpec.Parameters);
 
         _serializer = new EthereumJsonSerializer();
     }
@@ -74,7 +81,8 @@ public class AdminModuleTests
         nodeInfo.Protocols["eth"].Difficulty.Should().Be(_blockTree.Head?.TotalDifficulty ?? 0);
         nodeInfo.Protocols["eth"].HeadHash.Should().Be(_blockTree.HeadHash);
         nodeInfo.Protocols["eth"].GenesisHash.Should().Be(_blockTree.GenesisHash);
-        nodeInfo.Protocols["eth"].NewtorkId.Should().Be(_blockTree.ChainId);
+        nodeInfo.Protocols["eth"].NewtorkId.Should().Be(_blockTree.NetworkId);
+        nodeInfo.Protocols["eth"].ChainId.Should().Be(_blockTree.ChainId);
     }
 
     [Test]
@@ -88,16 +96,16 @@ public class AdminModuleTests
     [Test]
     public async Task Smoke_solc()
     {
-        string unused = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
+        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
     }
 
     [Test]
     public async Task Smoke_test_peers()
     {
-        string unused0 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
-        string unused1 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
-        string unused2 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, true);
-        string unused3 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, true);
-        string unused4 = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
+        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
+        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
+        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, true);
+        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, true);
+        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
     }
 }

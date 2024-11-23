@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -14,7 +13,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.Test.Validators;
@@ -104,7 +102,7 @@ public class BlockValidatorTests
 
         Assert.That(sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock), Is.True);
     }
 
@@ -120,7 +118,7 @@ public class BlockValidatorTests
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock, out error);
 
         Assert.That(error, Is.Null);
@@ -137,7 +135,7 @@ public class BlockValidatorTests
 
         Assert.That(sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock), Is.False);
     }
 
@@ -153,7 +151,7 @@ public class BlockValidatorTests
 
         sut.ValidateProcessedBlock(
             suggestedBlock,
-            Array.Empty<TxReceipt>(),
+            [],
             processedBlock, out error);
 
         Assert.That(error, Does.StartWith("InvalidStateRoot"));
@@ -199,51 +197,4 @@ public class BlockValidatorTests
 
         Assert.That(error, Does.StartWith(expectedError));
     }
-
-    [Test]
-    public void ValidateBodyAgainstHeader_BlockHasInvalidRequestRoot_ReturnsFalse()
-    {
-        Block block = Build.A.Block
-            .WithConsensusRequests(new ConsensusRequest[] {
-                Build.A.Deposit.WithIndex(0).TestObject,
-                Build.A.WithdrawalRequest.TestObject
-            })
-            .TestObject;
-        block.Header.RequestsRoot = Keccak.OfAnEmptyString;
-
-        Assert.That(
-            BlockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
-            Is.False);
-    }
-
-    [Test]
-    public void ValidateBodyRequests_BlockHasReuests_InOrder_ReturnsTrue()
-    {
-        Block block = Build.A.Block
-            .WithConsensusRequests(new ConsensusRequest[] {
-                Build.A.Deposit.WithIndex(0).TestObject,
-                Build.A.WithdrawalRequest.TestObject
-            })
-            .TestObject;
-
-        Assert.That(
-            BlockValidator.ValidateRequestsOrder(block, out string? _),
-            Is.True);
-    }
-
-    [Test]
-    public void ValidateBodyRequests_BlockHasReuests_OutOfOrder_ReturnsFalse()
-    {
-        Block block = Build.A.Block
-            .WithConsensusRequests(new ConsensusRequest[] {
-                Build.A.WithdrawalRequest.TestObject,
-                Build.A.Deposit.WithIndex(0).TestObject
-            })
-            .TestObject;
-
-        Assert.That(
-            BlockValidator.ValidateRequestsOrder(block, out string? _),
-            Is.False);
-    }
-
 }

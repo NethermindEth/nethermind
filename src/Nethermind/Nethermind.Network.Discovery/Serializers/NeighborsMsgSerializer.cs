@@ -49,14 +49,14 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
 
     public NeighborsMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(results.Data);
+        NettyRlpStream rlp = new(Data);
         rlp.ReadSequenceLength();
         Node[] nodes = DeserializeNodes(rlp) as Node[];
 
         long expirationTime = rlp.DecodeLong();
-        NeighborsMsg msg = new(results.FarPublicKey, expirationTime, nodes);
+        NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
     }
 

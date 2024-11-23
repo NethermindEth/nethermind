@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
@@ -213,5 +212,5 @@ public class LogFilterTests
         return bloom;
     }
 
-    private static LogEntry GetLogEntry(Address address, params Hash256[] topics) => new(address, Array.Empty<byte>(), topics);
+    private static LogEntry GetLogEntry(Address address, params Hash256[] topics) => new(address, [], topics);
 }
