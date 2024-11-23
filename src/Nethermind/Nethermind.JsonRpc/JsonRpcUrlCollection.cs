@@ -119,7 +119,12 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 else
                 {
                     Add(url.Port, url);
-                    string[] row = [url.Host + ":" + url.Port.ToString(), url.RpcEndpoint.ToString(), string.Join(", ", url.EnabledModules)];
+                    string[] row = new[]
+                    {
+                        $"{url.Host}:{url.Port}",
+                        url.RpcEndpoint.ToString(),
+                        string.Join(", ", url.EnabledModules)
+                    };
                     additionalRpcUrlRows.Add(row);
                 }
             }
