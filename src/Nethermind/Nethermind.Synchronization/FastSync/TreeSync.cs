@@ -61,7 +61,6 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IDb _codeDb;
         private readonly INodeStorage _nodeStorage;
         private readonly IBlockTree _blockTree;
-        private readonly ISyncConfig _syncConfig;
         private readonly StateSyncPivot _stateSyncPivot;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
@@ -80,13 +79,12 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, ISyncConfig syncConfig, StateSyncPivot stateSyncPivot, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, StateSyncPivot stateSyncPivot, ILogManager logManager)
         {
             _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _syncConfig = syncConfig;
             _stateSyncPivot = stateSyncPivot;
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -627,6 +625,16 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
+            if (syncItem.IsRoot)
+            {
+                if (!VerifyStorageUpdated(syncItem, data))
+                {
+                    // If storage that should be updated is not updated, skip saving this root node.
+                    // Add it as dependent items of the missing storage which should get fetched later.
+                    return;
+                }
+            }
+
             if (_logger.IsTrace) _logger.Trace($"SAVE {new string('+', syncItem.Level * 2)}{syncItem.NodeDataType.ToString().ToUpperInvariant()} {syncItem.Hash}");
             Interlocked.Increment(ref _data.SavedNodesCount);
             switch (syncItem.NodeDataType)
@@ -693,8 +701,6 @@ namespace Nethermind.Synchronization.FastSync
                 _nodeStorage.Flush(onlyWal: false);
                 _codeDb.Flush();
 
-                VerifyStorageUpdated();
-
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
 
@@ -702,8 +708,9 @@ namespace Nethermind.Synchronization.FastSync
             PossiblySaveDependentNodes(syncItem.Key);
         }
 
-        private void VerifyStorageUpdated()
+        private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
+            DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
             StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
             stateTree.RootHash = _rootNode;
             _stateDbLock.EnterReadLock();
@@ -721,15 +728,17 @@ namespace Nethermind.Synchronization.FastSync
                             // if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
                             if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
 
-                            AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), null, "uncomplete storage", missing: true);
+                            AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "uncomplete storage", missing: true);
                         }
                         else
                         {
+                            dependentItem.Counter--;
                             if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} has correct storage root {account.StorageRoot}");
                         }
                     }
                     else
                     {
+                        dependentItem.Counter--;
                         if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} has no account");
                     }
                 }
@@ -738,6 +747,8 @@ namespace Nethermind.Synchronization.FastSync
             {
                 _stateDbLock.ExitReadLock();
             }
+
+            return dependentItem.Counter == 0;
         }
 
         private void VerifyPostSyncCleanUp()
