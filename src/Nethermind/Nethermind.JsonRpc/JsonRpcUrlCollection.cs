@@ -89,6 +89,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
 
     private void BuildAdditionalUrls(bool includeWebSockets)
     {
+        List<string[]> additionalRpcUrlRows = new List<string[]>();
         foreach (string additionalRpcUrl in _jsonRpcConfig.AdditionalRpcUrls)
         {
             try
@@ -118,6 +119,8 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 else
                 {
                     Add(url.Port, url);
+                    string[] row = [url.Host + ":" + url.Port.ToString(), url.RpcEndpoint.ToString(), string.Join(", ", url.EnabledModules)];
+                    additionalRpcUrlRows.Add(row);
                 }
             }
             catch (FormatException fe)
@@ -125,6 +128,41 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL packed value '{additionalRpcUrl}' format error: {fe.Message}; skipping...");
             }
         }
+        LogTable(additionalRpcUrlRows);
+    }
+    private void LogTable(List<string[]> rows)
+    {
+        // Calculate column widths
+        string[] headers = ["Additional Url", "Protocols", "Modules"];
+        var columnWidths = new int[headers.Length];
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            columnWidths[i] = headers[i].Length; // Start with header length
+            foreach (var row in rows)
+            {
+                if (i < row.Length)
+                {
+                    columnWidths[i] = Math.Max(columnWidths[i], row[i]?.Length ?? 0);
+                }
+            }
+        }
+
+        // Generate the separator
+        var separator = string.Join("+", columnWidths.Select(width => new string('-', width + 2)));
+
+        // Print header
+        _logger.Info(separator);
+        _logger.Info("| " + string.Join(" | ", headers.Select((h, i) => h.PadRight(columnWidths[i]))) + " |");
+        _logger.Info(separator);
+
+        // Print rows
+        foreach (var row in rows)
+        {
+            _logger.Info("| " + string.Join(" | ", row.Select((cell, i) => (cell ?? "").PadRight(columnWidths[i]))) + " |");
+        }
+
+        _logger.Info(separator);
     }
 }
 
