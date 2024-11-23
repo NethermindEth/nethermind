@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -157,7 +156,7 @@ public struct EvmPooledMemory : IEvmMemory
     {
         if (length.IsZero)
         {
-            return Array.Empty<byte>();
+            return [];
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newLength);

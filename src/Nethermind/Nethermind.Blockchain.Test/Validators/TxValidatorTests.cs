@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Routing;
 using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -753,21 +752,21 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = Array.Empty<byte[]>())
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Blobs count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = Array.Empty<byte[]>())
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Commitments count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = Array.Empty<byte[]>())
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs count does not match hashes count",

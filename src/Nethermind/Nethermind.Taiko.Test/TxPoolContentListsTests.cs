@@ -75,8 +75,6 @@ public class TxPoolContentListsTests
             Substitute.For<IForkchoiceUpdatedHandler>(),
             Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
             Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
             Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
             Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
             Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),

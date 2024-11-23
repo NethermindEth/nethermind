@@ -119,7 +119,7 @@ public class ReceiptsSyncFeedTests
     public void TearDown()
     {
         _feed?.Dispose();
-        _syncPeerPool?.Dispose();
+        _syncPeerPool?.DisposeAsync();
         _syncReport?.Dispose();
         _metadataDb?.Dispose();
     }

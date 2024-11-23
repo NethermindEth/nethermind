@@ -51,6 +51,14 @@ namespace Nethermind.State
             _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
+        public void Accept<TCtx>(ITreeVisitor<TCtx>? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        {
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(stateRoot);
+
+            _tree.Accept(visitor, stateRoot, visitingOptions);
+        }
+
         private bool _needsStateRootUpdate;
 
         public void RecalculateStateRoot()
@@ -143,12 +151,7 @@ namespace Nethermind.State
                 _codeInsertFilter.Set(codeHash);
             }
 
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when updating code hash");
-            }
-
+            Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when updating code hash");
             if (account.CodeHash.ValueHash256 != codeHash)
             {
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
@@ -236,12 +239,7 @@ namespace Nethermind.State
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
             _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when updating storage hash");
-            }
-
+            Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when updating storage hash");
             if (account.StorageRoot != storageRoot)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Update {address} S {account.StorageRoot} -> {storageRoot}");
@@ -253,12 +251,7 @@ namespace Nethermind.State
         public void IncrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-            }
-
+            Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
@@ -267,12 +260,7 @@ namespace Nethermind.State
         public void DecrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
-            }
-
+            Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
             Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
@@ -286,13 +274,13 @@ namespace Nethermind.State
 
         public byte[] GetCode(Hash256 codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            byte[]? code = codeHash == Keccak.OfAnEmptyString ? [] : _codeDb[codeHash.Bytes];
             return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
         public byte[] GetCode(ValueHash256 codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : _codeDb[codeHash.Bytes];
             return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
@@ -301,7 +289,7 @@ namespace Nethermind.State
             Account? account = GetThroughCache(address);
             if (account is null)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             return GetCode(account.CodeHash);
@@ -603,12 +591,12 @@ namespace Nethermind.State
                     byte[]? beforeCode = beforeCodeHash is null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
-                            ? Array.Empty<byte>()
+                            ? []
                             : _codeDb[beforeCodeHash.Bytes];
                     byte[]? afterCode = afterCodeHash is null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
-                            ? Array.Empty<byte>()
+                            ? []
                             : _codeDb[afterCodeHash.Bytes];
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
@@ -869,12 +857,7 @@ namespace Nethermind.State
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;
-            Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-            }
-
+            Account? account = GetThroughCache(address) ?? throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             Account changedAccount = account.WithChangedNonce(nonce);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);

@@ -453,7 +453,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
                 GetTracer(ComplexTracer),
-                Array.Empty<byte>(),
+                [],
                 MainnetSpecProvider.CancunActivation);
         GethLikeTxTrace traces = tracer.BuildResult().First();
 

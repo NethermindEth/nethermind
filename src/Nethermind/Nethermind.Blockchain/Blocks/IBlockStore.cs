@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -24,4 +23,5 @@ public interface IBlockStore
     // These two are used by blocktree. Try not to use them...
     void SetMetadata(byte[] key, byte[] value);
     byte[]? GetMetadata(byte[] key);
+    bool HasBlock(long blockNumber, Hash256 blockHash);
 }

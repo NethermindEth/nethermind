@@ -47,7 +47,7 @@ public class TxDecoder<T> : IRlpStreamDecoder<T>, IRlpValueDecoder<T> where T : 
 
     public T? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        void ThrowIfLegacy(TxType txType1)
+        static void ThrowIfLegacy(TxType txType1)
         {
             if (txType1 == TxType.Legacy)
             {

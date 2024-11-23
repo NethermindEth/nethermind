@@ -232,7 +232,7 @@ public class InitDatabaseSnapshot : InitDatabase
         if (File.Exists(checkpointPath))
         {
             string stringStage = File.ReadAllText(checkpointPath);
-            return (Stage)Enum.Parse(typeof(Stage), stringStage);
+            return Enum.Parse<Stage>(stringStage);
         }
         else
         {

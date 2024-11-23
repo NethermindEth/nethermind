@@ -4,14 +4,17 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie
 {
     public class TrieVisitContext : IDisposable
     {
-        private SemaphoreSlim? _semaphore;
         private readonly int _maxDegreeOfParallelism = 1;
         private int _visitedNodes;
+
+        private ConcurrencyController? _threadLimiter = null;
+        public ConcurrencyController ConcurrencyController => _threadLimiter ??= new ConcurrencyController(MaxDegreeOfParallelism);
 
         public int Level { get; internal set; }
         public bool IsStorage { get; set; }
@@ -22,20 +25,10 @@ namespace Nethermind.Trie
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
-            internal init => _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
-        }
-
-        public SemaphoreSlim Semaphore
-        {
-            get
+            internal init
             {
-                if (_semaphore is null)
-                {
-                    if (MaxDegreeOfParallelism == 1) throw new InvalidOperationException("Can not create semaphore for single threaded trie visitor.");
-                    _semaphore = new SemaphoreSlim(MaxDegreeOfParallelism, MaxDegreeOfParallelism);
-                }
-
-                return _semaphore;
+                _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
+                _threadLimiter = null;
             }
         }
 
@@ -43,7 +36,6 @@ namespace Nethermind.Trie
 
         public void Dispose()
         {
-            _semaphore?.Dispose();
         }
 
         public void AddVisited()

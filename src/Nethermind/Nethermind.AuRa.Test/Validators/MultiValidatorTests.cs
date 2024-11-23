@@ -12,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -188,7 +187,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 _block.Header.Number = i;
                 validator.OnBlockProcessingStart(_block);
-                validator.OnBlockProcessingEnd(_block, Array.Empty<TxReceipt>());
+                validator.OnBlockProcessingEnd(_block, []);
 
                 int finalizedBlock = i - blocksToFinalization;
                 if (finalizedBlock >= 1)
@@ -208,7 +207,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 innerValidator.Received(calls).OnBlockProcessingStart(Arg.Any<Block>());
                 innerValidator.Received(calls).OnBlockProcessingEnd(Arg.Any<Block>(),
-                    Array.Empty<TxReceipt>());
+                    []);
             }
         }
 

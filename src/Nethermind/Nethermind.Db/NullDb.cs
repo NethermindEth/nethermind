@@ -47,10 +47,10 @@ namespace Nethermind.Db
 
         public void Clear() { }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => [];
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Enumerable.Empty<byte[]>();
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => [];
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => [];
 
         public IWriteBatch StartWriteBatch()
         {

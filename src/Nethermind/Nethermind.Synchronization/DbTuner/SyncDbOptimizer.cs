@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Synchronization.FastBlocks;
