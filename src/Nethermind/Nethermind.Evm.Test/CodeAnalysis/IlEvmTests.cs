@@ -25,6 +25,9 @@ using System.Reflection;
 using Nethermind.Evm.CodeAnalysis.IL.Patterns;
 using Nethermind.Core.Crypto;
 using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
+using Nethermind.Db;
+using Nethermind.Trie.Pruning;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -164,14 +167,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var codeinfo = CodeInfoRepository.GetCachedCodeInfo(TestState, address, Prague.Instance);
             var initialILMODE = codeinfo.IlInfo.Mode;
 
-            if (mode.HasFlag(ILMode.PAT_MODE))
+            if (mode.HasFlag(ILMode.PATTERN_BASED_MODE))
             {
-                IlAnalyzer.Analyse(codeinfo, ILMode.PAT_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
             }
 
-            if(mode.HasFlag(ILMode.JIT_MODE))
+            if(mode.HasFlag(ILMode.PARTIAL_AOT_MODE))
             {
-                IlAnalyzer.Analyse(codeinfo, ILMode.JIT_MODE, config, NullLogger.Instance);
+                IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
             }
         }
 
@@ -202,13 +205,13 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             base.config = new VMConfig()
             {
-                IsJitEnabled = true,
+                IsPartialAotEnabled = true,
                 IsPatternMatchingEnabled = true,
-                AggressiveJitMode = true,
-                BakeInTracingInJitMode = true,
+                AggressivePartialAotMode = true,
+                BakeInTracingInPartialAotMode = true,
 
                 PatternMatchingThreshold = 4,
-                JittingThreshold = 256,
+                PartialAotThreshold = 256,
             };
 
             CodeInfoRepository.ClearCache();
@@ -1482,7 +1485,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
-            IlAnalyzer.Analyse(codeInfo, ILMode.PAT_MODE, config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeInfo, ILMode.PATTERN_BASED_MODE, config, NullLogger.Instance);
 
             codeInfo.IlInfo.IlevmChunks.Length.Should().Be(2);
         }
@@ -1510,7 +1513,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode, TestItem.AddressA);
 
-            IlAnalyzer.Analyse(codeInfo, IlInfo.ILMode.JIT_MODE, config, NullLogger.Instance);
+            IlAnalyzer.Analyse(codeInfo, ILMode.PARTIAL_AOT_MODE, config, NullLogger.Instance);
 
             codeInfo.IlInfo.IlevmChunks.Length.Should().Be(2);
         }
@@ -1522,9 +1525,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = true,
-                JittingThreshold = int.MaxValue,
-                IsJitEnabled = false,
-                AggressiveJitMode = false,
+                PartialAotThreshold = int.MaxValue,
+                IsPartialAotEnabled = false,
+                AggressivePartialAotMode = false,
                 AnalysisQueueMaxSize = 1,
             });
 
@@ -1581,9 +1584,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
                 AnalysisQueueMaxSize = 1,
-                JittingThreshold = 1,
-                IsJitEnabled = true,
-                AggressiveJitMode = false
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
+                AggressivePartialAotMode = false
             });
 
             byte[] bytecode =
@@ -1639,11 +1642,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
-                BakeInTracingInJitMode = !testcase.Item4.enableAmortization,
-                AggressiveJitMode = testcase.Item4.enableAggressiveMode,
-                JittingThreshold = 1,
+                BakeInTracingInPartialAotMode = !testcase.Item4.enableAmortization,
+                AggressivePartialAotMode = testcase.Item4.enableAggressiveMode,
+                PartialAotThreshold = 1,
                 AnalysisQueueMaxSize = 1,
-                IsJitEnabled = true
+                IsPartialAotEnabled = true
             });
             enhancedChain.InsertCode(testcase.bytecode);
 
@@ -1662,7 +1665,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1);
 
-            enhancedChain.ForceRunAnalysis(address, ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(address, ILMode.PARTIAL_AOT_MODE);
 
             enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2);
 
@@ -1692,9 +1695,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = true,
-                JittingThreshold = int.MaxValue,
+                PartialAotThreshold = int.MaxValue,
                 AnalysisQueueMaxSize = 1,
-                IsJitEnabled = false
+                IsPartialAotEnabled = false
             });
             enhancedChain.InsertCode(testcase.bytecode);
 
@@ -1709,7 +1712,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
 
-            enhancedChain.ForceRunAnalysis(address, ILMode.PAT_MODE);
+            enhancedChain.ForceRunAnalysis(address, ILMode.PATTERN_BASED_MODE);
 
             enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
 
@@ -1737,10 +1740,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = false,
-                JittingThreshold = 1,
+                PartialAotThreshold = 1,
                 AnalysisQueueMaxSize = 1,
-                IsJitEnabled = true,
-                AggressiveJitMode = true,
+                IsPartialAotEnabled = true,
+                AggressivePartialAotMode = true,
             });
 
             var aux = enhancedChain.InsertCode(Prepare.EvmCode
@@ -1776,8 +1779,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Call(main, 1_000_000)
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
-            enhancedChain.ForceRunAnalysis(aux, ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
+            enhancedChain.ForceRunAnalysis(aux, ILMode.PARTIAL_AOT_MODE);
 
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
@@ -1813,10 +1816,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = 2,
                 AnalysisQueueMaxSize = 1,
                 IsPatternMatchingEnabled = true,
-                JittingThreshold = 1,
-                IsJitEnabled = true,
-                AggressiveJitMode = false,
-                BakeInTracingInJitMode = true
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
+                AggressivePartialAotMode = false,
+                BakeInTracingInPartialAotMode = true
             });
 
             var aux = enhancedChain.InsertCode(Prepare.EvmCode
@@ -1852,9 +1855,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Call(main, 1_000_000)
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main, ILMode.PAT_MODE | ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(main, ILMode.PATTERN_BASED_MODE | ILMode.PARTIAL_AOT_MODE);
 
-            enhancedChain.ForceRunAnalysis(aux, ILMode.PAT_MODE | ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(aux, ILMode.PATTERN_BASED_MODE | ILMode.PARTIAL_AOT_MODE);
 
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer);
@@ -1888,11 +1891,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = false,
-                JittingThreshold = 1,
+                PartialAotThreshold = 1,
                 AnalysisQueueMaxSize = 1,
-                IsJitEnabled = true,
-                AggressiveJitMode = true,
-                BakeInTracingInJitMode = true
+                IsPartialAotEnabled = true,
+                AggressivePartialAotMode = true,
+                BakeInTracingInPartialAotMode = true
             });
 
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
@@ -1941,7 +1944,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
 
-            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
 
             enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
 
@@ -1967,10 +1970,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 PatternMatchingThreshold = 2,
                 AnalysisQueueMaxSize = 1,
                 IsPatternMatchingEnabled = true,
-                JittingThreshold = 1,
-                IsJitEnabled = true,
-                AggressiveJitMode = false,
-                BakeInTracingInJitMode = true
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
+                AggressivePartialAotMode = false,
+                BakeInTracingInPartialAotMode = true
             });
 
 
@@ -2020,7 +2023,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             standardChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer1, (ForkActivation)10000000000);
 
-            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
 
             enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer2, (ForkActivation)10000000000);
 
@@ -2045,10 +2048,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 PatternMatchingThreshold = 1,
                 IsPatternMatchingEnabled = false,
-                JittingThreshold = 1,
-                IsJitEnabled = true,
+                PartialAotThreshold = 1,
+                IsPartialAotEnabled = true,
                 AnalysisQueueMaxSize = 1,
-                AggressiveJitMode = false
+                AggressivePartialAotMode = false
             });
 
             Address main = enhancedChain.InsertCode(
@@ -2067,7 +2070,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .STOP()
                     .Done;
 
-            enhancedChain.ForceRunAnalysis(main, ILMode.JIT_MODE);
+            enhancedChain.ForceRunAnalysis(main, ILMode.PARTIAL_AOT_MODE);
             var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
             enhancedChain.Execute(driver, tracer, (ForkActivation?)(MainnetSpecProvider.ByzantiumBlockNumber, 0));
             var traces = tracer.BuildResult();
@@ -2239,6 +2242,167 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             state.Dispose();
 
             Assert.That(tracedOpcodes.Count, Is.EqualTo(0));
+        }
+
+
+
+        public class LocalSetup
+        {
+            private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
+            private ITxTracer _txTracer = NullTxTracer.Instance;
+            private ExecutionEnvironment _environment;
+            private IVirtualMachine _virtualMachine;
+            private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
+            private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
+            private EvmState _evmState;
+            private WorldState _stateProvider;
+
+            public LocalSetup(byte[] bytecode, VMConfig vMConfig = null)
+            {
+                VMConfig vmConfig = vMConfig ?? new VMConfig();
+
+                TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+                IKeyValueStore codeDb = new MemDb();
+                _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+                _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+                _stateProvider.Commit(_spec);
+                CodeInfoRepository codeInfoRepository = new();
+                _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, LimboLogs.Instance, vmConfig);
+
+                if (vmConfig.BakeInTracingInPartialAotMode)
+                {
+                    _txTracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
+                }
+
+                var codeinfo = new CodeInfo(bytecode);
+
+                if (vmConfig.IsPartialAotEnabled || vmConfig.IsPatternMatchingEnabled)
+                {
+                    IlAnalyzer.Analyse(codeinfo, ILMode.PARTIAL_AOT_MODE, vmConfig, NullLogger.Instance);
+                }
+
+                _environment = new ExecutionEnvironment
+                (
+                    executingAccount: Address.Zero,
+                    codeSource: Address.Zero,
+                    caller: Address.Zero,
+                    codeInfo: codeinfo,
+                    value: 0,
+                    transferValue: 0,
+                    txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
+                    inputData: default
+                );
+
+                _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, _stateProvider.TakeSnapshot());
+            }
+
+            public void Run<ITracing>()
+                where ITracing : struct, VirtualMachine.IIsTracing
+            {
+                _virtualMachine.Run<ITracing>(_evmState, _stateProvider, _txTracer);
+                _stateProvider.Reset();
+            }
+        }
+
+        [Test]
+        public void Ensure_ILEVM_outperforms_NormalMode_In_Mathematical_Pure_Computations() {
+
+            Span<byte> bytes = stackalloc byte[32];
+            UInt256 argument = 1024 * 1024 * 1024;
+            argument.ToBigEndian(bytes);
+            var argBytes = bytes.WithoutLeadingZeros().ToArray();
+
+            var ByteCode =
+                Prepare.EvmCode
+                    .PushData(argBytes)
+                    .COMMENT("1st/2nd fib number")
+                    .PushData(0)
+                    .PushData(1)
+                    .COMMENT("MAINLOOP:")
+                    .JUMPDEST()
+                    .DUPx(3)
+                    .ISZERO()
+                    .PushData(26 + argBytes.Length)
+                    .JUMPI()
+
+                    .COMMENT("fib step")
+                    .DUPx(2)
+                    .DUPx(2)
+                    .ADD()
+                    .SWAPx(2)
+                    .POP()
+                    .SWAPx(1)
+
+                    .COMMENT("decrement fib step counter")
+                    .SWAPx(2)
+                    .PushData(1)
+                    .SWAPx(1)
+                    .SUB()
+                    .SWAPx(2)
+                    .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
+                    .JUMP()
+
+                    .COMMENT("CLEANUP:")
+                    .JUMPDEST()
+                    .SWAPx(2)
+                    .POP()
+                    .POP()
+                    .COMMENT("done: requested fib number is the only element on the stack!")
+                    .STOP()
+                    .Done;
+            Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
+
+            Debug.WriteLine("Running NRML Mode");
+            var nrmlSetup_notracing = new LocalSetup(ByteCode, new VMConfig
+            {
+                BakeInTracingInPartialAotMode = false,
+                PartialAotThreshold = int.MaxValue,
+                AggressivePartialAotMode = true,
+                IsPartialAotEnabled = false,
+                AnalysisQueueMaxSize = 1,
+                PatternMatchingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+            });
+
+            const int IterationCount = 1024;
+
+
+            Stopwatch sw = Stopwatch.StartNew();
+            double nrml_avg = 0;
+            for (int i = 0; i < IterationCount; i++)
+            {
+                sw.Restart();
+                nrmlSetup_notracing.Run<VirtualMachine.NotTracing>();
+                sw.Stop();
+                nrml_avg += sw.ElapsedTicks;
+            }
+
+            Console.WriteLine(nrml_avg);
+
+            Debug.WriteLine("Running ILEVM Mode");
+            var ilvmSetup_notracing = new LocalSetup(ByteCode, new VMConfig
+            {
+                BakeInTracingInPartialAotMode = false,
+                PartialAotThreshold = int.MaxValue,
+                AggressivePartialAotMode = true,
+                IsPartialAotEnabled = false,
+                AnalysisQueueMaxSize = 1,
+                PatternMatchingThreshold = int.MaxValue,
+                IsPatternMatchingEnabled = false,
+            });
+
+            double ilvm_avg = 0;
+            for(int i  = 0; i < IterationCount; i++)
+            {
+                sw.Restart();
+                ilvmSetup_notracing.Run<VirtualMachine.NotTracing>();
+                sw.Stop();
+                ilvm_avg += sw.ElapsedTicks;
+            }
+
+            Console.WriteLine(ilvm_avg);
+
+            Assert.That(ilvm_avg, Is.LessThan(nrml_avg));
         }
     }
 }
