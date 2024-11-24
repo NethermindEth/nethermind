@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.FastSync
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
         // concurrent request handling with the read lock.
         private readonly ReaderWriterLockSlim _syncStateLock = new();
-        private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
+        private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
         private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
         private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
         private readonly LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestItems.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
                     if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
-                    _pendingRequests.TryAdd(result, null);
+                    _ongoingRequests.TryAdd(result, null);
 
                     Interlocked.Increment(ref Metrics.StateSyncRequests);
                     return await Task.FromResult(result);
@@ -149,7 +149,7 @@ namespace Nethermind.Synchronization.FastSync
                 _syncStateLock.EnterReadLock();
                 try
                 {
-                    if (!_pendingRequests.TryRemove(batch, out _))
+                    if (!_ongoingRequests.TryRemove(batch, out _))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
                         return SyncResponseHandlingResult.OK;
@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization.FastSync
                             ? SyncResponseHandlingResult.LesserQuality
                             : SyncResponseHandlingResult.OK;
 
-                    _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
+                    _data.DisplayProgressReport(_ongoingRequests.Count, _branchProgress, _logger);
 
                     long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
                     long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public (bool continueProcessing, bool finishSyncRound) ValidatePrepareRequest(SyncMode currentSyncMode)
         {
-            if (_rootSaved == 1 && _pendingRequests.Count == 0)
+            if (_rootSaved == 1)
             {
                 if (_logger.IsInfo) _logger.Info("StateNode sync: falling asleep - root saved");
                 VerifyPostSyncCleanUp();
@@ -446,7 +446,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
-                    foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
+                    foreach ((StateSyncBatch pendingRequest, _) in _ongoingRequests)
                     {
                         // re-add the pending request
                         for (int i = 0; i < pendingRequest.RequestedNodes?.Count; i++)
@@ -458,7 +458,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
                 }
 
-                _pendingRequests.Clear();
+                _ongoingRequests.Clear();
 
                 bool hasOnlyRootNode = false;
 
@@ -708,90 +708,38 @@ namespace Nethermind.Synchronization.FastSync
             PossiblySaveDependentNodes(syncItem.Key);
         }
 
-        class OverlayNodeStorage(INodeStorage baseStorage, ValueHash256 rootKeccak, byte[] rootValue): INodeStorage
-        {
-            public INodeStorage.KeyScheme Scheme
-            {
-                get => baseStorage.Scheme;
-                set => baseStorage.Scheme = value;
-            }
-
-            public bool RequirePath => baseStorage.RequirePath;
-
-            public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
-            {
-                if (keccak == rootKeccak) return rootValue;
-                return baseStorage.Get(address, in path, in keccak, readFlags);
-            }
-
-            public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data,
-                WriteFlags writeFlags = WriteFlags.None)
-            {
-                baseStorage.Set(address, in path, in hash, data, writeFlags);
-            }
-
-            public INodeStorage.WriteBatch StartWriteBatch()
-            {
-                return baseStorage.StartWriteBatch();
-            }
-
-            public bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 hash)
-            {
-                if (hash == rootKeccak) return true;
-                return baseStorage.KeyExists(address, in path, in hash);
-            }
-
-            public void Flush(bool onlyWal)
-            {
-                baseStorage.Flush(onlyWal);
-            }
-
-            public void Compact()
-            {
-                baseStorage.Compact();
-            }
-        }
-
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
-            StateTree stateTree = new StateTree(new TrieStore(new OverlayNodeStorage(_nodeStorage, item.Hash, value), LimboLogs.Instance), LimboLogs.Instance);
-            stateTree.RootHash = _rootNode;
-            _stateDbLock.EnterReadLock();
-            try
+            StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            stateTree.RootRef = new TrieNode(NodeType.Unknown, value);
+            // TODO: Remove this
+            if (_logger.IsWarn) _logger.Warn($"Updated storages count is {_stateSyncPivot.UpdatedStorages.Count}");
+
+            foreach (Hash256 updatedAddress in _stateSyncPivot.UpdatedStorages)
             {
-                if (_logger.IsWarn) _logger.Warn($"Updated storages count is {_stateSyncPivot.UpdatedStorages.Count}");
-                foreach (Hash256 updatedAddress in _stateSyncPivot.UpdatedStorages)
+                Account? account = stateTree.Get(updatedAddress);
+
+                if (account?.StorageRoot is not null
+                    && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "uncomplete storage") == AddNodeResult.Added)
                 {
-                    Account? account = stateTree.Get(updatedAddress);
-
-                    if (account is not null)
-                    {
-                        if (_nodeStorage.Get(updatedAddress, TreePath.Empty, account.StorageRoot) is null)
-                        {
-                            // if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
-                            if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
-
-                            AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "uncomplete storage", missing: true);
-                        }
-                        else
-                        {
-                            dependentItem.Counter--;
-                            if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} has correct storage root {account.StorageRoot}");
-                        }
-                    }
-                    else
-                    {
-                        dependentItem.Counter--;
-                        if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} has no account");
-                    }
+                    // if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
+                    if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
+                }
+                else
+                {
+                    dependentItem.Counter--;
                 }
             }
-            finally
-            {
-                _stateDbLock.ExitReadLock();
-            }
 
+            if (dependentItem.Counter > 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Queued extra {dependentItem.Counter} items for storage repair..");
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Storage OK");
+            }
             return dependentItem.Counter == 0;
         }
 
@@ -822,7 +770,7 @@ namespace Nethermind.Synchronization.FastSync
             _syncStateLock.EnterWriteLock();
             try
             {
-                _pendingRequests.Clear();
+                _ongoingRequests.Clear();
                 _dependencies.Clear();
                 _alreadySavedNode.Clear();
                 _alreadySavedCode.Clear();

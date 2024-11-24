@@ -18,6 +18,7 @@ using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -411,6 +412,54 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             ctx.Feed.HandleResponse(request, peer: null)
                 .Should().Be(SyncResponseHandlingResult.NotAssigned);
+        }
+
+        [Test]
+        [Repeat(TestRepeatCount)]
+        public async Task RepairPossiblyMissingStorage()
+        {
+            DbContext dbContext = new(_logger, _logManager)
+            {
+                RemoteCodeDb =
+                {
+                    [Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0,
+                    [Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1,
+                    [Keccak.Compute(TrieScenarios.Code2).Bytes] = TrieScenarios.Code2,
+                    [Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3,
+                },
+            };
+
+            Hash256 theAccount = TestItem.KeccakA;
+            StorageTree storageTree = new StorageTree(dbContext.RemoteTrieStore.GetTrieStore(theAccount), LimboLogs.Instance);
+            for (int i = 0; i < 10; i++)
+            {
+                storageTree.Set((UInt256)i, TestItem.Keccaks[i].BytesToArray());
+            }
+            storageTree.Commit();
+
+            StateTree state = dbContext.RemoteStateTree;
+            state.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject);
+            state.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
+            state.Commit();
+
+            // Local state only have the state
+            state = dbContext.LocalStateTree;
+            state.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).WithStorageRoot(storageTree.RootHash).TestObject);
+            state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(1).TestObject);
+            state.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
+            state.Commit();
+
+            // Local state missing root so that it would start
+            dbContext.LocalNodeStorage.Set(null, TreePath.Empty, state.RootHash, null);
+
+            await using IContainer container = PrepareDownloader(dbContext);
+            container.Resolve<StateSyncPivot>().UpdatedStorages.Add(theAccount);
+
+            SafeContext ctx = container.Resolve<SafeContext>();
+            await ActivateAndWait(ctx);
+
+            dbContext.CompareTrees("END");
         }
     }
 }

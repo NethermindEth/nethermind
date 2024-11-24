@@ -119,6 +119,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
                     FastSync = true
                 }))
+                .AddSingleton<ILogManager>(_logManager)
                 .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)
                 .AddKeyedSingleton<IDb>(DbNames.State, dbContext.LocalStateDb)
                 .AddSingleton<INodeStorage>(dbContext.LocalNodeStorage)
