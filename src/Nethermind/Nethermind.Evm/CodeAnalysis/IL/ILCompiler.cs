@@ -41,7 +41,7 @@ internal class ILCompiler
 
         Emit<ExecuteSegment> method = Emit<ExecuteSegment>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
-        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInJitMode);
+        int[] jumpdests = EmitSegmentBody(method, codeInfo, code, data, config.BakeInTracingInPartialAotMode);
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
         return new PrecompiledChunk
         {

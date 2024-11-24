@@ -19,12 +19,12 @@ public interface IVMConfig : IConfig
     [ConfigItem(
         Description = "Activates or Deactivates JIT optimizations",
         DefaultValue = "false")]
-    public bool IsJitEnabled { get; set; }
+    public bool IsPartialAotEnabled { get; set; }
 
     [ConfigItem(
         Description = "Threshold for enabling JIT optimizations",
         DefaultValue = "128")]
-    public int JittingThreshold { get; set; }
+    public int PartialAotThreshold { get; set; }
 
     [ConfigItem(
         Description = "Threshold for enabling n-gram pattern optimizations",
@@ -34,17 +34,17 @@ public interface IVMConfig : IConfig
     [ConfigItem(
         Description = "Activates or Deactivates aggressive JIT optimizations",
         DefaultValue = "false")]
-    public bool AggressiveJitMode { get; set; }
+    public bool AggressivePartialAotMode { get; set; }
 
     [ConfigItem(
         Description = "Activates or Deactivates traces in JIT optimizations",
         DefaultValue = "false")]
-    public bool BakeInTracingInJitMode { get; set; }
+    public bool BakeInTracingInPartialAotMode { get; set; }
 
     [ConfigItem(
         Description = "Sets Analysis Queue Max Size", 
         DefaultValue = "8")]
     public int AnalysisQueueMaxSize { get; set; }
 
-    public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsJitEnabled;
+    public bool IsVmOptimizationEnabled => IsPatternMatchingEnabled || IsPartialAotEnabled;
 }

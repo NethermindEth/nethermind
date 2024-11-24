@@ -4,13 +4,10 @@
 using System;
 using System.Threading;
 using Nethermind.Evm.CodeAnalysis.IL;
-using System.Runtime.CompilerServices;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Tracing;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Config;
 using Nethermind.Logging;
-using ILMode = int;
+using IlevmMode = int;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 namespace Nethermind.Evm.CodeAnalysis
@@ -28,18 +25,18 @@ namespace Nethermind.Evm.CodeAnalysis
         public void NoticeExecution(IVMConfig vmConfig, ILogger logger)
         {
             // IL-EVM info already created
-            if (_callCount > Math.Max(vmConfig.JittingThreshold, vmConfig.PatternMatchingThreshold))
+            if (_callCount > Math.Max(vmConfig.PartialAotThreshold, vmConfig.PatternMatchingThreshold))
                 return;
 
             Interlocked.Increment(ref _callCount);
             // use Interlocked just in case of concurrent execution to run it only once
-            ILMode mode = vmConfig.IsJitEnabled && _callCount == vmConfig.JittingThreshold
-                ? IlInfo.ILMode.JIT_MODE
+            IlevmMode mode = vmConfig.IsPartialAotEnabled && _callCount == vmConfig.PartialAotThreshold
+                ? ILMode.PARTIAL_AOT_MODE
                 : vmConfig.IsPatternMatchingEnabled && _callCount == vmConfig.PatternMatchingThreshold
-                    ? IlInfo.ILMode.PAT_MODE
-                    : IlInfo.ILMode.NO_ILVM;
+                    ? ILMode.PATTERN_BASED_MODE
+                    : ILMode.NO_ILVM;
 
-            if (mode == IlInfo.ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
+            if (mode == ILMode.NO_ILVM || IlInfo.Mode.HasFlag(mode))
                 return;
 
             IlAnalyzer.Enqueue(this, mode, vmConfig, logger);

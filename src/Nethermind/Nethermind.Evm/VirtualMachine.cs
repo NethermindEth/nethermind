@@ -787,7 +787,7 @@ internal sealed class VirtualMachine<TLogger, TOptimizing> : IVirtualMachine
 
             if(typeof(TOptimizing) == typeof(IsOptimizing))
             {
-                while (ilInfo is not null && (ilInfo.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out IlInfo.ILChunkExecutionResult? chunkExecutionResult)))
+                while (ilInfo is not null && (ilInfo.TryExecute(_logger, vmState, _specProvider.ChainId, ref _returnDataBuffer, _state, _blockhashProvider, vmState.Env.TxExecutionContext.CodeInfoRepository, spec, _txTracer, ref programCounter, ref gasAvailable, ref stack, out ILChunkExecutionResult? chunkExecutionResult)))
                 {
                     if (chunkExecutionResult.Value.ShouldReturn)
                     {

@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -11,46 +10,48 @@ using static Nethermind.Evm.VirtualMachine;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
+internal struct ILChunkExecutionResult
+{
+    public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
+    public bool ShouldJump;
+    public bool ShouldStop;
+    public bool ShouldRevert;
+    public bool ShouldReturn;
+    public object ReturnData;
+    public EvmExceptionType ExceptionType;
+
+
+    public static ILChunkExecutionResult Empty = new();
+    public static void Reset() => Empty = new();
+
+
+    public static explicit operator ILChunkExecutionResult(ILEvmState state)
+    {
+        return new ILChunkExecutionResult
+        {
+            ShouldJump = state.ShouldJump,
+            ShouldStop = state.ShouldStop,
+            ShouldRevert = state.ShouldRevert,
+            ShouldReturn = state.ShouldReturn,
+            ReturnData = state.ReturnBuffer,
+            ExceptionType = state.EvmException
+        };
+    }
+}
+
+public static class ILMode
+{
+    public const int NO_ILVM = 0b00000000;
+    public const int PATTERN_BASED_MODE = 0b10000000;
+    public const int PARTIAL_AOT_MODE = 0b01000000;
+}
+
 /// <summary>
 /// Represents the IL-EVM information about the contract.
 /// </summary>
+/// 
 internal class IlInfo
 {
-    internal struct ILChunkExecutionResult
-    {
-        public readonly bool ShouldFail => ExceptionType != EvmExceptionType.None;
-        public bool ShouldJump;
-        public bool ShouldStop;
-        public bool ShouldRevert;
-        public bool ShouldReturn;
-        public object ReturnData;
-        public EvmExceptionType ExceptionType;
-
-
-        public static ILChunkExecutionResult Empty = new();
-        public static void Reset() => Empty = new();
-
-
-        public static explicit operator ILChunkExecutionResult(ILEvmState state)
-        {
-            return new ILChunkExecutionResult
-            {
-                ShouldJump = state.ShouldJump,
-                ShouldStop = state.ShouldStop,
-                ShouldRevert = state.ShouldRevert,
-                ShouldReturn = state.ShouldReturn,
-                ReturnData = state.ReturnBuffer,
-                ExceptionType = state.EvmException
-            };
-        }
-    }
-
-    public static class ILMode
-    {
-        public const int NO_ILVM  = 0b00000000;
-        public const int PAT_MODE = 0b10000000;
-        public const int JIT_MODE = 0b01000000;
-    }
 
     /// <summary>
     /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.

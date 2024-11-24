@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
-using ILMode = int;
+using IlevmMode = int;
 
 [assembly : InternalsVisibleTo("Nethermind.Evm.Tests")]
 [assembly : InternalsVisibleTo("Nethermind.Evm.Benchmarks")]
@@ -23,14 +23,14 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 public static class IlAnalyzer
 {
-    public class AnalysisWork(CodeInfo codeInfo, ILMode mode)
+    public class AnalysisWork(CodeInfo codeInfo, IlevmMode mode)
     {
         public CodeInfo CodeInfo = codeInfo;
-        public ILMode Mode = mode;
+        public IlevmMode Mode = mode;
     }
     private static readonly ConcurrentQueue<AnalysisWork> _queue = new();
 
-    public static void Enqueue(CodeInfo codeInfo, ILMode mode, IVMConfig config, ILogger logger)
+    public static void Enqueue(CodeInfo codeInfo, IlevmMode mode, IVMConfig config, ILogger logger)
     {
         _queue.Enqueue(new AnalysisWork(codeInfo, mode));
         if(config.AnalysisQueueMaxSize <= _queue.Count)
@@ -115,7 +115,7 @@ public static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    public static void Analyse(CodeInfo codeInfo, ILMode mode, IVMConfig vmConfig, ILogger logger)
+    public static void Analyse(CodeInfo codeInfo, IlevmMode mode, IVMConfig vmConfig, ILogger logger)
     {
         Metrics.IlvmContractsAnalyzed++;
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
@@ -169,18 +169,18 @@ public static class IlAnalyzer
                 }
 
                 var segmentExecutionCtx = CompileSegment(segmentName, codeInfo, segment, codeData.Item2, vmConfig);
-                ilinfo.AddMapping(segment[0].ProgramCounter, segmentsFound.Count + offset, IlInfo.ILMode.JIT_MODE);
-                if (vmConfig.AggressiveJitMode)
+                ilinfo.AddMapping(segment[0].ProgramCounter, segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
+                if (vmConfig.AggressivePartialAotMode)
                 {
                     for (int k = 0; k < segmentExecutionCtx.JumpDestinations.Length; k++)
                     {
-                        ilinfo.AddMapping(segmentExecutionCtx.JumpDestinations[k], segmentsFound.Count + offset, IlInfo.ILMode.JIT_MODE);
+                        ilinfo.AddMapping(segmentExecutionCtx.JumpDestinations[k], segmentsFound.Count + offset, ILMode.PARTIAL_AOT_MODE);
                     }
                 }
                 segmentsFound.Add(segmentExecutionCtx);
             }
 
-            Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.JIT_MODE);
+            Interlocked.Or(ref ilinfo.Mode, ILMode.PARTIAL_AOT_MODE);
             if(segmentsFound.Count == 0)
             {
                 return;
@@ -217,14 +217,14 @@ public static class IlAnalyzer
 
                     if (found)
                     {
-                        ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, patternsFound.Count + offset, IlInfo.ILMode.PAT_MODE);
+                        ilinfo.AddMapping(strippedBytecode[i].ProgramCounter, patternsFound.Count + offset, ILMode.PATTERN_BASED_MODE);
                         patternsFound.Add(chunkHandler);
                         i += chunkHandler.Pattern.Length - 1;
                     }
                 }
             }
 
-            Interlocked.Or(ref ilinfo.Mode, IlInfo.ILMode.PAT_MODE);
+            Interlocked.Or(ref ilinfo.Mode, ILMode.PATTERN_BASED_MODE);
             if (patternsFound.Count == 0)
             {
                 return;
@@ -246,10 +246,10 @@ public static class IlAnalyzer
 
         switch (mode)
         {
-            case IlInfo.ILMode.PAT_MODE:
+            case ILMode.PATTERN_BASED_MODE:
                 CheckPatterns(machineCode, codeInfo.IlInfo);
                 break;
-            case IlInfo.ILMode.JIT_MODE:
+            case ILMode.PARTIAL_AOT_MODE:
                 SegmentCode(codeInfo, StripByteCode(machineCode.Span), codeInfo.IlInfo, vmConfig);
                 break;
         }

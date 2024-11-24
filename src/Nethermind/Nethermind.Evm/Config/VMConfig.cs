@@ -12,10 +12,10 @@ namespace Nethermind.Evm.Config;
 public class VMConfig : IVMConfig
 {
     public bool IsPatternMatchingEnabled { get; set; } = false;
-    public bool IsJitEnabled { get; set; } = false;
+    public bool IsPartialAotEnabled { get; set; } = false;
     public int PatternMatchingThreshold { get; set; } = 32;
-    public int JittingThreshold { get; set; } = 128;
-    public bool AggressiveJitMode { get; set; } = false;
-    public bool BakeInTracingInJitMode { get; set; } = false;
+    public int PartialAotThreshold { get; set; } = 128;
+    public bool AggressivePartialAotMode { get; set; } = false;
+    public bool BakeInTracingInPartialAotMode { get; set; } = false;
     public int AnalysisQueueMaxSize { get; set; } = 8;
 }
