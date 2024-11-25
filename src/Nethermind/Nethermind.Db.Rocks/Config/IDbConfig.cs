@@ -27,7 +27,6 @@ public interface IDbConfig : IConfig
     double MaxBytesForLevelMultiplier { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
-    bool UseHashSkipListMemtable { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
 
@@ -63,7 +62,6 @@ public interface IDbConfig : IConfig
     int? BlockNumbersDbMaxOpenFiles { get; set; }
     long? BlockNumbersDbMaxBytesPerSec { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
-    bool? BlockNumbersDbUseHashSkipListMemtable { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
     ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
 
@@ -94,7 +92,6 @@ public interface IDbConfig : IConfig
     int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
-    bool StateDbUseHashSkipListMemtable { get; set; }
     bool StateDbEnableFileWarmer { get; set; }
     double StateDbCompressibilityHint { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }

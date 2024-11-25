@@ -61,7 +61,6 @@ public class DbConfig : IDbConfig
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
     public ulong? RowCacheSize { get; set; } = null;
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
-    public bool UseHashSkipListMemtable { get; set; } = false;
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
 
@@ -97,8 +96,7 @@ public class DbConfig : IDbConfig
     public int? BlockNumbersDbMaxOpenFiles { get; set; }
     public long? BlockNumbersDbMaxBytesPerSec { get; set; }
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
-    public bool? BlockNumbersDbUseHashSkipListMemtable { get; set; } = true;
-    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;";
+    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;memtable=prefix_hash:1000000;";
     public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)4.MiB();
@@ -121,8 +119,7 @@ public class DbConfig : IDbConfig
     public int? CodeDbMaxOpenFiles { get; set; }
     public long? CodeDbMaxBytesPerSec { get; set; }
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
-    public bool? CodeDbUseHashSkipListMemtable { get; set; } = true;
-    public string? CodeDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;";
+    public string? CodeDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;memtable=prefix_hash:1000000;";
 
     public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint BloomDbWriteBufferNumber { get; set; } = 4;
@@ -151,7 +148,6 @@ public class DbConfig : IDbConfig
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
     public ulong? StateDbRowCacheSize { get; set; }
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
-    public bool StateDbUseHashSkipListMemtable { get; set; } = false;
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
 

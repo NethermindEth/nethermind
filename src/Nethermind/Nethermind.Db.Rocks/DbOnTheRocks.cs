@@ -454,22 +454,6 @@ public class DbOnTheRocks : IDb, ITunableDb
             ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000} MB".PadLeft(8));
         }
 
-        if (dbConfig.UseHashSkipListMemtable)
-        {
-            // Use a hashtable of skiplist, instead of skiplist.
-            // This has shown to be quite effective at reducing CPU usage at the expense of raw concurrent throughput
-            // in the case of flatdb layout's storage db. Reduces sync throughput though. Could improve block processing
-            // time. Need prefix extractor. Can't do range scan between prefixes. Well, there is a flag to force it,
-            // but it'll cost some CPU.
-            options.SetAllowConcurrentMemtableWrite(false);
-
-            // Default value.
-            UIntPtr bucketCount = 1000000; // Seems quite large. Wonder why this is the default value.
-            int skiplistHeight = 4;
-            int skiplistBranchingFactor = 4;
-            _rocksDbNative.rocksdb_options_set_hash_skip_list_rep(options.Handle, bucketCount, skiplistHeight, skiplistBranchingFactor);
-        }
-
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
         // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
