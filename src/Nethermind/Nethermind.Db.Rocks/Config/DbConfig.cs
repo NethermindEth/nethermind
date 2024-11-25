@@ -27,6 +27,20 @@ public class DbConfig : IDbConfig
         + "memtable_prefix_bloom_size_ratio=0.02;"
         + "advise_random_on_open=true;"
 
+          /*
+
+        tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
+
+        _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
+        */
+
+        // No significant downside. Just set it.
+        + "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;"
+
+        // Make the index in cache have higher priority, so it is kept more in cache.
+        + "block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;"
+
+        + "block_based_table_factory.format_version=5;"
 
         // Two level index split the index into two level. First index point to second level index, which actually
         // point to the block, which get bsearched to the value. This means potentially two iop instead of one per
@@ -44,7 +58,6 @@ public class DbConfig : IDbConfig
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public int TargetFileSizeMultiplier { get; set; } = 1;
-    public bool UseHashIndex { get; set; } = false;
     public ulong? PrefixExtractorLength { get; set; } = null;
     public bool? VerifyChecksum { get; set; } = true;
     public double MaxBytesForLevelMultiplier { get; set; } = 10;
@@ -94,10 +107,9 @@ public class DbConfig : IDbConfig
     public int? BlockNumbersDbMaxOpenFiles { get; set; }
     public long? BlockNumbersDbMaxBytesPerSec { get; set; }
     public int? BlockNumbersDbBlockSize { get; set; } = 4 * 1024;
-    public bool BlockNumbersDbUseHashIndex { get; set; } = true;
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public bool? BlockNumbersDbUseHashSkipListMemtable { get; set; } = true;
-    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
+    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "";
     public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)4.MiB();
@@ -122,7 +134,6 @@ public class DbConfig : IDbConfig
     public int? CodeDbMaxOpenFiles { get; set; }
     public long? CodeDbMaxBytesPerSec { get; set; }
     public int? CodeDbBlockSize { get; set; } = 4 * 1024;
-    public bool CodeDbUseHashIndex { get; set; } = true;
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public bool? CodeDbUseHashSkipListMemtable { get; set; } = true;
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
@@ -149,7 +160,6 @@ public class DbConfig : IDbConfig
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 32 * 1024;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
-    public bool StateDbUseHashIndex { get; set; } = false;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool? StateDbVerifyChecksum { get; set; }
     public double StateDbMaxBytesForLevelMultiplier { get; set; } = 30;

@@ -418,22 +418,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // you have an optane drive or some kind of RAM disk. Lower block size also means bigger index size.
         tableOptions.SetBlockSize((ulong)(dbConfig.BlockSize ?? 16 * 1024));
 
-        // No significant downside. Just set it.
-        tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-
-        // Make the index in cache have higher priority, so it is kept more in cache.
-        _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
-
-        if (dbConfig.UseHashIndex)
-        {
-            // Hash index need prefix extractor.
-            // I'm not sure if this index goes directly to value or not.
-            // Also means it can't do range scan.
-            // I'm guessing, if the prefix is the whole key, its useless.
-            tableOptions.SetIndexType(BlockBasedTableIndexType.Hash);
-        }
-
-        tableOptions.SetFormatVersion(5);
         if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
         {
             if (dbConfig.UseRibbonFilterStartingFromLevel is not null)
@@ -481,7 +465,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             tableOptions.SetBlockCache(_cache.Value);
         }
 
-        // options.SetBlockBasedTableFactory(tableOptions);
+        options.SetBlockBasedTableFactory(tableOptions);
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);

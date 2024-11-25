@@ -23,7 +23,6 @@ public interface IDbConfig : IConfig
     ulong? MaxBytesForLevelBase { get; set; }
     ulong TargetFileSizeBase { get; set; }
     int TargetFileSizeMultiplier { get; set; }
-    bool UseHashIndex { get; set; }
     ulong? PrefixExtractorLength { get; set; }
     bool? VerifyChecksum { get; set; }
     double MaxBytesForLevelMultiplier { get; set; }
@@ -72,7 +71,6 @@ public interface IDbConfig : IConfig
     int? BlockNumbersDbMaxOpenFiles { get; set; }
     long? BlockNumbersDbMaxBytesPerSec { get; set; }
     int? BlockNumbersDbBlockSize { get; set; }
-    bool BlockNumbersDbUseHashIndex { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
     bool? BlockNumbersDbUseHashSkipListMemtable { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
@@ -101,7 +99,6 @@ public interface IDbConfig : IConfig
     long? StateDbMaxBytesPerSec { get; set; }
     int? StateDbBlockSize { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
-    bool StateDbUseHashIndex { get; set; }
     ulong? StateDbPrefixExtractorLength { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
     double StateDbMaxBytesForLevelMultiplier { get; set; }
