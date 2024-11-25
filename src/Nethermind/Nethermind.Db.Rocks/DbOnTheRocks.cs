@@ -506,11 +506,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // block cache and then finally the LSM/SST files.
         #region WriteBuffer
 
-        // The memtable have a bloom filter whose size depends on the `prefix_bloom_size_ratio`, which is not actually
-        // just for prefix.
-        _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
-        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, dbConfig.MemtablePrefixBloomSizeRatio);
-
         // Note: Write buffer and write buffer num are modified by MemoryHintMan.
         ulong writeBufferSize = dbConfig.WriteBufferSize;
         options.SetWriteBufferSize(writeBufferSize);

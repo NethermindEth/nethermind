@@ -22,7 +22,7 @@ public class DbConfig : IDbConfig
     public bool? UseDirectReads { get; set; } = false;
     public bool? UseDirectIoForFlushAndCompactions { get; set; } = false;
     public bool? DisableCompression { get; set; } = false;
-    public string? AdditionalRocksDbOptions { get; set; } = "compression=kSnappyCompression;optimize_filters_for_hits=true;";
+    public string? AdditionalRocksDbOptions { get; set; } = "compression=kSnappyCompression;optimize_filters_for_hits=true;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;";
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public int TargetFileSizeMultiplier { get; set; } = 1;
@@ -37,7 +37,6 @@ public class DbConfig : IDbConfig
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
     public bool UseHashSkipListMemtable { get; set; } = false;
     public int? BlockRestartInterval { get; set; } = 16;
-    public double MemtablePrefixBloomSizeRatio { get; set; } = 0.02;
     public bool AdviseRandomOnOpen { get; set; } = true;
     public int? BloomFilterBitsPerKey { get; set; } = 10;
     public int? UseRibbonFilterStartingFromLevel { get; set; }
@@ -166,7 +165,6 @@ public class DbConfig : IDbConfig
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
     public int? StateDbBlockRestartInterval { get; set; } = 4;
-    public double StateDbMemtablePrefixBloomSizeRatio { get; set; } = 0.02;
     public bool StateDbAdviseRandomOnOpen { get; set; }
     public int? StateDbBloomFilterBitsPerKey { get; set; } = 15;
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;

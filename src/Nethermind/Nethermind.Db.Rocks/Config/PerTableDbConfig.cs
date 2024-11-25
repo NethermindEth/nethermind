@@ -52,10 +52,8 @@ public class PerTableDbConfig
     public ulong? MaxCompactionBytes => ReadConfig<ulong?>(nameof(MaxCompactionBytes));
     public int MinWriteBufferNumberToMerge => ReadConfig<int>(nameof(MinWriteBufferNumberToMerge));
     public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
-    public bool OptimizeFiltersForHits => ReadConfig<bool>(nameof(OptimizeFiltersForHits));
     public bool UseHashSkipListMemtable => ReadConfig<bool>(nameof(UseHashSkipListMemtable));
     public int? BlockRestartInterval => ReadConfig<int?>(nameof(BlockRestartInterval));
-    public double MemtablePrefixBloomSizeRatio => ReadConfig<double>(nameof(MemtablePrefixBloomSizeRatio));
     public bool AdviseRandomOnOpen => ReadConfig<bool>(nameof(AdviseRandomOnOpen));
     public int? BloomFilterBitsPerKey => ReadConfig<int?>(nameof(BloomFilterBitsPerKey));
     public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
