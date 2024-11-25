@@ -2353,7 +2353,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
             private EvmState _evmState;
             private WorldState _stateProvider;
-
+            private CodeInfoRepository _codeInfoRepository;
             public LocalSetup(byte[] bytecode, VMConfig vMConfig = null)
             {
                 VMConfig vmConfig = vMConfig ?? new VMConfig();
@@ -2363,8 +2363,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
                 _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
                 _stateProvider.Commit(_spec);
-                CodeInfoRepository codeInfoRepository = new();
-                _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, LimboLogs.Instance, vmConfig);
+                _codeInfoRepository = new();
+                _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, _codeInfoRepository, LimboLogs.Instance, vmConfig);
 
                 if (vmConfig.BakeInTracingInPartialAotMode)
                 {
@@ -2386,7 +2386,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     codeInfo: codeinfo,
                     value: 0,
                     transferValue: 0,
-                    txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, codeInfoRepository),
+                    txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, _codeInfoRepository),
                     inputData: default
                 );
 
@@ -2402,6 +2402,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             public void Reset()
             {
                 _stateProvider.Reset();
+                CodeInfoRepository.ClearCache();
             }
         }
 
@@ -2422,7 +2423,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPatternMatchingEnabled = false,
             });
 
-            const int IterationCount = 1 << 16;
+            const int IterationCount = 1 << 23;
 
 
             Stopwatch sw = Stopwatch.StartNew();
