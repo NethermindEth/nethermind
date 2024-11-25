@@ -34,7 +34,9 @@ public static class ContainerBuilderExtensions
             object? val = propertyInfo.GetValue(source);
             if (val != null)
             {
-                configuration.RegisterInstance(val).As(propertyInfo.PropertyType);
+                configuration.RegisterInstance(val)
+                    .As(propertyInfo.PropertyType)
+                    .ExternallyOwned();
             }
         }
 
@@ -55,6 +57,7 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .As<T>()
+            .ExternallyOwned()
             .SingleInstance();
 
         return builder;
@@ -84,6 +87,7 @@ public static class ContainerBuilderExtensions
     {
         builder.RegisterInstance(instance)
             .Named<T>(key)
+            .ExternallyOwned()
             .SingleInstance();
 
         return builder;
