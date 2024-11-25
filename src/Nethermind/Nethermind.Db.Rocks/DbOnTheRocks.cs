@@ -10,6 +10,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ConcurrentCollections;
@@ -26,7 +27,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class DbOnTheRocks : IDb, ITunableDb
+public partial class DbOnTheRocks : IDb, ITunableDb
 {
     protected ILogger _logger;
 
@@ -57,6 +58,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     private static long _maxRocksSize;
 
     private long _maxThisDbSize;
+    private long _targetFileSizeBase;
 
     protected IntPtr? _cache = null;
     protected IntPtr? _rowCache = null;
@@ -402,6 +404,21 @@ public class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
+    [GeneratedRegex("(?<optionName>[^; ]+)\\=(?<optionValue>[^; ]+);", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    private static partial Regex ExtractDbOptionsRegex();
+
+    public static IDictionary<string, string> ExtractOptions(string dbOptions)
+    {
+        Dictionary<string, string> asDict = new();
+
+        foreach (Match match in ExtractDbOptionsRegex().Matches(dbOptions))
+        {
+            asDict[match.Groups["optionName"].ToString()] = match.Groups["optionValue"].ToString();
+        }
+
+        return asDict;
+    }
+
     protected virtual void BuildOptions<T>(PerTableDbConfig dbConfig, Options<T> options, IntPtr? sharedCache) where T : Options<T>
     {
         // This section is about the table factory.. and block cache apparently.
@@ -425,8 +442,9 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         options.SetBlockBasedTableFactory(tableOptions);
 
-        // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
-        options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);
+        IDictionary<string, string> optionsAsDict = ExtractOptions(dbConfig.AdditionalRocksDbOptions!);
+
+        _targetFileSizeBase = long.Parse(optionsAsDict["target_file_size_base"]);
 
         #endregion
 
@@ -513,7 +531,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
 
-        Console.Error.WriteLine($"For {Name} the additional is {dbConfig.AdditionalRocksDbOptions}");
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
             IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);
@@ -1374,7 +1391,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             { "level0_stop_writes_trigger", 1024.ToString() },
 
             { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
-            { "target_file_size_base", _perTableDbConfig.TargetFileSizeBase.ToString() },
+            { "target_file_size_base", _targetFileSizeBase.ToString() },
             { "disable_auto_compactions", "false" },
 
             { "enable_blob_files", "false" },

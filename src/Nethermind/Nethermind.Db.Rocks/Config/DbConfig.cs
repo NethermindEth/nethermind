@@ -25,6 +25,9 @@ public class DbConfig : IDbConfig
         + "memtable_prefix_bloom_size_ratio=0.02;"
         + "advise_random_on_open=true;"
 
+        // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
+        + "target_file_size_base=64000000;"
+
         // Note, this is before compression. On disk size may be lower. The on disk size is the minimum amount of read
         // each io will do. On most SSD, the minimum read size is 4096 byte. So don't set it to lower than that, unless
         // you have an optane drive or some kind of RAM disk. Lower block size also means bigger index size.
@@ -52,8 +55,6 @@ public class DbConfig : IDbConfig
         ;
 
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
-    public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
-    public int TargetFileSizeMultiplier { get; set; } = 1;
     public bool? VerifyChecksum { get; set; } = true;
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
     public ulong? RowCacheSize { get; set; } = null;
@@ -66,7 +67,6 @@ public class DbConfig : IDbConfig
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 2;
     public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)8.MiB();
-    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst;optimize_filters_for_hits=false;";
 
@@ -117,7 +117,6 @@ public class DbConfig : IDbConfig
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
     public uint StateDbWriteBufferNumber { get; set; } = 4;
     public ulong StateDbBlockCacheSize { get; set; }
-    public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public bool? StateDbVerifyChecksum { get; set; }
     public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)350.MiB();
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
@@ -134,6 +133,9 @@ public class DbConfig : IDbConfig
         // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         + "max_bytes_for_level_multiplier=30;"
+
+        // Causes file size to double per level. Lower total number of file.
+        + "target_file_size_multiplier=2;"
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.

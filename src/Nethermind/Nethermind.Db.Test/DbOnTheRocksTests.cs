@@ -403,6 +403,16 @@ namespace Nethermind.Db.Test
             allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
         }
 
+        [Test]
+        public void TestExtractOptions()
+        {
+            string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
+            IDictionary<string, string> parsedOptions = DbOnTheRocks.ExtractOptions(options);
+            parsedOptions["compression"].Should().Be("kSnappyCompression");
+            parsedOptions["block_based_table_factory.metadata_block_size"].Should().Be("4096");
+            parsedOptions["optimize_filters_for_hits"].Should().Be("false");
+            parsedOptions["memtable_whole_key_filtering"].Should().Be("true");
+        }
     }
 
     class CorruptedDbOnTheRocks : DbOnTheRocks

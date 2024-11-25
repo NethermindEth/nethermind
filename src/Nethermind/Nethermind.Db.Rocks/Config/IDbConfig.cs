@@ -19,8 +19,6 @@ public interface IDbConfig : IConfig
     ulong? ReadAheadSize { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
     ulong? MaxBytesForLevelBase { get; set; }
-    ulong TargetFileSizeBase { get; set; }
-    int TargetFileSizeMultiplier { get; set; }
     bool? VerifyChecksum { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
@@ -32,7 +30,6 @@ public interface IDbConfig : IConfig
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
     ulong ReceiptsDbBlockCacheSize { get; set; }
-    ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
@@ -67,7 +64,6 @@ public interface IDbConfig : IConfig
     ulong StateDbWriteBufferSize { get; set; }
     uint StateDbWriteBufferNumber { get; set; }
     ulong StateDbBlockCacheSize { get; set; }
-    int StateDbTargetFileSizeMultiplier { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
     ulong? StateDbMaxBytesForLevelBase { get; set; }
     int StateDbMinWriteBufferNumberToMerge { get; set; }

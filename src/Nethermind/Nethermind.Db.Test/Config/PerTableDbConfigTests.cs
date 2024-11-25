@@ -43,7 +43,6 @@ public class PerTableDbConfigTests
     {
         DbConfig dbConfig = new DbConfig();
         dbConfig.MaxOpenFiles = 2;
-        dbConfig.ReceiptsDbMaxOpenFiles = 3;
 
         PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""), "Blocks");
         config.MaxOpenFiles.Should().Be(3);
@@ -54,7 +53,6 @@ public class PerTableDbConfigTests
     {
         DbConfig dbConfig = new DbConfig();
         dbConfig.MaxOpenFiles = 2;
-        dbConfig.ReceiptsDbMaxOpenFiles = 3;
 
         PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""));
         config.MaxOpenFiles.Should().Be(3);

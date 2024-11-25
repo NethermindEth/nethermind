@@ -39,7 +39,6 @@ public class PerTableDbConfig
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
-    public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
     public bool? VerifyChecksum => ReadConfig<bool?>(nameof(VerifyChecksum));
     public int MinWriteBufferNumberToMerge => ReadConfig<int>(nameof(MinWriteBufferNumberToMerge));
     public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
