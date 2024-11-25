@@ -67,7 +67,7 @@ public class BloomStorageTests
     {
         get
         {
-            IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(i => (long)i);
+            static IEnumerable<long> GetRange(long expectedFound, int offset = 0) => Enumerable.Range(offset, (int)expectedFound).Select(i => (long)i);
             int searchesPerBucket = 1 + LevelMultiplier + LevelMultiplier * LevelMultiplier + LevelMultiplier * LevelMultiplier * LevelMultiplier;
 
             int bucketItems = new BloomStorage(new BloomConfig() { IndexLevelBucketSizes = new[] { LevelMultiplier, LevelMultiplier, LevelMultiplier } }, new MemDb(), new InMemoryDictionaryFileStoreFactory()).MaxBucketSize;
@@ -188,16 +188,16 @@ public class BloomStorageTests
             foreach (Core.Bloom bloom in blooms)
             {
                 j++;
-                (long FromBlock, long ToBlock) currentIndices = blooms.CurrentIndices;
-                int fromBlock = (int)(currentIndices.FromBlock % Core.Bloom.BitLength);
-                int toBlock = (int)(Math.Min(currentIndices.ToBlock, maxBlock) % Core.Bloom.BitLength);
+                (long FromBlock, long ToBlock) = blooms.CurrentIndices;
+                int fromBlock = (int)(FromBlock % Core.Bloom.BitLength);
+                int toBlock = (int)(Math.Min(ToBlock, maxBlock) % Core.Bloom.BitLength);
                 Core.Bloom expectedBloom = new();
                 for (int i = fromBlock; i <= toBlock; i++)
                 {
                     expectedBloom.Set(i);
                 }
 
-                bloom.Should().Be(expectedBloom, $"blocks <{currentIndices.FromBlock}, {currentIndices.ToBlock}>");
+                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
                 blooms.TryGetBlockNumber(out _);
             }
 

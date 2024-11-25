@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        private readonly object _syncLock = new();
+        private readonly Lock _syncLock = new();
 
         private const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();

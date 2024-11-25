@@ -34,7 +34,7 @@ public class OwnedBlockBodiesTests
 
         OwnedBlockBodies ownedBlockBodies = new(blockBodies, memoryOwner);
         ownedBlockBodies.Disown();
-        actualMemoryOwner.Memory.Span.Fill(0);
+        actualMemoryOwner.Memory.Span.Clear();
         blockBodies[0].Transactions[0].Data.Should().NotBeEquivalentTo(actualMemoryOwner.Memory);
     }
 }

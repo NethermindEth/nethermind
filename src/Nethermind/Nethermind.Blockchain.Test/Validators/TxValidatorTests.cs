@@ -752,21 +752,21 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = Array.Empty<byte[]>())
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Blobs count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = Array.Empty<byte[]>())
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Commitments count does not match hashes count",
                 ExpectedResult = false
             };
             yield return new TestCaseData(MakeTestObject()
-                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = Array.Empty<byte[]>())
+                .With(tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs = [])
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs count does not match hashes count",

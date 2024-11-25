@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 
@@ -13,6 +14,7 @@ namespace Nethermind.Network.P2P
     {
         private bool _isClosed;
         private Request<TMsg, TData>? _currentRequest;
+        private readonly Lock _lock = new();
 
         private readonly Queue<Request<TMsg, TData>> _requestQueue = new();
 
@@ -24,7 +26,7 @@ namespace Nethermind.Network.P2P
                 return;
             }
 
-            lock (_requestQueue)
+            lock (_lock)
             {
                 if (_currentRequest is null)
                 {
@@ -41,7 +43,7 @@ namespace Nethermind.Network.P2P
 
         public void Handle(TData data, long size)
         {
-            lock (_requestQueue)
+            lock (_lock)
             {
                 if (_currentRequest is null)
                 {

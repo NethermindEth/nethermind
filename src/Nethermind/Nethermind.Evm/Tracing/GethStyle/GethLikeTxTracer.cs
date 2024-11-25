@@ -38,7 +38,7 @@ public abstract class GethLikeTxTracer : TxTracer
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
-        Trace.ReturnValue = output ?? Array.Empty<byte>();
+        Trace.ReturnValue = output ?? [];
     }
 
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)

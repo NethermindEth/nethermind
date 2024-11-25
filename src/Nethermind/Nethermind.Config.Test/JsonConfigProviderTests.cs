@@ -26,10 +26,10 @@ public class JsonConfigProviderTests
     [SuppressMessage("ReSharper", "UnusedVariable")]
     public void Initialize()
     {
-        KeyStoreConfig keystoreConfig = new();
-        NetworkConfig networkConfig = new();
-        JsonRpcConfig jsonRpcConfig = new();
-        StatsParameters statsConfig = StatsParameters.Instance;
+        _ = new KeyStoreConfig();
+        _ = new NetworkConfig();
+        _ = new JsonRpcConfig();
+        _ = StatsParameters.Instance;
 
         _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.json");
     }
@@ -61,7 +61,7 @@ public class JsonConfigProviderTests
         Assert.That(keystoreConfig.KdfparamsDklen, Is.EqualTo(100));
         Assert.That(keystoreConfig.Cipher, Is.EqualTo("test"));
 
-        Assert.That(jsonRpcConfig.EnabledModules.Count(), Is.EqualTo(2));
+        Assert.That(jsonRpcConfig.EnabledModules.Length, Is.EqualTo(2));
 
         void CheckIfEnabled(string x)
         {

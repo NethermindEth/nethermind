@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -68,7 +68,7 @@ namespace Nethermind.Core.Extensions
 
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
-                return withZeroX ? "0x0" : "0";
+                return withZeroX ? Bytes.ZeroHexValue : Bytes.ZeroValue;
             }
 
             fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))

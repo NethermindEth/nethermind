@@ -22,7 +22,7 @@ public class Metrics
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
     public static long Calls => _calls.GetTotalValue();
-    private static ZeroContentionCounter _calls = new();
+    private static readonly ZeroContentionCounter _calls = new();
     [Description("Number of calls to other contracts on thread.")]
     public static long ThreadLocalCalls => _calls.ThreadLocalValue;
     public static void IncrementCalls() => _calls.Increment();
@@ -30,7 +30,7 @@ public class Metrics
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
     public static long SloadOpcode => _sLoadOpcode.GetTotalValue();
-    private static ZeroContentionCounter _sLoadOpcode = new();
+    private static readonly ZeroContentionCounter _sLoadOpcode = new();
     [Description("Number of SLOAD opcodes executed on thread.")]
     public static long ThreadLocalSLoadOpcode => _sLoadOpcode.ThreadLocalValue;
     public static void IncrementSLoadOpcode() => _sLoadOpcode.Increment();
@@ -38,7 +38,7 @@ public class Metrics
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
     public static long SstoreOpcode => _sStoreOpcode.GetTotalValue();
-    private static ZeroContentionCounter _sStoreOpcode = new();
+    private static readonly ZeroContentionCounter _sStoreOpcode = new();
     [Description("Number of SSTORE opcodes executed on thread.")]
     public static long ThreadLocalSStoreOpcode => _sStoreOpcode.ThreadLocalValue;
     public static void IncrementSStoreOpcode() => _sStoreOpcode.Increment();
@@ -124,7 +124,7 @@ public class Metrics
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
     public static long EmptyCalls => _emptyCalls.GetTotalValue();
-    private static ZeroContentionCounter _emptyCalls = new();
+    private static readonly ZeroContentionCounter _emptyCalls = new();
     [Description("Number of calls made to addresses without code on thread.")]
     public static long ThreadLocalEmptyCalls => _emptyCalls.ThreadLocalValue;
     public static void IncrementEmptyCalls() => _emptyCalls.Increment();
@@ -133,14 +133,14 @@ public class Metrics
     [Description("Number of contract create calls.")]
     public static long Creates => _creates.GetTotalValue();
 
-    private static ZeroContentionCounter _creates = new();
+    private static readonly ZeroContentionCounter _creates = new();
     [Description("Number of contract create calls on thread.")]
     public static long ThreadLocalCreates => _creates.ThreadLocalValue;
     public static void IncrementCreates() => _creates.Increment();
 
     [Description("Number of contracts' code analysed for jump destinations.")]
     public static long ContractsAnalysed => _contractsAnalysed.GetTotalValue();
-    private static ZeroContentionCounter _contractsAnalysed = new();
+    private static readonly ZeroContentionCounter _contractsAnalysed = new();
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();

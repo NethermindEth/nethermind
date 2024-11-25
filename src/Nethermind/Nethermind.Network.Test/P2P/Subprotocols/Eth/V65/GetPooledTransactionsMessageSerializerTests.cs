@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Empty_to_string()
         {
-            using GetPooledTransactionsMessage message = new(new Hash256[] { }.ToPooledList());
+            using GetPooledTransactionsMessage message = new(System.Array.Empty<Hash256>().ToPooledList());
             _ = message.ToString();
         }
     }

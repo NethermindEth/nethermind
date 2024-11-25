@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain
         public byte[]? GetCode(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
-            return !account.HasCode ? Array.Empty<byte>() : _stateReader.GetCode(account.CodeHash);
+            return !account.HasCode ? [] : _stateReader.GetCode(account.CodeHash);
         }
 
         public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);
