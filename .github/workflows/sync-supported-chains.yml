@@ -229,6 +229,8 @@ jobs:
           network="${{ matrix.config.network }}"
           if [[ "$network" == base-* || "$network" == op-* ]]; then
             docker logs sedge-consensus-op-l2-client
+          elif [[ "$network" == taiko-* ]]; then
+            docker logs sedge-consensus-taikodriver-client
           else
             docker logs sedge-consensus-client      
           fi
