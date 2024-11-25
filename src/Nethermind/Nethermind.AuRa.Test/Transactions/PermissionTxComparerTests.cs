@@ -33,7 +33,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             get
             {
-                Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
+                static Func<IEnumerable<Transaction>, IEnumerable<Transaction>> Select(Func<IEnumerable<Transaction>, IEnumerable<Transaction>> transactionSelect) =>
                     transactionSelect;
 
 

@@ -100,13 +100,13 @@ namespace Nethermind.Blockchain.Filters
         public FilterLog[] GetLogs(int filterId)
         {
             _logs.TryGetValue(filterId, out List<FilterLog> logs);
-            return logs?.ToArray() ?? Array.Empty<FilterLog>();
+            return logs?.ToArray() ?? [];
         }
 
         public Hash256[] GetBlocksHashes(int filterId)
         {
             _blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes);
-            return blockHashes?.ToArray() ?? Array.Empty<Hash256>();
+            return blockHashes?.ToArray() ?? [];
         }
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Filters
                     return hackedResult;
                 }
 
-                return Array.Empty<Hash256>();
+                return [];
             }
 
             var existingBlockHashes = blockHashes.ToArray();
@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Filters
         {
             if (!_logs.TryGetValue(filterId, out var logs))
             {
-                return Array.Empty<FilterLog>();
+                return [];
             }
 
             var existingLogs = logs.ToArray();
@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Filters
         {
             if (!_pendingTransactions.TryGetValue(filterId, out var pendingTransactions))
             {
-                return Array.Empty<Hash256>();
+                return [];
             }
 
             var existingPendingTransactions = pendingTransactions.ToArray();

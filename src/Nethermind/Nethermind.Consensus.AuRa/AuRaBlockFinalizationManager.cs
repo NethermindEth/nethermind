@@ -90,23 +90,21 @@ namespace Nethermind.Consensus.AuRa
             BlockHeader header = e.Blocks[0].Header;
             if (_blockTree.WasProcessed(header.Number, header.Hash))
             {
-                using (var batch = _chainLevelInfoRepository.StartBatch())
+                using var batch = _chainLevelInfoRepository.StartBatch();
+                // need to un-finalize blocks
+                var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
+                for (int i = 1; i < minSealersForFinalization; i++)
                 {
-                    // need to un-finalize blocks
-                    var minSealersForFinalization = GetMinSealersForFinalization(header.Number);
-                    for (int i = 1; i < minSealersForFinalization; i++)
+                    header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    if (header is not null)
                     {
-                        header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header is not null)
-                        {
-                            UnFinalizeBlock(header, batch);
-                        }
+                        UnFinalizeBlock(header, batch);
                     }
+                }
 
-                    for (int i = 0; i < e.Blocks.Count; i++)
-                    {
-                        UnFinalizeBlock(e.Blocks[i].Header, batch);
-                    }
+                for (int i = 0; i < e.Blocks.Count; i++)
+                {
+                    UnFinalizeBlock(e.Blocks[i].Header, batch);
                 }
             }
         }

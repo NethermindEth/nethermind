@@ -6,7 +6,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
 {

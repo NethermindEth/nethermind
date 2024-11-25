@@ -95,7 +95,7 @@ public partial class EngineModuleTests
             ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
             StateRoot = chain.BlockTree.Head!.StateRoot!,
             Timestamp = timestamp.ToUInt64(null),
-            Transactions = Array.Empty<byte[]>()
+            Transactions = []
         });
         // get the payload
         result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", expectedPayloadId.ToHexString(true));
@@ -169,7 +169,7 @@ public partial class EngineModuleTests
         expected.BlockNumber = 1;
         expected.PrevRandao = random;
         expected.ParentHash = startingHead;
-        expected.SetTransactions(Array.Empty<Transaction>());
+        expected.SetTransactions([]);
         expected.Timestamp = timestamp;
         expected.PrevRandao = random;
         expected.ExtraData = Encoding.UTF8.GetBytes("Nethermind");

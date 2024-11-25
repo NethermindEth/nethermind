@@ -86,8 +86,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         protected ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
-            Block? head = blockTree.Head;
-            if (head is null) throw new NotSupportedException();
+            Block? head = blockTree.Head ?? throw new NotSupportedException();
             return new ExecutionPayload()
             {
                 BlockNumber = head.Number,
@@ -159,7 +158,7 @@ namespace Nethermind.Merge.Plugin.Test
             var blockHashStore = new BlockhashStore(chain.SpecProvider, chain.State);
             blockHashStore.ApplyBlockhashStateChanges(block!.Header);
 
-            chain.ExecutionRequestsProcessor?.ProcessExecutionRequests(block!, chain.State, Array.Empty<TxReceipt>(), chain.SpecProvider.GenesisSpec);
+            chain.ExecutionRequestsProcessor?.ProcessExecutionRequests(block!, chain.State, [], chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
@@ -192,7 +191,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ParentBeaconBlockRoot = parentBeaconBlockRoot
             };
 
-            blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
+            blockRequest.SetTransactions(transactions ?? []);
             TryCalculateHash(blockRequest, out Hash256? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;

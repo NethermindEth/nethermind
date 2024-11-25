@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
@@ -31,7 +30,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string? IpcUnixDomainSocketPath { get; set; } = null;
 
     public string[] EnabledModules { get; set; } = ModuleType.DefaultModules.ToArray();
-    public string[] AdditionalRpcUrls { get; set; } = Array.Empty<string>();
+    public string[] AdditionalRpcUrls { get; set; } = [];
     public long? GasCap { get; set; } = 100000000;
     public int ReportIntervalSeconds { get; set; } = 300;
     public bool BufferResponses { get; set; }

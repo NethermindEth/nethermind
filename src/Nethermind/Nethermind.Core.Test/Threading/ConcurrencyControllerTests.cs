@@ -15,13 +15,13 @@ public class ConcurrencyControllerTests
         ConcurrencyController.Slot returner;
         ConcurrencyController limiter = new ConcurrencyController(3);
 
-        limiter.TryTakeSlot(out returner).Should().Be(true);
-        limiter.TryTakeSlot(out returner).Should().Be(true);
+        limiter.TryTakeSlot(out _).Should().Be(true);
+        limiter.TryTakeSlot(out _).Should().Be(true);
         limiter.TryTakeSlot(out returner).Should().Be(false);
 
         returner.Dispose();
 
-        limiter.TryTakeSlot(out returner).Should().Be(true);
-        limiter.TryTakeSlot(out returner).Should().Be(false);
+        limiter.TryTakeSlot(out _).Should().Be(true);
+        limiter.TryTakeSlot(out _).Should().Be(false);
     }
 }

@@ -313,7 +313,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {
-            BitArray result = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
+            _ = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
         }
 
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]

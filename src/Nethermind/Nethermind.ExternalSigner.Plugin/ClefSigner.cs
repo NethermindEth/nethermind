@@ -63,7 +63,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// <returns><see cref="Signature"/> of the hash of the clique header.</returns>
     public Signature Sign(BlockHeader header)
     {
-        if (header is null) throw new ArgumentNullException(nameof(header));
+        ArgumentNullException.ThrowIfNull(header);
         int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None);
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(contentLength);
         try
@@ -95,8 +95,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
 
     private static async Task<Address> GetSignerAddress(IJsonRpcClient rpcClient, Address? blockAuthorAccount)
     {
-        var accounts = await rpcClient.Post<string[]>("account_list");
-        if (accounts is null) throw new InvalidOperationException("Remote signer 'account_list' response is invalid.");
+        var accounts = await rpcClient.Post<string[]>("account_list") ?? throw new InvalidOperationException("Remote signer 'account_list' response is invalid.");
         if (accounts.Length == 0) throw new InvalidOperationException("Remote signer has not been configured with any signers.");
         return blockAuthorAccount is not null
             ? accounts.Any(a => new Address(a).Bytes.SequenceEqual(blockAuthorAccount.Bytes))

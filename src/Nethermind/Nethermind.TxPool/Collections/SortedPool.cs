@@ -154,7 +154,7 @@ namespace Nethermind.TxPool.Collections
             using var lockRelease = Lock.Acquire();
 
             if (group is null) throw new ArgumentNullException(nameof(group));
-            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : Array.Empty<TValue>();
+            return _buckets.TryGetValue(group, out EnhancedSortedSet<TValue>? bucket) ? bucket.ToArray() : [];
         }
 
         /// <summary>
@@ -315,7 +315,7 @@ namespace Nethermind.TxPool.Collections
 
                 return list ?? Enumerable.Empty<TValue>();
             }
-            return Enumerable.Empty<TValue>();
+            return [];
         }
 
         /// <summary>
@@ -512,7 +512,7 @@ namespace Nethermind.TxPool.Collections
                 return true;
             }
 
-            items = Array.Empty<TValue>();
+            items = [];
             return false;
         }
 

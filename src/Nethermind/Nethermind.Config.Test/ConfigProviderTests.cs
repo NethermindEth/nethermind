@@ -75,9 +75,7 @@ namespace Nethermind.Config.Test
                     ? bitArray.Get(5)
                     : bitArray.Get(2)
                         ? bitArray.Get(3)
-                        : bitArray.Get(0)
-                            ? bitArray.Get(1)
-                            : false;
+                        : bitArray.Get(0) && bitArray.Get(1);
 
                 Assert.That(config.Enabled, Is.EqualTo(expectedResult), bitArray.ToBitString());
             }
