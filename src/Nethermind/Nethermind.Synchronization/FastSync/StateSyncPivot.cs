@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -36,7 +37,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public BlockHeader GetPivotHeader()
         {
-            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
+            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead - MultiSyncModeSelector.FastSyncLag)
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
@@ -67,7 +68,7 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = _blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number - _syncConfig.StateMinDistanceFromHead, 0);
+            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number - (_syncConfig.StateMinDistanceFromHead - MultiSyncModeSelector.FastSyncLag), 0);
             BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
