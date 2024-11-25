@@ -41,7 +41,6 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     internal readonly RocksDb _db;
 
-    private IntPtr? _rateLimiter;
     internal WriteOptions? WriteOptions { get; private set; }
     private WriteOptions? _noWalWrite;
     private WriteOptions? _lowPriorityAndNoWalWrite;
@@ -506,13 +505,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (dbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
-        }
-
-        if (dbConfig.MaxBytesPerSec.HasValue)
-        {
-            _rateLimiter =
-                _rocksDbNative.rocksdb_ratelimiter_create(dbConfig.MaxBytesPerSec.Value, 1000, 10);
-            _rocksDbNative.rocksdb_options_set_ratelimiter(options.Handle, _rateLimiter.Value);
         }
 
         if (dbConfig.EnableDbStatistics)
@@ -1240,11 +1232,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (_rowCache.HasValue)
         {
             _rocksDbNative.rocksdb_cache_destroy(_rowCache.Value);
-        }
-
-        if (_rateLimiter.HasValue)
-        {
-            _rocksDbNative.rocksdb_ratelimiter_destroy(_rateLimiter.Value);
         }
     }
 

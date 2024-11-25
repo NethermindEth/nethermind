@@ -16,7 +16,6 @@ public interface IDbConfig : IConfig
     ulong BlockCacheSize { get; set; }
     int? MaxOpenFiles { get; set; }
     bool WriteAheadLogSync { get; set; }
-    long? MaxBytesPerSec { get; set; }
     ulong? ReadAheadSize { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
     ulong? MaxBytesForLevelBase { get; set; }
@@ -33,7 +32,6 @@ public interface IDbConfig : IConfig
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
     ulong ReceiptsDbBlockCacheSize { get; set; }
-    long? ReceiptsDbMaxBytesPerSec { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
@@ -41,20 +39,17 @@ public interface IDbConfig : IConfig
     ulong BlocksDbWriteBufferSize { get; set; }
     uint BlocksDbWriteBufferNumber { get; set; }
     ulong BlocksDbBlockCacheSize { get; set; }
-    long? BlocksDbMaxBytesPerSec { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
     uint HeadersDbWriteBufferNumber { get; set; }
     ulong HeadersDbBlockCacheSize { get; set; }
-    long? HeadersDbMaxBytesPerSec { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
     ulong? HeadersDbMaxBytesForLevelBase { get; set; }
 
     ulong BlockNumbersDbWriteBufferSize { get; set; }
     uint BlockNumbersDbWriteBufferNumber { get; set; }
     ulong BlockNumbersDbBlockCacheSize { get; set; }
-    long? BlockNumbersDbMaxBytesPerSec { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
     ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
@@ -62,19 +57,16 @@ public interface IDbConfig : IConfig
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
     ulong BlockInfosDbBlockCacheSize { get; set; }
-    long? BlockInfosDbMaxBytesPerSec { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
     uint PendingTxsDbWriteBufferNumber { get; set; }
     ulong PendingTxsDbBlockCacheSize { get; set; }
-    long? PendingTxsDbMaxBytesPerSec { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     ulong StateDbWriteBufferSize { get; set; }
     uint StateDbWriteBufferNumber { get; set; }
     ulong StateDbBlockCacheSize { get; set; }
-    long? StateDbMaxBytesPerSec { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
     ulong? StateDbMaxBytesForLevelBase { get; set; }

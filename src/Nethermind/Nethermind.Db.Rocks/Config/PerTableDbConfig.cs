@@ -34,7 +34,6 @@ public class PerTableDbConfig
     public string? AdditionalRocksDbOptions => ReadConfigStringAppend(_dbConfig, nameof(AdditionalRocksDbOptions), GetPrefixes());
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
-    public long? MaxBytesPerSec => ReadConfig<long?>(nameof(MaxBytesPerSec));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
     public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
