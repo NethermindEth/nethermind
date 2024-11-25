@@ -711,20 +711,22 @@ namespace Nethermind.Synchronization.FastSync
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
             DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
+
+            // Need complete state tree as the correct storage root may be different at this point.
             StateTree stateTree = new StateTree(new TrieStore(_nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            // The root is not persisted at this point yet, so we set it as root ref here.
             stateTree.RootRef = new TrieNode(NodeType.Unknown, value);
-            // TODO: Remove this
-            if (_logger.IsWarn) _logger.Warn($"Updated storages count is {_stateSyncPivot.UpdatedStorages.Count}");
+
+            if (_logger.IsDebug) _logger.Debug($"Checking {_stateSyncPivot.UpdatedStorages.Count} updated storages");
 
             foreach (Hash256 updatedAddress in _stateSyncPivot.UpdatedStorages)
             {
                 Account? account = stateTree.Get(updatedAddress);
 
                 if (account?.StorageRoot is not null
-                    && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "uncomplete storage") == AddNodeResult.Added)
+                    && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
-                    // if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
-                    if (_logger.IsWarn) _logger.Warn($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
+                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
                 }
                 else
                 {
@@ -734,12 +736,13 @@ namespace Nethermind.Synchronization.FastSync
 
             if (dependentItem.Counter > 0)
             {
-                if (_logger.IsInfo) _logger.Info($"Queued extra {dependentItem.Counter} items for storage repair..");
+                if (_logger.IsDebug) _logger.Debug($"Queued extra {dependentItem.Counter} items for storage repair..");
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Storage OK");
+                if (_logger.IsDebug) _logger.Debug($"Storage OK");
             }
+
             return dependentItem.Counter == 0;
         }
 

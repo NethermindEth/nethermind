@@ -175,7 +175,6 @@ namespace Nethermind.Synchronization.Test.FastSync
                 blockTree.UpdateMainChain([newBlock], false, true);
 
                 stateSyncPivot.UpdateHeaderForcefully();
-                Console.Error.WriteLine($"Updated with {newBlock.Number} {blockTree.BestSuggestedHeader?.Hash}");
             }
         }
 

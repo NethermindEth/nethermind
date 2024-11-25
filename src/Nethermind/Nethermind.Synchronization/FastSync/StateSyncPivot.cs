@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public BlockHeader GetPivotHeader()
         {
-            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead - MultiSyncModeSelector.FastSyncLag)
+            if (_bestHeader is null || (_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) - _bestHeader.Number >= _syncConfig.StateMaxDistanceFromHead)
             {
                 TrySetNewBestHeader($"distance from HEAD:{Diff}");
             }
@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public void UpdateHeaderForcefully()
         {
-            if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
+            if ((_blockTree.BestSuggestedHeader?.Number + MultiSyncModeSelector.FastSyncLag) > _bestHeader.Number)
             {
                 TrySetNewBestHeader("too many empty responses");
             }
@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.FastSync
         private void TrySetNewBestHeader(string msg)
         {
             BlockHeader bestSuggestedHeader = _blockTree.BestSuggestedHeader;
-            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number - (_syncConfig.StateMinDistanceFromHead - MultiSyncModeSelector.FastSyncLag), 0);
+            long targetBlockNumber = Math.Max(bestSuggestedHeader.Number + MultiSyncModeSelector.FastSyncLag - _syncConfig.StateMinDistanceFromHead, 0);
             BlockHeader bestHeader = _blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
