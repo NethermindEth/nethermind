@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -13,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-
 using NSubstitute;
 using NUnit.Framework;
 
@@ -30,7 +27,7 @@ public class BlockHeaderTests
             Bloom = new Bloom(Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020000").ToUInt256(),
-            ExtraData = Array.Empty<byte>(),
+            ExtraData = [],
             GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
             GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
             MixHash = new Hash256(Bytes.FromHexString("0x00be1f287e0911ea2f070b3650a1a0346535895b6c919d7e992a0c255a83fc8b")),
@@ -56,7 +53,7 @@ public class BlockHeaderTests
             Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")),
             Beneficiary = new Address("0x8888f1f195afa192cfee860698584c030f4c9db1"),
             Difficulty = Bytes.FromHexString("0x020080").ToUInt256(),
-            ExtraData = Array.Empty<byte>(),
+            ExtraData = [],
             GasLimit = (long)Bytes.FromHexString("0x2fefba").ToUnsignedBigInteger(),
             GasUsed = (long)Bytes.FromHexString("0x5208").ToUnsignedBigInteger(),
             MixHash = new Hash256(Bytes.FromHexString("0x615bbf44eb133eab3cb24d5766ae9617d9e45ee00e7a5667db30672b47d22149")),
@@ -112,6 +109,7 @@ public class BlockHeaderTests
     public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed, long? minimalBaseFee = null)
     {
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
         releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
@@ -160,7 +158,7 @@ public class BlockHeaderTests
     private static IEnumerable<(BaseFeeTestCases, string)> Eip1559BaseFeeTestSource()
     {
         string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");
-        BaseFeeTestCases[] deserializedTestCases = JsonSerializer.Deserialize<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
+        BaseFeeTestCases[] deserializedTestCases = JsonSerializer.Deserialize<BaseFeeTestCases[]>(testCases) ?? [];
 
         for (int i = 0; i < deserializedTestCases.Length; ++i)
         {

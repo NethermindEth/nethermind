@@ -30,9 +30,10 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     {
         if (preBlockCaches is not null)
         {
-            if (preBlockCaches.ClearCaches())
+            CacheType result = preBlockCaches.ClearCaches();
+            if (result != default)
             {
-                if (_logger.IsWarn) _logger.Warn("Caches are not empty. Clearing them.");
+                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
             }
 
             var physicalCoreCount = RuntimeInformation.PhysicalCoreCount;
@@ -54,7 +55,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     // Parent state root is null for genesis block
     private static bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public bool ClearCaches() => preBlockCaches?.ClearCaches() ?? false;
+    public CacheType ClearCaches() => preBlockCaches?.ClearCaches() ?? default;
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {

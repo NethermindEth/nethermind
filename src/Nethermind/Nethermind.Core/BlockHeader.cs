@@ -61,7 +61,7 @@ public class BlockHeader
     public long GasLimit { get; set; }
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
-    public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+    public byte[] ExtraData { get; set; } = [];
     public Hash256? MixHash { get; set; }
     public Hash256? Random => MixHash;
     public ulong Nonce { get; set; }

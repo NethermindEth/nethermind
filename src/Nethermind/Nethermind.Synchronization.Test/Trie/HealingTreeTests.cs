@@ -42,7 +42,7 @@ public class HealingTreeTests
     [Test]
     public void recovery_works_state_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
-        HealingStateTree CreateHealingStateTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery)
+        static HealingStateTree CreateHealingStateTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery)
         {
             HealingStateTree stateTree = new(trieStore, LimboLogs.Instance);
             stateTree.InitializeNetwork(recovery);
@@ -62,7 +62,7 @@ public class HealingTreeTests
     [Test]
     public void recovery_works_storage_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
-        HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery) =>
+        static HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery) =>
             new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, _key, recovery);
         byte[] path = { 1, 2 };
         byte[] addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes).Bytes.ToArray();

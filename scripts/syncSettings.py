@@ -115,7 +115,7 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
         pivot = json.loads(requests.post(apiUrl, headers=headers, data=data).text)
 
     pivotHash = pivot['result']['hash']
-    pivotTotalDifficulty = int(pivot['result']['totalDifficulty'],16)
+    pivotTotalDifficulty = int(pivot['result'].get('totalDifficulty', '0x0'), 16)
     print(configuration + 'LatestBlock: ' + str(latestBlock))
     print(configuration + 'PivotNumber: ' + str(baseBlock))
     print(configuration + 'PivotHash: ' + str(pivotHash))

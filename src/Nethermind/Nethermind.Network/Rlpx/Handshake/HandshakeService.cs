@@ -69,7 +69,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
                 try
                 {
-                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), Array.Empty<byte>());
+                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), []);
                     handshake.AuthPacket = new Packet(packetData);
                     return handshake.AuthPacket;
                 }
@@ -160,7 +160,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
                 try
                 {
-                    data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), Array.Empty<byte>());
+                    data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), []);
                 }
                 finally
                 {

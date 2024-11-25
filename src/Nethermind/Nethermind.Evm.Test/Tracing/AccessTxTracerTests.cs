@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.AccessList!.Should().BeEquivalentTo(
                 new[]
                 {
-                    (SenderRecipientAndMiner.Default.Sender, new UInt256[] { }),
+                    (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
                 });
         }
@@ -65,7 +65,7 @@ namespace Nethermind.Evm.Test.Tracing
             {
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressA, TestItem.AddressB },
-                    new Address[] { });
+                    System.Array.Empty<Address>());
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressB },
                     new[] { TestItem.AddressA });

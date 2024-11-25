@@ -31,7 +31,7 @@ public class GethLikeTxTrace : IDisposable
 
     public bool Failed { get; set; }
 
-    public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
+    public byte[] ReturnValue { get; set; } = [];
 
     public List<GethTxTraceEntry> Entries { get; set; } = new();
 
