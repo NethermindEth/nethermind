@@ -55,9 +55,9 @@ public class EraImporter : IEraImporter
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!_fileSystem.Directory.Exists(src))
-            throw new ArgumentException("Import directory does not exist", nameof(src));
+            throw new ArgumentException($"Import directory {src} does not exist", nameof(src));
         if (accumulatorFile != null && !_fileSystem.File.Exists(accumulatorFile))
-            throw new ArgumentException("Accumulator file not exist", nameof(accumulatorFile));
+            throw new ArgumentException($"Accumulator file {accumulatorFile} not exist", nameof(accumulatorFile));
 
         HashSet<ValueHash256>? trustedAccumulators = null;
         if (accumulatorFile != null)
