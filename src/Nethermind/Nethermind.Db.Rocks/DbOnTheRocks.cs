@@ -576,12 +576,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
 
-        // For reducing temporarily used disk space but come at the cost of parallel compaction.
-        if (dbConfig.MaxCompactionBytes.HasValue)
-        {
-            options.SetMaxCompactionBytes(dbConfig.MaxCompactionBytes.Value);
-        }
-
         #endregion
 
         #region Other options

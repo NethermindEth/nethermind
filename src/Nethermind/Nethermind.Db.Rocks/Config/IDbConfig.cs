@@ -30,7 +30,6 @@ public interface IDbConfig : IConfig
     ulong? PrefixExtractorLength { get; set; }
     bool? VerifyChecksum { get; set; }
     double MaxBytesForLevelMultiplier { get; set; }
-    ulong? MaxCompactionBytes { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
     bool UseHashSkipListMemtable { get; set; }
@@ -126,7 +125,6 @@ public interface IDbConfig : IConfig
     bool? StateDbVerifyChecksum { get; set; }
     double StateDbMaxBytesForLevelMultiplier { get; set; }
     ulong? StateDbMaxBytesForLevelBase { get; set; }
-    ulong? StateDbMaxCompactionBytes { get; set; }
     int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }

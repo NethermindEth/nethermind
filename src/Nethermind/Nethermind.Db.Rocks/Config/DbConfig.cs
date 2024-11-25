@@ -31,7 +31,6 @@ public class DbConfig : IDbConfig
     public ulong? PrefixExtractorLength { get; set; } = null;
     public bool? VerifyChecksum { get; set; } = true;
     public double MaxBytesForLevelMultiplier { get; set; } = 10;
-    public ulong? MaxCompactionBytes { get; set; } = (ulong)4.GiB();
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
     public ulong? RowCacheSize { get; set; } = null;
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
@@ -159,7 +158,6 @@ public class DbConfig : IDbConfig
     public bool? StateDbVerifyChecksum { get; set; }
     public double StateDbMaxBytesForLevelMultiplier { get; set; } = 30;
     public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)350.MiB();
-    public ulong? StateDbMaxCompactionBytes { get; set; }
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
     public ulong? StateDbRowCacheSize { get; set; }
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
