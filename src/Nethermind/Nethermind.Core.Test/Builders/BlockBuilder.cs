@@ -10,6 +10,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+
 namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>

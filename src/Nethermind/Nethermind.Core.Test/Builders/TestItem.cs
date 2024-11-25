@@ -4,7 +4,6 @@
 using System;
 using System.Net;
 using DotNetty.Common.Utilities;
-
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
