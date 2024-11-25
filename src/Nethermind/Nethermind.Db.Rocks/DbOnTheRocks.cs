@@ -413,11 +413,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // TODO: Try PlainTable and Cuckoo table.
         BlockBasedTableOptions tableOptions = new();
 
-        // Note, this is before compression. On disk size may be lower. The on disk size is the minimum amount of read
-        // each io will do. On most SSD, the minimum read size is 4096 byte. So don't set it to lower than that, unless
-        // you have an optane drive or some kind of RAM disk. Lower block size also means bigger index size.
-        tableOptions.SetBlockSize((ulong)(dbConfig.BlockSize ?? 16 * 1024));
-
         if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
         {
             if (dbConfig.UseRibbonFilterStartingFromLevel is not null)

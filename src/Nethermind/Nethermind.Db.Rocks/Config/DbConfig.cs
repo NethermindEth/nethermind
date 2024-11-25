@@ -17,7 +17,6 @@ public class DbConfig : IDbConfig
     public ulong BlockCacheSize { get; set; } = 0;
     public int? MaxOpenFiles { get; set; }
     public long? MaxBytesPerSec { get; set; }
-    public int? BlockSize { get; set; } = 16 * 1024;
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
     public string? AdditionalRocksDbOptions { get; set; } =
@@ -27,12 +26,10 @@ public class DbConfig : IDbConfig
         + "memtable_prefix_bloom_size_ratio=0.02;"
         + "advise_random_on_open=true;"
 
-          /*
-
-        tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-
-        _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
-        */
+        // Note, this is before compression. On disk size may be lower. The on disk size is the minimum amount of read
+        // each io will do. On most SSD, the minimum read size is 4096 byte. So don't set it to lower than that, unless
+        // you have an optane drive or some kind of RAM disk. Lower block size also means bigger index size.
+        + "block_based_table_factory.block_size=16000;"
 
         // No significant downside. Just set it.
         + "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;"
@@ -79,7 +76,6 @@ public class DbConfig : IDbConfig
     public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)8.MiB();
     public int? ReceiptsDbMaxOpenFiles { get; set; }
     public long? ReceiptsDbMaxBytesPerSec { get; set; }
-    public int? ReceiptsDbBlockSize { get; set; }
     public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst;optimize_filters_for_hits=false;";
@@ -89,7 +85,6 @@ public class DbConfig : IDbConfig
     public ulong BlocksDbBlockCacheSize { get; set; } = (ulong)32.MiB();
     public int? BlocksDbMaxOpenFiles { get; set; }
     public long? BlocksDbMaxBytesPerSec { get; set; }
-    public int? BlocksBlockSize { get; set; }
     public string? BlocksDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst;optimize_filters_for_hits=false;";
 
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -97,8 +92,7 @@ public class DbConfig : IDbConfig
     public ulong HeadersDbBlockCacheSize { get; set; } = (ulong)32.MiB();
     public int? HeadersDbMaxOpenFiles { get; set; }
     public long? HeadersDbMaxBytesPerSec { get; set; }
-    public int? HeadersDbBlockSize { get; set; } = 32 * 1024;
-    public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
+    public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst;block_based_table_factory.block_size=32000;";
     public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
 
     public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -106,10 +100,9 @@ public class DbConfig : IDbConfig
     public ulong BlockNumbersDbBlockCacheSize { get; set; }
     public int? BlockNumbersDbMaxOpenFiles { get; set; }
     public long? BlockNumbersDbMaxBytesPerSec { get; set; }
-    public int? BlockNumbersDbBlockSize { get; set; } = 4 * 1024;
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public bool? BlockNumbersDbUseHashSkipListMemtable { get; set; } = true;
-    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "";
+    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;";
     public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)4.MiB();
@@ -117,7 +110,6 @@ public class DbConfig : IDbConfig
     public ulong BlockInfosDbBlockCacheSize { get; set; } = (ulong)16.MiB();
     public int? BlockInfosDbMaxOpenFiles { get; set; }
     public long? BlockInfosDbMaxBytesPerSec { get; set; }
-    public int? BlockInfosDbBlockSize { get; set; }
     public string? BlockInfosDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst";
 
     public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
@@ -125,7 +117,6 @@ public class DbConfig : IDbConfig
     public ulong PendingTxsDbBlockCacheSize { get; set; } = 0;
     public int? PendingTxsDbMaxOpenFiles { get; set; }
     public long? PendingTxsDbMaxBytesPerSec { get; set; }
-    public int? PendingTxsDbBlockSize { get; set; }
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong CodeDbWriteBufferSize { get; set; } = (ulong)1.MiB();
@@ -133,10 +124,9 @@ public class DbConfig : IDbConfig
     public ulong CodeDbBlockCacheSize { get; set; } = 0;
     public int? CodeDbMaxOpenFiles { get; set; }
     public long? CodeDbMaxBytesPerSec { get; set; }
-    public int? CodeDbBlockSize { get; set; } = 4 * 1024;
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public bool? CodeDbUseHashSkipListMemtable { get; set; } = true;
-    public string? CodeDbAdditionalRocksDbOptions { get; set; }
+    public string? CodeDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;";
 
     public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint BloomDbWriteBufferNumber { get; set; } = 4;
@@ -150,7 +140,6 @@ public class DbConfig : IDbConfig
     public ulong MetadataDbBlockCacheSize { get; set; } = 0;
     public int? MetadataDbMaxOpenFiles { get; set; }
     public long? MetadataDbMaxBytesPerSec { get; set; }
-    public int? MetadataDbBlockSize { get; set; }
     public string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
@@ -158,7 +147,6 @@ public class DbConfig : IDbConfig
     public ulong StateDbBlockCacheSize { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
-    public int? StateDbBlockSize { get; set; } = 32 * 1024;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool? StateDbVerifyChecksum { get; set; }
@@ -174,7 +162,9 @@ public class DbConfig : IDbConfig
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
-    public string? StateDbAdditionalRocksDbOptions { get; set; } = "compression=kLZ4Compression;";
+
+    public string? StateDbAdditionalRocksDbOptions { get; set; } =
+        "compression=kLZ4Compression;block_based_table_factory.block_size=32000;";
 
     public bool WriteAheadLogSync { get; set; } = false;
 
