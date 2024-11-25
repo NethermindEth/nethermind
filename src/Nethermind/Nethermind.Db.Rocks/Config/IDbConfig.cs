@@ -28,10 +28,8 @@ public interface IDbConfig : IConfig
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
     bool UseHashSkipListMemtable { get; set; }
-    int? BlockRestartInterval { get; set; }
     int? BloomFilterBitsPerKey { get; set; }
     int? UseRibbonFilterStartingFromLevel { get; set; }
-    double? DataBlockIndexUtilRatio { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
 
@@ -99,10 +97,8 @@ public interface IDbConfig : IConfig
     ulong? StateDbRowCacheSize { get; set; }
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     bool StateDbUseHashSkipListMemtable { get; set; }
-    int? StateDbBlockRestartInterval { get; set; }
     int? StateDbBloomFilterBitsPerKey { get; set; }
     int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
-    double? StateDbDataBlockIndexUtilRatio { get; set; }
     bool StateDbEnableFileWarmer { get; set; }
     double StateDbCompressibilityHint { get; set; }
     string? StateDbAdditionalRocksDbOptions { get; set; }

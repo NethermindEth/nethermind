@@ -431,24 +431,6 @@ public class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
-        // Default value is 16.
-        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
-        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
-        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
-        // cache utilization.
-        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval ?? 16);
-
-        // This adds a hashtable-like index per block (the 16kb block)
-        // In, this reduce CPU and therefore latency under high block cache hit scenario.
-        // It seems to increase disk space use by about 1 GB.
-        double? dataBlockIndexUtilRatio = dbConfig.DataBlockIndexUtilRatio;
-        if (dataBlockIndexUtilRatio.HasValue && dataBlockIndexUtilRatio.Value > 0)
-        {
-            _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
-            _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, dataBlockIndexUtilRatio.Value);
-        }
-
         ulong blockCacheSize = dbConfig.BlockCacheSize;
         if (sharedCache is not null && blockCacheSize == 0)
         {

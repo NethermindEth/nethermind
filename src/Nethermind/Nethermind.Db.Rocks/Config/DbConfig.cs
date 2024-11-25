@@ -49,7 +49,6 @@ public class DbConfig : IDbConfig
         + "block_based_table_factory.partition_filters=true;"
         + "block_based_table_factory.metadata_block_size=4096;"
 
-
         ;
 
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
@@ -62,10 +61,8 @@ public class DbConfig : IDbConfig
     public ulong? RowCacheSize { get; set; } = null;
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
     public bool UseHashSkipListMemtable { get; set; } = false;
-    public int? BlockRestartInterval { get; set; } = 16;
     public int? BloomFilterBitsPerKey { get; set; } = 10;
     public int? UseRibbonFilterStartingFromLevel { get; set; }
-    public double? DataBlockIndexUtilRatio { get; set; }
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
 
@@ -156,15 +153,29 @@ public class DbConfig : IDbConfig
     public ulong? StateDbRowCacheSize { get; set; }
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
-    public int? StateDbBlockRestartInterval { get; set; } = 4;
     public int? StateDbBloomFilterBitsPerKey { get; set; } = 15;
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
-    public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
 
     public string? StateDbAdditionalRocksDbOptions { get; set; } =
-        "compression=kLZ4Compression;block_based_table_factory.block_size=32000;";
+          "compression=kLZ4Compression;"
+
+        // Default value is 16.
+        // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
+        // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
+        // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
+        // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
+        // cache utilization.
+        + "block_based_table_factory.block_restart_interval=4;"
+
+        // This adds a hashtable-like index per block (the 32kb block)
+        // In, this reduce CPU and therefore latency under high block cache hit scenario.
+        // It seems to increase disk space use by about 1 GB.
+        + "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;"
+        + "block_based_table_factory.data_block_hash_table_util_ratio=0.5;"
+
+        + "block_based_table_factory.block_size=32000;";
 
     public bool WriteAheadLogSync { get; set; } = false;
 
