@@ -10,7 +10,6 @@ using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -303,11 +302,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = await BuildAndGetPayloadResultV4(rpc, chain, head,
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
-<<<<<<< HEAD
-            await rpc.engine_newPayloadV4(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
-=======
             await rpc.engine_newPayloadV4(executionPayload, [], executionPayload.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
->>>>>>> master
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
         return executionPayload;
     }

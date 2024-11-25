@@ -1,8 +1,29 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
+using NUnit.Framework;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Microsoft.CodeAnalysis;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Test
 {

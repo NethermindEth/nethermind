@@ -1,6 +1,15 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.State;
+
 namespace Nethermind.Merge.Plugin.Test;
 
 public class ExecutionRequestsProcessorMock : IExecutionRequestsProcessor

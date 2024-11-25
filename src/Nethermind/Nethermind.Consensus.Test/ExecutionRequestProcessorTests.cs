@@ -1,9 +1,28 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
+using Nethermind.Abi;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
+using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
@@ -117,6 +136,7 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
+
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
