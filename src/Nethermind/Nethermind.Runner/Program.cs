@@ -256,15 +256,13 @@ void AddConfigurationOptions(CliCommand command)
 
             if (configItemAttribute?.DisabledForCli != true)
             {
-                bool hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
-
                 command.Add(new CliOption<string>(
                     $"--{ConfigExtensions.GetCategoryName(configType)}.{propertyInfo.Name}",
                     $"--{ConfigExtensions.GetCategoryName(configType)}-{propertyInfo.Name}".ToLowerInvariant())
                 {
                     Description = configItemAttribute?.Description,
                     HelpName = "value",
-                    Hidden = hidden
+                    Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true
                 });
             }
 
@@ -312,9 +310,9 @@ CliConfiguration ConfigureCli()
 
     if (versionOption is not null)
     {
-        versionOption.Action = new AnonymousCliAction(r =>
+        versionOption.Action = new AnonymousCliAction(parseResult =>
         {
-            Console.WriteLine($"""
+            parseResult.Configuration.Output.WriteLine($"""
                 Version:    {ProductInfo.Version}
                 Commit:     {ProductInfo.Commit}
                 Build date: {ProductInfo.BuildTimestamp:u}
@@ -435,10 +433,6 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
 
             logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
         }
-    }
-    else
-    {
-        configFile = configFile.GetApplicationResourcePath();
     }
 
     // Resolve the full path for logging purposes
