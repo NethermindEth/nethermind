@@ -10,9 +10,14 @@ namespace Nethermind.Specs.Test
     public class OverridableSpecProvider : ISpecProvider
     {
         private readonly ISpecProvider _specProvider;
-        private readonly Func<IReleaseSpec, IReleaseSpec> _overrideAction;
+        private readonly Func<IReleaseSpec, ForkActivation, IReleaseSpec> _overrideAction;
 
         public OverridableSpecProvider(ISpecProvider specProvider, Func<IReleaseSpec, IReleaseSpec> overrideAction)
+            : this(specProvider, (spec, _) => overrideAction(spec))
+        {
+        }
+
+        public OverridableSpecProvider(ISpecProvider specProvider, Func<IReleaseSpec, ForkActivation, IReleaseSpec> overrideAction)
         {
             _specProvider = specProvider;
             _overrideAction = overrideAction;
@@ -30,9 +35,9 @@ namespace Nethermind.Specs.Test
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
-        public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);
+        public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec, new ForkActivation(0));
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _overrideAction(_specProvider.GetSpec(forkActivation));
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _overrideAction(_specProvider.GetSpec(forkActivation), forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;

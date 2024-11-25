@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -1109,16 +1108,9 @@ namespace Nethermind.Trie.Pruning
             _nodeStorage.Set(address, path, keccak, rlp);
         }
 
-        private class TrieKeyValueStore : IReadOnlyKeyValueStore
+        private class TrieKeyValueStore(TrieStore trieStore) : IReadOnlyKeyValueStore
         {
-            private readonly TrieStore _trieStore;
-
-            public TrieKeyValueStore(TrieStore trieStore)
-            {
-                _trieStore = trieStore;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => trieStore.GetByHash(key, flags);
         }
 
         public bool HasRoot(Hash256 stateRoot)

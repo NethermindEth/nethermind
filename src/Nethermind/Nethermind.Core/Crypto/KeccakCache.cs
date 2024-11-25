@@ -58,7 +58,7 @@ public static unsafe class KeccakCache
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
         // Special cases jump forward as unpredicted
-        if (input.Length == 0 || input.Length > Entry.MaxPayloadLength)
+        if (input.Length is 0 or > Entry.MaxPayloadLength)
         {
             goto Uncommon;
         }
@@ -159,14 +159,7 @@ public static unsafe class KeccakCache
         return;
 
     Uncommon:
-        if (input.Length == 0)
-        {
-            keccak256 = ValueKeccak.OfAnEmptyString;
-        }
-        else
-        {
-            keccak256 = ValueKeccak.Compute(input);
-        }
+        keccak256 = input.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
     }
 
     /// <summary>

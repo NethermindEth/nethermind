@@ -73,14 +73,15 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         {
             newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
-                (_) => 1,
+                _ => 1,
                 (_, oldValue) => oldValue + 1);
             stateRoots.Add(parent.StateRoot);
             parent = _blockTree.FindParentHeader(parent, BlockTreeLookupOptions.All);
         }
 
         _availableStateRoots = newStateRootSet;
-        _stateRootQueue = new Queue<Hash256>(stateRoots.Reverse());
+        stateRoots.Reverse();
+        _stateRootQueue = new Queue<Hash256>(stateRoots);
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 

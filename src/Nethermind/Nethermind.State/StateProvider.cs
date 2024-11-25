@@ -152,7 +152,7 @@ namespace Nethermind.State
             if (account.CodeHash.ValueHash256 != codeHash)
             {
                 if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
-                Account changedAccount = account.WithChangedCodeHash(codeHash);
+                Account changedAccount = account.WithChangedCodeHash((Hash256)codeHash);
                 PushUpdate(address, changedAccount);
             }
             else if (spec.IsEip158Enabled && !isGenesis)

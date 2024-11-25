@@ -68,7 +68,7 @@ public class BlockchainProcessorTests
                 _allowedToFail.Add(hash);
             }
 
-            public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+            public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
             {
                 if (blockTracer != NullBlockTracer.Instance)
                 {

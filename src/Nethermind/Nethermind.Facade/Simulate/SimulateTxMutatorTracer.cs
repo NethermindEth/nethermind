@@ -51,7 +51,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
         {
             var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256),
                 value);
-            _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash(), to.ToHash()]));
+            _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, (Hash256)from.ToHash(), (Hash256)to.ToHash()]));
         }
     }
 

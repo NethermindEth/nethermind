@@ -72,15 +72,15 @@ public class CensorshipDetectorTests
         Transaction tx5 = SubmitTxToPool(5, TestItem.PrivateKeyE, TestItem.AddressA);
 
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
-        ValueHash256 blockHash1 = block1.Hash!;
+        Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx3]).WithParentHash(blockHash1).TestObject;
-        ValueHash256 blockHash2 = block2.Hash!;
+        Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
 
         Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx2]).WithParentHash(blockHash2).TestObject;
-        ValueHash256 blockHash3 = block3.Hash!;
+        Hash256 blockHash3 = block3.Hash!;
         BlockProcessingWorkflow(block3);
 
         Block block4 = Build.A.Block.WithNumber(4).WithBaseFeePerGas(0).WithTransactions([tx1]).WithParentHash(blockHash3).TestObject;
@@ -104,17 +104,17 @@ public class CensorshipDetectorTests
 
         // high-paying tx censorship: true
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx4]).WithParentHash(TestItem.KeccakA).TestObject;
-        ValueHash256 blockHash1 = block1.Hash!;
+        Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
         // address censorship: false
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx3, tx5]).WithParentHash(blockHash1).TestObject;
-        ValueHash256 blockHash2 = block2.Hash!;
+        Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
 
         // high-paying tx censorship: false
         Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx2]).WithParentHash(blockHash2).TestObject;
-        ValueHash256 blockHash3 = block3.Hash!;
+        Hash256 blockHash3 = block3.Hash!;
         BlockProcessingWorkflow(block3);
 
         // high-paying tx censorship: false
@@ -154,21 +154,21 @@ public class CensorshipDetectorTests
         Transaction tx6 = SubmitTxToPool(6, TestItem.PrivateKeyF, TestItem.AddressF);
 
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx1, tx6]).WithParentHash(TestItem.KeccakA).TestObject;
-        ValueHash256 blockHash1 = block1.Hash!;
+        Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
         Transaction tx7 = SubmitTxToPool(7, TestItem.PrivateKeyA, TestItem.AddressA);
         Transaction tx8 = SubmitTxToPool(8, TestItem.PrivateKeyF, TestItem.AddressF);
 
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx2, tx8]).WithParentHash(blockHash1).TestObject;
-        ValueHash256 blockHash2 = block2.Hash!;
+        Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
 
         Transaction tx9 = SubmitTxToPool(9, TestItem.PrivateKeyB, TestItem.AddressB);
         Transaction tx10 = SubmitTxToPool(10, TestItem.PrivateKeyF, TestItem.AddressF);
 
         Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx3, tx10]).WithParentHash(blockHash2).TestObject;
-        ValueHash256 blockHash3 = block3.Hash!;
+        Hash256 blockHash3 = block3.Hash!;
         BlockProcessingWorkflow(block3);
 
         Transaction tx11 = SubmitTxToPool(11, TestItem.PrivateKeyC, TestItem.AddressC);
@@ -209,7 +209,7 @@ public class CensorshipDetectorTests
 
         // address censorship: false
         Block block1 = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithTransactions([tx3, tx4, tx5]).WithParentHash(TestItem.KeccakA).TestObject;
-        ValueHash256 blockHash1 = block1.Hash!;
+        Hash256 blockHash1 = block1.Hash!;
         BlockProcessingWorkflow(block1);
 
         Transaction tx6 = SubmitTxToPool(6, TestItem.PrivateKeyC, TestItem.AddressC);
@@ -218,7 +218,7 @@ public class CensorshipDetectorTests
 
         // address censorship: false
         Block block2 = Build.A.Block.WithNumber(2).WithBaseFeePerGas(0).WithTransactions([tx7, tx8]).WithParentHash(blockHash1).TestObject;
-        ValueHash256 blockHash2 = block2.Hash!;
+        Hash256 blockHash2 = block2.Hash!;
         BlockProcessingWorkflow(block2);
 
         Transaction tx9 = SubmitTxToPool(9, TestItem.PrivateKeyD, TestItem.AddressD);
@@ -226,7 +226,7 @@ public class CensorshipDetectorTests
 
         // address censorship: true
         Block block3 = Build.A.Block.WithNumber(3).WithBaseFeePerGas(0).WithTransactions([tx1, tx10]).WithParentHash(blockHash2).TestObject;
-        ValueHash256 blockHash3 = block3.Hash!;
+        Hash256 blockHash3 = block3.Hash!;
         BlockProcessingWorkflow(block3);
 
         // address censorship: false

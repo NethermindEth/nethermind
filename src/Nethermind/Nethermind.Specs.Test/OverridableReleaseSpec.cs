@@ -31,7 +31,12 @@ namespace Nethermind.Specs.Test
 
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public UInt256 BlockReward => _spec.BlockReward;
+        private UInt256? _blockReward;
+        public UInt256 BlockReward
+        {
+            get => _blockReward ?? _spec.BlockReward;
+            set => _blockReward = value;
+        }
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
@@ -132,6 +137,7 @@ namespace Nethermind.Specs.Test
         }
 
         private ulong? _overridenEip4844TransitionTimeStamp;
+
         public ulong Eip4844TransitionTimestamp
         {
             get

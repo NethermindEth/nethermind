@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Processing
         /// <returns>List of processed blocks.</returns>
         Block[] Process(
             Hash256 newBranchStateRoot,
-            List<Block> suggestedBlocks,
+            IReadOnlyList<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
 

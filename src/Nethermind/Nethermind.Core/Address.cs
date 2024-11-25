@@ -235,7 +235,7 @@ namespace Nethermind.Core
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
 
-        public Hash256 ToAccountPath => KeccakCache.Compute(Bytes);
+        public Hash256 ToAccountPath => (Hash256)KeccakCache.Compute(Bytes);
 
         [SkipLocalsInit]
         public ValueHash256 ToHash()

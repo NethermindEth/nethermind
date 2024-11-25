@@ -201,7 +201,7 @@ public static class ShutterCrypto
         ReadOnlySpan<byte> signatureBytes,
         Address keyperAddress)
     {
-        ValueHash256 hash = GenerateHash(instanceId, eon, slot, txPointer, identityPreimages);
+        Hash256 hash = GenerateHash(instanceId, eon, slot, txPointer, identityPreimages);
 
         // check recovery_id
         if (signatureBytes[64] > 3)
@@ -321,7 +321,7 @@ public static class ShutterCrypto
         Hash3(preimage, out r);
     }
 
-    internal static ValueHash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
+    internal static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, ulong txPointer, IEnumerable<ReadOnlyMemory<byte>> identityPreimages)
     {
         SlotDecryptionIdentites container = new()
         {

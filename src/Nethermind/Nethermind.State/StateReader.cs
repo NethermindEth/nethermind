@@ -29,7 +29,7 @@ namespace Nethermind.State
             if (!TryGetAccount(stateRoot, address, out AccountStruct account)) return ReadOnlySpan<byte>.Empty;
 
             ValueHash256 storageRoot = account.StorageRoot;
-            if (storageRoot == Keccak.EmptyTreeHash)
+            if (storageRoot == Keccak.EmptyTreeHash.ValueHash256)
             {
                 return Bytes.ZeroByte.Span;
             }
@@ -56,9 +56,9 @@ namespace Nethermind.State
         public bool HasStateForRoot(Hash256 stateRoot) => trieStore.HasRoot(stateRoot);
 
         public byte[]? GetCode(Hash256 stateRoot, Address address) =>
-            TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();
+            TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : [];
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : _codeDb[codeHash.Bytes];
 
         private bool TryGetState(Hash256 stateRoot, Address address, out AccountStruct account)
         {
