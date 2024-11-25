@@ -598,19 +598,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         options.SetCreateIfMissing();
 
-        // From looking into the source code, this does not have an effect on Windows.
-        options.SetAdviseRandomOnOpen(dbConfig.AdviseRandomOnOpen);
-
         if (dbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
-
-        // Bypass OS cache. This may reduce response time, but if cache size is not increased, it has less effective
-        // cache. Also, OS cache is compressed cache, so even if cache size is increased, the effective cache size
-        // is still lower as block cache is uncompressed.
-        options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
-        options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
 
         if (dbConfig.MaxBytesPerSec.HasValue)
         {

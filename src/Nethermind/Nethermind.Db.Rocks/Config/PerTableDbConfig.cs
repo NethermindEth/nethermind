@@ -36,8 +36,6 @@ public class PerTableDbConfig
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public long? MaxBytesPerSec => ReadConfig<long?>(nameof(MaxBytesPerSec));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
-    public bool? UseDirectReads => ReadConfig<bool?>(nameof(UseDirectReads));
-    public bool? UseDirectIoForFlushAndCompactions => ReadConfig<bool?>(nameof(UseDirectIoForFlushAndCompactions));
     public int? BlockSize => ReadConfig<int?>(nameof(BlockSize));
     public ulong? ReadAheadSize => ReadConfig<ulong?>(nameof(ReadAheadSize));
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
@@ -53,7 +51,6 @@ public class PerTableDbConfig
     public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
     public bool UseHashSkipListMemtable => ReadConfig<bool>(nameof(UseHashSkipListMemtable));
     public int? BlockRestartInterval => ReadConfig<int?>(nameof(BlockRestartInterval));
-    public bool AdviseRandomOnOpen => ReadConfig<bool>(nameof(AdviseRandomOnOpen));
     public int? BloomFilterBitsPerKey => ReadConfig<int?>(nameof(BloomFilterBitsPerKey));
     public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
     public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));

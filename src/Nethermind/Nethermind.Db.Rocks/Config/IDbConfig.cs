@@ -19,8 +19,6 @@ public interface IDbConfig : IConfig
     long? MaxBytesPerSec { get; set; }
     int? BlockSize { get; set; }
     ulong? ReadAheadSize { get; set; }
-    bool? UseDirectReads { get; set; }
-    bool? UseDirectIoForFlushAndCompactions { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
     ulong? MaxBytesForLevelBase { get; set; }
     ulong TargetFileSizeBase { get; set; }
@@ -34,7 +32,6 @@ public interface IDbConfig : IConfig
     ulong? RowCacheSize { get; set; }
     bool UseHashSkipListMemtable { get; set; }
     int? BlockRestartInterval { get; set; }
-    bool AdviseRandomOnOpen { get; set; }
     int? BloomFilterBitsPerKey { get; set; }
     int? UseRibbonFilterStartingFromLevel { get; set; }
     double? DataBlockIndexUtilRatio { get; set; }
@@ -49,8 +46,6 @@ public interface IDbConfig : IConfig
     int? ReceiptsDbMaxOpenFiles { get; set; }
     long? ReceiptsDbMaxBytesPerSec { get; set; }
     int? ReceiptsDbBlockSize { get; set; }
-    bool? ReceiptsDbUseDirectReads { get; set; }
-    bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
@@ -61,8 +56,6 @@ public interface IDbConfig : IConfig
     int? BlocksDbMaxOpenFiles { get; set; }
     long? BlocksDbMaxBytesPerSec { get; set; }
     int? BlocksBlockSize { get; set; }
-    bool? BlocksDbUseDirectReads { get; set; }
-    bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
@@ -71,8 +64,6 @@ public interface IDbConfig : IConfig
     int? HeadersDbMaxOpenFiles { get; set; }
     long? HeadersDbMaxBytesPerSec { get; set; }
     int? HeadersDbBlockSize { get; set; }
-    bool? HeadersDbUseDirectReads { get; set; }
-    bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
     ulong? HeadersDbMaxBytesForLevelBase { get; set; }
 
@@ -85,8 +76,6 @@ public interface IDbConfig : IConfig
     bool BlockNumbersDbUseHashIndex { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
     bool? BlockNumbersDbUseHashSkipListMemtable { get; set; }
-    bool? BlockNumbersDbUseDirectReads { get; set; }
-    bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
     ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
 
@@ -96,8 +85,6 @@ public interface IDbConfig : IConfig
     int? BlockInfosDbMaxOpenFiles { get; set; }
     long? BlockInfosDbMaxBytesPerSec { get; set; }
     int? BlockInfosDbBlockSize { get; set; }
-    bool? BlockInfosDbUseDirectReads { get; set; }
-    bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
@@ -106,8 +93,6 @@ public interface IDbConfig : IConfig
     int? PendingTxsDbMaxOpenFiles { get; set; }
     long? PendingTxsDbMaxBytesPerSec { get; set; }
     int? PendingTxsDbBlockSize { get; set; }
-    bool? PendingTxsDbUseDirectReads { get; set; }
-    bool? PendingTxsDbUseDirectIoForFlushAndCompactions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     ulong StateDbWriteBufferSize { get; set; }
@@ -116,8 +101,6 @@ public interface IDbConfig : IConfig
     int? StateDbMaxOpenFiles { get; set; }
     long? StateDbMaxBytesPerSec { get; set; }
     int? StateDbBlockSize { get; set; }
-    bool? StateDbUseDirectReads { get; set; }
-    bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
     bool StateDbUseTwoLevelIndex { get; set; }
     bool StateDbUseHashIndex { get; set; }
@@ -130,7 +113,6 @@ public interface IDbConfig : IConfig
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     bool StateDbUseHashSkipListMemtable { get; set; }
     int? StateDbBlockRestartInterval { get; set; }
-    bool StateDbAdviseRandomOnOpen { get; set; }
     int? StateDbBloomFilterBitsPerKey { get; set; }
     int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
     double? StateDbDataBlockIndexUtilRatio { get; set; }
