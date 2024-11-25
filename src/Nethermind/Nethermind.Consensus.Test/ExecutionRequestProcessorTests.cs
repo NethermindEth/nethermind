@@ -136,7 +136,6 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(
