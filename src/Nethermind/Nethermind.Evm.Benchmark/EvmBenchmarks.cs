@@ -37,10 +37,10 @@ namespace Nethermind.Evm.Benchmark
         {
             VMConfig vmConfig = isIlvmOn ? new VMConfig
             {
-                BakeInTracingInJitMode = false,
-                JittingThreshold = int.MaxValue,
-                AggressiveJitMode = true,
-                IsJitEnabled = true,
+                BakeInTracingInPartialAotMode = false,
+                PartialAotThreshold = int.MaxValue,
+                AggressivePartialAotMode = true,
+                IsPartialAotEnabled = true,
                 AnalysisQueueMaxSize = 1,
                 PatternMatchingThreshold = int.MaxValue,
                 IsPatternMatchingEnabled = false,
