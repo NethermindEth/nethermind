@@ -2092,7 +2092,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (delegation is not null)
         {
             //If the account has been delegated only the first two bytes of the delegation header counts as size 
-            result = 2;
+            result = Eip7702Constants.FirstTwoBytesOfHeader.Count;
         }
         stack.PushUInt256(in result);
     }
