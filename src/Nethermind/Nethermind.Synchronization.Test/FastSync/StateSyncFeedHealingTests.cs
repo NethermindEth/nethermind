@@ -138,7 +138,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
-        await using IContainer container = PrepareDownloader(dbContext);
+        await using IContainer container = PrepareDownloader(dbContext, syncDispatcherAllocateTimeoutMs: 1000);
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx, dbContext, 9, timeout: 20000);
 

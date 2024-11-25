@@ -97,10 +97,7 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
 
-            if (TestObjectInternal is null)
-            {
-                TestObjectInternal = BlockTree;
-            }
+            TestObjectInternal ??= BlockTree;
         }
 
         public IBloomStorage BloomStorage { get; set; } = Substitute.For<IBloomStorage>();
@@ -282,7 +279,7 @@ namespace Nethermind.Core.Test.Builders
                 List<TxReceipt> receipts = new();
                 foreach (Transaction transaction in currentBlock.Transactions)
                 {
-                    LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? Array.Empty<LogEntry>();
+                    LogEntry[] logEntries = _logCreationFunction?.Invoke(currentBlock, transaction).ToArray() ?? [];
                     TxReceipt receipt = new()
                     {
                         Logs = logEntries,

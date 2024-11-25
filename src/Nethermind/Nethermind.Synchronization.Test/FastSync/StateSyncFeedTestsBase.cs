@@ -16,7 +16,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -24,17 +23,16 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
 using Nethermind.State.Snap;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -83,7 +81,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             return remoteStorageTree;
         }
 
-        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null)
+        protected IContainer PrepareDownloader(DbContext dbContext, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
         {
             SyncPeerMock[] syncPeers = new SyncPeerMock[_defaultPeerCount];
             for (int i = 0; i < _defaultPeerCount; i++)
@@ -97,7 +95,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 syncPeers[i] = mock;
             }
 
-            ContainerBuilder builder = BuildTestContainerBuilder(dbContext)
+            ContainerBuilder builder = BuildTestContainerBuilder(dbContext, syncDispatcherAllocateTimeoutMs)
                 .AddSingleton<SyncPeerMock[]>(syncPeers);
 
             builder.RegisterBuildCallback((ctx) =>
@@ -112,13 +110,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             return builder.Build();
         }
 
-        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext)
+        protected ContainerBuilder BuildTestContainerBuilder(DbContext dbContext, int syncDispatcherAllocateTimeoutMs = 10)
         {
             ContainerBuilder containerBuilder = new ContainerBuilder()
                 .AddModule(new TestSynchronizerModule(new SyncConfig()
                 {
                     SyncDispatcherEmptyRequestDelayMs = 1,
-                    SyncDispatcherAllocateTimeoutMs = 10, // there is a test for requested nodes which get affected if allocate timeout
+                    SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs, // there is a test for requested nodes which get affected if allocate timeout
                     FastSync = true
                 }))
                 .AddKeyedSingleton<IDb>(DbNames.Code, dbContext.LocalCodeDb)

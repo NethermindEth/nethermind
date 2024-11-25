@@ -21,7 +21,7 @@ public class PointEvaluationPrecompileTests
     private static readonly byte[] _predefinedSuccessAnswer =
         Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
 
-    private static readonly byte[] _predefinedFailureAnswer = Array.Empty<byte>();
+    private static readonly byte[] _predefinedFailureAnswer = [];
 
     [OneTimeSetUp]
     public Task OneTimeSetUp() => KzgPolynomialCommitments.InitializeAsync();
@@ -38,7 +38,7 @@ public class PointEvaluationPrecompileTests
     {
         get
         {
-            TestCaseData AddExpectedResult(TestCaseData t, bool expectedResult) =>
+            static TestCaseData AddExpectedResult(TestCaseData t, bool expectedResult) =>
                 new(t.Arguments) { TestName = t.TestName + " - output", ExpectedResult = expectedResult };
 
             foreach (TestCaseData test in ValidTestCases)

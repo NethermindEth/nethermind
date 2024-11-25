@@ -27,7 +27,6 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -52,7 +51,7 @@ namespace Nethermind.Synchronization.Test
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            SyncConfig quickConfig = new() { FastSync = false };
+            _ = new SyncConfig() { FastSync = false };
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
@@ -88,32 +87,18 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton(new ChainSpec())
                 .AddSingleton(stateReader)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
 
             IContainer container = builder.Build();
 
             _container = container;
-
-            _syncServer = new SyncServer(
-                trieStore.TrieNodeRlpStore,
-                _codeDb,
-                _blockTree,
-                _receiptStorage,
-                Always.Valid,
-                Always.Valid,
-                SyncPeerPool,
-                container.Resolve<ISyncModeSelector>(),
-                quickConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
         }
 
         [TearDown]
         public async Task TearDown()
         {
             await _container.DisposeAsync();
-            _syncServer.Dispose();
         }
 
         private IDb _stateDb = null!;
@@ -123,7 +108,7 @@ namespace Nethermind.Synchronization.Test
         private IReceiptStorage _receiptStorage = null!;
         private Block _genesisBlock = null!;
         private ISyncPeerPool SyncPeerPool => _container.Resolve<ISyncPeerPool>();
-        private ISyncServer _syncServer = null!;
+        private ISyncServer SyncServer => _container.Resolve<ISyncServer>();
         private ISynchronizer Synchronizer => _container.Resolve<ISynchronizer>()!;
         private IContainer _container;
 
@@ -194,7 +179,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(peer);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SyncBatchSize.Max * 2);
-            _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock()!, peer);
+            SyncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock()!, peer);
 
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
@@ -224,7 +209,7 @@ namespace Nethermind.Synchronization.Test
                 .WithParent(_remoteBlockTree.Head!)
                 .WithTotalDifficulty((_remoteBlockTree.Head!.TotalDifficulty ?? 0) + 1)
                 .TestObject;
-            _syncServer.AddNewBlock(block, peer);
+            SyncServer.AddNewBlock(block, peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -266,7 +251,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.Reset();
 
-            _syncServer.AddNewBlock(splitBlockChild, miner1);
+            SyncServer.AddNewBlock(splitBlockChild, miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -299,7 +284,7 @@ namespace Nethermind.Synchronization.Test
 
             resetEvent.Reset();
 
-            _syncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock()!, miner1);
+            SyncServer.AddNewBlock(miner1Tree.RetrieveHeadBlock()!, miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -386,7 +371,7 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            IOwnedReadOnlyList<byte[]?> data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
+            IOwnedReadOnlyList<byte[]?> data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Count, Is.EqualTo(2), "data.Length");
@@ -401,9 +386,9 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            _syncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
-            _syncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            _syncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
+            SyncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
+            SyncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
+            SyncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
         }
     }
 }

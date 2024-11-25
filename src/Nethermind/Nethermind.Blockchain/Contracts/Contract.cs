@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain.Contracts
         {
             Hash256[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
             topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
-            return new LogEntry(ContractAddress, data ?? Array.Empty<byte>(), topics);
+            return new LogEntry(ContractAddress, data ?? [], topics);
         }
 
         protected LogEntry GetSearchLogEntry(string eventName, params Hash256[] topics) => GetSearchLogEntry(eventName, null, topics);

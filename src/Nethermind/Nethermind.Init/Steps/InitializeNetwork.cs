@@ -16,7 +16,6 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -34,7 +33,6 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -135,25 +133,9 @@ public class InitializeNetwork : IStep
             healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(_api.SyncPeerPool!, _api.LogManager));
         }
 
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
-            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
-        ISyncServer syncServer = _api.SyncServer = new SyncServer(
-            _api.TrieStore!.TrieNodeRlpStore,
-            _api.DbProvider.CodeDb,
-            _api.BlockTree,
-            _api.ReceiptStorage!,
-            _api.BlockValidator!,
-            _api.SealValidator!,
-            _api.SyncPeerPool!,
-            _api.SyncModeSelector,
-            _api.Config<ISyncConfig>(),
-            _api.GossipPolicy,
-            _api.SpecProvider!,
-            _api.LogManager);
-
-        _api.DisposeStack.Push(syncServer);
+        _ = _api.SyncServer; // Need to be resolved at least once before the peer pool is started.
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)

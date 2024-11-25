@@ -289,7 +289,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             TxReceipt?[] receipts = _receiptStorage.Get(block);
             TxReceipt[] notNullReceipts = receipts.Length == 0
-                ? Array.Empty<TxReceipt>()
+                ? []
                 : receipts.Where(r => r is not null).Cast<TxReceipt>().ToArray();
 
             if (notNullReceipts.Length == 0) return;
@@ -370,10 +370,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
 
             byte[]? receiptData = _receiptsBlockDb.Get(blockHash.Bytes);
-            if (receiptData is null)
-            {
-                receiptData = _receiptsBlockDb.Get(Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.Bytes));
-            }
+            receiptData ??= _receiptsBlockDb.Get(Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.Bytes));
 
             if (receiptData is null)
             {
@@ -395,7 +392,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             public Block Create()
             {
-                return new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>()));
+                return new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []));
             }
 
             public bool Return(Block obj)

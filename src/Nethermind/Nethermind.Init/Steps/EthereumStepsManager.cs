@@ -154,7 +154,7 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug)
                     _logger.Debug(
-                        $"Step {step.GetType().Name.PadRight(24)} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+                        $"Step {step.GetType().Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
                 stepInfo.Stage = StepInitializationStage.Complete;
             }
@@ -164,7 +164,7 @@ namespace Nethermind.Init.Steps
                 {
                     if (_logger.IsError)
                         _logger.Error(
-                            $"Step {step.GetType().Name.PadRight(24)} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
+                            $"Step {step.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms",
                             exception);
 
                     stepInfo.Stage = StepInitializationStage.Failed;
@@ -174,7 +174,7 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsWarn)
                 {
                     _logger.Warn(
-                        $"Step {step.GetType().Name.PadRight(24)} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
+                        $"Step {step.GetType().Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
                 }
                 stepInfo.Stage = StepInitializationStage.Complete;
             }
@@ -182,7 +182,7 @@ namespace Nethermind.Init.Steps
             {
                 _autoResetEvent.Set();
 
-                if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
+                if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name,-24} complete");
             }
         }
 

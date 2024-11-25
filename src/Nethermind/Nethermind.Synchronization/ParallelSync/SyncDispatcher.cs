@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncDispatcher<T>
     {
-        private readonly object _feedStateManipulation = new();
+        private readonly Lock _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }

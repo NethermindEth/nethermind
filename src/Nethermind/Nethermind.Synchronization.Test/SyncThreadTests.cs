@@ -32,7 +32,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -221,14 +220,11 @@ namespace Nethermind.Synchronization.Test
             public IContainer Container { get; set; } = null!;
             public IEthereumEcdsa Ecdsa { get; set; } = null!;
             public ITxPool TxPool { get; set; } = null!;
-            public ISyncServer SyncServer { get; set; } = null!;
+            public ISyncServer SyncServer => Container.Resolve<ISyncServer>();
             public ISyncPeerPool? PeerPool => Container.Resolve<ISyncPeerPool>();
             public IBlockchainProcessor? BlockchainProcessor { get; set; }
-            public ISynchronizer? Synchronizer { get; set; }
             public IBlockTree Tree { get; set; } = null!;
             public IWorldState StateProvider { get; set; } = null!;
-
-            public DevBlockProducer? BlockProducer { get; set; }
             public IBlockProducerRunner? BlockProducerRunner { get; set; }
             public ConsoleAsyncLogger? Logger { get; set; }
 
@@ -245,7 +241,6 @@ namespace Nethermind.Synchronization.Test
         {
             NoErrorLimboLogs logManager = NoErrorLimboLogs.Instance;
             ConsoleAsyncLogger logger = new(LogLevel.Debug, "PEER " + index + " ");
-            //            var logManager = new OneLoggerLogManager(logger);
             SingleReleaseSpecProvider specProvider =
                 new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.NetworkId, MainnetSpecProvider.Instance.ChainId);
 
@@ -375,26 +370,11 @@ namespace Nethermind.Synchronization.Test
                 .AddSingleton<IStateReader>(stateReader)
                 .AddSingleton<IReceiptStorage>(receiptStorage)
                 .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
+                .AddSingleton<IGossipPolicy>(Policy.FullGossip)
                 .AddSingleton<ILogManager>(logManager);
             IContainer container = builder.Build();
             ISyncPeerPool syncPeerPool = container.Resolve<ISyncPeerPool>();
-
             Synchronizer synchronizer = container.Resolve<Synchronizer>();
-
-            ISyncModeSelector selector = synchronizer.SyncModeSelector;
-            SyncServer syncServer = new(
-                trieStore.TrieNodeRlpStore,
-                codeDb,
-                tree,
-                receiptStorage,
-                Always.Valid,
-                Always.Valid,
-                syncPeerPool,
-                selector,
-                syncConfig,
-                Policy.FullGossip,
-                MainnetSpecProvider.Instance,
-                logManager);
 
             ManualResetEventSlim waitEvent = new();
             tree.NewHeadBlock += (_, _) => waitEvent.Set();
@@ -420,10 +400,7 @@ namespace Nethermind.Synchronization.Test
             context.Ecdsa = ecdsa;
             context.BlockchainProcessor = processor;
             context.StateProvider = stateProvider;
-            context.Synchronizer = synchronizer;
-            context.SyncServer = syncServer;
             context.Tree = tree;
-            context.BlockProducer = producer;
             context.BlockProducerRunner = runner;
             context.TxPool = txPool;
             context.Logger = logger;
