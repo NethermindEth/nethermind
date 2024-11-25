@@ -199,15 +199,15 @@ public class StateProviderTests
         provider.Restore(new Snapshot(2, Snapshot.Storage.Empty));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
+        Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(1, Snapshot.Storage.Empty));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
-        Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
+        Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(0, Snapshot.Storage.Empty));
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(UInt256.Zero));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
-        Assert.That(provider.GetCode(_address1), Is.EqualTo(new byte[0]));
+        Assert.That(provider.GetCode(_address1), Is.EqualTo(Array.Empty<byte>()));
         provider.Restore(new Snapshot(-1, Snapshot.Storage.Empty));
         Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
     }

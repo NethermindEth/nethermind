@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -17,7 +18,7 @@ namespace Nethermind.Synchronization.Peers
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private static readonly object _allocationLock = new();
+        private static readonly Lock _allocationLock = new();
 
         private readonly IPeerAllocationStrategy _peerAllocationStrategy;
         public AllocationContexts Contexts { get; }

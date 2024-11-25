@@ -7,8 +7,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -64,6 +66,9 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.WorldStateManager);
         StepDependencyException.ThrowIfNull(_api.PeerManager);
 
+        // Used only by rpc
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _api.Config<ISyncConfig>(),
+            _api.SyncModeSelector!, _api.SyncProgressResolver!, _api.LogManager);
         _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, _jsonRpcConfig, _api.LogManager);
 
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
@@ -81,11 +86,9 @@ public class RegisterRpcModules : IStep
 
         StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         RpcLimits.Init(_jsonRpcConfig.RequestQueueLimit);
         RegisterEthRpcModule(rpcModuleProvider);
-
 
         StepDependencyException.ThrowIfNull(_api.DbProvider);
         StepDependencyException.ThrowIfNull(_api.BlockPreprocessor);
@@ -132,6 +135,7 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
+        (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _api.ForInit;
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -139,7 +143,8 @@ public class RegisterRpcModules : IStep
             _api.StaticNodesManager,
             _api.Enode,
             initConfig.BaseDbPath,
-            pruningTrigger);
+            pruningTrigger,
+            getFromApi.ChainSpec.Parameters);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.TxPoolInfoProvider);
@@ -213,7 +218,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.Wallet);
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
-        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);

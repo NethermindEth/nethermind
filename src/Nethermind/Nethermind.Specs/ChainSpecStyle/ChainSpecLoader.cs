@@ -3,15 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -276,7 +274,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
-        byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
+        byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
         UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
@@ -316,7 +314,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
         if (requestsEnabled)
-            genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
+            genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -345,8 +343,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 genesisHeader,
                 Array.Empty<Transaction>(),
                 Array.Empty<BlockHeader>(),
-                Array.Empty<Withdrawal>(),
-                requestsEnabled ? Array.Empty<ConsensusRequest>() : null);
+                Array.Empty<Withdrawal>());
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -377,7 +374,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
     {
         if (chainSpecJson.Nodes is null)
         {
-            chainSpec.Bootnodes = Array.Empty<NetworkNode>();
+            chainSpec.Bootnodes = [];
             return;
         }
 

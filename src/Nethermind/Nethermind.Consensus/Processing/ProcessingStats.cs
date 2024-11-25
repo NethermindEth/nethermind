@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Processing
         private long _runMicroseconds;
         private long _reportMs;
         private Block? _lastBlock;
-        private Hash256 _lastBranchRoot;
+        private Hash256? _lastBranchRoot;
         private long _sloadOpcodeProcessing;
         private long _sstoreOpcodeProcessing;
         private long _callsProcessing;
@@ -131,6 +131,9 @@ namespace Nethermind.Consensus.Processing
                 beneficiary = lastTx.To;
                 isMev = true;
             }
+
+            if (_lastBranchRoot is null || !_stateReader.HasStateForRoot(_lastBranchRoot) || block.StateRoot is null || !_stateReader.HasStateForRoot(block.StateRoot))
+                return;
             UInt256 beforeBalance = _stateReader.GetBalance(_lastBranchRoot, beneficiary);
             UInt256 afterBalance = _stateReader.GetBalance(block.StateRoot, beneficiary);
             UInt256 rewards = beforeBalance < afterBalance ? afterBalance - beforeBalance : default;
@@ -282,7 +285,7 @@ namespace Nethermind.Consensus.Processing
         }
 
         // Help identify mev blocks when doesn't follow regular pattern
-        private static HashSet<AddressAsKey> _alternateMevPayees = new()
+        private static readonly HashSet<AddressAsKey> _alternateMevPayees = new()
         {
             new Address("0xa83114A443dA1CecEFC50368531cACE9F37fCCcb"), // Extra data as: beaverbuild.org
             new Address("0x9FC3da866e7DF3a1c57adE1a97c9f00a70f010c8"), // Extra data as: Titan (titanbuilder.xyz)

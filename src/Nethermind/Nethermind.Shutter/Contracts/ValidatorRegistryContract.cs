@@ -106,6 +106,7 @@ public class ValidatorRegistryContract(
         }
 
         Message msg = new(update.Message.AsSpan());
+
         ulong startValidatorIndex = msg.StartValidatorIndex;
         ulong endValidatorIndex = msg.StartValidatorIndex + msg.Count;
 
@@ -122,7 +123,7 @@ public class ValidatorRegistryContract(
             return false;
         }
 
-        if (msg.Version != messageVersion)
+        if (msg.Version > messageVersion)
         {
             err = $"Registration message has wrong version ({msg.Version}) should be {messageVersion}.";
             return false;
@@ -179,11 +180,12 @@ public class ValidatorRegistryContract(
                 throw new ArgumentException("Validator registry contract message was wrong length.");
             }
 
-            Version = encodedMessage[0];
+            byte version = encodedMessage[0];
+            Version = version;
             ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[1..]);
             ContractAddress = encodedMessage[9..29];
             StartValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..37]);
-            Count = BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[37..41]);
+            Count = version == 0 ? 1 : BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[37..41]);
             Nonce = BinaryPrimitives.ReadUInt32BigEndian(encodedMessage[41..45]);
             IsRegistration = encodedMessage[45] == 1;
         }

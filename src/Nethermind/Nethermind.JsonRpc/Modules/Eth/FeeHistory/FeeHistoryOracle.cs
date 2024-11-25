@@ -237,7 +237,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {
-            IEnumerable<long> CalculateGasUsed(TxReceipt[] txReceipts)
+            static IEnumerable<long> CalculateGasUsed(TxReceipt[] txReceipts)
             {
                 long previousGasUsedTotal = 0;
                 foreach (TxReceipt receipt in txReceipts)

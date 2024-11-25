@@ -48,20 +48,19 @@ public static class ProcessExtensions
 
         if (exitCode == 0 && !string.IsNullOrEmpty(stdout))
         {
-            using (var reader = new StringReader(stdout))
-            {
-                while (true)
-                {
-                    var text = reader.ReadLine();
-                    if (text is null)
-                        return;
+            using var reader = new StringReader(stdout);
 
-                    if (int.TryParse(text, out int id) && !children.Contains(id))
-                    {
-                        children.Add(id);
-                        // Recursively get the children
-                        GetAllChildIdsUnix(id, children, timeout);
-                    }
+            while (true)
+            {
+                var text = reader.ReadLine();
+                if (text is null)
+                    return;
+
+                if (int.TryParse(text, out int id) && !children.Contains(id))
+                {
+                    children.Add(id);
+                    // Recursively get the children
+                    GetAllChildIdsUnix(id, children, timeout);
                 }
             }
         }
@@ -77,21 +76,20 @@ public static class ProcessExtensions
             UseShellExecute = false
         };
 
-        using (Process? process = Process.Start(startInfo))
+        using Process? process = Process.Start(startInfo);
+
+        if (process is null) return (0, "");
+
+        if (process.WaitForExit((int)timeout.TotalMilliseconds))
         {
-            if (process is null) return (0, "");
-
-            if (process.WaitForExit((int)timeout.TotalMilliseconds))
-            {
-                return (process.ExitCode, process.StandardOutput.ReadToEnd());
-            }
-            else
-            {
-                process.Kill();
-            }
-
-            return (process.ExitCode, "");
+            return (process.ExitCode, process.StandardOutput.ReadToEnd());
         }
+        else
+        {
+            process.Kill();
+        }
+
+        return (process.ExitCode, "");
     }
 
     private static int RunProcessAndIgnoreOutput(string fileName, string arguments, TimeSpan timeout)
@@ -106,14 +104,13 @@ public static class ProcessExtensions
             CreateNoWindow = true
         };
 
-        using (var process = Process.Start(startInfo))
-        {
-            if (process is null) return 0;
+        using var process = Process.Start(startInfo);
 
-            if (!process.WaitForExit((int)timeout.TotalMilliseconds))
-                process.Kill();
+        if (process is null) return 0;
 
-            return process.ExitCode;
-        }
+        if (!process.WaitForExit((int)timeout.TotalMilliseconds))
+            process.Kill();
+
+        return process.ExitCode;
     }
 }

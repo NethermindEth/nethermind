@@ -5,9 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -220,7 +218,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
-            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
+            BlockBody[]? responses = batch.Response?.Bodies ?? [];
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {

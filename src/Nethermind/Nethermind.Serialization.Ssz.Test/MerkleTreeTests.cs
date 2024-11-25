@@ -185,13 +185,13 @@ namespace Nethermind.Serialization.Ssz.Test
             MerkleTree baselineTree = BuildATree();
             uint iterations = 1000;
             uint concurrentTasksCount = 8;
-            Action keepAdding = () =>
+            void keepAdding()
             {
                 for (int i = 0; i < iterations; i++)
                 {
                     baselineTree.Insert(_testLeaves[0]);
                 }
-            };
+            }
 
             Task[] tasks = new Task[concurrentTasksCount];
             for (int i = 0; i < tasks.Length; i++)

@@ -28,7 +28,7 @@ public static class T8nExecutor
 {
     private static ILogManager _logManager = LimboLogs.Instance;
 
-    public static T8nResult Execute(T8nCommandArguments arguments)
+    public static T8nExecutionResult Execute(T8nCommandArguments arguments)
     {
         T8nTest test = T8nInputProcessor.ProcessInputAndConvertToT8nTest(arguments);
 
@@ -133,7 +133,7 @@ public static class T8nExecutor
         stateProvider.Commit(test.SpecProvider.GetSpec((ForkActivation)1));
         stateProvider.CommitTree(test.CurrentNumber);
 
-        return T8nResult.ConstructT8nResult(stateProvider, block, test, storageTxTracer,
+        return T8nExecutionResult.ConstructT8nExecutionResult(stateProvider, block, test, storageTxTracer,
             blockReceiptsTracer, test.SpecProvider, transactionExecutionReport);
     }
 

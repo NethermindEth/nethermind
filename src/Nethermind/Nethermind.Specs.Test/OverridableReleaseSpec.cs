@@ -115,6 +115,7 @@ namespace Nethermind.Specs.Test
         public bool IsRip7212Enabled => _spec.IsRip7212Enabled;
         public bool IsEip7742Enabled => _spec.IsEip7742Enabled;
         public bool IsOpGraniteEnabled => _spec.IsOpGraniteEnabled;
+        public bool IsOpHoloceneEnabled => _spec.IsOpHoloceneEnabled;
 
         private bool? _isOntakeEnabled;
         public bool IsOntakeEnabled
@@ -176,6 +177,7 @@ namespace Nethermind.Specs.Test
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
+        public IBaseFeeCalculator BaseFeeCalculator => _spec.BaseFeeCalculator;
         public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
         public Address DepositContractAddress => _spec.DepositContractAddress;
     }

@@ -62,6 +62,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+        executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
 
         if (!executionPayload.ValidateFork(_specProvider))
         {

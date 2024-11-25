@@ -42,7 +42,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     private ulong _blockWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, BlockWaitTask>> _blockWaitTasks = [];
     private readonly LruCache<ulong, Hash256?> _slotToBlockHash = new(5, "Slot to block hash mapping");
-    private readonly object _syncObject = new();
+    private readonly Lock _syncObject = new();
     private readonly ISpecProvider _specProvider;
 
     public ShutterBlockHandler(

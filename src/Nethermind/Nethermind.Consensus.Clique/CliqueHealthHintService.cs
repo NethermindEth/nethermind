@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Blockchain.Services;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Clique
 {

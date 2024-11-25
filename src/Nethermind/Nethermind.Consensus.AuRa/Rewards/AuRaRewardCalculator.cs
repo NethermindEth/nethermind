@@ -11,7 +11,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Rewards
 {
@@ -59,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         {
             if (block.IsGenesis)
             {
-                return Array.Empty<BlockReward>();
+                return [];
             }
 
             return _contracts.TryGetForBlock(block.Number, out var contract)
@@ -145,19 +144,14 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             public static BlockRewardType ToBlockRewardType(ushort kind)
             {
-                switch (kind)
+                return kind switch
                 {
-                    case Author:
-                        return BlockRewardType.Block;
-                    case External:
-                        return BlockRewardType.External;
-                    case EmptyStep:
-                        return BlockRewardType.EmptyStep;
-                    case ushort uncle when IsValidDistance(uncle - uncleOffset):
-                        return BlockRewardType.Uncle;
-                    default:
-                        throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind));
-                }
+                    Author => BlockRewardType.Block,
+                    External => BlockRewardType.External,
+                    EmptyStep => BlockRewardType.EmptyStep,
+                    ushort uncle when IsValidDistance(uncle - uncleOffset) => BlockRewardType.Uncle,
+                    _ => throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind)),
+                };
             }
 
             private static bool IsValidDistance(long distance)

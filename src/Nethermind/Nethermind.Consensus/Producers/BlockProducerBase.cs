@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     block = await TryProduceNewBlock(token.Value, parentHeader, blockTracer, payloadAttributes);
                 }
-                catch (Exception e) when (!(e is TaskCanceledException))
+                catch (Exception e) when (e is not TaskCanceledException)
                 {
                     if (Logger.IsError) Logger.Error("Failed to produce block", e);
                     Metrics.FailedBlockSeals++;

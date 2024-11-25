@@ -27,7 +27,6 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;

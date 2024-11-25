@@ -76,7 +76,7 @@ public class DbPersistingBlockTracerTests
                     Input = TestItem.RandomDataA,
                     Result = new ParityTraceResult { GasUsed = 50, Output = TestItem.RandomDataB },
                     To = TestItem.AddressB,
-                    TraceAddress = Array.Empty<int>(),
+                    TraceAddress = [],
                     Type = "call",
                     Value = 50,
                     Subtraces =

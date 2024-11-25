@@ -43,7 +43,7 @@ public class AbiTests
     {
         AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
         AbiSignature signature = new AbiSignature("abc", type);
-        BigInteger[] data = { };
+        BigInteger[] data = [];
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
         Assert.That(data, Is.EqualTo(arguments[0]));
@@ -318,7 +318,7 @@ public class AbiTests
     [TestCase(9, 8)]
     public void Test_ufixed_exception(int length, int precision)
     {
-        Assert.Throws<ArgumentException>(() => _ = new AbiUFixed(length, precision));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUFixed(length, precision));
     }
 
     [TestCase(0, 0)]
@@ -329,7 +329,7 @@ public class AbiTests
     [TestCase(9, 8)]
     public void Test_fixed_exception(int length, int precision)
     {
-        Assert.Throws<ArgumentException>(() => _ = new AbiFixed(length, precision));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiFixed(length, precision));
     }
 
     [TestCase(0)]
@@ -337,7 +337,7 @@ public class AbiTests
     [TestCase(264)]
     public void Test_int_exception(int length)
     {
-        Assert.Throws<ArgumentException>(() => _ = new AbiInt(length));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiInt(length));
     }
 
     [TestCase(0)]
@@ -345,7 +345,7 @@ public class AbiTests
     [TestCase(264)]
     public void Test_uint_exception(int length)
     {
-        Assert.Throws<ArgumentException>(() => _ = new AbiUInt(length));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
     }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]

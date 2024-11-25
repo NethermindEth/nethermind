@@ -16,7 +16,6 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.State;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm;
 
@@ -175,7 +174,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code.Slice(Eip7702Constants.DelegationHeader.Length).ToArray());
+            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
             return true;
         }
 

@@ -22,7 +22,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -254,7 +253,7 @@ public partial class EthRpcModule(
             : ResultWrapper<byte[]>.Success(
                 _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
                     ? _stateReader.GetCode(account.CodeHash)
-                    : Array.Empty<byte>());
+                    : []);
     }
 
     public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
