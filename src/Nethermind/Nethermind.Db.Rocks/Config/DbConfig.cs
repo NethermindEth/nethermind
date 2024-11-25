@@ -19,11 +19,31 @@ public class DbConfig : IDbConfig
     public long? MaxBytesPerSec { get; set; }
     public int? BlockSize { get; set; } = 16 * 1024;
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
-    public string? AdditionalRocksDbOptions { get; set; } = "compression=kSnappyCompression;optimize_filters_for_hits=true;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;";
+
+    public string? AdditionalRocksDbOptions { get; set; } =
+          "compression=kSnappyCompression;"
+        + "optimize_filters_for_hits=true;"
+        + "memtable_whole_key_filtering=true;"
+        + "memtable_prefix_bloom_size_ratio=0.02;"
+        + "advise_random_on_open=true;"
+
+
+        // Two level index split the index into two level. First index point to second level index, which actually
+        // point to the block, which get bsearched to the value. This means potentially two iop instead of one per
+        // read, and probably more processing overhead. But it significantly reduces memory usage and make block
+        // processing time more consistent. So its enabled by default. That said, if you got the RAM, maybe disable
+        // this.
+        // See https://rocksdb.org/blog/2017/05/12/partitioned-index-filter.html
+        + "block_based_table_factory.index_type=kTwoLevelIndexSearch;"
+        + "block_based_table_factory.partition_filters=true;"
+        + "block_based_table_factory.metadata_block_size=4096;"
+
+
+        ;
+
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public int TargetFileSizeMultiplier { get; set; } = 1;
-    public bool UseTwoLevelIndex { get; set; } = true;
     public bool UseHashIndex { get; set; } = false;
     public ulong? PrefixExtractorLength { get; set; } = null;
     public bool? VerifyChecksum { get; set; } = true;
@@ -129,7 +149,6 @@ public class DbConfig : IDbConfig
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 32 * 1024;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
-    public bool StateDbUseTwoLevelIndex { get; set; } = true;
     public bool StateDbUseHashIndex { get; set; } = false;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool? StateDbVerifyChecksum { get; set; }

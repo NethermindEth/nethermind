@@ -23,7 +23,6 @@ public interface IDbConfig : IConfig
     ulong? MaxBytesForLevelBase { get; set; }
     ulong TargetFileSizeBase { get; set; }
     int TargetFileSizeMultiplier { get; set; }
-    bool UseTwoLevelIndex { get; set; }
     bool UseHashIndex { get; set; }
     ulong? PrefixExtractorLength { get; set; }
     bool? VerifyChecksum { get; set; }
@@ -102,7 +101,6 @@ public interface IDbConfig : IConfig
     long? StateDbMaxBytesPerSec { get; set; }
     int? StateDbBlockSize { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
-    bool StateDbUseTwoLevelIndex { get; set; }
     bool StateDbUseHashIndex { get; set; }
     ulong? StateDbPrefixExtractorLength { get; set; }
     bool? StateDbVerifyChecksum { get; set; }

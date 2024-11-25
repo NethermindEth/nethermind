@@ -424,19 +424,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // Make the index in cache have higher priority, so it is kept more in cache.
         _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
 
-        if (dbConfig.UseTwoLevelIndex)
-        {
-            // Two level index split the index into two level. First index point to second level index, which actually
-            // point to the block, which get bsearched to the value. This means potentially two iop instead of one per
-            // read, and probably more processing overhead. But it significantly reduces memory usage and make block
-            // processing time more consistent. So its enabled by default. That said, if you got the RAM, maybe disable
-            // this.
-            // See https://rocksdb.org/blog/2017/05/12/partitioned-index-filter.html
-            tableOptions.SetIndexType(BlockBasedTableIndexType.TwoLevelIndex);
-            _rocksDbNative.rocksdb_block_based_options_set_partition_filters(tableOptions.Handle, true);
-            _rocksDbNative.rocksdb_block_based_options_set_metadata_block_size(tableOptions.Handle, 4096);
-        }
-        else if (dbConfig.UseHashIndex)
+        if (dbConfig.UseHashIndex)
         {
             // Hash index need prefix extractor.
             // I'm not sure if this index goes directly to value or not.
@@ -493,7 +481,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             tableOptions.SetBlockCache(_cache.Value);
         }
 
-        options.SetBlockBasedTableFactory(tableOptions);
+        // options.SetBlockBasedTableFactory(tableOptions);
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);

@@ -42,7 +42,6 @@ public class PerTableDbConfig
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
     public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
-    public bool UseTwoLevelIndex => ReadConfig<bool>(nameof(UseTwoLevelIndex));
     public bool UseHashIndex => ReadConfig<bool>(nameof(UseHashIndex));
     public ulong? PrefixExtractorLength => ReadConfig<ulong?>(nameof(PrefixExtractorLength));
     public bool? VerifyChecksum => ReadConfig<bool?>(nameof(VerifyChecksum));
