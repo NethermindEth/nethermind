@@ -411,7 +411,7 @@ public class DebugModuleTests
     public void TraceBlock_Success()
     {
         var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
-        var tracesClone = TestItem.CloneObject(traces).Select(trace => new GethLikeTxTraceResponseDebugTraceBlock(trace)).ToArray();
+        var tracesClone = TestItem.CloneObject(traces).Select(trace => trace.DebugTraceBlockResponse()).ToArray();
         var blockRlp = new Rlp(TestItem.RandomDataA);
 
         debugBridge

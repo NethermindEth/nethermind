@@ -169,7 +169,7 @@ public class DebugRpcModule : IDebugRpcModule
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>>.Success(blockTrace.Select(trace => new GethLikeTxTraceResponseDebugTraceBlock(trace)).ToList());
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTraceResponseDebugTraceBlock>>.Success(blockTrace.Select(trace => trace.DebugTraceBlockResponse()).ToList());
         }
         catch (RlpException)
         {
