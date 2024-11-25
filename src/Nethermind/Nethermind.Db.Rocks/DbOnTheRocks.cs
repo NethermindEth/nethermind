@@ -413,24 +413,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // TODO: Try PlainTable and Cuckoo table.
         BlockBasedTableOptions tableOptions = new();
 
-        if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
-        {
-            if (dbConfig.UseRibbonFilterStartingFromLevel is not null)
-            {
-                // Ribbon filter reduces filter size by about 30% but uses up roughly the same amount of CPU for the same
-                // false positive rate. This config allow the use of ribbon filter only for lower levels.
-                IntPtr filter = _rocksDbNative.rocksdb_filterpolicy_create_ribbon_hybrid(
-                    dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(),
-                    dbConfig.UseRibbonFilterStartingFromLevel.Value);
-                tableOptions.SetFilterPolicy(filter);
-            }
-            else
-            {
-                // Bloom filter size for the sst files.
-                tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(), false));
-            }
-        }
-
         ulong blockCacheSize = dbConfig.BlockCacheSize;
         if (sharedCache is not null && blockCacheSize == 0)
         {

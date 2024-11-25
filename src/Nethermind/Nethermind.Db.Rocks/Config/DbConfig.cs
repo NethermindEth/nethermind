@@ -49,6 +49,7 @@ public class DbConfig : IDbConfig
         + "block_based_table_factory.partition_filters=true;"
         + "block_based_table_factory.metadata_block_size=4096;"
 
+        + "block_based_table_factory.filter_policy=bloom_filter:10;"
         ;
 
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
@@ -61,8 +62,6 @@ public class DbConfig : IDbConfig
     public ulong? RowCacheSize { get; set; } = null;
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
     public bool UseHashSkipListMemtable { get; set; } = false;
-    public int? BloomFilterBitsPerKey { get; set; } = 10;
-    public int? UseRibbonFilterStartingFromLevel { get; set; }
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
 
@@ -153,8 +152,6 @@ public class DbConfig : IDbConfig
     public ulong? StateDbRowCacheSize { get; set; }
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
-    public int? StateDbBloomFilterBitsPerKey { get; set; } = 15;
-    public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public bool StateDbEnableFileWarmer { get; set; } = false;
     public double StateDbCompressibilityHint { get; set; } = 0.45;
 
@@ -175,7 +172,11 @@ public class DbConfig : IDbConfig
         + "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;"
         + "block_based_table_factory.data_block_hash_table_util_ratio=0.5;"
 
-        + "block_based_table_factory.block_size=32000;";
+        + "block_based_table_factory.block_size=32000;"
+
+        + "block_based_table_factory.filter_policy=bloom_filter:15;"
+
+          ;
 
     public bool WriteAheadLogSync { get; set; } = false;
 
