@@ -3,10 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.TxPool.Collections;
 using System.Collections;
 
 namespace Nethermind.TxPool.Filters;
@@ -23,6 +19,10 @@ internal sealed class DelegatedAccountFilter(
         if (!spec.IsEip7702Enabled)
             return AcceptTxResult.Accepted;
 
+        if (pendingDelegations.Contains(tx.SenderAddress!))
+        {
+            return AcceptTxResult.PendingDelegation;
+        }
 
         return AcceptTxResult.Accepted;
     }

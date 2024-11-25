@@ -93,6 +93,11 @@ namespace Nethermind.TxPool
         /// Only one tx is allowed per delegated account. 
         /// </summary>
         public static readonly AcceptTxResult OnlyOneTxPerDelegatedAccount = new(16, nameof(OnlyOneTxPerDelegatedAccount));
+        /// <summary>
+        /// There is a pending delegation in the tx pool already
+        /// </summary>
+        public static readonly AcceptTxResult PendingDelegation = new(17, nameof(PendingDelegation));
+
 
         private int Id { get; }
         private string Code { get; }

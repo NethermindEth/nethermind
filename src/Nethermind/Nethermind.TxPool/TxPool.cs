@@ -53,7 +53,7 @@ namespace Nethermind.TxPool
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
-        private readonly ConcurrentDictionary<AddressAsKey, DelegationCount> _pendingDelegations = new();
+        private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
 
 
         private readonly ILogger _logger;
