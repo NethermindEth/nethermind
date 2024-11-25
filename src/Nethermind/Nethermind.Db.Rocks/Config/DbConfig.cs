@@ -28,6 +28,10 @@ public class DbConfig : IDbConfig
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         + "target_file_size_base=64000000;"
 
+        // The first level size. Should be WriteBufferSize * WriteBufferNumber or you'll have higher write amp,
+        // but lowering this to match write buffer will make the LSM have more level, so you'll have more read amp.
+        + "max_bytes_for_level_base=256000000;"
+
         // Note, this is before compression. On disk size may be lower. The on disk size is the minimum amount of read
         // each io will do. On most SSD, the minimum read size is 4096 byte. So don't set it to lower than that, unless
         // you have an optane drive or some kind of RAM disk. Lower block size also means bigger index size.
@@ -54,7 +58,6 @@ public class DbConfig : IDbConfig
         + "block_based_table_factory.filter_policy=bloom_filter:10;"
         ;
 
-    public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public bool? VerifyChecksum { get; set; } = true;
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
     public ulong? RowCacheSize { get; set; } = null;
@@ -78,15 +81,22 @@ public class DbConfig : IDbConfig
     public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint HeadersDbWriteBufferNumber { get; set; } = 2;
     public ulong HeadersDbBlockCacheSize { get; set; } = (ulong)32.MiB();
-    public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "compaction_pri=kOldestLargestSeqFirst;block_based_table_factory.block_size=32000;";
-    public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
+    public string? HeadersDbAdditionalRocksDbOptions { get; set; } =
+        "compaction_pri=kOldestLargestSeqFirst;" +
+        "block_based_table_factory.block_size=32000;" +
+        "max_bytes_for_level_base=128000000;" +
+        "";
 
     public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlockNumbersDbWriteBufferNumber { get; set; } = 2;
     public ulong BlockNumbersDbBlockCacheSize { get; set; }
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
-    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "block_based_table_factory.block_size=4096;memtable=prefix_hash:1000000;allow_concurrent_memtable_write=false;";
-    public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
+    public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } =
+        "block_based_table_factory.block_size=4096;" +
+        "max_bytes_for_level_base=16000000;" +
+        "memtable=prefix_hash:1000000;" +
+        "allow_concurrent_memtable_write=false;" +
+        "";
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public uint BlockInfosDbWriteBufferNumber { get; set; } = 2;
@@ -118,7 +128,6 @@ public class DbConfig : IDbConfig
     public uint StateDbWriteBufferNumber { get; set; } = 4;
     public ulong StateDbBlockCacheSize { get; set; }
     public bool? StateDbVerifyChecksum { get; set; }
-    public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)350.MiB();
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
     public ulong? StateDbRowCacheSize { get; set; }
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
@@ -133,6 +142,7 @@ public class DbConfig : IDbConfig
         // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         + "max_bytes_for_level_multiplier=30;"
+        + "max_bytes_for_level_base=350;"
 
         // Causes file size to double per level. Lower total number of file.
         + "target_file_size_multiplier=2;"

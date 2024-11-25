@@ -18,7 +18,6 @@ public interface IDbConfig : IConfig
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
-    ulong? MaxBytesForLevelBase { get; set; }
     bool? VerifyChecksum { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
@@ -42,14 +41,12 @@ public interface IDbConfig : IConfig
     uint HeadersDbWriteBufferNumber { get; set; }
     ulong HeadersDbBlockCacheSize { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
-    ulong? HeadersDbMaxBytesForLevelBase { get; set; }
 
     ulong BlockNumbersDbWriteBufferSize { get; set; }
     uint BlockNumbersDbWriteBufferNumber { get; set; }
     ulong BlockNumbersDbBlockCacheSize { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
-    ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
@@ -65,7 +62,6 @@ public interface IDbConfig : IConfig
     uint StateDbWriteBufferNumber { get; set; }
     ulong StateDbBlockCacheSize { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
-    ulong? StateDbMaxBytesForLevelBase { get; set; }
     int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }

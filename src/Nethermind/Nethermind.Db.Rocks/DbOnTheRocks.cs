@@ -58,7 +58,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     private static long _maxRocksSize;
 
     private long _maxThisDbSize;
-    private long _targetFileSizeBase;
 
     protected IntPtr? _cache = null;
     protected IntPtr? _rowCache = null;
@@ -66,6 +65,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     private readonly DbSettings _settings;
 
     protected readonly PerTableDbConfig _perTableDbConfig;
+    private ulong _maxBytesForLevelBase;
+    private ulong _targetFileSizeBase;
 
     private readonly IFileSystem _fileSystem;
 
@@ -444,7 +445,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         IDictionary<string, string> optionsAsDict = ExtractOptions(dbConfig.AdditionalRocksDbOptions!);
 
-        _targetFileSizeBase = long.Parse(optionsAsDict["target_file_size_base"]);
+        _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
+        _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
 
         #endregion
 
@@ -496,12 +498,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
-
-        // Main config for LSM shape, also effect write amplification.
-        // MaxBytesForLevelBase is 256MB by default. But if write buffer is lowered, it could be preferable to reduce
-        // this as well to match total write buffer to reduce write amplification, but it can increase number of level
-        // which in turn, make write amplification higher anyway.
-        options.SetMaxBytesForLevelBase(dbConfig.MaxBytesForLevelBase);
 
         #endregion
 
@@ -1319,7 +1315,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 // l0 the same size as l1, but keep the LSM the same. This improve flush parallelization, and
                 // write amplification due to mismatch of l0 and l1 size, but does not reduce compaction from other
                 // levels.
-                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase));
+                ApplyOptions(GetHeavyWriteOptions(_maxBytesForLevelBase));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
@@ -1390,7 +1386,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             // until they get compacted.
             { "level0_stop_writes_trigger", 1024.ToString() },
 
-            { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
+            { "max_bytes_for_level_base", _maxBytesForLevelBase.ToString() },
             { "target_file_size_base", _targetFileSizeBase.ToString() },
             { "disable_auto_compactions", "false" },
 
