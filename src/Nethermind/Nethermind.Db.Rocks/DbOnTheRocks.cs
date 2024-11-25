@@ -485,11 +485,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // this as well to match total write buffer to reduce write amplification, but it can increase number of level
         // which in turn, make write amplification higher anyway.
         options.SetMaxBytesForLevelBase(dbConfig.MaxBytesForLevelBase);
-        // MaxBytesForLevelMultiplier is 10 by default. Lowering this will deepens the LSM, which may reduce write
-        // amplification (unless the LSM is too deep), at the expense of read performance. But then, you have bloom
-        // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
-        // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
-        options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
 
         #endregion
 
@@ -504,11 +499,6 @@ public class DbOnTheRocks : IDb, ITunableDb
             // maybe it make more sense to put more memory to memtable.
             _rowCache = _rocksDbNative.rocksdb_cache_create_lru(new UIntPtr(dbConfig.RowCacheSize.Value));
             _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
-        }
-
-        if (dbConfig.PrefixExtractorLength.HasValue)
-        {
-            options.SetPrefixExtractor(SliceTransform.CreateFixedPrefix(dbConfig.PrefixExtractorLength.Value));
         }
 
         options.SetCreateIfMissing();

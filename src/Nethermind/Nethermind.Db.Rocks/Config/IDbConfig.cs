@@ -22,9 +22,7 @@ public interface IDbConfig : IConfig
     ulong? MaxBytesForLevelBase { get; set; }
     ulong TargetFileSizeBase { get; set; }
     int TargetFileSizeMultiplier { get; set; }
-    ulong? PrefixExtractorLength { get; set; }
     bool? VerifyChecksum { get; set; }
-    double MaxBytesForLevelMultiplier { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
     bool EnableFileWarmer { get; set; }
@@ -35,7 +33,6 @@ public interface IDbConfig : IConfig
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
     ulong ReceiptsDbBlockCacheSize { get; set; }
-    int? ReceiptsDbMaxOpenFiles { get; set; }
     long? ReceiptsDbMaxBytesPerSec { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
@@ -44,14 +41,12 @@ public interface IDbConfig : IConfig
     ulong BlocksDbWriteBufferSize { get; set; }
     uint BlocksDbWriteBufferNumber { get; set; }
     ulong BlocksDbBlockCacheSize { get; set; }
-    int? BlocksDbMaxOpenFiles { get; set; }
     long? BlocksDbMaxBytesPerSec { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
     uint HeadersDbWriteBufferNumber { get; set; }
     ulong HeadersDbBlockCacheSize { get; set; }
-    int? HeadersDbMaxOpenFiles { get; set; }
     long? HeadersDbMaxBytesPerSec { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
     ulong? HeadersDbMaxBytesForLevelBase { get; set; }
@@ -59,7 +54,6 @@ public interface IDbConfig : IConfig
     ulong BlockNumbersDbWriteBufferSize { get; set; }
     uint BlockNumbersDbWriteBufferNumber { get; set; }
     ulong BlockNumbersDbBlockCacheSize { get; set; }
-    int? BlockNumbersDbMaxOpenFiles { get; set; }
     long? BlockNumbersDbMaxBytesPerSec { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
@@ -68,26 +62,21 @@ public interface IDbConfig : IConfig
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
     ulong BlockInfosDbBlockCacheSize { get; set; }
-    int? BlockInfosDbMaxOpenFiles { get; set; }
     long? BlockInfosDbMaxBytesPerSec { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
     uint PendingTxsDbWriteBufferNumber { get; set; }
     ulong PendingTxsDbBlockCacheSize { get; set; }
-    int? PendingTxsDbMaxOpenFiles { get; set; }
     long? PendingTxsDbMaxBytesPerSec { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     ulong StateDbWriteBufferSize { get; set; }
     uint StateDbWriteBufferNumber { get; set; }
     ulong StateDbBlockCacheSize { get; set; }
-    int? StateDbMaxOpenFiles { get; set; }
     long? StateDbMaxBytesPerSec { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
-    ulong? StateDbPrefixExtractorLength { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
-    double StateDbMaxBytesForLevelMultiplier { get; set; }
     ulong? StateDbMaxBytesForLevelBase { get; set; }
     int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
