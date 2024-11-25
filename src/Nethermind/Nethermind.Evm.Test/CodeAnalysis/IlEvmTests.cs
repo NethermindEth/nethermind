@@ -28,6 +28,7 @@ using static Nethermind.Evm.CodeAnalysis.IL.IlInfo;
 using Nethermind.Db;
 using Nethermind.Trie.Pruning;
 using System.Diagnostics;
+using Nethermind.Abi;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {
@@ -355,1083 +356,1083 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done);
         }
 
-        public static IEnumerable<(Instruction[], byte[], EvmExceptionType, (bool, bool))> GetJitBytecodesSamplesGenerator(bool turnOnAmortization, bool turnOnAggressiveMode)
+        public static IEnumerable<(Instruction[], byte[], EvmExceptionType, (bool, bool), string)> GetJitBytecodesSamples()
         {
-            yield return ([Instruction.PUSH32], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
+            IEnumerable<(Instruction[], byte[], EvmExceptionType, (bool, bool))> GetJitBytecodesSamplesGenerator(bool turnOnAmortization, bool turnOnAggressiveMode)
+            {
+                yield return ([Instruction.PUSH32], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.ISZERO], Prepare.EvmCode
+                        .ISZERO(7)
+                        .PushData(7)
+                        .SSTORE()
+                        .ISZERO(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .ISZERO(UInt256.MaxValue)
+                        .PushData(23)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SUB], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .SUB()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SUB], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(0)
+                        .SUB()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SUB], Prepare.EvmCode
+                        .PushSingle(0)
+                        .PushSingle(7)
+                        .SUB()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.ADD], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .ADD()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.ADDMOD], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .PushSingle(5)
+                        .ADDMOD()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(0)
+                        .PushSingle(7)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(1)
+                        .PushSingle(7)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(1)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MUL], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(0)
+                        .MUL()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXP], Prepare.EvmCode
+                        .PushSingle(0)
+                        .PushSingle(7)
+                        .EXP()
+                        .PushData(2)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXP], Prepare.EvmCode
+                        .PushSingle(1)
+                        .PushSingle(7)
+                        .EXP()
+                        .PushData(3)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXP], Prepare.EvmCode
+                        .PushSingle(1)
+                        .PushSingle(0)
+                        .EXP()
+                        .PushData(4)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXP], Prepare.EvmCode
+                        .PushSingle(1)
+                        .PushSingle(1)
+                        .EXP()
+                        .PushData(5)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MOD], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .MOD()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.DIV], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .DIV()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
+                        .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                        .MLOAD(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
+                        .MSTORE(123, ((UInt256)23).PaddedBytes(32))
+                        .MLOAD(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
+                        .MSTORE(32, ((UInt256)23).PaddedBytes(32))
+                        .MLOAD(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
+                        .MSTORE(0, ((UInt256)0).PaddedBytes(32))
+                        .MLOAD(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
+                        .MSTORE(123, ((UInt256)0).PaddedBytes(32))
+                        .MLOAD(123)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
+                        .MSTORE(32, ((UInt256)0).PaddedBytes(32))
+                        .MLOAD(32)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE8], Prepare.EvmCode
+                        .MSTORE8(0, ((UInt256)23).PaddedBytes(32))
+                        .MLOAD(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE8], Prepare.EvmCode
+                        .MSTORE8(123, ((UInt256)23).PaddedBytes(32))
+                        .MLOAD(123)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE8], Prepare.EvmCode
+                        .MSTORE8(32, ((UInt256)23).PaddedBytes(32))
+                        .MLOAD(32)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE8], Prepare.EvmCode
+                        .MSTORE8(0, UInt256.MaxValue.PaddedBytes(32))
+                        .MLOAD(0)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE8], Prepare.EvmCode
+                        .MSTORE8(123, UInt256.MaxValue.PaddedBytes(32))
+                        .MLOAD(123)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSTORE8], Prepare.EvmCode
+                        .MSTORE8(32, UInt256.MaxValue.PaddedBytes(32))
+                        .MLOAD(32)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                        .MCOPY(32, 0, 32)
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(123, ((UInt256)23).PaddedBytes(32))
+                        .MCOPY(32, 123, 32)
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(32, ((UInt256)23).PaddedBytes(32))
+                        .MCOPY(32, 123, 32)
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(0, ((UInt256)0).PaddedBytes(32))
+                        .MCOPY(32, 0, 32)
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(123, ((UInt256)0).PaddedBytes(32))
+                        .MCOPY(32, 123, 32)
+                        .MLOAD(32)
+                        .MLOAD(123)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(32, ((UInt256)0).PaddedBytes(32))
+                        .MCOPY(0, 32, 32)
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(32, ((UInt256)0).PaddedBytes(32))
+                        .MCOPY(32, 32, 32)
+                        .MLOAD(32)
+                        .PushSingle((UInt256)0)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MCOPY], Prepare.EvmCode
+                        .MSTORE(32, ((UInt256)23).PaddedBytes(32))
+                        .MCOPY(32, 32, 32)
+                        .MLOAD(32)
+                        .PushSingle((UInt256)23)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EQ], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .EQ()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.GT], Prepare.EvmCode
+                        .PushSingle(7)
+                        .PushSingle(23)
+                        .GT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.GT], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .GT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.GT], Prepare.EvmCode
+                        .PushSingle(17)
+                        .PushSingle(17)
+                        .GT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LT], Prepare.EvmCode
+                        .PushSingle(23)
+                        .PushSingle(7)
+                        .LT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LT], Prepare.EvmCode
+                        .PushSingle(7)
+                        .PushSingle(23)
+                        .LT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LT], Prepare.EvmCode
+                        .PushSingle(17)
+                        .PushSingle(17)
+                        .LT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.NOT], Prepare.EvmCode
+                        .PushSingle(1)
+                        .NOT()
+                        .PushData(1)
+                        .SSTORE()
+                        .PushSingle(0)
+                        .NOT()
+                        .PushData(1)
+                        .SSTORE()
+                        .PushSingle(UInt256.MaxValue)
+                        .NOT()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BLOBHASH], Prepare.EvmCode
+                        .PushSingle(0)
+                        .BLOBHASH()
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BLOCKHASH], Prepare.EvmCode
+                    .BLOCKHASH(0)
+                    .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.ISZERO], Prepare.EvmCode
-                    .ISZERO(7)
+                yield return ([Instruction.CALLDATACOPY], Prepare.EvmCode
+                    .CALLDATACOPY(0, 0, 32)
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALLDATALOAD], Prepare.EvmCode
+                    .CALLDATALOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.MSIZE], Prepare.EvmCode
+                    .MSIZE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.GASPRICE], Prepare.EvmCode
+                    .GASPRICE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CODESIZE], Prepare.EvmCode
+                    .CODESIZE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.PC], Prepare.EvmCode
+                    .PC()
+                    .PushData(1)
+                    .SSTORE()
+                    .PC()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.COINBASE], Prepare.EvmCode
+                    .COINBASE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.TIMESTAMP], Prepare.EvmCode
+                    .TIMESTAMP()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.NUMBER], Prepare.EvmCode
+                    .NUMBER()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.GASLIMIT], Prepare.EvmCode
+                    .GASLIMIT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALLER], Prepare.EvmCode
+                    .CALLER()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.ADDRESS], Prepare.EvmCode
+                    .ADDRESS()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.ORIGIN], Prepare.EvmCode
+                    .ORIGIN()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALLVALUE], Prepare.EvmCode
+                    .CALLVALUE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CHAINID], Prepare.EvmCode
+                    .CHAINID()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.GAS], Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(46)
+                    .ADD()
+                    .POP()
+                    .GAS()
+                    .PushData(1)
+                    .SSTORE()
+                    .PushData(23)
+                    .PushData(46)
+                    .ADD()
+                    .POP()
+                    .GAS()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.RETURNDATASIZE], Prepare.EvmCode
+                    .RETURNDATASIZE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BASEFEE], Prepare.EvmCode
+                    .BASEFEE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.RETURN], Prepare.EvmCode
+                    .StoreDataInMemory(0, [2, 3, 5, 7])
+                    .RETURN(0, 32)
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE().Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.REVERT], Prepare.EvmCode
+                    .StoreDataInMemory(0, [2, 3, 5, 7])
+                    .REVERT(0, 32)
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.CALLDATASIZE], Prepare.EvmCode
+                    .CALLDATASIZE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.JUMPI, Instruction.JUMPDEST], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .JUMPI(9)
+                    .PushSingle(3)
+                    .JUMPDEST()
+                    .PushSingle(0)
+                    .MUL()
+                    .GAS()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+
+                yield return ([Instruction.JUMPI, Instruction.JUMPDEST], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(0)
+                    .JUMPI(9)
+                    .PushSingle(3)
+                    .JUMPDEST()
+                    .PushSingle(0)
+                    .MUL()
+                    .GAS()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.JUMP, Instruction.JUMPDEST], Prepare.EvmCode
+                    .PushSingle(23)
+                    .JUMP(14)
+                    .JUMPDEST()
+                    .PushSingle(3)
+                    .MUL()
+                    .GAS()
+                    .PUSHx([1])
+                    .SSTORE()
+                    .STOP()
+                    .JUMPDEST()
+                    .JUMP(5)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SHL], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SHL()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SHL], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(32)
+                    .SHL()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SHR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .SHR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SHR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(32)
+                    .SHR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(0)
+                    .SAR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(0)
+                    .PushSingle(23)
+                    .SAR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(17)
+                    .SAR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle((UInt256)((Int256.Int256)(-1)))
+                    .SAR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SAR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle((UInt256)((Int256.Int256)(-1)))
+                    .SAR()
+                    .PushSingle((UInt256)((Int256.Int256)(1)))
+                    .SAR()
+                    .PushSingle(23)
+                    .EQ()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.AND], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .AND()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.AND], Prepare.EvmCode
+                    .PushSingle(0)
+                    .PushSingle(UInt256.MaxValue)
+                    .AND()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.AND], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue)
+                    .PushSingle(0)
+                    .AND()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.OR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .OR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.OR], Prepare.EvmCode
+                    .PushSingle(0)
+                    .PushSingle(UInt256.MaxValue)
+                    .OR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.OR], Prepare.EvmCode
+                    .PushSingle(UInt256.MaxValue)
+                    .PushSingle(0)
+                    .OR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.XOR], Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(1)
+                    .XOR()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SLT], Prepare.EvmCode
+                    .PushSingle(17)
+                    .PushData(23)
+                    .SLT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SLT], Prepare.EvmCode
+                    .PushData(23)
+                    .PushSingle(17)
+                    .SLT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SLT], Prepare.EvmCode
+                    .PushData(17)
+                    .PushSingle(17)
+                    .SLT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SGT], Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(17)
+                    .SGT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SGT], Prepare.EvmCode
+                    .PushData(17)
+                    .PushData(17)
+                    .SGT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SGT], Prepare.EvmCode
+                    .PushData(17)
+                    .PushData(23)
+                    .SGT()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BYTE], Prepare.EvmCode
+                    .BYTE(0, ((UInt256)(23)).PaddedBytes(32))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BYTE], Prepare.EvmCode
+                    .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BYTE], Prepare.EvmCode
+                    .BYTE(16, ((UInt256)(23)).PaddedBytes(32))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.JUMP, Instruction.JUMPDEST], Prepare.EvmCode
+                    .JUMP(31)
+                    .INVALID()
+                    // this assumes that the code segment is jumping to another segment beyond it's boundaries
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LOG0], Prepare.EvmCode
+                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(0)
+                    .Op(Instruction.MSTORE)
+                    .LOGx(0, 0, 64)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LOG1], Prepare.EvmCode
+                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(0)
+                    .Op(Instruction.MSTORE)
+                    .PushData(TestItem.KeccakA.Bytes.ToArray())
+                    .LOGx(1, 0, 64)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LOG2], Prepare.EvmCode
+                    .PushData(SampleHexData2.PadLeft(64, '0'))
+                    .PushData(0)
+                    .Op(Instruction.MSTORE)
+                    .PushData(TestItem.KeccakA.Bytes.ToArray())
+                    .PushData(TestItem.KeccakB.Bytes.ToArray())
+                    .LOGx(2, 0, 64)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LOG3], Prepare.EvmCode
+                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(0)
+                    .Op(Instruction.MSTORE)
+                    .PushData(TestItem.KeccakA.Bytes.ToArray())
+                    .PushData(TestItem.KeccakB.Bytes.ToArray())
+                    .PushData(TestItem.KeccakC.Bytes.ToArray())
+                    .LOGx(3, 0, 64)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.LOG4], Prepare.EvmCode
+                    .PushData(SampleHexData1.PadLeft(64, '0'))
+                    .PushData(0)
+                    .Op(Instruction.MSTORE)
+                    .PushData(TestItem.KeccakA.Bytes.ToArray())
+                    .PushData(TestItem.KeccakB.Bytes.ToArray())
+                    .PushData(TestItem.KeccakC.Bytes.ToArray())
+                    .PushData(TestItem.KeccakD.Bytes.ToArray())
+                    .LOGx(4, 0, 64)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.TSTORE, Instruction.TLOAD], Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(7)
+                    .TSTORE()
+                    .PushData(7)
+                    .TLOAD()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SSTORE, Instruction.SLOAD], Prepare.EvmCode
+                    .PushData(23)
                     .PushData(7)
                     .SSTORE()
-                    .ISZERO(0)
+                    .PushData(7)
+                    .SLOAD()
                     .PushData(1)
                     .SSTORE()
-                    .ISZERO(UInt256.MaxValue)
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXTCODESIZE], Prepare.EvmCode
+                    .EXTCODESIZE(Address.FromNumber(23))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXTCODEHASH], Prepare.EvmCode
+                    .EXTCODEHASH(Address.FromNumber(23))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.EXTCODECOPY], Prepare.EvmCode
+                    .EXTCODECOPY(Address.FromNumber(23), 0, 0, 32)
+                    .MLOAD(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.BALANCE], Prepare.EvmCode
+                    .BALANCE(Address.FromNumber(23))
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.SELFBALANCE], Prepare.EvmCode
+                    .SELFBALANCE()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.INVALID], Prepare.EvmCode
+                    .INVALID()
+                    .PushData(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.BadInstruction, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.STOP], Prepare.EvmCode
+                    .STOP()
+                    .PushData(0)
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.POP], Prepare.EvmCode
+                    .PUSHx()
+                    .POP()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.POP], Prepare.EvmCode
+                    .POP()
+                    .POP()
+                    .POP()
+                    .POP()
+                    .Done, EvmExceptionType.StackUnderflow, (turnOnAmortization, turnOnAggressiveMode));
+
+
+                for (byte opcode = (byte)Instruction.DUP1; opcode <= (byte)Instruction.DUP16; opcode++)
+                {
+                    int n = opcode - (byte)Instruction.DUP1 + 1;
+                    var test = Prepare.EvmCode;
+                    for (int i = 0; i < n; i++)
+                    {
+                        test.PushData(i);
+                    }
+                    test.Op((Instruction)opcode)
+                        .PushData(1)
+                        .SSTORE();
+
+                    yield return ([(Instruction)opcode], test.Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                }
+
+                for (byte opcode = (byte)Instruction.PUSH0; opcode <= (byte)Instruction.PUSH32; opcode++)
+                {
+                    int n = opcode - (byte)Instruction.PUSH0;
+                    byte[] args = n == 0 ? null : Enumerable.Range(0, n).Select(i => (byte)i).ToArray();
+
+                    yield return ([(Instruction)opcode], Prepare.EvmCode.PUSHx(args)
+                        .PushData(1)
+                        .SSTORE()
+                        .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                }
+
+                for (byte opcode = (byte)Instruction.SWAP1; opcode <= (byte)Instruction.SWAP16; opcode++)
+                {
+                    int n = opcode - (byte)Instruction.SWAP1 + 2;
+                    var test = Prepare.EvmCode;
+                    for (int i = 0; i < n; i++)
+                    {
+                        test.PushData(i);
+                    }
+                    test.Op((Instruction)opcode)
+                        .PushData(1)
+                        .SSTORE();
+
+                    yield return ([(Instruction)opcode], test.Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                }
+
+                yield return ([Instruction.SDIV], Prepare.EvmCode
                     .PushData(23)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SUB], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .SUB()
+                    .PushData(7)
+                    .SDIV()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.SUB], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(0)
-                    .SUB()
+                yield return ([Instruction.SMOD], Prepare.EvmCode
+                    .PushData(23)
+                    .PushData(7)
+                    .SMOD()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.SUB], Prepare.EvmCode
-                    .PushSingle(0)
-                    .PushSingle(7)
-                    .SUB()
+                yield return ([Instruction.CODECOPY], Prepare.EvmCode
+                    .PushData(0)
+                    .PushData(32)
+                    .PushData(7)
+                    .CODECOPY()
+                    .MLOAD(0)
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.ADD], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .ADD()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.ADDMOD], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .PushSingle(5)
-                    .ADDMOD()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MUL], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .MUL()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MUL], Prepare.EvmCode
-                    .PushSingle(0)
-                    .PushSingle(7)
-                    .MUL()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MUL], Prepare.EvmCode
-                    .PushSingle(1)
-                    .PushSingle(7)
-                    .MUL()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MUL], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(1)
-                    .MUL()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MUL], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(0)
-                    .MUL()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXP], Prepare.EvmCode
-                    .PushSingle(0)
-                    .PushSingle(7)
-                    .EXP()
-                    .PushData(2)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXP], Prepare.EvmCode
-                    .PushSingle(1)
-                    .PushSingle(7)
-                    .EXP()
+                yield return ([Instruction.MULMOD], Prepare.EvmCode
+                    .PushData(23)
                     .PushData(3)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXP], Prepare.EvmCode
-                    .PushSingle(1)
-                    .PushSingle(0)
-                    .EXP()
-                    .PushData(4)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXP], Prepare.EvmCode
-                    .PushSingle(1)
-                    .PushSingle(1)
-                    .EXP()
-                    .PushData(5)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MOD], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .MOD()
+                    .PushData(7)
+                    .MULMOD()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.DIV], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .DIV()
+                yield return ([Instruction.KECCAK256], Prepare.EvmCode
+                    .MSTORE(0, Enumerable.Range(0, 16).Select(i => (byte)i).ToArray())
+                    .PushData(0)
+                    .PushData(16)
+                    .KECCAK256()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                yield return ([Instruction.PREVRANDAO], Prepare.EvmCode
+                    .PREVRANDAO()
+                    .PushData(1)
+                    .SSTORE()
+                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.RETURNDATACOPY], Prepare.EvmCode
+                    .PushData(0)
+                    .PushData(32)
+                    .PushData(0)
+                    .RETURNDATACOPY()
                     .MLOAD(0)
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
-                    .MSTORE(123, ((UInt256)23).PaddedBytes(32))
-                    .MLOAD(0)
+                yield return ([Instruction.BLOBBASEFEE], Prepare.EvmCode
+                    .Op(Instruction.BLOBBASEFEE)
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
-                    .MSTORE(32, ((UInt256)23).PaddedBytes(32))
-                    .MLOAD(0)
+                yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
+                    .PushData(1024)
+                    .PushData(16)
+                    .SIGNEXTEND()
                     .PushData(1)
                     .SSTORE()
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)0).PaddedBytes(32))
-                    .MLOAD(0)
-                    .PushData(1)
-                    .SSTORE()
+                yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
+                    .PushData(255)
+                    .PushData(0)
+                    .Op(Instruction.SIGNEXTEND)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
-                    .MSTORE(123, ((UInt256)0).PaddedBytes(32))
-                    .MLOAD(123)
-                    .PushData(1)
-                    .SSTORE()
+                yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
+                    .PushData(255)
+                    .PushData(32)
+                    .Op(Instruction.SIGNEXTEND)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE, Instruction.MLOAD], Prepare.EvmCode
-                    .MSTORE(32, ((UInt256)0).PaddedBytes(32))
-                    .MLOAD(32)
-                    .PushData(1)
-                    .SSTORE()
+                yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
+                    .PushData(UInt256.MaxValue)
+                    .PushData(31)
+                    .Op(Instruction.SIGNEXTEND)
+                    .PushData(0)
+                    .Op(Instruction.SSTORE)
                     .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
 
-            yield return ([Instruction.MSTORE8], Prepare.EvmCode
-                    .MSTORE8(0, ((UInt256)23).PaddedBytes(32))
-                    .MLOAD(0)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MSTORE8], Prepare.EvmCode
-                    .MSTORE8(123, ((UInt256)23).PaddedBytes(32))
-                    .MLOAD(123)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MSTORE8], Prepare.EvmCode
-                    .MSTORE8(32, ((UInt256)23).PaddedBytes(32))
-                    .MLOAD(32)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MSTORE8], Prepare.EvmCode
-                    .MSTORE8(0, UInt256.MaxValue.PaddedBytes(32))
-                    .MLOAD(0)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MSTORE8], Prepare.EvmCode
-                    .MSTORE8(123, UInt256.MaxValue.PaddedBytes(32))
-                    .MLOAD(123)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MSTORE8], Prepare.EvmCode
-                    .MSTORE8(32, UInt256.MaxValue.PaddedBytes(32))
-                    .MLOAD(32)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
-                    .MCOPY(32, 0, 32)
-                    .MLOAD(32)
-                    .MLOAD(0)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(123, ((UInt256)23).PaddedBytes(32))
-                    .MCOPY(32, 123, 32)
-                    .MLOAD(32)
-                    .MLOAD(0)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(32, ((UInt256)23).PaddedBytes(32))
-                    .MCOPY(32, 123, 32)
-                    .MLOAD(32)
-                    .MLOAD(0)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(0, ((UInt256)0).PaddedBytes(32))
-                    .MCOPY(32, 0, 32)
-                    .MLOAD(32)
-                    .MLOAD(0)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(123, ((UInt256)0).PaddedBytes(32))
-                    .MCOPY(32, 123, 32)
-                    .MLOAD(32)
-                    .MLOAD(123)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(32, ((UInt256)0).PaddedBytes(32))
-                    .MCOPY(0, 32, 32)
-                    .MLOAD(32)
-                    .MLOAD(0)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(32, ((UInt256)0).PaddedBytes(32))
-                    .MCOPY(32, 32, 32)
-                    .MLOAD(32)
-                    .PushSingle((UInt256)0)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MCOPY], Prepare.EvmCode
-                    .MSTORE(32, ((UInt256)23).PaddedBytes(32))
-                    .MCOPY(32, 32, 32)
-                    .MLOAD(32)
-                    .PushSingle((UInt256)23)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EQ], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .EQ()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.GT], Prepare.EvmCode
-                    .PushSingle(7)
-                    .PushSingle(23)
-                    .GT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.GT], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .GT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.GT], Prepare.EvmCode
-                    .PushSingle(17)
-                    .PushSingle(17)
-                    .GT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LT], Prepare.EvmCode
-                    .PushSingle(23)
-                    .PushSingle(7)
-                    .LT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LT], Prepare.EvmCode
-                    .PushSingle(7)
-                    .PushSingle(23)
-                    .LT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LT], Prepare.EvmCode
-                    .PushSingle(17)
-                    .PushSingle(17)
-                    .LT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.NOT], Prepare.EvmCode
-                    .PushSingle(1)
-                    .NOT()
-                    .PushData(1)
-                    .SSTORE()
-                    .PushSingle(0)
-                    .NOT()
-                    .PushData(1)
-                    .SSTORE()
-                    .PushSingle(UInt256.MaxValue)
-                    .NOT()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BLOBHASH], Prepare.EvmCode
-                    .PushSingle(0)
-                    .BLOBHASH()
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BLOCKHASH], Prepare.EvmCode
-                .BLOCKHASH(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CALLDATACOPY], Prepare.EvmCode
-                .CALLDATACOPY(0, 0, 32)
-                .MLOAD(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CALLDATALOAD], Prepare.EvmCode
-                .CALLDATALOAD(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MSIZE], Prepare.EvmCode
-                .MSIZE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.GASPRICE], Prepare.EvmCode
-                .GASPRICE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CODESIZE], Prepare.EvmCode
-                .CODESIZE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.PC], Prepare.EvmCode
-                .PC()
-                .PushData(1)
-                .SSTORE()
-                .PC()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.COINBASE], Prepare.EvmCode
-                .COINBASE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.TIMESTAMP], Prepare.EvmCode
-                .TIMESTAMP()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.NUMBER], Prepare.EvmCode
-                .NUMBER()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.GASLIMIT], Prepare.EvmCode
-                .GASLIMIT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CALLER], Prepare.EvmCode
-                .CALLER()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.ADDRESS], Prepare.EvmCode
-                .ADDRESS()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.ORIGIN], Prepare.EvmCode
-                .ORIGIN()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CALLVALUE], Prepare.EvmCode
-                .CALLVALUE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CHAINID], Prepare.EvmCode
-                .CHAINID()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.GAS], Prepare.EvmCode
-                .PushData(23)
-                .PushData(46)
-                .ADD()
-                .POP()
-                .GAS()
-                .PushData(1)
-                .SSTORE()
-                .PushData(23)
-                .PushData(46)
-                .ADD()
-                .POP()
-                .GAS()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.RETURNDATASIZE], Prepare.EvmCode
-                .RETURNDATASIZE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BASEFEE], Prepare.EvmCode
-                .BASEFEE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.RETURN], Prepare.EvmCode
-                .StoreDataInMemory(0, [2, 3, 5, 7])
-                .RETURN(0, 32)
-                .MLOAD(0)
-                .PushData(1)
-                .SSTORE().Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.REVERT], Prepare.EvmCode
-                .StoreDataInMemory(0, [2, 3, 5, 7])
-                .REVERT(0, 32)
-                .MLOAD(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CALLDATASIZE], Prepare.EvmCode
-                .CALLDATASIZE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.JUMPI, Instruction.JUMPDEST], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(1)
-                .JUMPI(9)
-                .PushSingle(3)
-                .JUMPDEST()
-                .PushSingle(0)
-                .MUL()
-                .GAS()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-
-            yield return ([Instruction.JUMPI, Instruction.JUMPDEST], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(0)
-                .JUMPI(9)
-                .PushSingle(3)
-                .JUMPDEST()
-                .PushSingle(0)
-                .MUL()
-                .GAS()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.JUMP, Instruction.JUMPDEST], Prepare.EvmCode
-                .PushSingle(23)
-                .JUMP(14)
-                .JUMPDEST()
-                .PushSingle(3)
-                .MUL()
-                .GAS()
-                .PUSHx([1])
-                .SSTORE()
-                .STOP()
-                .JUMPDEST()
-                .JUMP(5)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SHL], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(1)
-                .SHL()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SHL], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(32)
-                .SHL()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SHR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(1)
-                .SHR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SHR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(32)
-                .SHR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SAR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(0)
-                .SAR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SAR], Prepare.EvmCode
-                .PushSingle(0)
-                .PushSingle(23)
-                .SAR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SAR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(17)
-                .SAR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SAR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle((UInt256)((Int256.Int256)(-1)))
-                .SAR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SAR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle((UInt256)((Int256.Int256)(-1)))
-                .SAR()
-                .PushSingle((UInt256)((Int256.Int256)(1)))
-                .SAR()
-                .PushSingle(23)
-                .EQ()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.AND], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(1)
-                .AND()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.AND], Prepare.EvmCode
-                .PushSingle(0)
-                .PushSingle(UInt256.MaxValue)
-                .AND()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.AND], Prepare.EvmCode
-                .PushSingle(UInt256.MaxValue)
-                .PushSingle(0)
-                .AND()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.OR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(1)
-                .OR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.OR], Prepare.EvmCode
-                .PushSingle(0)
-                .PushSingle(UInt256.MaxValue)
-                .OR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.OR], Prepare.EvmCode
-                .PushSingle(UInt256.MaxValue)
-                .PushSingle(0)
-                .OR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.XOR], Prepare.EvmCode
-                .PushSingle(23)
-                .PushSingle(1)
-                .XOR()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SLT], Prepare.EvmCode
-                .PushSingle(17)
-                .PushData(23)
-                .SLT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SLT], Prepare.EvmCode
-                .PushData(23)
-                .PushSingle(17)
-                .SLT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SLT], Prepare.EvmCode
-                .PushData(17)
-                .PushSingle(17)
-                .SLT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SGT], Prepare.EvmCode
-                .PushData(23)
-                .PushData(17)
-                .SGT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SGT], Prepare.EvmCode
-                .PushData(17)
-                .PushData(17)
-                .SGT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SGT], Prepare.EvmCode
-                .PushData(17)
-                .PushData(23)
-                .SGT()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BYTE], Prepare.EvmCode
-                .BYTE(0, ((UInt256)(23)).PaddedBytes(32))
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BYTE], Prepare.EvmCode
-                .BYTE(16, UInt256.MaxValue.PaddedBytes(32))
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BYTE], Prepare.EvmCode
-                .BYTE(16, ((UInt256)(23)).PaddedBytes(32))
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.JUMP, Instruction.JUMPDEST], Prepare.EvmCode
-                .JUMP(31)
-                .INVALID()
-                // this assumes that the code segment is jumping to another segment beyond it's boundaries
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LOG0], Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .LOGx(0, 0, 64)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LOG1], Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(TestItem.KeccakA.Bytes.ToArray())
-                .LOGx(1, 0, 64)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LOG2], Prepare.EvmCode
-                .PushData(SampleHexData2.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(TestItem.KeccakA.Bytes.ToArray())
-                .PushData(TestItem.KeccakB.Bytes.ToArray())
-                .LOGx(2, 0, 64)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LOG3], Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(TestItem.KeccakA.Bytes.ToArray())
-                .PushData(TestItem.KeccakB.Bytes.ToArray())
-                .PushData(TestItem.KeccakC.Bytes.ToArray())
-                .LOGx(3, 0, 64)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.LOG4], Prepare.EvmCode
-                .PushData(SampleHexData1.PadLeft(64, '0'))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(TestItem.KeccakA.Bytes.ToArray())
-                .PushData(TestItem.KeccakB.Bytes.ToArray())
-                .PushData(TestItem.KeccakC.Bytes.ToArray())
-                .PushData(TestItem.KeccakD.Bytes.ToArray())
-                .LOGx(4, 0, 64)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.TSTORE, Instruction.TLOAD], Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .TSTORE()
-                .PushData(7)
-                .TLOAD()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SSTORE, Instruction.SLOAD], Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .SSTORE()
-                .PushData(7)
-                .SLOAD()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXTCODESIZE], Prepare.EvmCode
-                .EXTCODESIZE(Address.FromNumber(23))
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXTCODEHASH], Prepare.EvmCode
-                .EXTCODEHASH(Address.FromNumber(23))
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.EXTCODECOPY], Prepare.EvmCode
-                .EXTCODECOPY(Address.FromNumber(23), 0, 0, 32)
-                .MLOAD(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BALANCE], Prepare.EvmCode
-                .BALANCE(Address.FromNumber(23))
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SELFBALANCE], Prepare.EvmCode
-                .SELFBALANCE()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.INVALID], Prepare.EvmCode
-                .INVALID()
-                .PushData(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.BadInstruction, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.STOP], Prepare.EvmCode
-                .STOP()
-                .PushData(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.POP], Prepare.EvmCode
-                .PUSHx()
-                .POP()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.POP], Prepare.EvmCode
-                .POP()
-                .POP()
-                .POP()
-                .POP()
-                .Done, EvmExceptionType.StackUnderflow, (turnOnAmortization, turnOnAggressiveMode));
-
-
-            for (byte opcode = (byte)Instruction.DUP1; opcode <= (byte)Instruction.DUP16; opcode++)
-            {
-                int n = opcode - (byte)Instruction.DUP1 + 1;
-                var test = Prepare.EvmCode;
-                for (int i = 0; i < n; i++)
-                {
-                    test.PushData(i);
-                }
-                test.Op((Instruction)opcode)
-                    .PushData(1)
-                    .SSTORE();
-
-                yield return ([(Instruction)opcode], test.Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
+                yield return ([Instruction.INVALID], Prepare.EvmCode
+                    .JUMPDEST()
+                    .MUL(23, 3)
+                    .POP()
+                    .JUMP(0)
+                    .Done, EvmExceptionType.OutOfGas, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.INVALID], Prepare.EvmCode
+                    .JUMPDEST()
+                    .PUSHx()
+                    .DUPx(1)
+                    .DUPx(1)
+                    .DUPx(1)
+                    .DUPx(1)
+                    .DUPx(1)
+                    .DUPx(1)
+                    .DUPx(1)
+                    .JUMP(0)
+                    .Done, EvmExceptionType.StackOverflow, (turnOnAmortization, turnOnAggressiveMode));
+
+                yield return ([Instruction.INVALID], Prepare.EvmCode
+                    .JUMPDEST()
+                    .MUL(23)
+                    .JUMP(0)
+                    .Done, EvmExceptionType.StackUnderflow, (turnOnAmortization, turnOnAggressiveMode));
             }
 
-            for (byte opcode = (byte)Instruction.PUSH0; opcode <= (byte)Instruction.PUSH32; opcode++)
-            {
-                int n = opcode - (byte)Instruction.PUSH0;
-                byte[] args = n == 0 ? null : Enumerable.Range(0, n).Select(i => (byte)i).ToArray();
-
-                yield return ([(Instruction)opcode], Prepare.EvmCode.PUSHx(args)
-                    .PushData(1)
-                    .SSTORE()
-                    .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-            }
-
-            for (byte opcode = (byte)Instruction.SWAP1; opcode <= (byte)Instruction.SWAP16; opcode++)
-            {
-                int n = opcode - (byte)Instruction.SWAP1 + 2;
-                var test = Prepare.EvmCode;
-                for (int i = 0; i < n; i++)
-                {
-                    test.PushData(i);
-                }
-                test.Op((Instruction)opcode)
-                    .PushData(1)
-                    .SSTORE();
-
-                yield return ([(Instruction)opcode], test.Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-            }
-
-            yield return ([Instruction.SDIV], Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .SDIV()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SMOD], Prepare.EvmCode
-                .PushData(23)
-                .PushData(7)
-                .SMOD()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.CODECOPY], Prepare.EvmCode
-                .PushData(0)
-                .PushData(32)
-                .PushData(7)
-                .CODECOPY()
-                .MLOAD(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.MULMOD], Prepare.EvmCode
-                .PushData(23)
-                .PushData(3)
-                .PushData(7)
-                .MULMOD()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.KECCAK256], Prepare.EvmCode
-                .MSTORE(0, Enumerable.Range(0, 16).Select(i => (byte)i).ToArray())
-                .PushData(0)
-                .PushData(16)
-                .KECCAK256()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.PREVRANDAO], Prepare.EvmCode
-                .PREVRANDAO()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.RETURNDATACOPY], Prepare.EvmCode
-                .PushData(0)
-                .PushData(32)
-                .PushData(0)
-                .RETURNDATACOPY()
-                .MLOAD(0)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.BLOBBASEFEE], Prepare.EvmCode
-                .Op(Instruction.BLOBBASEFEE)
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-            
-            yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
-                .PushData(1024)
-                .PushData(16)
-                .SIGNEXTEND()
-                .PushData(1)
-                .SSTORE()
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
-                .PushData(255)
-                .PushData(0)
-                .Op(Instruction.SIGNEXTEND)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
-                .PushData(255)
-                .PushData(32)
-                .Op(Instruction.SIGNEXTEND)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.SIGNEXTEND], Prepare.EvmCode
-                .PushData(UInt256.MaxValue)
-                .PushData(31)
-                .Op(Instruction.SIGNEXTEND)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done, EvmExceptionType.None, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.INVALID], Prepare.EvmCode
-                .JUMPDEST()
-                .MUL(23, 3)
-                .POP()
-                .JUMP(0)
-                .Done, EvmExceptionType.OutOfGas, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.INVALID], Prepare.EvmCode
-                .JUMPDEST()
-                .PUSHx()
-                .DUPx(1)
-                .DUPx(1)
-                .DUPx(1)
-                .DUPx(1)
-                .DUPx(1)
-                .DUPx(1)
-                .DUPx(1)
-                .JUMP(0)
-                .Done, EvmExceptionType.StackOverflow, (turnOnAmortization, turnOnAggressiveMode));
-
-            yield return ([Instruction.INVALID], Prepare.EvmCode
-                .JUMPDEST()
-                .MUL(23)
-                .JUMP(0)
-                .Done, EvmExceptionType.StackUnderflow, (turnOnAmortization, turnOnAggressiveMode));
-        }
-
-        public static IEnumerable<(string, byte[], EvmExceptionType, (bool, bool))> GetJitBytecodesSamples()
-        {
             (bool, bool)[] combinations = new[]
             {
                 (false, false),
@@ -1444,7 +1445,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 foreach (var sample in GetJitBytecodesSamplesGenerator(combination.Item1, combination.Item2))
                 {
-                    yield return new ($"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]", sample.Item2, sample.Item3, sample.Item4);
+                    yield return new(sample.Item1, sample.Item2, sample.Item3, sample.Item4, $"[{String.Join(", ", sample.Item1.Select(op => op.ToString()))}]");
                 }
             }
         }
@@ -1454,7 +1455,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             List<Instruction> instructions = System.Enum.GetValues<Instruction>().ToList();
 
-            var tests = GetJitBytecodesSamplesGenerator(false, false)
+            var tests = GetJitBytecodesSamples()
                 .SelectMany(test => test.Item1)
                 .ToHashSet();
 
@@ -1565,7 +1566,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             TestState.InsertCode(address, bytecode, spec);
             */
             var accumulatedTraces = new List<GethTxTraceEntry>();
-            for (int i = 0; i < RepeatCount ; i++)
+            for (int i = 0; i < RepeatCount; i++)
             {
                 var tracer = new GethLikeTxMemoryTracer(GethTraceOptions.Default);
                 enhancedChain.Execute<GethLikeTxMemoryTracer>(bytecode, tracer);
@@ -1634,7 +1635,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void ILVM_JIT_Execution_Equivalence_Tests((string opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
+        public void ILVM_JIT_Execution_Equivalence_Tests((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
         {
             TestBlockChain standardChain = new TestBlockChain(new VMConfig());
             var address = standardChain.InsertCode(testcase.bytecode);
@@ -1683,7 +1684,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 Assert.That(enhancedHasIlvmTraces, Is.True);
                 Assert.That(normalHasIlvmTraces, Is.False);
             }
-            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(actual, Is.EqualTo(expected), testcase.msg);
         }
 
         [Test, TestCaseSource(nameof(GetPatBytecodesSamples))]
@@ -2125,7 +2126,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Ensure_Evm_ILvm_Compatibility((string opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
+        public void Ensure_Evm_ILvm_Compatibility((Instruction[] opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
         {
             var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -2162,7 +2163,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Test_ILVM_Trace_Mode((string opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
+        public void Test_ILVM_Trace_Mode((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
         {
             var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -2202,7 +2203,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test, TestCaseSource(nameof(GetJitBytecodesSamples))]
-        public void Test_ILVM_Trace_Mode_Has_0_Traces_When_TraceInstructions_Is_Off((string opcode, byte[] bytecode, EvmExceptionType exceptionType, (bool enableAmortization, bool enableAggressiveMode)) testcase)
+        public void Test_ILVM_Trace_Mode_Has_0_Traces_When_TraceInstructions_Is_Off((Instruction[] opcode, byte[] bytecode, EvmExceptionType, (bool enableAmortization, bool enableAggressiveMode), string msg) testcase)
         {
             var codeInfo = new CodeInfo(testcase.bytecode, TestItem.AddressA);
             var blkExCtx = new BlockExecutionContext(BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header);
@@ -2244,7 +2245,103 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(tracedOpcodes.Count, Is.EqualTo(0));
         }
 
+        public static IEnumerable<(string, byte[])> GetBenchmarkSamples()
+        {
+            IEnumerable<(string, byte[])> GetBenchmarkSamplesGen(byte[] argBytes)
+            {
+                yield return ($"Fib With args {new UInt256(argBytes)}", Prepare.EvmCode
+                        .PushData(argBytes)
+                        .COMMENT("1st/2nd fib number")
+                        .PushData(0)
+                        .PushData(1)
+                        .COMMENT("MAINLOOP:")
+                        .JUMPDEST()
+                        .DUPx(3)
+                        .ISZERO()
+                        .PushData(26 + argBytes.Length)
+                        .JUMPI()
+                        .COMMENT("fib step")
+                        .DUPx(2)
+                        .DUPx(2)
+                        .ADD()
+                        .SWAPx(2)
+                        .POP()
+                        .SWAPx(1)
+                        .COMMENT("decrement fib step counter")
+                        .SWAPx(2)
+                        .PushData(1)
+                        .SWAPx(1)
+                        .SUB()
+                        .SWAPx(2)
+                        .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
+                        .JUMP()
 
+                        .COMMENT("CLEANUP:")
+                        .JUMPDEST()
+                        .SWAPx(2)
+                        .POP()
+                        .POP()
+                        .COMMENT("done: requested fib number is the only element on the stack!")
+                        .STOP()
+                        .Done);
+
+                yield return ($"IsPrime With args {new UInt256(argBytes)}", Prepare.EvmCode
+                        .PUSHx(argBytes)
+                        .COMMENT("Store variable(n) in Memory")
+                        .MSTORE(0)
+                        .COMMENT("Store Indexer(i) in Memory")
+                        .PushData(2)
+                        .MSTORE(32)
+                        .COMMENT("We mark this place as a GOTO section")
+                        .JUMPDEST()
+                        .COMMENT("We check if i * i < n")
+                        .MLOAD(32)
+                        .DUPx(1)
+                        .MUL()
+                        .MLOAD(0)
+                        .LT()
+                        .PushData(47 + argBytes.Length)
+                        .JUMPI()
+                        .COMMENT("We check if n % i == 0")
+                        .MLOAD(32)
+                        .MLOAD(0)
+                        .MOD()
+                        .ISZERO()
+                        .DUPx(1)
+                        .COMMENT("if 0 we jump to the end")
+                        .PushData(51 + argBytes.Length)
+                        .JUMPI()
+                        .POP()
+                        .COMMENT("increment Indexer(i)")
+                        .MLOAD(32)
+                        .ADD(1)
+                        .MSTORE(32)
+                        .COMMENT("Loop back to top of conditional loop")
+                        .PushData(9 + argBytes.Length)
+                        .JUMP()
+                        .COMMENT("return 0")
+                        .JUMPDEST()
+                        .PushData(0)
+                        .STOP()
+                        .JUMPDEST()
+                        .Done);
+
+            }
+
+            UInt256[] args = [1024, 1023, 23, 57, 101, 105, 1024 * 1024, 1024 * 1024 * 1024, 1 << 31 - 1];
+            foreach (var arg in args)
+            {
+                byte[] bytes = new byte[32];
+                arg.ToBigEndian(bytes);
+                var argBytes = bytes.WithoutLeadingZeros().ToArray();
+                foreach (var sampleGen in GetBenchmarkSamplesGen(argBytes))
+                {
+                    yield return sampleGen;
+                }
+            }
+
+
+        }
 
         public class LocalSetup
         {
@@ -2302,58 +2399,19 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 _virtualMachine.Run<ITracing>(_evmState, _stateProvider, _txTracer);
                 _stateProvider.Reset();
             }
+            public void Reset()
+            {
+                _stateProvider.Reset();
+            }
         }
 
-        [Test]
-        public void Ensure_ILEVM_outperforms_NormalMode_In_Mathematical_Pure_Computations() {
-
-            Span<byte> bytes = stackalloc byte[32];
-            UInt256 argument = 1024 * 1024 * 1024;
-            argument.ToBigEndian(bytes);
-            var argBytes = bytes.WithoutLeadingZeros().ToArray();
-
-            var ByteCode =
-                Prepare.EvmCode
-                    .PushData(argBytes)
-                    .COMMENT("1st/2nd fib number")
-                    .PushData(0)
-                    .PushData(1)
-                    .COMMENT("MAINLOOP:")
-                    .JUMPDEST()
-                    .DUPx(3)
-                    .ISZERO()
-                    .PushData(26 + argBytes.Length)
-                    .JUMPI()
-
-                    .COMMENT("fib step")
-                    .DUPx(2)
-                    .DUPx(2)
-                    .ADD()
-                    .SWAPx(2)
-                    .POP()
-                    .SWAPx(1)
-
-                    .COMMENT("decrement fib step counter")
-                    .SWAPx(2)
-                    .PushData(1)
-                    .SWAPx(1)
-                    .SUB()
-                    .SWAPx(2)
-                    .PushData(5 + argBytes.Length).COMMENT("goto MAINLOOP")
-                    .JUMP()
-
-                    .COMMENT("CLEANUP:")
-                    .JUMPDEST()
-                    .SWAPx(2)
-                    .POP()
-                    .POP()
-                    .COMMENT("done: requested fib number is the only element on the stack!")
-                    .STOP()
-                    .Done;
-            Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
+        [Test, TestCaseSource(nameof(GetBenchmarkSamples)), NonParallelizable]
+        public void Ensure_ILEVM_outperforms_NormalMode_In_Mathematical_Pure_Computations((string title, byte[] bytecode) testCase)
+        {
+            Console.WriteLine($"Running benchmark for bytecode {testCase.bytecode?.ToHexString()}");
 
             Debug.WriteLine("Running NRML Mode");
-            var nrmlSetup_notracing = new LocalSetup(ByteCode, new VMConfig
+            var nrmlSetup_notracing = new LocalSetup(testCase.bytecode, new VMConfig
             {
                 BakeInTracingInPartialAotMode = false,
                 PartialAotThreshold = int.MaxValue,
@@ -2364,7 +2422,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 IsPatternMatchingEnabled = false,
             });
 
-            const int IterationCount = 1024;
+            const int IterationCount = 1 << 16;
 
 
             Stopwatch sw = Stopwatch.StartNew();
@@ -2374,13 +2432,14 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 sw.Restart();
                 nrmlSetup_notracing.Run<VirtualMachine.NotTracing>();
                 sw.Stop();
+                nrmlSetup_notracing.Reset();
                 nrml_avg += sw.ElapsedTicks;
             }
-
+            nrml_avg /= IterationCount;
             Console.WriteLine(nrml_avg);
 
             Debug.WriteLine("Running ILEVM Mode");
-            var ilvmSetup_notracing = new LocalSetup(ByteCode, new VMConfig
+            var ilvmSetup_notracing = new LocalSetup(testCase.bytecode, new VMConfig
             {
                 BakeInTracingInPartialAotMode = false,
                 PartialAotThreshold = int.MaxValue,
@@ -2392,17 +2451,18 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             });
 
             double ilvm_avg = 0;
-            for(int i  = 0; i < IterationCount; i++)
+            for (int i = 0; i < IterationCount; i++)
             {
                 sw.Restart();
                 ilvmSetup_notracing.Run<VirtualMachine.NotTracing>();
                 sw.Stop();
+                ilvmSetup_notracing.Reset();
                 ilvm_avg += sw.ElapsedTicks;
             }
-
+            ilvm_avg /= IterationCount;
             Console.WriteLine(ilvm_avg);
 
-            Assert.That(ilvm_avg, Is.LessThan(nrml_avg));
+            Assert.That(ilvm_avg, Is.LessThan(nrml_avg), testCase.title);
         }
     }
 }
