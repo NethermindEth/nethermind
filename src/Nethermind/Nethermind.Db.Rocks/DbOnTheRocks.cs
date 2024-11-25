@@ -509,23 +509,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // instead of checking a bloom filter.
         options.SetOptimizeFiltersForHits(dbConfig.OptimizeFiltersForHits ? 1 : 0);
 
-        if (dbConfig.DisableCompression == true)
-        {
-            options.SetCompression(Compression.No);
-        }
-        else if (dbConfig.UseLz4 == true)
-        {
-            // Its faster sometimes, its slower sometimes, depends on the DB.
-            options.SetCompression(Compression.Lz4);
-        }
-        else if (dbConfig.OnlyCompressLastLevel)
-        {
-            // So the bottommost level is about 80-90% of the database. So it may make sense to only compress that
-            // part, which make the top level faster, and/or mmap-able.
-            options.SetCompression(Compression.No);
-            _rocksDbNative.rocksdb_options_set_bottommost_compression(options.Handle, 0x1); // 0x1 is snappy.
-        }
-
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);
 
@@ -585,16 +568,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
         options.SetMinWriteBufferNumberToMerge(dbConfig.MinWriteBufferNumberToMerge);
 
-        if (dbConfig.MaxWriteBufferSizeToMaintain.HasValue)
-        {
-            // Allow maintaining some of the flushed write buffer. Why do you want to do this? Because write buffer
-            // act like a write cache. Recently written key are likely to be read back. Plus, in state db, intermediate
-            // nodes that is being read is likely going to get modified, so having those node in rowcache/blockcache
-            // can be useless, might as well put memory here.
-            // Note: each memtable need to be checked, so it may make sense to also increase the write buffer size.
-            _rocksDbNative.rocksdb_options_set_max_write_buffer_size_to_maintain(options.Handle, dbConfig.MaxWriteBufferSizeToMaintain.Value);
-        }
-
         #endregion
 
         // This section affect compactions, flushes and the LSM shape.
@@ -613,9 +586,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
 
-        // Set to true to enable dynamic level bytes. Its drastically different than standard compaction.
-        options.SetLevelCompactionDynamicLevelBytes(dbConfig.LevelCompactionDynamicLevelBytes);
-
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
@@ -630,20 +600,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
 
-        // How many bytes before the SST files get synced to disk.
-        options.SetBytesPerSync(dbConfig.BytesPerSync);
-
         // For reducing temporarily used disk space but come at the cost of parallel compaction.
         if (dbConfig.MaxCompactionBytes.HasValue)
         {
             options.SetMaxCompactionBytes(dbConfig.MaxCompactionBytes.Value);
         }
 
-        // Significantly reduces IOPs during syncing, but take up quite some memory.
-        if (dbConfig.CompactionReadAhead is not null && dbConfig.CompactionReadAhead != 0)
-        {
-            options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
-        }
         #endregion
 
         #region Other options
@@ -673,22 +635,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
-        options.SetRecycleLogFileNum(dbConfig
-            .RecycleLogFileNum); // potential optimization for reusing allocated log files
 
         // Bypass OS cache. This may reduce response time, but if cache size is not increased, it has less effective
         // cache. Also, OS cache is compressed cache, so even if cache size is increased, the effective cache size
         // is still lower as block cache is uncompressed.
         options.SetUseDirectReads(dbConfig.UseDirectReads.GetValueOrDefault());
         options.SetUseDirectIoForFlushAndCompaction(dbConfig.UseDirectIoForFlushAndCompactions.GetValueOrDefault());
-
-        if (dbConfig.AllowMmapReads)
-        {
-            // Only work if disable compression is false.
-            // Note: if SkipVerifyChecksum is false, checksum is calculated on every reads.
-            // Note: This bypass block cache.
-            options.SetAllowMmapReads(true);
-        }
 
         if (dbConfig.MaxBytesPerSec.HasValue)
         {
@@ -703,6 +655,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         options.SetStatsDumpPeriodSec(dbConfig.StatsDumpPeriodSec);
 
+        Console.Error.WriteLine($"For {Name} the additional is {dbConfig.AdditionalRocksDbOptions}");
         if (dbConfig.AdditionalRocksDbOptions is not null)
         {
             IntPtr optsPtr = Marshal.StringToHGlobalAnsi(dbConfig.AdditionalRocksDbOptions);

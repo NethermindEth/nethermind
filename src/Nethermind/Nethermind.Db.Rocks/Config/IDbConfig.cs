@@ -16,16 +16,12 @@ public interface IDbConfig : IConfig
     ulong BlockCacheSize { get; set; }
     bool CacheIndexAndFilterBlocks { get; set; }
     int? MaxOpenFiles { get; set; }
-    uint RecycleLogFileNum { get; set; }
     bool WriteAheadLogSync { get; set; }
     long? MaxBytesPerSec { get; set; }
     int? BlockSize { get; set; }
     ulong? ReadAheadSize { get; set; }
     bool? UseDirectReads { get; set; }
     bool? UseDirectIoForFlushAndCompactions { get; set; }
-    bool? DisableCompression { get; set; }
-    bool? UseLz4 { get; set; }
-    ulong? CompactionReadAhead { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
     ulong? MaxBytesForLevelBase { get; set; }
     ulong TargetFileSizeBase { get; set; }
@@ -33,23 +29,18 @@ public interface IDbConfig : IConfig
     bool UseTwoLevelIndex { get; set; }
     bool UseHashIndex { get; set; }
     ulong? PrefixExtractorLength { get; set; }
-    bool AllowMmapReads { get; set; }
     bool? VerifyChecksum { get; set; }
     double MaxBytesForLevelMultiplier { get; set; }
     ulong? MaxCompactionBytes { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
     bool OptimizeFiltersForHits { get; set; }
-    bool OnlyCompressLastLevel { get; set; }
-    long? MaxWriteBufferSizeToMaintain { get; set; }
     bool UseHashSkipListMemtable { get; set; }
     int? BlockRestartInterval { get; set; }
     double MemtablePrefixBloomSizeRatio { get; set; }
     bool AdviseRandomOnOpen { get; set; }
-    bool LevelCompactionDynamicLevelBytes { get; set; }
     int? BloomFilterBitsPerKey { get; set; }
     int? UseRibbonFilterStartingFromLevel { get; set; }
-    ulong BytesPerSync { get; set; }
     double? DataBlockIndexUtilRatio { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
@@ -65,7 +56,6 @@ public interface IDbConfig : IConfig
     int? ReceiptsDbBlockSize { get; set; }
     bool? ReceiptsDbUseDirectReads { get; set; }
     bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? ReceiptsDbCompactionReadAhead { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
     bool ReceiptsDbOptimizeFiltersForHits { get; set; }
@@ -80,7 +70,6 @@ public interface IDbConfig : IConfig
     int? BlocksBlockSize { get; set; }
     bool? BlocksDbUseDirectReads { get; set; }
     bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? BlocksDbCompactionReadAhead { get; set; }
     bool BlocksDbOptimizeFiltersForHits { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
@@ -93,7 +82,6 @@ public interface IDbConfig : IConfig
     int? HeadersDbBlockSize { get; set; }
     bool? HeadersDbUseDirectReads { get; set; }
     bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? HeadersDbCompactionReadAhead { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
     ulong? HeadersDbMaxBytesForLevelBase { get; set; }
 
@@ -109,7 +97,6 @@ public interface IDbConfig : IConfig
     bool? BlockNumbersDbUseHashSkipListMemtable { get; set; }
     bool? BlockNumbersDbUseDirectReads { get; set; }
     bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? BlockNumbersDbCompactionReadAhead { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
     ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
 
@@ -122,7 +109,6 @@ public interface IDbConfig : IConfig
     int? BlockInfosDbBlockSize { get; set; }
     bool? BlockInfosDbUseDirectReads { get; set; }
     bool? BlockInfosDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? BlockInfosDbCompactionReadAhead { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
     ulong PendingTxsDbWriteBufferSize { get; set; }
@@ -134,42 +120,6 @@ public interface IDbConfig : IConfig
     int? PendingTxsDbBlockSize { get; set; }
     bool? PendingTxsDbUseDirectReads { get; set; }
     bool? PendingTxsDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? PendingTxsDbCompactionReadAhead { get; set; }
-    string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
-
-    ulong CodeDbWriteBufferSize { get; set; }
-    uint CodeDbWriteBufferNumber { get; set; }
-    ulong CodeDbBlockCacheSize { get; set; }
-    bool CodeDbCacheIndexAndFilterBlocks { get; set; }
-    int? CodeDbMaxOpenFiles { get; set; }
-    long? CodeDbMaxBytesPerSec { get; set; }
-    int? CodeDbBlockSize { get; set; }
-    bool CodeDbUseHashIndex { get; set; }
-    ulong? CodeDbRowCacheSize { get; set; }
-    bool? CodeDbUseHashSkipListMemtable { get; set; }
-    bool? CodeUseDirectReads { get; set; }
-    bool? CodeUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? CodeCompactionReadAhead { get; set; }
-    string? CodeDbAdditionalRocksDbOptions { get; set; }
-
-    ulong BloomDbWriteBufferSize { get; set; }
-    uint BloomDbWriteBufferNumber { get; set; }
-    ulong BloomDbBlockCacheSize { get; set; }
-    bool BloomDbCacheIndexAndFilterBlocks { get; set; }
-    int? BloomDbMaxOpenFiles { get; set; }
-    long? BloomDbMaxBytesPerSec { get; set; }
-    string? BloomDbAdditionalRocksDbOptions { get; set; }
-
-    ulong MetadataDbWriteBufferSize { get; set; }
-    uint MetadataDbWriteBufferNumber { get; set; }
-    ulong MetadataDbBlockCacheSize { get; set; }
-    bool MetadataDbCacheIndexAndFilterBlocks { get; set; }
-    int? MetadataDbMaxOpenFiles { get; set; }
-    long? MetadataDbMaxBytesPerSec { get; set; }
-    int? MetadataDbBlockSize { get; set; }
-    bool? MetadataUseDirectReads { get; set; }
-    bool? MetadataUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? MetadataCompactionReadAhead { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     ulong StateDbWriteBufferSize { get; set; }
@@ -181,14 +131,10 @@ public interface IDbConfig : IConfig
     int? StateDbBlockSize { get; set; }
     bool? StateDbUseDirectReads { get; set; }
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? StateDbCompactionReadAhead { get; set; }
-    bool? StateDbDisableCompression { get; set; }
-    bool? StateDbUseLz4 { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
     bool StateDbUseTwoLevelIndex { get; set; }
     bool StateDbUseHashIndex { get; set; }
     ulong? StateDbPrefixExtractorLength { get; set; }
-    bool StateDbAllowMmapReads { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
     double StateDbMaxBytesForLevelMultiplier { get; set; }
     ulong? StateDbMaxBytesForLevelBase { get; set; }
@@ -196,7 +142,6 @@ public interface IDbConfig : IConfig
     int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
     bool StateDbOptimizeFiltersForHits { get; set; }
-    bool StateDbOnlyCompressLastLevel { get; set; }
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     bool StateDbUseHashSkipListMemtable { get; set; }
     int? StateDbBlockRestartInterval { get; set; }
