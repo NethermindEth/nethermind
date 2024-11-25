@@ -67,6 +67,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     protected readonly PerTableDbConfig _perTableDbConfig;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
+    private int _minWriteBufferToMerge;
 
     private readonly IFileSystem _fileSystem;
 
@@ -447,6 +448,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
 
         _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
         _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
+        _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_to_merge"]);
 
         #endregion
 
@@ -472,11 +474,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
             ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000} MB".PadLeft(8));
         }
-
-        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
-        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
-        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
-        options.SetMinWriteBufferNumberToMerge(dbConfig.MinWriteBufferNumberToMerge);
 
         #endregion
 
@@ -1432,7 +1429,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         // The buffer is not compressed unlike l0File, so to account for it, its size need to be slightly larger.
         ulong targetFileSize = (ulong)16.MiB();
         ulong bufferSize = (ulong)(targetFileSize / _perTableDbConfig.CompressibilityHint);
-        ulong l0FileSize = targetFileSize * (ulong)_perTableDbConfig.MinWriteBufferNumberToMerge;
+        ulong l0FileSize = targetFileSize * (ulong)_minWriteBufferToMerge;
         ulong maxBufferNumber = 8;
 
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,

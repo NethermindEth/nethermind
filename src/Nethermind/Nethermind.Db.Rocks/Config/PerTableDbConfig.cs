@@ -37,7 +37,6 @@ public class PerTableDbConfig
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public bool? VerifyChecksum => ReadConfig<bool?>(nameof(VerifyChecksum));
-    public int MinWriteBufferNumberToMerge => ReadConfig<int>(nameof(MinWriteBufferNumberToMerge));
     public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));

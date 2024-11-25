@@ -24,6 +24,7 @@ public class DbConfig : IDbConfig
         + "memtable_whole_key_filtering=true;"
         + "memtable_prefix_bloom_size_ratio=0.02;"
         + "advise_random_on_open=true;"
+        + "min_write_buffer_to_merge=1;"
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         + "target_file_size_base=64000000;"
@@ -147,6 +148,11 @@ public class DbConfig : IDbConfig
         // Causes file size to double per level. Lower total number of file.
         + "target_file_size_multiplier=2;"
 
+        // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
+        // (maybe?) full sync where keys are deleted, replaced, or re-inserted, two memtable can merge together
+        // resulting in a reduced total memtable size to be written. This does seems to reduce sync throughput though.
+        + "min_write_buffer_number_to_merge=2;"
+
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
         // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
@@ -164,8 +170,7 @@ public class DbConfig : IDbConfig
         + "block_based_table_factory.block_size=32000;"
 
         + "block_based_table_factory.filter_policy=bloom_filter:15;"
-
-          ;
+        ;
 
     public bool WriteAheadLogSync { get; set; } = false;
 
