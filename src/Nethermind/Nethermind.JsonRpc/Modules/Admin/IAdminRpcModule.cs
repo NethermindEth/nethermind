@@ -87,10 +87,10 @@ public interface IAdminRpcModule : IRpcModule
         [JsonRpcParameter(Description = "Source path to import from.", ExampleValue = "/tmp/eradir")]
         string sourcePath,
         [JsonRpcParameter(Description = "Start block to import from the era directory. Set to 0 to import from the first available block.", ExampleValue = "0")]
-        int from,
+        int from = 0,
         [JsonRpcParameter(Description = "End block to import from the era directory. Set to 0 to import until last block.", ExampleValue = "0")]
-        int to,
+        int to = 0,
         [JsonRpcParameter(Description = "Accumulator file to trust. Set to null to trust the era archive without accumulator file verification.", ExampleValue = "null")]
-        string? accumulatorFile
+        string? accumulatorFile = null
     );
 }

@@ -144,12 +144,12 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
-    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start, int end)
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int start = 0, int end = 0)
     {
         return ResultWrapper<string>.Success(_eraService.ExportHistory(destination, start, end));
     }
 
-    public Task<ResultWrapper<string>> admin_importHistory(string source, int start, int end, string? accumulatorFile)
+    public Task<ResultWrapper<string>> admin_importHistory(string source, int start = 0, int end = 0, string? accumulatorFile = null)
     {
         return ResultWrapper<string>.Success(_eraService.ImportHistory(source, start, end, accumulatorFile));
     }
