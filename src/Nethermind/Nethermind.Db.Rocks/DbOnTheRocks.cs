@@ -421,15 +421,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // No significant downside. Just set it.
         tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
 
-        // If true, the index does not reside on dedicated memory space, but uses the block cache as memory space and
-        // it can be released. This sounds great, except that without two level index, the index size is fairly large,
-        // about 0.5MB each, so if the index is not in the cache, the whole thing need to re-read. This cause very spiky
-        // block processing time. With two level index, this setting only apply to the top level index, which is only
-        // a couple MB on StateDb. So we keep it as false to not introduce regression on user who synced before 1.19.
-        // On mainnet, the total index size for statedb is about 3GB if I'm not mistaken. Its linearly proportional to
-        // database size and inversely proportional to blocksize.
-        tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
-
         // Make the index in cache have higher priority, so it is kept more in cache.
         _rocksDbNative.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(tableOptions.Handle, true);
 
@@ -504,18 +495,8 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         options.SetBlockBasedTableFactory(tableOptions);
 
-        // When true, (for some reason the binding is int, but 1 is true), bloom filters for last level is not created.
-        // This reduces disk space utilization, but read of non-existent key will have to go through the database
-        // instead of checking a bloom filter.
-        options.SetOptimizeFiltersForHits(dbConfig.OptimizeFiltersForHits ? 1 : 0);
-
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);
-
-        // Multiply the target size of SST file by this much every level down, further reduce number of file.
-        // Does not have much downside on hash based DB, but might disable some move optimization on db with
-        // blocknumber key, or halfpath/flatdb layout.
-        options.SetTargetFileSizeMultiplier(dbConfig.TargetFileSizeMultiplier);
 
         #endregion
 

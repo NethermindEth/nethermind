@@ -14,7 +14,6 @@ public interface IDbConfig : IConfig
     ulong WriteBufferSize { get; set; }
     uint WriteBufferNumber { get; set; }
     ulong BlockCacheSize { get; set; }
-    bool CacheIndexAndFilterBlocks { get; set; }
     int? MaxOpenFiles { get; set; }
     bool WriteAheadLogSync { get; set; }
     long? MaxBytesPerSec { get; set; }
@@ -34,7 +33,6 @@ public interface IDbConfig : IConfig
     ulong? MaxCompactionBytes { get; set; }
     int MinWriteBufferNumberToMerge { get; set; }
     ulong? RowCacheSize { get; set; }
-    bool OptimizeFiltersForHits { get; set; }
     bool UseHashSkipListMemtable { get; set; }
     int? BlockRestartInterval { get; set; }
     double MemtablePrefixBloomSizeRatio { get; set; }
@@ -50,7 +48,6 @@ public interface IDbConfig : IConfig
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
     ulong ReceiptsDbBlockCacheSize { get; set; }
-    bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; }
     int? ReceiptsDbMaxOpenFiles { get; set; }
     long? ReceiptsDbMaxBytesPerSec { get; set; }
     int? ReceiptsDbBlockSize { get; set; }
@@ -58,25 +55,21 @@ public interface IDbConfig : IConfig
     bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong ReceiptsDbTargetFileSizeBase { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
-    bool ReceiptsDbOptimizeFiltersForHits { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
     uint BlocksDbWriteBufferNumber { get; set; }
     ulong BlocksDbBlockCacheSize { get; set; }
-    bool BlocksDbCacheIndexAndFilterBlocks { get; set; }
     int? BlocksDbMaxOpenFiles { get; set; }
     long? BlocksDbMaxBytesPerSec { get; set; }
     int? BlocksBlockSize { get; set; }
     bool? BlocksDbUseDirectReads { get; set; }
     bool? BlocksDbUseDirectIoForFlushAndCompactions { get; set; }
-    bool BlocksDbOptimizeFiltersForHits { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
     ulong HeadersDbWriteBufferSize { get; set; }
     uint HeadersDbWriteBufferNumber { get; set; }
     ulong HeadersDbBlockCacheSize { get; set; }
-    bool HeadersDbCacheIndexAndFilterBlocks { get; set; }
     int? HeadersDbMaxOpenFiles { get; set; }
     long? HeadersDbMaxBytesPerSec { get; set; }
     int? HeadersDbBlockSize { get; set; }
@@ -88,7 +81,6 @@ public interface IDbConfig : IConfig
     ulong BlockNumbersDbWriteBufferSize { get; set; }
     uint BlockNumbersDbWriteBufferNumber { get; set; }
     ulong BlockNumbersDbBlockCacheSize { get; set; }
-    bool BlockNumbersDbCacheIndexAndFilterBlocks { get; set; }
     int? BlockNumbersDbMaxOpenFiles { get; set; }
     long? BlockNumbersDbMaxBytesPerSec { get; set; }
     int? BlockNumbersDbBlockSize { get; set; }
@@ -103,7 +95,6 @@ public interface IDbConfig : IConfig
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
     ulong BlockInfosDbBlockCacheSize { get; set; }
-    bool BlockInfosDbCacheIndexAndFilterBlocks { get; set; }
     int? BlockInfosDbMaxOpenFiles { get; set; }
     long? BlockInfosDbMaxBytesPerSec { get; set; }
     int? BlockInfosDbBlockSize { get; set; }
@@ -114,7 +105,6 @@ public interface IDbConfig : IConfig
     ulong PendingTxsDbWriteBufferSize { get; set; }
     uint PendingTxsDbWriteBufferNumber { get; set; }
     ulong PendingTxsDbBlockCacheSize { get; set; }
-    bool PendingTxsDbCacheIndexAndFilterBlocks { get; set; }
     int? PendingTxsDbMaxOpenFiles { get; set; }
     long? PendingTxsDbMaxBytesPerSec { get; set; }
     int? PendingTxsDbBlockSize { get; set; }
@@ -125,7 +115,6 @@ public interface IDbConfig : IConfig
     ulong StateDbWriteBufferSize { get; set; }
     uint StateDbWriteBufferNumber { get; set; }
     ulong StateDbBlockCacheSize { get; set; }
-    bool StateDbCacheIndexAndFilterBlocks { get; set; }
     int? StateDbMaxOpenFiles { get; set; }
     long? StateDbMaxBytesPerSec { get; set; }
     int? StateDbBlockSize { get; set; }
@@ -141,7 +130,6 @@ public interface IDbConfig : IConfig
     ulong? StateDbMaxCompactionBytes { get; set; }
     int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
-    bool StateDbOptimizeFiltersForHits { get; set; }
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     bool StateDbUseHashSkipListMemtable { get; set; }
     int? StateDbBlockRestartInterval { get; set; }
