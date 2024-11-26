@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -26,7 +27,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount * 4);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
-    public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, AccessList? systemTxAccessList, CancellationToken cancellationToken = default)
+    public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
         if (preBlockCaches is not null)
         {
@@ -42,7 +43,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = physicalCoreCount - 1, CancellationToken = cancellationToken };
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, systemTxAccessList, this);
+                var addressWarmer = new AddressWarmer(parallelOptions, suggestedBlock, parentStateRoot, spec, systemAccessLists, this);
                 ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
                 return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, parallelOptions, addressWarmer, cancellationToken));
@@ -55,7 +56,14 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
     // Parent state root is null for genesis block
     private static bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
-    public CacheType ClearCaches() => preBlockCaches?.ClearCaches() ?? default;
+    public CacheType ClearCaches()
+    {
+        if (_logger.IsDebug) _logger.Debug("Clearing caches");
+        CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
+        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
+
+        return cachesCleared;
+    }
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
@@ -198,16 +206,30 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, AccessList? systemTxAccessList, BlockCachePreWarmer preWarmer)
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, Hash256 stateRoot, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
         : IThreadPoolWorkItem
     {
         private readonly Block Block = block;
         private readonly Hash256 StateRoot = stateRoot;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
-        private readonly AccessList? SystemTxAccessList = systemTxAccessList;
+        private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
         public void Wait() => _doneEvent.Wait();
+
+        private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
+        {
+            if (systemAccessLists.Length == 0) return null;
+
+            ArrayPoolList<AccessList> list = new(systemAccessLists.Length);
+
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                list.Add(systemAccessList.GetAccessList(block, spec));
+            }
+
+            return list;
+        }
 
         void IThreadPoolWorkItem.Execute()
         {
@@ -232,13 +254,17 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
 
             try
             {
-                if (SystemTxAccessList is not null)
+                if (SystemTxAccessLists is not null)
                 {
                     var env = PreWarmer._envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.Build(StateRoot);
-                        scope.WorldState.WarmUp(SystemTxAccessList);
+
+                        foreach (AccessList list in SystemTxAccessLists.AsSpan())
+                        {
+                            scope.WorldState.WarmUp(list);
+                        }
                     }
                     finally
                     {
