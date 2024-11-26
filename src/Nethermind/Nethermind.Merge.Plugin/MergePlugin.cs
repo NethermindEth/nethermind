@@ -195,7 +195,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase))
             {
                 // Disable it
-                jsonRpcConfig.EnabledModules = Array.Empty<string>();
+                jsonRpcConfig.EnabledModules = [];
             }
 
             jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
@@ -449,8 +449,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
             _peerRefresher = peerRefresher;
             _api.DisposeStack.Push(peerRefresher);
-
-            PivotUpdator pivotUpdator = new(
+            _ = new
+            PivotUpdator(
                 _api.BlockTree,
                 _api.SyncModeSelector,
                 _api.SyncPeerPool!,

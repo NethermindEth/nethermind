@@ -405,8 +405,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
             resultWrapper.Data.Should().BeEquivalentTo(expected);
 
-
-            FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter)
+            static FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter)
             {
                 Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1
                 Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).TestObject; //Reward: BaseFee > FeeCap => 0
@@ -444,10 +443,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             int? cacheSize = null,
             int? maxDistFromHead = null)
         {
+            ISpecProvider provider;
+            if (specProvider is not null)
+            {
+                provider = specProvider;
+            }
+            else
+            {
+                provider = Substitute.For<ISpecProvider>();
+                provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
+            }
+
             return new(
                 blockTree ?? Substitute.For<IBlockTree>(),
                 receiptStorage ?? Substitute.For<IReceiptStorage>(),
-                specProvider ?? Substitute.For<ISpecProvider>(),
+                provider,
                 maxDistFromHead);
         }
     }

@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly int _allocationsUpgradeIntervalInMs;
 
         private bool _isStarted;
-        private readonly object _isAllocatedChecks = new();
+        private readonly Lock _isAllocatedChecks = new();
 
         private DateTime _lastUselessPeersDropTime = DateTime.UtcNow;
 
@@ -449,6 +449,7 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsDebug) _logger.Debug("Starting eth sync peer upgrade timer");
             Timer upgradeTimer = _upgradeTimer = new Timer(_allocationsUpgradeIntervalInMs);
+            bool disposed = false;
             upgradeTimer.Elapsed += (_, _) =>
             {
                 try
@@ -462,10 +463,11 @@ namespace Nethermind.Synchronization.Peers
                 }
                 finally
                 {
-                    upgradeTimer.Enabled = true;
+                    if (!disposed)
+                        upgradeTimer.Enabled = true;
                 }
             };
-
+            upgradeTimer.Disposed += (_, _) => { disposed = true; };
             upgradeTimer.Start();
         }
 

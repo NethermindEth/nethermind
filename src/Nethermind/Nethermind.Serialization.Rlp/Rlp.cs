@@ -95,7 +95,7 @@ namespace Nethermind.Serialization.Rlp
                     continue;
                 }
 
-                if (type.GetCustomAttribute(typeof(SkipGlobalRegistration)) is not null)
+                if (type.GetCustomAttribute<SkipGlobalRegistration>() is not null)
                 {
                     continue;
                 }
@@ -129,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
 
                         void AddEncoder(RlpDecoderKey key)
                         {
-                            if (!_decoderBuilder.ContainsKey(key) || canOverrideExistingDecoders)
+                            if (!_decoderBuilder.TryGetValue(key, out IRlpDecoder? value) || canOverrideExistingDecoders)
                             {
                                 try
                                 {
@@ -144,7 +144,7 @@ namespace Nethermind.Serialization.Rlp
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {_decoderBuilder[key]}.");
+                                throw new InvalidOperationException($"Unable to override decoder for {key}, because the following decoder is already set: {value}.");
                             }
                         }
                     }
@@ -211,7 +211,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (span.Length == 0)
             {
-                return Array.Empty<byte>();
+                return [];
             }
 
             if (span.Length == 1)
@@ -479,7 +479,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (value < 1 << 16)
             {
-                BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(position), (ushort)value);
+                BinaryPrimitives.WriteUInt16BigEndian(buffer[position..], (ushort)value);
                 return position + 2;
             }
 
@@ -491,7 +491,7 @@ namespace Nethermind.Serialization.Rlp
                 return position + 3;
             }
 
-            BinaryPrimitives.WriteInt32BigEndian(buffer.Slice(position), value);
+            BinaryPrimitives.WriteInt32BigEndian(buffer[position..], value);
             return position + 4;
         }
 
@@ -1546,7 +1546,7 @@ namespace Nethermind.Serialization.Rlp
                 int length = ReadSequenceLength();
                 if (length is 0)
                 {
-                    return Array.Empty<byte[]>();
+                    return [];
                 }
 
                 int itemsCount = PeekNumberOfItemsRemaining(Position + length);

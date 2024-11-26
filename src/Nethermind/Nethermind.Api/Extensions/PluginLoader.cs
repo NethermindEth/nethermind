@@ -51,7 +51,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
             try
             {
-                if (_logger.IsInfo) _logger.Warn($"Loading assembly {pluginAssembly}");
+                if (_logger.IsInfo) _logger.Info($"Loading assembly {pluginAssembly}");
                 string assemblyPath = _fileSystem.Path.Combine(pluginAssembliesDir, assemblyName);
                 Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
                 AssemblyLoadContext.Default.Resolving += (_, name) =>
@@ -73,7 +73,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
                     {
                         if (!PluginTypes.Contains(type))
                         {
-                            if (_logger.IsInfo) _logger.Warn($"  Found plugin type {pluginAssembly}");
+                            if (_logger.IsInfo) _logger.Info($"  Found plugin type {pluginAssembly}");
                             _pluginTypes.Add(type);
                         }
                     }

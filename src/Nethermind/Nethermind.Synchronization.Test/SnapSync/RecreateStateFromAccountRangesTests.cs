@@ -38,10 +38,7 @@ public class RecreateStateFromAccountRangesTests
     private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)
     {
         AccountProofCollector accountProofCollector = new(path);
-        if (tree is null)
-        {
-            tree = _inputTree;
-        }
+        tree ??= _inputTree;
         tree.Accept(accountProofCollector, tree.RootHash);
         return accountProofCollector.BuildResult().Proof;
     }

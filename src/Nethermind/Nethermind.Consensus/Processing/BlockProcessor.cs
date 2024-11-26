@@ -83,7 +83,7 @@ public partial class BlockProcessor(
     // TODO: move to branch processor
     public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
-        if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
+        if (suggestedBlocks.Count == 0) return [];
 
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
@@ -132,9 +132,10 @@ public partial class BlockProcessor(
                 }
                 else
                 {
-                    if (preWarmer?.ClearCaches() ?? false)
+                    CacheType result = preWarmer?.ClearCaches() ?? default;
+                    if (result != default)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Low txs, caches are not empty. Clearing them.");
+                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     (processedBlock, receipts) = ProcessOne(suggestedBlock, options, blockTracer);

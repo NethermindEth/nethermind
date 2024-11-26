@@ -62,14 +62,14 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ConcurrentDictionary<ValueHash256, IStorageRangeLock> _storageRangeLocks = new();
         private readonly StorageRangeLockPassThrough _emptyStorageLock = new();
 
-        private readonly Pivot _pivot;
+        private readonly FastSync.StateSyncPivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, [KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, ILogManager logManager)
+        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.StateSyncPivot pivot, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
-            _pivot = new Pivot(blockTree, syncConfig, logManager);
+            _pivot = pivot;
 
             int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
             if (accountRangePartitionCount < 1)
@@ -317,6 +317,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
+            _pivot.UpdatedStorages.Add(pathWithAccount.Path);
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault(), StorageHashLimit = hashLimit ?? Keccak.MaxValue });
         }
 

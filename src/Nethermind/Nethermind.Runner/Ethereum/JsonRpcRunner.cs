@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -63,9 +62,15 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing JSON RPC");
             string[] urls = _jsonRpcUrlCollection.Urls;
-            var webHost = WebHost.CreateDefaultBuilder()
+            IWebHost webHost = new WebHostBuilder()
+                // Explicitly build from UseKestrelCore rather than UseKestrel to
+                // not add additional transports that we don't use e.g. msquic as that
+                // adds a lot of additional idle threads to the process.
+                .UseKestrelCore()
+                .UseKestrelHttpsConfiguration()
                 .ConfigureServices(s =>
                 {
+                    s.AddRouting();
                     s.AddSingleton(_configurationProvider);
                     s.AddSingleton(_jsonRpcProcessor);
                     s.AddSingleton(_jsonRpcUrlCollection);
