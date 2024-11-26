@@ -129,7 +129,7 @@ public class TransactionSubstate
             return EncodeErrorMessage(binaryMessage);
         }
 
-        start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+        start = new UInt256(span[..WordSize], isBigEndian: true);
         if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
 
         length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);

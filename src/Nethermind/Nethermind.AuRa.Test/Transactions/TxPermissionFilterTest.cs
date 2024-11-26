@@ -227,13 +227,13 @@ public class TxPermissionFilterTest
             foreach (ITransactionPermissionContract.TxPermissions txType in TxPermissionsTypes)
             {
                 Task<TestTxPermissionsBlockchain> chainTask = TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxPermissionFilterTest>(testsName);
-                Func<Task<TestTxPermissionsBlockchain>> testFactory = async () =>
+                async Task<TestTxPermissionsBlockchain> testFactory()
                 {
                     TestTxPermissionsBlockchain chain = await chainTask;
                     chain.TxPermissionFilterCache.Permissions.Clear();
                     chain.TransactionPermissionContractVersions.Clear();
                     return chain;
-                };
+                }
 
                 yield return GetTestCase(testFactory, test, txType);
             }

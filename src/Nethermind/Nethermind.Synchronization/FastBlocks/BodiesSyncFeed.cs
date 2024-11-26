@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
-            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
+            BlockBody[]? responses = batch.Response?.Bodies ?? [];
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {

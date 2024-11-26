@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using FluentAssertions.Numeric;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -66,7 +67,7 @@ namespace Nethermind.Core.Test.Encoding
 
         [TestCaseSource(nameof(TestCaseSource))]
         [Repeat(10)] // Might wanna increase this to double check when changing logic as on lower value, it does not reproduce.
-        public void CanCorrectlyCalculateTxHash_when_called_concurrently((Transaction Tx, string Description) testCase)
+        public async Task CanCorrectlyCalculateTxHash_when_called_concurrently((Transaction Tx, string Description) testCase)
         {
             Transaction tx = testCase.Tx;
 
@@ -78,14 +79,12 @@ namespace Nethermind.Core.Test.Encoding
 
             decodedTx.SetPreHash(rlp.Bytes);
 
-            IEnumerable<Task<AndConstraint<ComparableTypeAssertions<Hash256>>>> tasks = Enumerable
+            using ArrayPoolList<Task<AndConstraint<ComparableTypeAssertions<Hash256>>>> tasks = Enumerable
                 .Range(0, 32)
-                .Select((_) =>
-                    Task.Factory
-                        .StartNew(() => decodedTx.Hash.Should().Be(expectedHash),
-                            TaskCreationOptions.RunContinuationsAsynchronously));
+                .Select(_ => Task.Factory.StartNew(() => decodedTx.Hash.Should().Be(expectedHash), TaskCreationOptions.RunContinuationsAsynchronously))
+                .ToPooledList(32);
 
-            Task.WaitAll(tasks.ToArray());
+            await Task.WhenAll<AndConstraint<ComparableTypeAssertions<Hash256>>>(tasks.AsSpan());
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

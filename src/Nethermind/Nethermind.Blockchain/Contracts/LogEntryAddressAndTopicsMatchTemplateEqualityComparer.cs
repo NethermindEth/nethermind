@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns></returns>
         public bool Equals(LogEntry logEntry, LogEntry searchedEntryTemplate)
         {
-            Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Hash256>();
+            Hash256[] matchEntryTopics = searchedEntryTemplate?.Topics ?? [];
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (
                 logEntry is not null
                 && logEntry.Address == searchedEntryTemplate?.Address

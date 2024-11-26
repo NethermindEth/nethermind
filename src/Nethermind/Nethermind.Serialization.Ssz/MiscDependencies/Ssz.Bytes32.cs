@@ -33,7 +33,7 @@ public static partial class Ssz
     {
         if (span.Length == 0)
         {
-            return Array.Empty<Bytes32>();
+            return [];
         }
 
         int count = span.Length / Bytes32Length;

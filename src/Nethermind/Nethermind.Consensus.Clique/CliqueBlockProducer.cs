@@ -59,7 +59,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         _blockProducer = blockProducer;
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
+        _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager, _config.MinimumOutOfTurnDelay);
 
         _timer.AutoReset = false;
         _timer.Elapsed += TimerOnElapsed;
@@ -421,7 +421,7 @@ public class CliqueBlockProducer : IBlockProducer
             parentHeader.Number + 1,
             _gasLimitCalculator.GetGasLimit(parentHeader),
             timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
-            Array.Empty<byte>());
+            []);
 
         // If the block isn't a checkpoint, cast a random vote (good enough for now)
         long number = header.Number;
@@ -494,7 +494,7 @@ public class CliqueBlockProducer : IBlockProducer
             header,
             selectedTxs,
             Array.Empty<BlockHeader>(),
-            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            spec.WithdrawalsEnabled ? [] : null
         );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;

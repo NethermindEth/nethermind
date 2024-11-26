@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
             transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
             transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
             transactionSubstate.Error.Should().Be("0x08c379a000000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000");
@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Test
                 readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
             transactionSubstate.Error.Should().Be("0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
@@ -150,7 +150,7 @@ namespace Nethermind.Evm.Test
                 readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
 
@@ -174,7 +174,7 @@ namespace Nethermind.Evm.Test
                 readOnlyMemory,
                 0,
                 new ArraySegment<Address>(),
-                new LogEntry[] { },
+                Array.Empty<LogEntry>(),
                 true,
                 true);
             transactionSubstate.Error.Should().Be("0x41413231206469646e2774207061792070726566756e64");

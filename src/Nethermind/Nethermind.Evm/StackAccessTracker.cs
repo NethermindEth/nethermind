@@ -73,12 +73,12 @@ namespace Nethermind.Evm
             }
         }
 
-        public void ToBeDestroyed(Address address)
+        public readonly void ToBeDestroyed(Address address)
         {
             _destroyList.Add(address);
         }
 
-        public void WasCreated(Address address)
+        public readonly void WasCreated(Address address)
         {
             _createList.Add(address);
         }
@@ -91,7 +91,7 @@ namespace Nethermind.Evm
             _logsSnapshots = _logs.TakeSnapshot();
         }
 
-        public void Restore()
+        public readonly void Restore()
         {
             _logs.Restore(_logsSnapshots);
             _destroyList.Restore(_destroyListSnapshots);

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
@@ -9,7 +8,7 @@ namespace Nethermind.Core.Test.Builders
     public class LogEntryBuilder : BuilderBase<LogEntry>
     {
         private Address _address = Address.Zero;
-        private byte[] _data = Array.Empty<byte>();
+        private byte[] _data = [];
         private Hash256[] _topics = new[] { Keccak.Zero };
 
         public LogEntryBuilder()

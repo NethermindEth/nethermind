@@ -70,6 +70,7 @@ jobs:
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
           - Nethermind.Synchronization.Test
+          - Nethermind.Taiko.Test
           - Nethermind.Trie.Test
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
@@ -131,6 +132,7 @@ jobs:
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
           - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
           - Ethereum.Transaction.Test
