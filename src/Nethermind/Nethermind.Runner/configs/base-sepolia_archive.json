@@ -9,9 +9,6 @@
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
-  "Sync": {
-    "NetworkingEnabled": false
-  },
   "Pruning": {
     "Mode": "None"
   },
