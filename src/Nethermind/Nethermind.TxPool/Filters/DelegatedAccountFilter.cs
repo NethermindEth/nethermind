@@ -19,7 +19,7 @@ internal sealed class DelegatedAccountFilter(
         if (!spec.IsEip7702Enabled)
             return AcceptTxResult.Accepted;
 
-        if (pendingDelegations.Contains(tx.SenderAddress!))
+        if (pendingDelegations.Contains(new AddressAsKey(tx.SenderAddress!)))
         {
             return AcceptTxResult.PendingDelegation;
         }

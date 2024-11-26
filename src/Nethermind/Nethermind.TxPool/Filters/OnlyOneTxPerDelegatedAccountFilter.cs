@@ -17,8 +17,7 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-            if (!spec.IsEip7702Enabled
-                || !tx.HasAuthorizationList)
+            if (!spec.IsEip7702Enabled)
                 return AcceptTxResult.Accepted;
 
             if (!codeInfoRepository.TryGetDelegation(worldState, tx.SenderAddress!, out _))
@@ -27,7 +26,6 @@ namespace Nethermind.TxPool.Filters
             if (standardPool.ContainsBucket(tx.SenderAddress!) || blobPool.ContainsBucket(tx.SenderAddress!))
             {
                 return AcceptTxResult.OnlyOneTxPerDelegatedAccount;
-                                
             }
             return AcceptTxResult.Accepted;
         }
