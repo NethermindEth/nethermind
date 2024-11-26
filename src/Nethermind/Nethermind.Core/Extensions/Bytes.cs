@@ -60,13 +60,6 @@ namespace Nethermind.Core.Extensions
             public override int GetHashCode(byte[]? obj) => new ReadOnlySpan<byte>(obj).FastHash();
         }
 
-        private class SpanBytesEqualityComparer : ISpanEqualityComparer<byte>
-        {
-            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
-
-            public int GetHashCode(ReadOnlySpan<byte> obj) => obj.FastHash();
-        }
-
         public class BytesComparer : Comparer<byte[]>
         {
             public override int Compare(byte[]? x, byte[]? y)
