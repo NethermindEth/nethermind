@@ -18,6 +18,8 @@ on:
           - op-sepolia
           - base-mainnet
           - base-sepolia
+          - taiko-mainnet
+          - taiko-hekla
           - energyweb
           - volta
       cl_client:
@@ -65,6 +67,9 @@ on:
       additional_optimism_options:
         description: "Extra options to configure optimism node"
         default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+      additional_taiko_options:
+        description: "Extra options to configure taiko node"
+        default: '{"l1_nethermind_image":"", "taiko_node_image":"", "taiko_el_extra_flags":"", "taiko_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
       convert_to_paprika:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
         default: false
@@ -130,6 +135,11 @@ on:
         description: "Extra options to configure optimism node"
         default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
         required: false
+      additional_taiko_options:
+        type: string
+        description: "Extra options to configure taiko node"
+        default: '{"l1_nethermind_image":"", "taiko_node_image":"", "taiko_el_extra_flags":"", "taiko_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        required: false
       convert_to_paprika:
         description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
         default: false
@@ -193,32 +203,7 @@ jobs:
           echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
 
-      - name: Check if master branch and default additional_options
-        id: check_conditions
-        run: |
-          ref="${{ inputs.nethermind_repo_ref || github.ref }}"
-          if [ -z "$ref" ]; then
-            ref="${{ github.ref }}"
-          fi
-          # Append "refs/heads/" prefix if it's not already there
-          if [[ $ref != refs/heads/* ]]; then
-            ref="refs/heads/$ref"
-          fi
-
-          if
-          [[ "$ref" == "refs/heads/master" || $ref == refs/heads/release* || "$ref" == "refs/heads/paprika" ]] &&
-          [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] &&
-          [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
-            echo "skip_docker_build=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip_docker_build=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Trigger Docker Build Action with Cleaned Ref
-        if: steps.check_conditions.outputs.skip_docker_build != 'true'
-        uses: benc-uk/workflow-dispatch@v1
-        env:
-          ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
+      - name: Check if master branch and default additional_options }}
         with:
           workflow: publish-docker.yml
           ref: "${{ inputs.nethermind_repo_ref || github.ref }}"
@@ -282,10 +267,16 @@ jobs:
           echo "op_node_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_node_image)" >> $GITHUB_OUTPUT
           echo "op_el_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_el_extra_flags)" >> $GITHUB_OUTPUT
           echo "op_cl_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_cl_extra_flags)" >> $GITHUB_OUTPUT
-          echo "layer1_el_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
-          echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
+          echo "taiko_node_image=$(echo '${{ inputs.additional_taiko_options }}' | jq -r .taiko_node_image)" >> $GITHUB_OUTPUT
+          echo "taiko_el_extra_flags=$(echo '${{ inputs.additional_taiko_options }}' | jq -r .taiko_el_extra_flags)" >> $GITHUB_OUTPUT
+          echo "taiko_cl_extra_flags=$(echo '${{ inputs.additional_taiko_options }}' | jq -r .taiko_cl_extra_flags)" >> $GITHUB_OUTPUT
+          echo "layer1_el_endpoint=$(echo '${{ inputs.additional_taiko_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
+          echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_taiko_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
           if [[ ${{ inputs.network }} == base-* ]] || [[ ${{ inputs.network }} == op-* ]]; then
             echo "Forcing NON_VALIDATOR_MODE=false for OP chains"
+            echo "NON_VALIDATOR_MODE=false" >> $GITHUB_OUTPUT
+          elif [[ ${{ inputs.network }} == taiko-* ]]; then
+            echo "Forcing NON_VALIDATOR_MODE=false for Taiko chains"
             echo "NON_VALIDATOR_MODE=false" >> $GITHUB_OUTPUT
           else
             echo "NON_VALIDATOR_MODE=${{ inputs.non_validator_mode }}" >> $GITHUB_OUTPUT
@@ -306,7 +297,8 @@ jobs:
             "network": "${{ inputs.network }}",
             "cl_client": "${{ inputs.cl_client }}",
             "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\", \"convert_to_paprika\": \"${{ inputs.convert_to_paprika }}\"}",
-            "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op_node_image\":\"${{ steps.extract_variables.outputs.op_node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
+            "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op_node_image\":\"${{ steps.extract_variables.outputs.op_node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}",
+            "additional_taiko_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"taiko_node_image\":\"${{ steps.extract_variables.outputs.taiko_node_image}}\", \"taiko_el_extra_flags\":\"${{ steps.extract_variables.outputs.taiko_el_extra_flags}}\", \"taiko_cl_extra_flags\":\"${{ steps.extract_variables.outputs.taiko_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
             }'
 
       - name: Wait for creation of node
