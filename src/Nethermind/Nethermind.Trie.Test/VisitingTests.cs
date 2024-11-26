@@ -131,7 +131,7 @@ public class VisitingTests
         static void AssertPath(ReadOnlySpan<byte> path)
         {
             var index = path.IndexOfAnyExcept((byte)0);
-            path.Slice(index + 1).IndexOfAnyExcept((byte)0).Should()
+            path[(index + 1)..].IndexOfAnyExcept((byte)0).Should()
                 .Be(-1, "Shall not found other values than the one nibble set");
             path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
         }
@@ -163,7 +163,7 @@ public class VisitingTests
 
         public readonly struct PathGatheringContext(byte[]? nibbles) : INodeContext<PathGatheringContext>
         {
-            public readonly byte[] Nibbles => nibbles ?? Array.Empty<byte>();
+            public readonly byte[] Nibbles => nibbles ?? [];
 
             public readonly PathGatheringContext Add(ReadOnlySpan<byte> nibblePath)
             {

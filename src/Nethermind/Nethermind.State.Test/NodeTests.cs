@@ -62,7 +62,7 @@ namespace Nethermind.Store.Test
             TrieNode decoded = new(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree, TreePath.Empty);
             TreePath emptyPath = TreePath.Empty;
-            TrieNode child0 = decoded.GetChild(tree, ref emptyPath, 0);
+            _ = decoded.GetChild(tree, ref emptyPath, 0);
             decoded.RlpEncode(tree, ref emptyPath);
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Store.Test
             TrieNode decoded = new(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree, TreePath.Empty);
             TreePath emptyPath = TreePath.Empty;
-            TrieNode child = decoded.GetChild(tree, ref emptyPath, 3);
+            _ = decoded.GetChild(tree, ref emptyPath, 3);
             decoded.RlpEncode(tree, ref emptyPath);
         }
 

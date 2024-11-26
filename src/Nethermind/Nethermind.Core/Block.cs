@@ -38,7 +38,7 @@ public class Block
         new(
             null,
             null,
-            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+            header.WithdrawalsRoot is null ? null : [])
     )
     { }
 
@@ -156,20 +156,20 @@ public class Block
         builder.Append(Header.ToString("    "));
 
         builder.AppendLine("  Uncles:");
-        foreach (BlockHeader uncle in Body.Uncles ?? Array.Empty<BlockHeader>())
+        foreach (BlockHeader uncle in Body.Uncles ?? [])
         {
             builder.Append(uncle.ToString("    "));
         }
 
         builder.AppendLine("  Transactions:");
-        foreach (Transaction tx in Body?.Transactions ?? Array.Empty<Transaction>())
+        foreach (Transaction tx in Body?.Transactions ?? [])
         {
             builder.Append(tx.ToString("    "));
         }
 
         builder.AppendLine("  Withdrawals:");
 
-        foreach (Withdrawal w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
+        foreach (Withdrawal w in Body?.Withdrawals ?? [])
         {
             builder.Append(w.ToString("    "));
         }

@@ -39,8 +39,7 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
-
-            byte[] code = new byte[] { 1, 2, 3 };
+            _ = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
@@ -73,8 +72,7 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit();
-
-            byte[] code = new byte[] { 1, 2, 3 };
+            _ = new byte[] { 1, 2, 3 };
             Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);

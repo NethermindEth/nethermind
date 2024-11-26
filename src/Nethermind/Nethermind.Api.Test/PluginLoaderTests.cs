@@ -26,7 +26,7 @@ public class PluginLoaderTests
         IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
             typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load();
-        loader.OrderPlugins(new PluginConfig { PluginOrder = Array.Empty<string>() });
+        loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
         var expected = new List<Type>
         {
             typeof(AuRaPlugin),

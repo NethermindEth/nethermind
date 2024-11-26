@@ -33,7 +33,7 @@ public class JsonRpcService : IJsonRpcService
     {
         _logger = logManager.GetClassLogger<JsonRpcService>();
         _rpcModuleProvider = rpcModuleProvider;
-        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
+        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
         _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
     }
 
