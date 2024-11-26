@@ -77,7 +77,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-16"
+    "agent": "g6-standard-8"
   },
   {
     "network": "taiko-hekla",
@@ -85,7 +85,7 @@
     "cl_image": "",
     "checkpoint-sync-url": "",
     "timeout": 600,
-    "agent": "g6-standard-16"
+    "agent": "g6-standard-6"
   },
   {
     "network": "joc-mainnet",
