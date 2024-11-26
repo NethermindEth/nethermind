@@ -11,9 +11,9 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
-    public class PeerInfoResult
+    public class PeerInfo
     {
-        // ignore if empty
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public string? Enr { get; set; }
         public string Enode { get; set; }
         public string Id { get; }
@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         // // e.g snap as snap/1, protocol_name/version_no
         public string[] Caps { get; set; }
 
-        public NetworkInfo Network { get; set; } = new();
+        public NetworkInfo Network { get; set; }
         public Dictionary<string, string[]> Protocols { get; set; } = new();
 
 
@@ -60,16 +60,16 @@ namespace Nethermind.JsonRpc.Modules.Admin
         //
         // public bool Inbound { get; set; }
 
-        public PeerInfoResult()
+        public PeerInfo()
         {
         }
 
-        public PeerInfoResult(Peer peer, bool includeDetails)
+        public PeerInfo(Peer peer, bool includeDetails)
         {
             if (peer.Node is null)
             {
                 throw new ArgumentException(
-                    $"{nameof(PeerInfoResult)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
+                    $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
             }
 
             Name = peer.Node.ClientId;
@@ -78,11 +78,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
 
             Enode = peer.Node.ToString(Node.Format.ENode);
-            Network.Inbound = peer.InSession is not null;
-            Network.RemoteAddress = peer.Node.Address.ToString(); // verify this is the peers remote address
-            Network.Static = peer.Node.IsStatic;
-            // Network.LocalAddress = // whats the diff between remote and local address since peers usually aren't on the same network?.
+            Network = new()
+            {
+                Inbound = peer.InSession is not null,
+                RemoteAddress = peer.Node.Address.ToString(), // verify this is the peers remote address
+                // LocalAddress = peer.Node.LocalAddress.ToString(), // whats the diff between remote and local address since peers usually aren't on the same network?.
+                Static = peer.Node.IsStatic
 
+            };
             IsBootnode = peer.Node.IsBootnode;
             // Host = IPAddress.Parse(peer.Node.Host!).MapToIPv4().ToString();
             // Port = peer.Node.Port;
@@ -103,12 +106,12 @@ namespace Nethermind.JsonRpc.Modules.Admin
         }
     }
 
-    public class NetworkInfo // maybe change to struct
+    public class NetworkInfo
     {
         public string LocalAddress { get; set; }
         public string RemoteAddress { get; set; }
         public bool Inbound { get; set; }
-        public bool Trusted { get; set; } // how to get this? changed from IsTrusted to Trusted (what geth uses)
-        public bool Static { get; set; } // changed from IsStatic to Static (what geth uses)
+        public bool Trusted { get; set; }
+        public bool Static { get; set; }
     }
 }

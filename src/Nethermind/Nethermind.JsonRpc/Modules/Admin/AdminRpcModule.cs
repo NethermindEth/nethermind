@@ -121,9 +121,9 @@ public class AdminRpcModule : IAdminRpcModule
             : ResultWrapper<string>.Fail("Failed to remove peer.");
     }
 
-    public ResultWrapper<PeerInfoResult[]> admin_peers(bool includeDetails = false)
-        => ResultWrapper<PeerInfoResult[]>.Success(
-            _peerPool.ActivePeers.Select(p => new PeerInfoResult(p.Value, includeDetails)).ToArray());
+    public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
+        => ResultWrapper<PeerInfo[]>.Success(
+            _peerPool.ActivePeers.Select(p => new PeerInfo(p.Value, includeDetails)).ToArray());
 
     public ResultWrapper<NodeInfo> admin_nodeInfo()
     {
