@@ -37,7 +37,8 @@ public class GethLikeTxTrace : IDisposable
 
     public GethLikeCustomTrace? CustomTracerResult { get; set; }
 
-    public GethLikeTxTraceResponseDebugTraceBlock DebugTraceBlockResponse() {
+    public GethLikeTxTraceResponseDebugTraceBlock DebugTraceBlockResponse()
+    {
         return new GethLikeTxTraceResponseDebugTraceBlock(this);
     }
 
