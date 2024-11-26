@@ -119,7 +119,7 @@ public class TransactionProcessorFeeTests
             initialBalance = _stateProvider.GetBalance(TestItem.AddressC);
         }
 
-        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).WithTargetBlobCount(3).TestObject;
 
         Transaction tx = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.Blob)
