@@ -62,6 +62,7 @@ internal class ILCompiler
 
         using Local wordRef256A = method.DeclareLocal(typeof(Word).MakeByRefType());
         using Local wordRef256B = method.DeclareLocal(typeof(Word).MakeByRefType());
+        using Local wordRef256C = method.DeclareLocal(typeof(Word).MakeByRefType());
 
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
@@ -380,9 +381,9 @@ internal class ILCompiler
 
                         method.LoadLocal(wordRef256A);
                         method.Call(Word.GetIsUint32);
+                        method.BranchIfFalse(fallbackToUInt256Call);
                         method.LoadLocal(wordRef256B);
                         method.Call(Word.GetIsUint32);
-                        method.And();
                         method.BranchIfFalse(fallbackToUInt256Call);
 
                         method.LoadLocal(wordRef256A);
@@ -428,9 +429,9 @@ internal class ILCompiler
 
                         method.LoadLocal(wordRef256A);
                         method.Call(Word.GetIsUint32);
+                        method.BranchIfFalse(fallbackToUInt256Call);
                         method.LoadLocal(wordRef256B);
                         method.Call(Word.GetIsUint32);
-                        method.And();
                         method.BranchIfFalse(fallbackToUInt256Call);
 
                         method.LoadLocal(wordRef256A);
@@ -504,9 +505,9 @@ internal class ILCompiler
 
                         method.LoadLocal(wordRef256A);
                         method.Call(Word.GetIsUint32);
+                        method.BranchIfFalse(fallbackToUInt256Call);
                         method.LoadLocal(wordRef256B);
                         method.Call(Word.GetIsUint32);
-                        method.And();
                         method.BranchIfFalse(fallbackToUInt256Call);
 
                         method.LoadLocal(wordRef256A);
@@ -548,126 +549,252 @@ internal class ILCompiler
                     }
                     break;
                 case Instruction.MOD:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel, locals) =>
-                        {
-                            Label label = il.DefineLabel();
+                    {
+                        Label pushZeroLabel = method.DefineLabel();
+                        Label fallBackToOldBehavior = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
 
-                            il.LoadLocalAddress(locals[1]);
-                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZero), false, out _));
-                            il.BranchIfFalse(label);
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
 
-                            il.LoadConstant(0);
-                            il.Call(ConvertionExplicit<UInt256, int>());
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsOneOrZero);
+                        method.BranchIfTrue(pushZeroLabel);
 
-                            il.MarkLabel(label);
-                        }, evmExceptionLabels, uint256A, uint256B);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsUint32);
+                        method.BranchIfFalse(fallBackToOldBehavior);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsUint32);
+                        method.BranchIfFalse(fallBackToOldBehavior);
+
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetULong0);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetULong0);
+                        method.Remainder();
+                        method.StoreLocal(uint64A);
+
+                        method.CleanAndLoadWord(stack, head);
+                        method.LoadLocal(uint64A);
+                        method.Call(Word.SetULong0);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushZeroLabel);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallBackToOldBehavior);
+                        method.StackPush(head, 2);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.SMOD:
-                    EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!,
-                        (il, postInstructionLabel, locals) =>
-                        {
-                            Label bIsNotZeroOrOneLabel = il.DefineLabel();
+                    {
+                        Label fallBackToOldBehavior = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
 
-                            il.LoadLocalAddress(locals[1]);
-                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZeroOrOne), false, out _));
-                            il.BranchIfFalse(bIsNotZeroOrOneLabel);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
 
-                            il.LoadField(GetFieldInfo<UInt256>(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        // if b is 1 or 0 result is always 0
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsOneOrZero);
+                        method.BranchIfFalse(fallBackToOldBehavior);
 
-                            il.MarkLabel(bIsNotZeroOrOneLabel);
-                        }, evmExceptionLabels, uint256A, uint256B);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallBackToOldBehavior);
+                        method.StackPush(head, 2);
+                        EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Mod), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null,evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.DIV:
-                    EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel, locals) =>
-                        {
-                            Label label = il.DefineLabel();
+                    {
+                        Label fallBackToOldBehavior = method.DefineLabel();
+                        Label pushZeroLabel = method.DefineLabel();
+                        Label pushALabel = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
 
-                            il.LoadLocalAddress(locals[1]);
-                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZero), false, out _));
-                            il.BranchIfFalse(label);
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
 
-                            il.LoadField(GetFieldInfo<UInt256>(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        // if a or b are 0 result is directly 0
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushZeroLabel);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushZeroLabel);
 
-                            il.MarkLabel(label);
-                        }, evmExceptionLabels, uint256A, uint256B);
+                        // if b is 1 result is by default a
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsOne);
+                        method.BranchIfTrue(pushALabel);
+
+                        method.MarkLabel(pushZeroLabel);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushALabel);
+                        method.LoadLocal(wordRef256B);
+                        method.LoadLocal(wordRef256A);
+                        method.LoadObject(typeof(Word));
+                        method.StoreObject(typeof(Word));
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallBackToOldBehavior);
+                        EmitBinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B);
+
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.SDIV:
-                    EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!,
-                        (il, postInstructionLabel, locals) =>
-                        {
-                            Label bIsNotZero = il.DefineLabel();
-                            Label bIsNotMinusOneLabel = il.DefineLabel();
+                    {
+                        Label fallBackToOldBehavior = method.DefineLabel();
+                        Label pushZeroLabel = method.DefineLabel();
+                        Label pushALabel = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
 
-                            il.LoadLocalAddress(locals[1]);
-                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZero), false, out _));
-                            il.BranchIfFalse(bIsNotZero);
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackPop(head, 2);
 
-                            il.LoadField(typeof(UInt256).GetField(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        // if b is 0 or a is 0 then the result is 0
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushZeroLabel);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfTrue(pushZeroLabel);
 
-                            il.MarkLabel(bIsNotZero);
+                        // if b is 1 in all cases the result is a
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsOne);
+                        method.BranchIfTrue(pushALabel);
 
-                            il.LoadLocalAddress(locals[1]);
-                            il.Call(GetAsMethodInfo<UInt256, Int256.Int256>());
-                            il.LoadFieldAddress(typeof(Int256.Int256).GetField(nameof(Int256.Int256.MinusOne), BindingFlags.Static | BindingFlags.Public));
-                            il.Call(typeof(Int256.Int256).GetMethod("op_Equality"));
+                        // if b is -1 and a is 2^255 then the result is 2^255
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsMinusOne);
+                        method.BranchIfFalse(fallBackToOldBehavior);
 
-                            il.LoadLocalAddress(locals[0]);
-                            il.Call(typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.P255), BindingFlags.Static | BindingFlags.NonPublic).GetMethod);
-                            il.Call(typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }));
-                            il.And();
-                            il.BranchIfFalse(bIsNotMinusOneLabel);
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsP255);
+                        method.BranchIfFalse(fallBackToOldBehavior);
 
-                            il.Call(typeof(VirtualMachine).GetProperty(nameof(VirtualMachine.P255), BindingFlags.Static | BindingFlags.NonPublic).GetMethod);
-                            il.LoadObject(typeof(UInt256));
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
 
-                            il.MarkLabel(bIsNotMinusOneLabel);
-                        }, evmExceptionLabels, uint256A, uint256B);
+                        method.MarkLabel(pushZeroLabel);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(pushALabel);
+                        method.LoadLocal(wordRef256B);
+                        method.LoadLocal(wordRef256A);
+                        method.LoadObject(typeof(Word));
+                        method.StoreObject(typeof(Word));
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallBackToOldBehavior);
+                        method.StackPush(head, 2);  
+                        EmitBinaryInt256Method(method, uint256R, (stack, head), typeof(Int256.Int256).GetMethod(nameof(Int256.Int256.Divide), BindingFlags.Public | BindingFlags.Static, [typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType(), typeof(Int256.Int256).MakeByRefType()])!, null, evmExceptionLabels, uint256A, uint256B);
+
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.ADDMOD:
-                    EmitTrinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel, locals) =>
-                        {
-                            Label cIsNotZeroLabel = il.DefineLabel();
+                    {
+                        Label push0Zero = method.DefineLabel();
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
 
-                            il.LoadLocalAddress(locals[2]);
-                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZeroOrOne), false, out _));
-                            il.BranchIfFalse(cIsNotZeroLabel);
+                        method.StackLoadPrevious(stack, head, 3);
+                        method.StoreLocal(wordRef256C);
+                        method.StackPop(head, 3);
 
-                            il.LoadField(GetFieldInfo<UInt256>(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        // if c is 1 or 0 result is 0
+                        method.LoadLocal(wordRef256C);
+                        method.Call(Word.GetIsOneOrZero);
+                        method.BranchIfFalse(fallbackToUInt256Call);
 
-                            il.MarkLabel(cIsNotZeroLabel);
-                        }, evmExceptionLabels, uint256A, uint256B, uint256C);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 3);
+                        EmitTrinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.AddMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B, uint256C);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.MULMOD:
-                    EmitTrinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel, locals) =>
-                        {
-                            Label cIsNotZeroLabel = il.DefineLabel();
+                    {
+                        Label push0Zero = method.DefineLabel();
+                        Label fallbackToUInt256Call = method.DefineLabel();
+                        Label endofOpcode = method.DefineLabel();
+                        // we the two uint256 from the stack
+                        method.StackLoadPrevious(stack, head, 1);
+                        method.StoreLocal(wordRef256A);
+                        method.StackLoadPrevious(stack, head, 2);
+                        method.StoreLocal(wordRef256B);
+                        method.StackLoadPrevious(stack, head, 3);
+                        method.StoreLocal(wordRef256C);
+                        method.StackPop(head, 3);
 
-                            il.LoadLocalAddress(locals[2]);
-                            il.Call(GetPropertyInfo(typeof(UInt256), nameof(UInt256.IsZeroOrOne), false, out _));
-                            il.BranchIfFalse(cIsNotZeroLabel);
+                        // since (a * b) % c 
+                        // if a or b are 0 then the result is 0
+                        // if c is 0 or 1 then the result is 0
+                        method.LoadLocal(wordRef256A);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfFalse(fallbackToUInt256Call);
+                        method.LoadLocal(wordRef256B);
+                        method.Call(Word.GetIsZero);
+                        method.BranchIfFalse(fallbackToUInt256Call);
+                        method.LoadLocal(wordRef256C);
+                        method.Call(Word.GetIsOneOrZero);
+                        method.BranchIfFalse(fallbackToUInt256Call);
 
-                            il.LoadField(GetFieldInfo<UInt256>(nameof(UInt256.Zero), BindingFlags.Static | BindingFlags.Public));
-                            il.StoreLocal(uint256R);
-                            il.Branch(postInstructionLabel);
+                        // since (a * b) % c == (a % c * b % c) % c
+                        // if a or b are equal to c, then the result is 0
+                        method.LoadLocal(wordRef256A);
+                        method.LoadLocal(wordRef256C);
+                        method.Call(Word.AreEqual);
+                        method.BranchIfTrue(push0Zero);
+                        method.LoadLocal(wordRef256B);
+                        method.LoadLocal(wordRef256C);
+                        method.Call(Word.AreEqual);
+                        method.BranchIfFalse(fallbackToUInt256Call);
 
-                            il.MarkLabel(cIsNotZeroLabel);
-                        }, evmExceptionLabels, uint256A, uint256B, uint256C);
+                        method.MarkLabel(push0Zero);
+                        method.CleanWord(stack, head);
+                        method.StackPush(head);
+                        method.Branch(endofOpcode);
+
+                        method.MarkLabel(fallbackToUInt256Call);
+                        method.StackPush(head, 3);
+                        EmitTrinaryUInt256Method(method, uint256R, (stack, head), typeof(UInt256).GetMethod(nameof(UInt256.MultiplyMod), BindingFlags.Public | BindingFlags.Static)!, null, evmExceptionLabels, uint256A, uint256B, uint256C);
+                        method.MarkLabel(endofOpcode);
+                    }
                     break;
                 case Instruction.SHL:
                     EmitShiftUInt256Method(method, uint256R, (stack, head), isLeft: true, evmExceptionLabels, uint256A, uint256B);
