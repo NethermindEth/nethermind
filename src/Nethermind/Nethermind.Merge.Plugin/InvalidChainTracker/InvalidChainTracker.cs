@@ -144,6 +144,11 @@ public class InvalidChainTracker : IInvalidChainTracker
             {
                 effectiveParent = Keccak.Zero;
             }
+            else
+            {
+                // For post-merge we don't track the invalid chain and defer to consensus layer
+                return;
+            }
         }
         else
         {

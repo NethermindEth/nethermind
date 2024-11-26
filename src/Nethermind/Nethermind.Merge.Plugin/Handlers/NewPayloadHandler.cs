@@ -107,7 +107,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
-            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $"The last valid is {lastValidHash}");
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $" The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
 

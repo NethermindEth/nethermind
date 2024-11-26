@@ -690,7 +690,11 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-            _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
+            if (!invalidBlock.Header.IsPoS())
+            {
+                // If PoS we will defer to consensus to determine the chain's validity; and not prevent the block being tried again
+                _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
+            }
             _badBlockStore.Insert(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
