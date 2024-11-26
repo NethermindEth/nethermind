@@ -36,7 +36,7 @@ public static class ExecutionRequestExtensions
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
-        // make sure that length is exactly 3
+        // make sure that length is 3 or less elements
         if (flatEncodedRequests is null || flatEncodedRequests.Length > MaxRequestsCount)
         {
             throw new ArgumentException("Flat encoded requests must be an array of 3 or less elements");
