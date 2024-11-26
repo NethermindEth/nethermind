@@ -194,6 +194,11 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
+    public void ReportTransaction(Transaction transaction)
+    {
+        _currentTxTracer.ReportTransaction(transaction);
+    }
+
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();

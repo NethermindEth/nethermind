@@ -388,5 +388,9 @@ public class MyTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
+    public void ReportTransaction(Transaction transaction)
+    {
+    }
+
     public void Dispose() { }
 }

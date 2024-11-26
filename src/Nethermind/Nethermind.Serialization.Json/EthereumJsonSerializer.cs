@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Json
                 : CreateOptions(indented: false, converters: converters);
         }
 
-        public EthereumJsonSerializer(int? maxDepth = null)
+        public EthereumJsonSerializer(int? maxDepth = null, bool longAsHex = true)
         {
             _maxDepth = maxDepth;
             _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth: maxDepth.Value) : JsonOptions;
