@@ -127,6 +127,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
+        if (_processExitSource.Token.IsCancellationRequested)
         {
             JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ResourceUnavailable, "Shutting down");
             yield return JsonRpcResult.Single(RecordResponse(response, new RpcReport("Shutdown", 0, false)));
