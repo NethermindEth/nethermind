@@ -269,6 +269,7 @@ public sealed class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactor
                     finally
                     {
                         PreWarmer._envPool.Return(env);
+                        SystemTxAccessLists.Dispose();
                     }
                 }
 
