@@ -21,7 +21,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Taiko.Rpc;
 
-class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
+internal class TaikoForkchoiceUpdatedHandler(IBlockTree blockTree,
     IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
