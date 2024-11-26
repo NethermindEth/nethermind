@@ -24,7 +24,9 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string[] Caps { get; set; }
 
         public NetworkInfo Network { get; set; }
-        public Dictionary<string, string[]> Protocols { get; set; } = new();
+        public Dictionary<string, string[]> Protocols { get; set; } = new();// set of protocols supported by the peer
+        // it's a map of protocol_name to partial info on protocol some info like version ONLY.
+        // ProtocolInfo [or Protocol] with sub-classes Eth, Snap etc...or just
 
 
         // keep extra info not availibale in get?
@@ -32,33 +34,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public string ClientType { get; set; }
         public string EthDetails { get; set; }
         public string LastSignal { get; set; }
-
-        // MOVE these to module description.
-        // public Network Network { get; set; } // peerNetworkInfo
-        // Network is a {
-        //     string LocalAddress
-        //     string RemoteAddress
-        //     bool Inbound
-        //     bool Trusted
-        //     bool Static
-        // }
-        // public Dictionary<string, ProtocolInfo> Protocols { get; set; } // set of protocols supported by the peer
-        // it's a map of protocol_name to partial info on protocol some info like version ONLY.
-
-        // ProtocolInfo [or Protocol] with sub-classes Eth, Snap etc...or just
-
-
-        // // delete everthing below!
-        // public string Host { get; set; }
-        // public int Port { get; set; }
-        // public string Address { get; set; }
-
-        // public bool IsTrusted { get; set; }
-        // public bool IsStatic { get; set; }
-        //
-
-        //
-        // public bool Inbound { get; set; }
 
         public PeerInfo()
         {
@@ -81,23 +56,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Network = new()
             {
                 Inbound = peer.InSession is not null,
-                RemoteAddress = peer.Node.Address.ToString(), // verify this is the peers remote address
-                // LocalAddress = peer.Node.LocalAddress.ToString(), // whats the diff between remote and local address since peers usually aren't on the same network?.
+                RemoteAddress = peer.Node.Address.ToString(),
                 Static = peer.Node.IsStatic
 
             };
             IsBootnode = peer.Node.IsBootnode;
-            // Host = IPAddress.Parse(peer.Node.Host!).MapToIPv4().ToString();
-            // Port = peer.Node.Port;
-            // Address = peer.Node.Address.ToString();
-            // IsStatic = peer.Node.IsStatic;
 
             if (includeDetails)
             {
-                // for each protocol in the peers protocols add key - value to the dictionary where
-                // value is a map of info: value}
-
-
                 ClientType = peer.Node.ClientType.ToString();
                 EthDetails = peer.Node.EthDetails;
                 LastSignal = (peer.InSession ?? peer.OutSession!).LastPingUtc.ToString(CultureInfo.InvariantCulture);

@@ -51,7 +51,6 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void BuildNodeInfo()
     {
-        // makes sense to remove this logic from here
         _nodeInfo = new NodeInfo
         {
             Name = ProductInfo.ClientId,
@@ -71,12 +70,6 @@ public class AdminRpcModule : IAdminRpcModule
 
     private void UpdateEthProtocolInfo()
     {
-        // replace this with a way to qeury protocol info and capabilities (i.e supported protocols)
-        // info for all peer nodes including self.
-        // from a single source of truth.
-        // might require the "peer pool" to also store current node but not count it as number of peers.
-        // every peer should be able to generate its own info same with every node.
-        // above is not possible(should not be done) as info is dependent on endpoint and isn't really a property of a peer/node.
         _nodeInfo.Protocols["eth"].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
         _nodeInfo.Protocols["eth"].NewtorkId = _blockTree.NetworkId;
         _nodeInfo.Protocols["eth"].ChainId = _blockTree.ChainId;
