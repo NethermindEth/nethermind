@@ -42,11 +42,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
                 {
                     // check if jwt-secret file already exists in previous default directory
-                    if (File.Exists(defaultPath))
+                    if (!File.Exists(newPath) && File.Exists(defaultPath))
                     {
-                        // move the jwt-secret file
-                        logger.Warn($"jwt-secret already exists at {defaultPath}. Moving it to {newPath} as data directory has been updated");
-                        File.Move(defaultPath, newPath);
+                        try
+                        {
+                            File.Move(defaultPath, newPath);
+
+                            logger.Warn($"Moved JWT secret from {defaultPath} to {newPath}");
+                        }
+                        catch (Exception ex)
+                        {
+                            if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                        }
                     }
                     jsonRpcConfig.JwtSecretFile = newPath;
                 }
