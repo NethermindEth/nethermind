@@ -301,10 +301,10 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
                 .Feed)
             .Named<ISyncFeed<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
 
+        ConfigureStateSyncComponent(builder);
         ConfigureSnapComponent(builder);
         ConfigureReceiptSyncComponent(builder);
         ConfigureBodiesSyncComponent(builder);
-        ConfigureStateSyncComponent(builder);
 
         builder
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed), ConfigureFastHeader)
@@ -392,6 +392,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureStateSyncComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
+            .AddSingleton<StateSyncPivot>()
             .AddSingleton<ITreeSync, TreeSync>();
 
         ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
