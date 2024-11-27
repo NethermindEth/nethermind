@@ -185,7 +185,9 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_multiplier=30;" +
         "max_bytes_for_level_base=350000000;" +
 
-        // Causes file size to double per level. Lower total number of file.
+        // Multiply the target size of SST file by this much every level down, reduce number of file.
+        // Does not have much downside on hash based DB, but might disable some move optimization on db with
+        // blocknumber key, or halfpath/flatdb layout.
         "target_file_size_multiplier=2;" +
 
         // This is basically useless on write only database. However, for halfpath with live pruning, flatdb, or
@@ -196,13 +198,13 @@ public class DbConfig : IDbConfig
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
         // They key within the same restart is delta-encoded with the key before it. This mean a read will have to go
-        // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
+        // through potentially "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
         "block_based_table_factory.block_restart_interval=4;" +
 
         // This adds a hashtable-like index per block (the 32kb block)
-        // In, this reduce CPU and therefore latency under high block cache hit scenario.
+        // This reduce CPU and therefore latency under high block cache hit scenario.
         // It seems to increase disk space use by about 1 GB.
         "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
         "block_based_table_factory.data_block_hash_table_util_ratio=0.5;" +
