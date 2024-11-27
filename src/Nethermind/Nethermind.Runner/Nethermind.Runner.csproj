@@ -12,6 +12,7 @@
     <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
     <RestoreLockedMode>true</RestoreLockedMode>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
   </PropertyGroup>
 
   <PropertyGroup>
