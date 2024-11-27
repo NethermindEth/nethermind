@@ -31,11 +31,7 @@ public class ColumnsDbTests
         ColumnsDb<TestColumns> columnsDb = new(DbPath,
             new("blocks", DbPath)
             {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
                 DeleteOnStart = true,
-                WriteBufferNumber = 4,
-                WriteBufferSize = (ulong)1.KiB()
             },
             new DbConfig(),
             LimboLogs.Instance,

@@ -25,8 +25,8 @@ public class PerTableDbConfig
         _columnName = columnName;
     }
 
-    public ulong WriteBufferSize => _settings.WriteBufferSize ?? ReadConfig<ulong>(nameof(WriteBufferSize));
-    public ulong WriteBufferNumber => _settings.WriteBufferNumber ?? ReadConfig<uint>(nameof(WriteBufferNumber));
+    public ulong WriteBufferSize => ReadConfig<ulong>(nameof(WriteBufferSize));
+    public ulong WriteBufferNumber => ReadConfig<uint>(nameof(WriteBufferNumber));
 
     public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), GetPrefixes());
     public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), GetPrefixes());

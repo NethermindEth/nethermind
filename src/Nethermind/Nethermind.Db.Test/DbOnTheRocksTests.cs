@@ -63,22 +63,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Throws_whenMaxWriteBufferNumIs0()
-        {
-            IDbConfig config = new DbConfig();
-            DbSettings settings = new("Blocks", DbPath)
-            {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
-                WriteBufferNumber = 0,
-                WriteBufferSize = (ulong)1.KiB()
-            };
-
-            Action act = () => new DbOnTheRocks(DbPath, settings, config, LimboLogs.Instance);
-            act.Should().Throw<InvalidConfigurationException>();
-        }
-
-        [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
@@ -228,10 +212,6 @@ namespace Nethermind.Db.Test
         {
             return new(dbName, dbPath)
             {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
-                WriteBufferNumber = 4,
-                WriteBufferSize = (ulong)1.KiB()
             };
         }
     }
@@ -380,10 +360,6 @@ namespace Nethermind.Db.Test
         {
             return new(dbName, dbPath)
             {
-                BlockCacheSize = (ulong)1.KiB(),
-                CacheIndexAndFilterBlocks = false,
-                WriteBufferNumber = 4,
-                WriteBufferSize = (ulong)1.KiB()
             };
         }
 
