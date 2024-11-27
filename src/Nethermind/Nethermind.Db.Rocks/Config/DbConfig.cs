@@ -9,7 +9,6 @@ public class DbConfig : IDbConfig
 {
     public static DbConfig Default = new DbConfig();
 
-
     public ulong SharedBlockCacheSize { get; set; } = (ulong)256.MiB();
     public bool SkipMemoryHintSetting { get; set; } = false;
 
@@ -18,14 +17,20 @@ public class DbConfig : IDbConfig
     public bool EnableMetricsUpdater { get; set; } = false;
     public uint StatsDumpPeriodSec { get; set; } = 600;
 
-
-
-    public ulong WriteBufferSize { get; set; } = (ulong)16.MiB();
-    public uint WriteBufferNumber { get; set; } = 2;
     public int? MaxOpenFiles { get; set; }
     public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB();
 
     public string RocksDbOptions { get; set; } =
+
+        // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
+        // file which affect compactions. The options here does not effect how the sst files are read... probably.
+        // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
+        // block cache and then finally the LSM/SST files.
+        "min_write_buffer_number_to_merge=1;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=2;" +
+        "memtable_whole_key_filtering=true;" +
+        "memtable_prefix_bloom_size_ratio=0.02;" +
 
         // Rocksdb turn this on by default a few release ago. But we dont want it yet, not sure the impact on read is
         // significant or not.
@@ -33,10 +38,7 @@ public class DbConfig : IDbConfig
 
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
-        "memtable_whole_key_filtering=true;" +
-        "memtable_prefix_bloom_size_ratio=0.02;" +
         "advise_random_on_open=true;" +
-        "min_write_buffer_number_to_merge=1;" +
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
         "target_file_size_base=64000000;" +
@@ -70,7 +72,6 @@ public class DbConfig : IDbConfig
 
         "block_based_table_factory.filter_policy=bloom_filter:10;" +
         "";
-
     public string? AdditionalRocksDbOptions { get; set; }
 
     public bool? VerifyChecksum { get; set; } = true;
@@ -84,23 +85,23 @@ public class DbConfig : IDbConfig
     public string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
 
 
-    public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
     public string ReceiptsDbRocksDbOptions { get; set; } =
+        "write_buffer_size=2000000;" +
         "block_based_table_factory.block_cache=8000000;" +
         "compaction_pri=kOldestLargestSeqFirst;" +
         "optimize_filters_for_hits=false;";
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)64.MiB();
     public string BlocksDbRocksDbOptions { get; set; } =
+        "write_buffer_size=64000000;" +
         "block_based_table_factory.block_cache=32000000;" +
         "compaction_pri=kOldestLargestSeqFirst;" +
         "optimize_filters_for_hits=false;";
     public string? BlocksDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong HeadersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public string HeadersDbRocksDbOptions { get; set; } =
+        "write_buffer_size=8000000;" +
         "block_based_table_factory.block_cache=32000000;" +
         "compaction_pri=kOldestLargestSeqFirst;" +
         "block_based_table_factory.block_size=32000;" +
@@ -108,9 +109,9 @@ public class DbConfig : IDbConfig
         "";
     public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public string BlockNumbersDbRocksDbOptions { get; set; } =
+        "write_buffer_size=8000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "block_based_table_factory.block_size=4096;" +
         "max_bytes_for_level_base=16000000;" +
@@ -119,19 +120,19 @@ public class DbConfig : IDbConfig
         "";
     public string? BlockNumbersDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)4.MiB();
     public string BlockInfosDbRocksDbOptions { get; set; } =
+        "write_buffer_size=4000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "compaction_pri=kOldestLargestSeqFirst;";
     public string? BlockInfosDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong PendingTxsDbWriteBufferSize { get; set; } = (ulong)4.MiB();
-    public string PendingTxsDbRocksDbOptions { get; set; } = "";
+    public string PendingTxsDbRocksDbOptions { get; set; } =
+        "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong CodeDbWriteBufferSize { get; set; } = (ulong)1.MiB();
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public string CodeDbRocksDbOptions { get; set; } =
+        "write_buffer_size=4000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "prefix_extractor=capped:16;" +
         "block_based_table_factory.index_type=kHashSearch;" +
@@ -140,18 +141,18 @@ public class DbConfig : IDbConfig
         "allow_concurrent_memtable_write=false;";
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong BloomDbWriteBufferSize { get; set; } = (ulong)1.MiB();
     public string BloomDbRocksDbOptions { get; set; } =
+        "write_buffer_size=1000000" +
         "max_bytes_for_level_base=16000000;";
     public string? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong MetadataDbWriteBufferSize { get; set; } = (ulong)1.MiB();
     public string MetadataDbRocksDbOptions { get; set; } =
+        "write_buffer_size=1000000;" +
         "max_bytes_for_level_base=16000000;";
     public string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
-    public uint StateDbWriteBufferNumber { get; set; } = 4;
+    public ulong StateDbWriteBufferNumber { get; set; } = 4;
     public bool? StateDbVerifyChecksum { get; set; }
     public ulong? StateDbRowCacheSize { get; set; }
     public bool StateDbEnableFileWarmer { get; set; } = false;

@@ -24,8 +24,6 @@ public interface IDbConfig : IConfig
     uint StatsDumpPeriodSec { get; set; }
 
 
-    ulong WriteBufferSize { get; set; }
-    uint WriteBufferNumber { get; set; }
     int? MaxOpenFiles { get; set; }
     bool WriteAheadLogSync { get; set; }
     ulong? ReadAheadSize { get; set; }
@@ -39,48 +37,40 @@ public interface IDbConfig : IConfig
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
 
-    ulong ReceiptsDbWriteBufferSize { get; set; }
     double ReceiptsDbCompressibilityHint { get; set; }
     string ReceiptsDbRocksDbOptions { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
-    ulong BlocksDbWriteBufferSize { get; set; }
     string BlocksDbRocksDbOptions { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }
 
-    ulong HeadersDbWriteBufferSize { get; set; }
     string HeadersDbRocksDbOptions { get; set; }
     string? HeadersDbAdditionalRocksDbOptions { get; set; }
 
-    ulong BlockNumbersDbWriteBufferSize { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
     string BlockNumbersDbRocksDbOptions { get; set; }
     string? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
 
-    ulong BlockInfosDbWriteBufferSize { get; set; }
     string BlockInfosDbRocksDbOptions { get; set; }
     string? BlockInfosDbAdditionalRocksDbOptions { get; set; }
 
-    ulong PendingTxsDbWriteBufferSize { get; set; }
     string PendingTxsDbRocksDbOptions { get; set; }
     string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    ulong MetadataDbWriteBufferSize { get; set; }
     string MetadataDbRocksDbOptions { get; set; }
     string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    ulong BloomDbWriteBufferSize { get; set; }
     string BloomDbRocksDbOptions { get; set; }
     string? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    ulong CodeDbWriteBufferSize { get; set; }
     ulong? CodeDbRowCacheSize { get; set; }
     string CodeDbRocksDbOptions { get; set; }
     string? CodeDbAdditionalRocksDbOptions { get; set; }
 
 
+    [ConfigItem(Description = "Write buffer size for state db. This should be at least 20% of pruning cache or during persist, persist is not able to be done asynchronously.")]
     ulong StateDbWriteBufferSize { get; set; }
-    uint StateDbWriteBufferNumber { get; set; }
+    ulong StateDbWriteBufferNumber { get; set; }
     bool? StateDbVerifyChecksum { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
     bool StateDbEnableFileWarmer { get; set; }

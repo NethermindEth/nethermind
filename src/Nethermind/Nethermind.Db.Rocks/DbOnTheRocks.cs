@@ -83,6 +83,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
     private long _totalWrites;
 
     private readonly IteratorManager _iteratorManager;
+    private ulong _writeBufferSize;
+    private int _maxWriteBufferNumber;
 
     public DbOnTheRocks(
         string basePath,
@@ -432,6 +434,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         _targetFileSizeBase = ulong.Parse(optionsAsDict["target_file_size_base"]);
         _maxBytesForLevelBase = ulong.Parse(optionsAsDict["max_bytes_for_level_base"]);
         _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
+        _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
+        _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
 
         BlockBasedTableOptions tableOptions = new();
         options.SetBlockBasedTableFactory(tableOptions);
@@ -456,22 +460,28 @@ public partial class DbOnTheRocks : IDb, ITunableDb
             tableOptions.SetBlockCache(sharedCache.Value);
         }
 
+        if (dbConfig.WriteBufferSize is not null)
+        {
+            _writeBufferSize = dbConfig.WriteBufferSize.Value;
+            options.SetWriteBufferSize(dbConfig.WriteBufferSize.Value);
+        }
+
+        if (dbConfig.WriteBufferNumber is not null)
+        {
+            _maxWriteBufferNumber = (int)dbConfig.WriteBufferNumber.Value;
+            options.SetMaxWriteBufferNumber(_maxWriteBufferNumber);
+        }
+        if (_maxWriteBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {_maxWriteBufferNumber}", ExitCodes.GeneralError);
+
         #endregion
 
-        // This section affect the write buffer, or memtable. Note, the size of write buffer affect the size of l0
-        // file which affect compactions. The options here does not effect how the sst files are read... probably.
-        // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
-        // block cache and then finally the LSM/SST files.
         #region WriteBuffer
 
         // Note: Write buffer and write buffer num are modified by MemoryHintMan.
-        ulong writeBufferSize = dbConfig.WriteBufferSize;
-        options.SetWriteBufferSize(writeBufferSize);
-        int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
-        if (writeBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {writeBufferNumber}", ExitCodes.GeneralError);
-        options.SetMaxWriteBufferNumber(writeBufferNumber);
         lock (_dbsByPath)
         {
+            ulong writeBufferSize = _writeBufferSize;
+            int writeBufferNumber = _maxWriteBufferNumber;
             _maxThisDbSize += (long)writeBufferSize * writeBufferNumber;
             Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
             if (_logger.IsDebug)
@@ -1373,8 +1383,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb
         // Defaults are from rocksdb source code
         return new Dictionary<string, string>()
         {
-            { "write_buffer_size", _perTableDbConfig.WriteBufferSize.ToString() },
-            { "max_write_buffer_number", _perTableDbConfig.WriteBufferNumber.ToString() },
+            { "write_buffer_size", _writeBufferSize.ToString() },
+            { "max_write_buffer_number", _maxWriteBufferNumber.ToString() },
 
             { "level0_file_num_compaction_trigger", 4.ToString() },
             { "level0_slowdown_writes_trigger", 20.ToString() },
