@@ -85,7 +85,7 @@ jobs:
     - name: Cache NuGet packages
       uses: actions/cache@v4
       with:
-        path: ${{ env.NUGET_PACKAGES }}
+        path: ${{ github.workspace }}/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props') }}
         restore-keys: |
           nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props') }}
@@ -162,7 +162,7 @@ jobs:
     - name: Cache NuGet packages
       uses: actions/cache@v4
       with:
-        path: ${{ env.NUGET_PACKAGES }}
+        path: ${{ github.workspace }}/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props') }}
         restore-keys: |
           nuget-${{ runner.os }}-${{ hashFiles('**/Directory.Packages.props') }}
