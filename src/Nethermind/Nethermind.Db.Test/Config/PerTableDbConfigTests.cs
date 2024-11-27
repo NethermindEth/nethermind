@@ -45,20 +45,24 @@ public class PerTableDbConfigTests
     public void When_ColumnDb_UsePerTableConfig()
     {
         DbConfig dbConfig = new DbConfig();
-        dbConfig.MaxOpenFiles = 2;
+        dbConfig.RocksDbOptions = "some_option=1;";
+        dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
+        dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
         PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""), "Blocks");
-        config.MaxOpenFiles.Should().Be(3);
+        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;some_option=3;");
     }
 
     [Test]
     public void When_PerTableConfigIsAvailable_UsePerTableConfig()
     {
         DbConfig dbConfig = new DbConfig();
-        dbConfig.MaxOpenFiles = 2;
+        dbConfig.RocksDbOptions = "some_option=1;";
+        dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
+        dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
         PerTableDbConfig config = new PerTableDbConfig(dbConfig, new DbSettings(DbNames.Receipts, ""));
-        config.MaxOpenFiles.Should().Be(3);
+        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;");
     }
 
     [Test]

@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,7 @@ public class PerTableDbConfig
     private readonly IDbConfig _dbConfig;
     private readonly DbSettings _settings;
     private readonly string[] _prefixes;
+    private readonly string[] _reversedPrefixes;
 
     public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
     {
@@ -24,6 +26,7 @@ public class PerTableDbConfig
         _tableName = _settings.DbName;
         _columnName = columnName;
         _prefixes = GetPrefixes();
+        _reversedPrefixes = _prefixes.Reverse().ToArray();
 
 #if DEBUG
         EnsureConfigIsAvailable(nameof(RocksDbOptions));
@@ -39,7 +42,7 @@ public class PerTableDbConfig
             string prefixed = string.Concat(prefix, propertyName);
             if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
             {
-                throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}", -1);
+                throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}. Add {prefix}{propertyName} to {nameof(IDbConfig)}.", -1);
             }
         }
     }
@@ -62,7 +65,7 @@ public class PerTableDbConfig
 
     private T? ReadConfig<T>(string propertyName)
     {
-        return ReadConfig<T>(_dbConfig, propertyName, GetPrefixes());
+        return ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
     }
 
     private string[] GetPrefixes()
@@ -75,8 +78,8 @@ public class PerTableDbConfig
         if (_columnName != null)
         {
             return [
-                string.Concat(_tableName, _columnName, "Db"),
                 string.Concat(_tableName, "Db"),
+                string.Concat(_tableName, _columnName, "Db"),
             ];
         }
 
