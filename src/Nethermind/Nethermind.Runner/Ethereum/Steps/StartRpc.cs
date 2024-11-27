@@ -36,7 +36,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
 
-
             if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             {
                 string oldPath = "keystore/jwt-secret";
