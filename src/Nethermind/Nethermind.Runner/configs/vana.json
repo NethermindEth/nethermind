@@ -1,0 +1,41 @@
+{
+  "Init": {
+    "MemoryHint": 768000000,
+    "ChainSpecPath": "chainspec/vana.json",
+    "BaseDbPath": "nethermind_db/vana_archive",
+    "LogFileName": "vana_archive.logs.txt"
+  },
+  "TxPool": {
+    "Size": 1024
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Port": 8545,
+    "EnginePort": 8551
+  },
+  "Sync": {
+    "FastSync": false
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 30000000
+  },
+  "Receipt": {
+    "TxLookupLimit": 0
+  },
+  "EthStats": {
+    "Name": "Nethermind vana Archive"
+  },
+  "Metrics": {
+    "NodeName": "Nethermind Vana Archive"
+  },
+  "Bloom": {
+    "IndexLevelBucketSizes": [
+      16,
+      16,
+      16
+    ]
+  },
+  "Merge": {
+    "FinalTotalDifficulty": "1"
+  }
+}
