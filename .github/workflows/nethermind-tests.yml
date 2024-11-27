@@ -149,6 +149,9 @@ jobs:
         submodules: recursive
     - name: Set up .NET
       uses: actions/setup-dotnet@v4
+      with:
+        cache: true
+        cache-dependency-path: src/Nethermind/${{ matrix.project }}/packages.lock.json
     - name: ${{ matrix.project }}
       id: test
       run: |
