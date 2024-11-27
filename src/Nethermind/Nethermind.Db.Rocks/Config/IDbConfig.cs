@@ -30,7 +30,6 @@ public interface IDbConfig : IConfig
     string RocksDbOptions { get; set; }
     string? AdditionalRocksDbOptions { get; set; }
     bool? VerifyChecksum { get; set; }
-    ulong? RowCacheSize { get; set; }
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
 

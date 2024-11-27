@@ -75,7 +75,6 @@ public class DbConfig : IDbConfig
     public string? AdditionalRocksDbOptions { get; set; }
 
     public bool? VerifyChecksum { get; set; } = true;
-    public ulong? RowCacheSize { get; set; } = null;
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
 
