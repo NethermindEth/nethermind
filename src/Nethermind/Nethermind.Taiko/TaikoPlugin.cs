@@ -302,8 +302,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
 
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool!, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
-        _ = new
-        PivotUpdator(
+        _ = new UnsafePivotUpdator(
             _api.BlockTree,
             _api.SyncModeSelector,
             _api.SyncPeerPool!,
@@ -312,6 +311,7 @@ public class TaikoPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializa
             _beaconSync,
             _api.DbProvider.MetadataDb,
             _api.LogManager);
+        _beaconSync.AllowBeaconHeaderSync();
 
         return Task.CompletedTask;
     }
