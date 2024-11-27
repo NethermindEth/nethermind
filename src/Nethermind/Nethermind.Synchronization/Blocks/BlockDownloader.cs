@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.Blocks
 
         protected SyncBatchSize _syncBatchSize;
         private readonly int[] _ancestorJumps = { 1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024 };
-        int _ancestorLookupLevel = 0;
+        private int _ancestorLookupLevel = 0;
 
         /// <summary>
         /// The starting header number to download.

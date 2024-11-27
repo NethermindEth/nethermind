@@ -72,7 +72,6 @@ public static class ContainerBuilderExtensions
         return builder;
     }
 
-
     public static ContainerBuilder AddSingleton<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
     {
         builder.RegisterType<TImpl>()
