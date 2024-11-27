@@ -43,6 +43,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 // check if jwt-secret file already exists in previous default directory
                 if (!File.Exists(newPath) && File.Exists(oldPath))
                 {
+                    oldPath = Path.GetFullPath(oldPath);
+                    newPath = Path.GetFullPath(newPath);
                     try
                     {
                         File.Move(oldPath, newPath);
