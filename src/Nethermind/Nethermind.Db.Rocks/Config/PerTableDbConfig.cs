@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Configuration;
 using System.IO;
-using System.Linq;
 using System.Reflection;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -16,6 +15,7 @@ public class PerTableDbConfig
     private readonly string? _columnName;
     private readonly IDbConfig _dbConfig;
     private readonly DbSettings _settings;
+    private readonly string[] _prefixes;
 
     public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
     {
@@ -23,13 +23,32 @@ public class PerTableDbConfig
         _settings = dbSettings;
         _tableName = _settings.DbName;
         _columnName = columnName;
+        _prefixes = GetPrefixes();
+
+#if DEBUG
+        EnsureConfigIsAvailable(nameof(RocksDbOptions));
+        EnsureConfigIsAvailable(nameof(AdditionalRocksDbOptions));
+#endif
+    }
+
+    private void EnsureConfigIsAvailable(string propertyName)
+    {
+        Type type = typeof(IDbConfig);
+        foreach (var prefix in _prefixes)
+        {
+            string prefixed = string.Concat(prefix, propertyName);
+            if (type.GetProperty(prefixed, BindingFlags.Public | BindingFlags.Instance) is null)
+            {
+                throw new InvalidConfigurationException($"Configuration {propertyName} not available with prefix {prefix}", -1);
+            }
+        }
     }
 
     public ulong? WriteBufferSize => ReadConfig<ulong?>(nameof(WriteBufferSize));
     public ulong? WriteBufferNumber => ReadConfig<ulong?>(nameof(WriteBufferNumber));
 
-    public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), GetPrefixes());
-    public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), GetPrefixes());
+    public string RocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(RocksDbOptions), _prefixes);
+    public string AdditionalRocksDbOptions => ReadRocksdbOptions(_dbConfig, nameof(AdditionalRocksDbOptions), _prefixes);
 
     public int? MaxOpenFiles => ReadConfig<int?>(nameof(MaxOpenFiles));
     public bool WriteAheadLogSync => ReadConfig<bool>(nameof(WriteAheadLogSync));
@@ -81,7 +100,7 @@ public class PerTableDbConfig
                 string? valObj = (string?)propertyInfo.GetValue(dbConfig);
                 if (!string.IsNullOrEmpty(valObj))
                 {
-                    if (!valObj.EndsWith(";")) throw new ConfigurationErrorsException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.");
+                    if (!valObj.EndsWith(";")) throw new InvalidConfigurationException($"Rocksdb config must end with `;`. Invalid property is {propertyName} in {prefixed}.", -1);
                     val += valObj;
                 }
             }

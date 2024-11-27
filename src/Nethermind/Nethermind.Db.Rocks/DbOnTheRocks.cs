@@ -148,11 +148,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb
                 {
                     string columnFamily = enumColumnName;
 
-                    // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
-                    if (columnFamily == "Default") columnFamily = "default";
-
                     ColumnFamilyOptions options = new();
                     BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
+
+                    // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
+                    if (columnFamily == "Default") columnFamily = "default";
                     columnFamilies.Add(columnFamily, options);
                 }
             }

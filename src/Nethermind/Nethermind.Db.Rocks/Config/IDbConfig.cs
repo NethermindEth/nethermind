@@ -33,12 +33,28 @@ public interface IDbConfig : IConfig
     bool EnableFileWarmer { get; set; }
     double CompressibilityHint { get; set; }
 
+    string BadBlocksDbRocksDbOptions { get; set; }
+    string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
+
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
+
+    string BlobTransactionsFullBlobTxsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsFullBlobTxsDbAdditionalRocksDbOptions { get; set; }
+    string BlobTransactionsLightBlobTxsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsLightBlobTxsDbAdditionalRocksDbOptions { get; set; }
+    string BlobTransactionsProcessedTxsDbRocksDbOptions { get; set; }
+    string? BlobTransactionsProcessedTxsDbAdditionalRocksDbOptions { get; set; }
 
     double ReceiptsDbCompressibilityHint { get; set; }
     string ReceiptsDbRocksDbOptions { get; set; }
     string? ReceiptsDbAdditionalRocksDbOptions { get; set; }
+    string ReceiptsDefaultDbRocksDbOptions { get; set; }
+    string? ReceiptsDefaultDbAdditionalRocksDbOptions { get; set; }
+    string ReceiptsTransactionsDbRocksDbOptions { get; set; }
+    string? ReceiptsTransactionsDbAdditionalRocksDbOptions { get; set; }
+    string ReceiptsBlocksDbRocksDbOptions { get; set; }
+    string? ReceiptsBlocksDbAdditionalRocksDbOptions { get; set; }
 
     string BlocksDbRocksDbOptions { get; set; }
     string? BlocksDbAdditionalRocksDbOptions { get; set; }

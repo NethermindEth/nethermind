@@ -78,19 +78,36 @@ public class DbConfig : IDbConfig
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
 
+    public string BadBlocksDbRocksDbOptions { get; set; } = "";
+    public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
+
 
     public string BlobTransactionsDbRocksDbOptions { get; set; } =
         "block_based_table_factory.block_cache=32000000;";
     public string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
+    public string BlobTransactionsFullBlobTxsDbRocksDbOptions { get; set; } = "";
+    public string? BlobTransactionsFullBlobTxsDbAdditionalRocksDbOptions { get; set; }
+    public string BlobTransactionsLightBlobTxsDbRocksDbOptions { get; set; } = "";
+    public string? BlobTransactionsLightBlobTxsDbAdditionalRocksDbOptions { get; set; }
+    public string BlobTransactionsProcessedTxsDbRocksDbOptions { get; set; } = "";
+    public string? BlobTransactionsProcessedTxsDbAdditionalRocksDbOptions { get; set; }
 
 
     public double ReceiptsDbCompressibilityHint { get; set; } = 0.35;
     public string ReceiptsDbRocksDbOptions { get; set; } =
         "write_buffer_size=2000000;" +
         "block_based_table_factory.block_cache=8000000;" +
-        "compaction_pri=kOldestLargestSeqFirst;" +
         "optimize_filters_for_hits=false;";
     public string? ReceiptsDbAdditionalRocksDbOptions { get; set; } = "";
+
+    public string ReceiptsDefaultDbRocksDbOptions { get; set; } = "";
+    public string? ReceiptsDefaultDbAdditionalRocksDbOptions { get; set; }
+    public string ReceiptsTransactionsDbRocksDbOptions { get; set; } = "";
+    public string? ReceiptsTransactionsDbAdditionalRocksDbOptions { get; set; }
+
+    public string ReceiptsBlocksDbRocksDbOptions { get; set; } =
+        "compaction_pri=kOldestLargestSeqFirst;";
+    public string? ReceiptsBlocksDbAdditionalRocksDbOptions { get; set; }
 
     public string BlocksDbRocksDbOptions { get; set; } =
         "write_buffer_size=64000000;" +
