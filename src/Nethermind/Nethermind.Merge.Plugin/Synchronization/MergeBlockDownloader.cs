@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
 
-        private IReadOnlyList<BlockHeader>? HasMoreToSync(PeerInfo bestPeer, BlocksRequest blocksRequest, long currentNumber, CancellationToken cancellation)
+        private Task<IReadOnlyList<BlockHeader>?> PoSHasMoreToSync(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -66,14 +66,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+                    $"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             IReadOnlyList<BlockHeader>? headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
             if (headers is null || headers.Count <= 1)
             {
                 if (_logger.IsTrace)
                     _logger.Trace("Chain level helper got no headers suggestion");
-                return null;
+                return Task.FromResult<IReadOnlyList<BlockHeader>?>(null);
             }
 
             // Alternatively we can do this in BeaconHeadersSyncFeed, but this seems easier.
@@ -82,11 +82,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (HasBetterPeer)
             {
                 if (_logger.IsDebug) _logger.Debug("Has better peer, stopping");
-                return null;
+                return Task.FromResult<IReadOnlyList<BlockHeader>?>(null);
             }
-            if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}");
+            if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {_currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}");
 
-            return headers;
+            return Task.FromResult<IReadOnlyList<BlockHeader>?>(headers);
         }
 
 
@@ -107,29 +107,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 throw new ArgumentNullException(message);
             }
 
-            DownloaderOptions options = blocksRequest.Options;
-            bool shouldProcess = options == DownloaderOptions.Full;
-
-            int blocksSynced = 0;
-            long currentNumber = _blockTree.BestKnownNumber;
+            _currentNumber = _blockTree.BestKnownNumber;
             if (_logger.IsDebug)
                 _logger.Debug(
-                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+                    $"MergeBlockDownloader GetCurrentNumber: CurrentNumber {_currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
-            long bestProcessedBlock = 0;
-            while (HasMoreToSync(bestPeer, blocksRequest, currentNumber, cancellation) is { } headers)
-            {
-                if (cancellation.IsCancellationRequested) break; // check before every heavy operation
-
-                bool downloadReceipts = !shouldProcess;
-                BlockDownloadContext context = await DoDownload(bestPeer, headers!, downloadReceipts, cancellation);
-                headers.TryDispose();
-                if (cancellation.IsCancellationRequested) break; // check before every heavy operation
-
-                (blocksSynced, currentNumber) = await HandleBlockBatch(bestPeer, cancellation, context, shouldProcess, downloadReceipts, bestProcessedBlock, blocksSynced, currentNumber);
-            }
-
-            return blocksSynced;
+            return await DownloadBlocksBatchLoop(bestPeer, blocksRequest, PoSHasMoreToSync, cancellation);
         }
 
         protected override AddBlockResult AddBlock(PeerInfo bestPeer, Block currentBlock,
