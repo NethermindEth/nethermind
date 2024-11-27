@@ -39,16 +39,16 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
             {
-                string defaultPath = "keystore/jwt-secret";
+                string oldPath = "keystore/jwt-secret";
                 string newPath = Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
                 // check if jwt-secret file already exists in previous default directory
-                if (!File.Exists(newPath) && File.Exists(defaultPath))
+                if (!File.Exists(newPath) && File.Exists(oldPath))
                 {
                     try
                     {
-                        File.Move(defaultPath, newPath);
+                        File.Move(oldPath, newPath);
 
-                        logger.Warn($"Moved JWT secret from {defaultPath} to {newPath}");
+                        logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
                     }
                     catch (Exception ex)
                     {
