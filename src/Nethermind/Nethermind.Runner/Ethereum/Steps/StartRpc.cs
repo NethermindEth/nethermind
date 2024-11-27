@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,32 +36,26 @@ namespace Nethermind.Runner.Ethereum.Steps
             IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
 
-            try
+
+            if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile) || jsonRpcConfig.JwtSecretFile == "null")
             {
                 string defaultPath = "keystore/jwt-secret";
                 string newPath = Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
-                if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
+                // check if jwt-secret file already exists in previous default directory
+                if (!File.Exists(newPath) && File.Exists(defaultPath))
                 {
-                    // check if jwt-secret file already exists in previous default directory
-                    if (!File.Exists(newPath) && File.Exists(defaultPath))
+                    try
                     {
-                        try
-                        {
-                            File.Move(defaultPath, newPath);
+                        File.Move(defaultPath, newPath);
 
-                            logger.Warn($"Moved JWT secret from {defaultPath} to {newPath}");
-                        }
-                        catch (Exception ex)
-                        {
-                            if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
-                        }
+                        logger.Warn($"Moved JWT secret from {defaultPath} to {newPath}");
                     }
-                    jsonRpcConfig.JwtSecretFile = newPath;
+                    catch (Exception ex)
+                    {
+                        if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                    }
                 }
-            }
-            catch (IOException ex)
-            {
-                logger.Error("IO error while setting jwt-secret file path: ", ex);
+                jsonRpcConfig.JwtSecretFile = newPath;
             }
 
             if (jsonRpcConfig.Enabled)
