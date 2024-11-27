@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        config: [release, debug]
+        config: [release]
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
       - name: Free up disk space
@@ -24,6 +24,9 @@ jobs:
         with:
           submodules: ${{ matrix.solution == 'EthereumTests' }}
       - name: Set up .NET
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
         uses: actions/setup-dotnet@v4
       - name: Build ${{ matrix.solution }}.sln
         run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
