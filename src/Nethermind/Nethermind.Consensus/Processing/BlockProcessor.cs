@@ -268,7 +268,7 @@ public partial class BlockProcessor(
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
-            throw new InvalidBlockException(suggestedBlock, error);
+            throw new InvalidBlockHashException(suggestedBlock, error);
         }
 
         // Block is valid, copy the account changes as we use the suggested block not the processed one

@@ -516,7 +516,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
+                if (ex is not InvalidBlockHashException)
+                {
+                    // If the block hash disagrees, do not track as invalid block for that hash as is incorrect hash
+                    InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
+                }
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,
