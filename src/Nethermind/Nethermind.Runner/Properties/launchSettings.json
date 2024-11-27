@@ -121,7 +121,7 @@
     },
     "Vana": {
       "commandName": "Project",
-      "commandLineArgs": "-c vana --data-dir .data",
+      "commandLineArgs": "-c vana-snap --data-dir .data",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
