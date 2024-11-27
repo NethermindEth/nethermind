@@ -46,7 +46,6 @@ public class AdminRpcModule : IAdminRpcModule
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
-
         BuildNodeInfo();
     }
 
@@ -121,6 +120,7 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<NodeInfo> admin_nodeInfo()
     {
+        // why the repetition? already called at contructor!
         UpdateEthProtocolInfo();
         return ResultWrapper<NodeInfo>.Success(_nodeInfo);
     }
