@@ -35,8 +35,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
 
-
-            // Update the JWT secret path based on the data directory.
             try
             {
                 string defaultPath = "keystore/jwt-secret";
