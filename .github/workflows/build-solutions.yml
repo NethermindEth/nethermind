@@ -1,11 +1,9 @@
 name: Build solutions
 
 on:
-  pull_request:
-    branches: [master]
+  
   push:
-    branches: [master]
-  merge_group:
+    branches: [test/nuget-lock]
 
 jobs:
   build:
