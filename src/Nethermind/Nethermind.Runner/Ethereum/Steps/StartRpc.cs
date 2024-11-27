@@ -41,7 +41,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 string newPath = Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret");
                 if (string.IsNullOrEmpty(jsonRpcConfig.JwtSecretFile))
                 {
-                    logger.Warn("JsonRpcConfig JwtSecretFile is null or empty because of omission or human error.");
                     // check if jwt-secret file already exists in previous default directory
                     if (File.Exists(defaultPath))
                     {
