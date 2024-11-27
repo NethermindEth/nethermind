@@ -36,6 +36,10 @@ public class DbConfig : IDbConfig
         // significant or not.
         "level_compaction_dynamic_level_bytes=false;" +
 
+        // Default is 1.6GB.
+        // Increase it to reduce stalls under heavy compaction.
+        "max_compaction_bytes=4000000000;" +
+
         "compression=kSnappyCompression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
@@ -158,7 +162,6 @@ public class DbConfig : IDbConfig
     public string? CodeDbAdditionalRocksDbOptions { get; set; }
 
     public string BloomDbRocksDbOptions { get; set; } =
-        "write_buffer_size=1000000" +
         "max_bytes_for_level_base=16000000;";
     public string? BloomDbAdditionalRocksDbOptions { get; set; }
 
