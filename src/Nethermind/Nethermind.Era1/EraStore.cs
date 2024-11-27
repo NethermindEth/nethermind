@@ -106,6 +106,11 @@ public class EraStore : IEraStore
             if (epoch < FirstEpoch)
                 FirstEpoch = epoch;
         }
+
+        if (eraFiles.Length == 0)
+        {
+            throw new EraException($"No relevant era files in directory {directory}");
+        }
     }
 
     private long GetEpochNumber(long blockNumber)
