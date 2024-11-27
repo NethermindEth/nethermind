@@ -24,10 +24,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0xd7e58364f16b4a329b959b166f9c32323cb135669335db5dadd0344568f8dc9a",
-        "0xfafb92e8ece12d5fcfa867df9ae6865c5bd8aaf0b277c244552bfe869f61fb26",
+        "0xffcfa58bd573f32084c9e33f52be0c07f26f2b416aeb3a564f75a5b3b2702d6c",
+        "0xc07d3d9dc7ba2d475938961a90e4317b8109942241edc1201c2a44085c274b38",
         "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x774c6aff527bbc68")]
+        "0x039cc417630de68a")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -283,7 +283,7 @@ public partial class EngineModuleTests
                 SuggestedFeeRecipient = feeRecipient,
                 ParentBeaconBlockRoot = Keccak.Zero,
                 Withdrawals = [],
-                TargetBlobCount = 0,
+                TargetBlobCount = parentHeader.TargetBlobCount,
             };
 
         // we're using payloadService directly, because we can't use fcU for branch

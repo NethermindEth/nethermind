@@ -96,6 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
                 GasLimit = head.GasLimit,
                 Timestamp = head.Timestamp,
                 BaseFeePerGas = head.BaseFeePerGas,
+                TargetBlobCount = head.TargetBlobCount,
             };
         }
 

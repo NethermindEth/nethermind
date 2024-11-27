@@ -368,6 +368,11 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder.WithEmptyRequestsHash();
         }
 
+        if (SpecProvider.GenesisSpec.IsEip7742Enabled)
+        {
+            genesisBlockBuilder.WithTargetBlobCount(0);
+        }
+
         genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }
