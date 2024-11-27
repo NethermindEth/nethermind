@@ -73,15 +73,6 @@ public static class ContainerBuilderExtensions
     }
 
 
-    public static ContainerBuilder AddSingleton<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) where T : class
-    {
-        builder.Register(factory)
-            .As<T>()
-            .SingleInstance();
-
-        return builder;
-    }
-
     public static ContainerBuilder AddSingleton<T, TImpl>(this ContainerBuilder builder) where TImpl : notnull where T : notnull
     {
         builder.RegisterType<TImpl>()
